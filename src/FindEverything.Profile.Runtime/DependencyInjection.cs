@@ -23,6 +23,7 @@ public static class DependencyInjection
 
         services.TryAddSingleton<ProfileManifestReader>();
         services.TryAddSingleton<ProfileModelCompiler>();
+        services.TryAddSingleton<IProfileDefinitionCompiler, ProfileDefinitionCompiler>();
         services.TryAddSingleton<ProfileCatalog>();
         services.TryAddSingleton<IProfileCatalog>(
             static provider => provider.GetRequiredService<ProfileCatalog>());

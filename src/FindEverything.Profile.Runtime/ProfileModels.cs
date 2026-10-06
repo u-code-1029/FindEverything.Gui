@@ -38,7 +38,10 @@ public sealed record ProfileDescriptor(
     ProfileCandidateKind CandidateKind,
     ProfilePathInput PathInput,
     IReadOnlyList<ProfileFieldDescriptor> Fields,
-    IReadOnlyList<ProfileRegexRuleDescriptor> Rules);
+    IReadOnlyList<ProfileRegexRuleDescriptor> Rules)
+{
+    public ProfileKind Kind { get; init; } = ProfileKind.Assembly;
+}
 
 public sealed record ProfilePathCandidate(string FullPath, string RelativePath);
 
@@ -167,6 +170,17 @@ public sealed class ProfileCatalogSnapshot
 public interface IProfileCatalog
 {
     ProfileCatalogSnapshot Current { get; }
+
+    event EventHandler<ProfileCatalogChangedEventArgs>? Changed;
+}
+
+public sealed class ProfileCatalogChangedEventArgs(
+    ProfileCatalogSnapshot previous,
+    ProfileCatalogSnapshot current) : EventArgs
+{
+    public ProfileCatalogSnapshot Previous { get; } = previous;
+
+    public ProfileCatalogSnapshot Current { get; } = current;
 }
 
 public interface IProfileCatalogPublisher

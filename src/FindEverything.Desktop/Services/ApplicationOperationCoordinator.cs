@@ -45,7 +45,7 @@ public sealed class ApplicationOperationCoordinator(
         {
             if (_activeTask is { IsCompleted: false })
             {
-                throw new InvalidOperationException("이미 인덱스 작업이 실행 중입니다.");
+                throw new InvalidOperationException("이미 다른 작업이 실행 중입니다.");
             }
 
             var source = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);

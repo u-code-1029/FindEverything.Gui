@@ -2,9 +2,17 @@ using System.Text.Json.Serialization;
 
 namespace FindEverything.Profile.Runtime;
 
+public static class ProfileManifestLimits
+{
+    public const long MaximumLengthBytes = 1024 * 1024;
+}
+
 public sealed class ProfileManifest
 {
     public int ContractVersion { get; set; }
+
+    [JsonConverter(typeof(JsonStringEnumConverter<ProfileKind>))]
+    public ProfileKind Kind { get; set; } = ProfileKind.Assembly;
 
     public string? Id { get; set; }
 
@@ -16,6 +24,8 @@ public sealed class ProfileManifest
 
     public string? ModelType { get; set; }
 
+    public List<ProfileFieldManifest>? Fields { get; set; }
+
     [JsonConverter(typeof(JsonStringEnumConverter<ProfileCandidateKind>))]
     public ProfileCandidateKind CandidateKind { get; set; } = ProfileCandidateKind.Directory;
 
@@ -23,6 +33,26 @@ public sealed class ProfileManifest
     public ProfilePathInput PathInput { get; set; } = ProfilePathInput.Relative;
 
     public List<ProfileRegexRuleManifest>? Rules { get; set; }
+}
+
+public sealed class ProfileFieldManifest
+{
+    public string? FieldId { get; set; }
+
+    public string? GroupName { get; set; }
+
+    public string? Header { get; set; }
+
+    public int Order { get; set; }
+
+    public bool Required { get; set; }
+
+    [JsonConverter(typeof(JsonStringEnumConverter<ProfileFieldValueKind>))]
+    public ProfileFieldValueKind Kind { get; set; } = ProfileFieldValueKind.String;
+
+    public string? ParseFormat { get; set; }
+
+    public string? DisplayFormat { get; set; }
 }
 
 public sealed class ProfileRegexRuleManifest
@@ -37,6 +67,12 @@ public sealed class ProfileRegexRuleManifest
     public bool IgnoreCase { get; set; }
 
     public int TimeoutMilliseconds { get; set; } = 100;
+}
+
+public enum ProfileKind
+{
+    Assembly = 0,
+    Declarative = 1,
 }
 
 public enum ProfileCandidateKind

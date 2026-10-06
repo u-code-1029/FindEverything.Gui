@@ -6,6 +6,8 @@ public sealed record AppPaths(
 {
     public string GridLayoutFile => Path.Combine(LocalDataDirectory, "grid-layout.json");
 
+    public string UserProfilesDirectory => Path.Combine(LocalDataDirectory, "Profiles");
+
     public static AppPaths Create()
     {
         var localApplicationData = Environment.GetFolderPath(

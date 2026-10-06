@@ -26,35 +26,25 @@ internal sealed class ProfilePluginLoader : IProfilePluginLoader
     public async Task<ProfileCatalogSnapshot> LoadAsync(
         CancellationToken cancellationToken = default)
     {
-        var profilesDirectory = ResolveProfilesDirectory(_options.ProfilesDirectory);
-        string[] sourceDirectories;
-        try
-        {
-            if (!Directory.Exists(profilesDirectory))
-            {
-                return SnapshotWithDirectoryError(
-                    profilesDirectory,
-                    "profiles_directory_missing",
-                    "프로필 디렉터리를 찾을 수 없습니다.");
-            }
-
-            sourceDirectories = Directory
-                .EnumerateDirectories(profilesDirectory, "*", SearchOption.TopDirectoryOnly)
-                .OrderBy(static path => path, StringComparer.OrdinalIgnoreCase)
-                .ToArray();
-        }
-        catch (Exception exception) when (
-            exception is IOException or UnauthorizedAccessException or ArgumentException)
-        {
-            _logger.LogWarning(exception, "Could not enumerate profile directory {ProfilesDirectory}", profilesDirectory);
-            return SnapshotWithDirectoryError(
-                profilesDirectory,
-                "profiles_directory_read_failed",
-                "프로필 디렉터리를 읽을 수 없습니다.",
-                exception.Message);
-        }
-
         var reports = new List<ProfilePluginReport>();
+        var sourceDirectories = new List<string>();
+        var bundledDirectory = ResolveProfilesDirectory(_options.ProfilesDirectory);
+        AddSourceDirectories(bundledDirectory, required: true, sourceDirectories, reports);
+
+        if (!string.IsNullOrWhiteSpace(_options.UserProfilesDirectory))
+        {
+            var userDirectory = ResolveProfilesDirectory(_options.UserProfilesDirectory);
+            if (!string.Equals(
+                    userDirectory,
+                    bundledDirectory,
+                    OperatingSystem.IsWindows()
+                        ? StringComparison.OrdinalIgnoreCase
+                        : StringComparison.Ordinal))
+            {
+                AddSourceDirectories(userDirectory, required: false, sourceDirectories, reports);
+            }
+        }
+
         var manifestResults = new List<(string SourceDirectory, ManifestReadResult Result)>();
         var candidates = new List<ValidatedProfileManifest>();
 
@@ -129,9 +119,13 @@ internal sealed class ProfilePluginLoader : IProfilePluginLoader
     {
         try
         {
-            var loadContext = new ProfileLoadContext(candidate.EntryAssemblyPath);
-            var assembly = loadContext.LoadFromAssemblyPath(candidate.EntryAssemblyPath);
-            var compilation = _modelCompiler.Compile(assembly, candidate);
+            var compilation = candidate.Kind switch
+            {
+                ProfileKind.Assembly => CompileAssembly(candidate),
+                ProfileKind.Declarative => _modelCompiler.Compile(candidate),
+                _ => throw new InvalidOperationException(
+                    $"Unsupported profile kind: {candidate.Kind}"),
+            };
 
             if (compilation.Profile is null)
             {
@@ -159,9 +153,29 @@ internal sealed class ProfilePluginLoader : IProfilePluginLoader
                 new ProfileDiagnostic(
                     ProfileDiagnosticSeverity.Error,
                     "profile_load_failed",
-                    "프로필 어셈블리를 로드할 수 없습니다.",
+                    "프로필을 로드할 수 없습니다.",
                     exception.GetBaseException().Message)));
         }
+    }
+
+    private ProfileCompilationResult CompileAssembly(ValidatedProfileManifest candidate)
+    {
+        if (candidate.EntryAssemblyPath is null)
+        {
+            return new ProfileCompilationResult(
+                null,
+                new[]
+                {
+                    new ProfileDiagnostic(
+                        ProfileDiagnosticSeverity.Error,
+                        "entry_assembly_missing",
+                        "Assembly 프로필에는 entryAssembly가 필요합니다."),
+                });
+        }
+
+        var loadContext = new ProfileLoadContext(candidate.EntryAssemblyPath);
+        var assembly = loadContext.LoadFromAssemblyPath(candidate.EntryAssemblyPath);
+        return _modelCompiler.Compile(assembly, candidate);
     }
 
     private static ProfilePluginReport Disabled(
@@ -185,25 +199,58 @@ internal sealed class ProfilePluginLoader : IProfilePluginLoader
                 ? configuredPath
                 : Path.Combine(AppContext.BaseDirectory, configuredPath));
 
-    private static ProfileCatalogSnapshot SnapshotWithDirectoryError(
+    private void AddSourceDirectories(
+        string profilesDirectory,
+        bool required,
+        ICollection<string> sourceDirectories,
+        ICollection<ProfilePluginReport> reports)
+    {
+        try
+        {
+            if (!Directory.Exists(profilesDirectory))
+            {
+                if (required)
+                {
+                    reports.Add(DirectoryError(
+                        profilesDirectory,
+                        "profiles_directory_missing",
+                        "프로필 디렉터리를 찾을 수 없습니다."));
+                }
+
+                return;
+            }
+
+            foreach (var sourceDirectory in Directory
+                         .EnumerateDirectories(profilesDirectory, "*", SearchOption.TopDirectoryOnly)
+                         .OrderBy(static path => path, StringComparer.OrdinalIgnoreCase))
+            {
+                sourceDirectories.Add(sourceDirectory);
+            }
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            _logger.LogWarning(
+                exception,
+                "Could not enumerate profile directory {ProfilesDirectory}",
+                profilesDirectory);
+            reports.Add(DirectoryError(
+                profilesDirectory,
+                "profiles_directory_read_failed",
+                "프로필 디렉터리를 읽을 수 없습니다.",
+                exception.Message));
+        }
+    }
+
+    private static ProfilePluginReport DirectoryError(
         string profilesDirectory,
         string code,
         string message,
-        string? detail = null)
-    {
-        var report = new ProfilePluginReport(
+        string? detail = null) =>
+        new(
             profilesDirectory,
             null,
             null,
             ProfilePluginStatus.Disabled,
-            new[]
-            {
-                new ProfileDiagnostic(ProfileDiagnosticSeverity.Error, code, message, detail),
-            });
-
-        return new ProfileCatalogSnapshot(
-            Array.Empty<ILoadedProfile>(),
-            new[] { report },
-            DateTimeOffset.UtcNow);
-    }
+            [new ProfileDiagnostic(ProfileDiagnosticSeverity.Error, code, message, detail)]);
 }

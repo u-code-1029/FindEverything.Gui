@@ -42,6 +42,8 @@ public static class DependencyInjection
                     options.ProfilesDirectory = Path.GetFullPath(
                         Path.Combine(AppContext.BaseDirectory, options.ProfilesDirectory));
                 }
+
+                options.UserProfilesDirectory = paths.UserProfilesDirectory;
             })
             .ValidateDataAnnotations()
             .ValidateOnStart();
@@ -54,6 +56,7 @@ public static class DependencyInjection
         services.AddSingleton<IApplicationOperationCoordinator, ApplicationOperationCoordinator>();
         services.AddSingleton<IDesktopPickerService, DesktopPickerService>();
         services.AddSingleton<IPathLauncher, ExplorerPathLauncher>();
+        services.AddSingleton<IProfileAuthoringService, ProfileAuthoringService>();
         services.AddSingleton<IAppearanceService, AppearanceService>();
         services.AddSingleton<IUserSettingsWriter, AtomicUserSettingsWriter>();
         services.AddSingleton<IGridLayoutStore, GridLayoutStore>();

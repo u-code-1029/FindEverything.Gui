@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
@@ -10,15 +11,28 @@ internal sealed record ValidatedRegexRule(
     bool IgnoreCase,
     int TimeoutMilliseconds);
 
+internal sealed record ValidatedProfileField(
+    string FieldId,
+    string GroupName,
+    string Header,
+    int Order,
+    bool Required,
+    ProfileFieldValueKind Kind,
+    bool IsNullable,
+    string? ParseFormat,
+    string? DisplayFormat);
+
 internal sealed record ValidatedProfileManifest(
     string SourceDirectory,
     string Id,
     string Version,
     string DisplayName,
-    string EntryAssemblyPath,
-    string ModelType,
+    ProfileKind Kind,
+    string? EntryAssemblyPath,
+    string? ModelType,
     ProfileCandidateKind CandidateKind,
     ProfilePathInput PathInput,
+    IReadOnlyList<ValidatedProfileField> Fields,
     IReadOnlyList<ValidatedRegexRule> Rules);
 
 internal sealed record ManifestReadResult(
@@ -29,8 +43,6 @@ internal sealed record ManifestReadResult(
 
 internal sealed class ProfileManifestReader
 {
-    private const long MaximumManifestLength = 1024 * 1024;
-
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
         AllowTrailingCommas = true,
@@ -57,7 +69,7 @@ internal sealed class ProfileManifestReader
         try
         {
             var manifestFile = new FileInfo(manifestPath);
-            if (manifestFile.Length > MaximumManifestLength)
+            if (manifestFile.Length > ProfileManifestLimits.MaximumLengthBytes)
             {
                 return Failure(
                     "manifest_too_large",
@@ -132,6 +144,16 @@ internal sealed class ProfileManifestValidator
         RegexOptions.CultureInvariant,
         TimeSpan.FromMilliseconds(100));
 
+    private static readonly Regex FieldIdPattern = new(
+        "^[a-z0-9][a-z0-9._-]{0,63}$",
+        RegexOptions.CultureInvariant,
+        TimeSpan.FromMilliseconds(100));
+
+    private static readonly Regex GroupNamePattern = new(
+        "^[A-Za-z_][A-Za-z0-9_]*$",
+        RegexOptions.CultureInvariant,
+        TimeSpan.FromMilliseconds(100));
+
     public ManifestReadResult Validate(
         string sourceDirectory,
         ProfileManifest manifest,
@@ -168,9 +190,9 @@ internal sealed class ProfileManifestValidator
             diagnostics.Add(Error("profile_display_name_missing", "프로필 displayName이 필요합니다."));
         }
 
-        if (modelType is null)
+        if (!Enum.IsDefined(manifest.Kind))
         {
-            diagnostics.Add(Error("profile_model_type_missing", "프로필 modelType이 필요합니다."));
+            diagnostics.Add(Error("profile_kind_invalid", "지원되지 않는 profile kind입니다."));
         }
 
         if (!Enum.IsDefined(manifest.CandidateKind))
@@ -184,42 +206,43 @@ internal sealed class ProfileManifestValidator
         }
 
         string? entryAssemblyPath = null;
-        if (entryAssembly is null)
+        var validatedFields = new List<ValidatedProfileField>();
+        if (manifest.Kind == ProfileKind.Assembly)
         {
-            diagnostics.Add(Error("entry_assembly_missing", "프로필 entryAssembly가 필요합니다."));
-        }
-        else
-        {
-            try
+            if (modelType is null)
             {
-                entryAssemblyPath = Path.GetFullPath(Path.Combine(sourceDirectory, entryAssembly));
-                if (!IsWithinDirectory(sourceDirectory, entryAssemblyPath))
-                {
-                    diagnostics.Add(Error(
-                        "entry_assembly_outside_profile",
-                        "entryAssembly는 프로필 디렉터리 내부에 있어야 합니다."));
-                }
-                else if (!File.Exists(entryAssemblyPath))
-                {
-                    diagnostics.Add(Error(
-                        "entry_assembly_missing_file",
-                        $"entryAssembly 파일을 찾을 수 없습니다: {entryAssembly}"));
-                }
-                else if (!string.Equals(Path.GetExtension(entryAssemblyPath), ".dll", StringComparison.OrdinalIgnoreCase))
-                {
-                    diagnostics.Add(Error(
-                        "entry_assembly_not_dll",
-                        "entryAssembly는 .dll 파일이어야 합니다."));
-                }
+                diagnostics.Add(Error("profile_model_type_missing", "Assembly 프로필에는 modelType이 필요합니다."));
             }
-            catch (Exception exception) when (
-                exception is ArgumentException or NotSupportedException or PathTooLongException)
+
+            entryAssemblyPath = ValidateEntryAssembly(
+                sourceDirectory,
+                entryAssembly,
+                diagnostics);
+
+            if (manifest.Fields is { Count: > 0 })
             {
                 diagnostics.Add(Error(
-                    "entry_assembly_invalid_path",
-                    "entryAssembly 경로가 올바르지 않습니다.",
-                    exception.Message));
+                    "assembly_fields_not_allowed",
+                    "Assembly 프로필의 필드는 모델의 CaptureFieldAttribute에서 정의되므로 fields를 사용할 수 없습니다."));
             }
+        }
+        else if (manifest.Kind == ProfileKind.Declarative)
+        {
+            if (entryAssembly is not null)
+            {
+                diagnostics.Add(Error(
+                    "declarative_entry_assembly_not_allowed",
+                    "Declarative 프로필에는 entryAssembly를 사용할 수 없습니다."));
+            }
+
+            if (modelType is not null)
+            {
+                diagnostics.Add(Error(
+                    "declarative_model_type_not_allowed",
+                    "Declarative 프로필에는 modelType을 사용할 수 없습니다."));
+            }
+
+            validatedFields = ValidateFields(manifest.Fields, diagnostics);
         }
 
         var validatedRules = ValidateRules(manifest.Rules, diagnostics);
@@ -240,14 +263,221 @@ internal sealed class ProfileManifestValidator
                 id!,
                 version!,
                 displayName!,
-                entryAssemblyPath!,
-                modelType!,
+                manifest.Kind,
+                entryAssemblyPath,
+                modelType,
                 manifest.CandidateKind,
                 manifest.PathInput,
+                Array.AsReadOnly(validatedFields.ToArray()),
                 Array.AsReadOnly(validatedRules.ToArray())),
             id,
             displayName,
             Array.AsReadOnly(diagnostics.ToArray()));
+    }
+
+    private static string? ValidateEntryAssembly(
+        string sourceDirectory,
+        string? entryAssembly,
+        ICollection<ProfileDiagnostic> diagnostics)
+    {
+        if (entryAssembly is null)
+        {
+            diagnostics.Add(Error(
+                "entry_assembly_missing",
+                "Assembly 프로필에는 entryAssembly가 필요합니다."));
+            return null;
+        }
+
+        try
+        {
+            var entryAssemblyPath = Path.GetFullPath(Path.Combine(sourceDirectory, entryAssembly));
+            if (!IsWithinDirectory(sourceDirectory, entryAssemblyPath))
+            {
+                diagnostics.Add(Error(
+                    "entry_assembly_outside_profile",
+                    "entryAssembly는 프로필 디렉터리 내부에 있어야 합니다."));
+            }
+            else if (!File.Exists(entryAssemblyPath))
+            {
+                diagnostics.Add(Error(
+                    "entry_assembly_missing_file",
+                    $"entryAssembly 파일을 찾을 수 없습니다: {entryAssembly}"));
+            }
+            else if (!string.Equals(
+                         Path.GetExtension(entryAssemblyPath),
+                         ".dll",
+                         StringComparison.OrdinalIgnoreCase))
+            {
+                diagnostics.Add(Error(
+                    "entry_assembly_not_dll",
+                    "entryAssembly는 .dll 파일이어야 합니다."));
+            }
+
+            return entryAssemblyPath;
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            diagnostics.Add(Error(
+                "entry_assembly_invalid_path",
+                "entryAssembly 경로가 올바르지 않습니다.",
+                exception.Message));
+            return null;
+        }
+    }
+
+    private static List<ValidatedProfileField> ValidateFields(
+        IReadOnlyList<ProfileFieldManifest>? fields,
+        ICollection<ProfileDiagnostic> diagnostics)
+    {
+        var validated = new List<ValidatedProfileField>();
+        if (fields is null || fields.Count == 0)
+        {
+            diagnostics.Add(Error(
+                "capture_fields_missing",
+                "Declarative 프로필에는 하나 이상의 fields 항목이 필요합니다."));
+            return validated;
+        }
+
+        var fieldIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var index = 0; index < fields.Count; index++)
+        {
+            var source = fields[index];
+            var fieldId = NormalizeRequired(source.FieldId);
+            var groupName = NormalizeRequired(source.GroupName);
+            var displayId = fieldId ?? $"#{index + 1}";
+            var valid = true;
+
+            if (fieldId is null || !FieldIdPattern.IsMatch(fieldId))
+            {
+                diagnostics.Add(Error(
+                    "capture_field_id_invalid",
+                    $"필드 #{index + 1}의 fieldId는 소문자 영숫자로 시작하고 소문자 영숫자, 점, 밑줄, 하이픈만 포함해야 합니다."));
+                valid = false;
+            }
+            else if (!fieldIds.Add(fieldId))
+            {
+                diagnostics.Add(Error(
+                    "capture_field_id_duplicate",
+                    $"fieldId가 중복되었습니다: {fieldId}"));
+                valid = false;
+            }
+
+            if (groupName is null)
+            {
+                diagnostics.Add(Error(
+                    "capture_group_name_missing",
+                    $"필드 '{displayId}'에 groupName이 필요합니다."));
+                valid = false;
+            }
+            else if (!GroupNamePattern.IsMatch(groupName))
+            {
+                diagnostics.Add(Error(
+                    "capture_group_name_invalid",
+                    $"필드 '{displayId}'의 groupName은 문자 또는 밑줄로 시작하고 영숫자와 밑줄만 포함해야 합니다."));
+                valid = false;
+            }
+
+            if (!Enum.IsDefined(source.Kind))
+            {
+                diagnostics.Add(Error(
+                    "capture_field_type_unsupported",
+                    $"필드 '{displayId}'의 kind가 지원되지 않습니다."));
+                valid = false;
+            }
+
+            var parseFormat = NormalizeRequired(source.ParseFormat);
+            if (parseFormat is not null && source.Kind != ProfileFieldValueKind.DateTime)
+            {
+                diagnostics.Add(Error(
+                    "capture_parse_format_unsupported",
+                    $"필드 '{displayId}'의 parseFormat은 DateTime 필드에만 사용할 수 있습니다."));
+                valid = false;
+            }
+            else if (parseFormat is not null)
+            {
+                try
+                {
+                    _ = DateTime.UnixEpoch.ToString(parseFormat, CultureInfo.InvariantCulture);
+                }
+                catch (FormatException exception)
+                {
+                    diagnostics.Add(Error(
+                        "capture_parse_format_invalid",
+                        $"필드 '{displayId}'의 날짜 입력 형식이 올바르지 않습니다.",
+                        exception.Message));
+                    valid = false;
+                }
+            }
+
+            var displayFormat = NormalizeRequired(source.DisplayFormat);
+            if (displayFormat is not null
+                && !ValidateDisplayFormat(source.Kind, displayFormat, out var formatError))
+            {
+                diagnostics.Add(Error(
+                    "capture_display_format_invalid",
+                    $"필드 '{displayId}'의 표시 형식이 올바르지 않습니다.",
+                    formatError));
+                valid = false;
+            }
+
+            if (!valid)
+            {
+                continue;
+            }
+
+            validated.Add(new ValidatedProfileField(
+                fieldId!,
+                groupName!,
+                NormalizeRequired(source.Header) ?? fieldId!,
+                source.Order,
+                source.Required,
+                source.Kind,
+                IsNullable: !source.Required,
+                parseFormat,
+                displayFormat));
+        }
+
+        validated.Sort(static (left, right) =>
+        {
+            var orderComparison = left.Order.CompareTo(right.Order);
+            return orderComparison != 0
+                ? orderComparison
+                : StringComparer.Ordinal.Compare(left.FieldId, right.FieldId);
+        });
+
+        return validated;
+    }
+
+    private static bool ValidateDisplayFormat(
+        ProfileFieldValueKind kind,
+        string displayFormat,
+        out string? error)
+    {
+        IFormattable? sample = kind switch
+        {
+            ProfileFieldValueKind.Int32 => 1234,
+            ProfileFieldValueKind.Decimal => 1234.5m,
+            ProfileFieldValueKind.DateTime => DateTime.UnixEpoch,
+            _ => null,
+        };
+        if (sample is null)
+        {
+            error = "표시 형식은 정수, 소수, 날짜/시간 필드에만 사용할 수 있습니다.";
+            return false;
+        }
+
+        try
+        {
+            _ = sample.ToString(displayFormat, CultureInfo.InvariantCulture);
+            error = null;
+            return true;
+        }
+        catch (FormatException exception)
+        {
+            error = exception.Message;
+            return false;
+        }
     }
 
     private static List<ValidatedRegexRule> ValidateRules(

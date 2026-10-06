@@ -10,6 +10,8 @@ public sealed class PluginDiscoveryOptions
     [Required]
     public string ProfilesDirectory { get; set; } = "Profiles";
 
+    public string? UserProfilesDirectory { get; set; }
+
     [Range(1, int.MaxValue)]
     public int ContractMajor { get; set; } = ProfileContract.CurrentMajor;
 }

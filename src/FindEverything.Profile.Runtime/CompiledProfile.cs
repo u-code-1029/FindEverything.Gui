@@ -6,13 +6,13 @@ namespace FindEverything.Profile.Runtime;
 
 internal sealed class CompiledProfile : ILoadedProfile
 {
-    private readonly Func<object> _createModel;
+    private readonly Func<IReadOnlyDictionary<string, object?>, object> _createModel;
     private readonly CompiledField[] _fields;
     private readonly CompiledRegexRule[] _rules;
 
     public CompiledProfile(
         ProfileDescriptor descriptor,
-        Func<object> createModel,
+        Func<IReadOnlyDictionary<string, object?>, object> createModel,
         CompiledField[] fields,
         CompiledRegexRule[] rules)
     {
@@ -119,7 +119,6 @@ internal sealed class CompiledProfile : ILoadedProfile
 
         try
         {
-            var model = _createModel();
             var values = new Dictionary<string, object?>(
                 _fields.Length,
                 StringComparer.OrdinalIgnoreCase);
@@ -128,9 +127,11 @@ internal sealed class CompiledProfile : ILoadedProfile
             {
                 var field = _fields[index];
                 var value = parsedValues[index];
-                field.SetValue(model, value);
                 values.Add(field.Descriptor.FieldId, value);
             }
+
+            var readOnlyValues = new ReadOnlyDictionary<string, object?>(values);
+            var model = _createModel(readOnlyValues);
 
             return ProfileMapResult.Success(new MappedProfileItem(
                 Descriptor.Id,
@@ -138,7 +139,7 @@ internal sealed class CompiledProfile : ILoadedProfile
                 candidate.RelativePath,
                 rule.Id,
                 model,
-                new ReadOnlyDictionary<string, object?>(values)));
+                readOnlyValues));
         }
         catch (Exception exception)
         {
@@ -196,22 +197,30 @@ internal static class InvariantValueParser
                 break;
 
             case ProfileFieldValueKind.DateTime:
-                var parsedDate = descriptor.ParseFormat is { Length: > 0 }
-                    ? DateTime.TryParseExact(
-                        trimmed,
-                        descriptor.ParseFormat,
-                        CultureInfo.InvariantCulture,
-                        DateTimeStyles.AllowWhiteSpaces,
-                        out var exactDate)
-                        ? exactDate
-                        : (DateTime?)null
-                    : DateTime.TryParse(
-                        trimmed,
-                        CultureInfo.InvariantCulture,
-                        DateTimeStyles.AllowWhiteSpaces,
-                        out var flexibleDate)
-                        ? flexibleDate
-                        : (DateTime?)null;
+                DateTime? parsedDate;
+                try
+                {
+                    parsedDate = descriptor.ParseFormat is { Length: > 0 }
+                        ? DateTime.TryParseExact(
+                            trimmed,
+                            descriptor.ParseFormat,
+                            CultureInfo.InvariantCulture,
+                            DateTimeStyles.AllowWhiteSpaces,
+                            out var exactDate)
+                            ? exactDate
+                            : (DateTime?)null
+                        : DateTime.TryParse(
+                            trimmed,
+                            CultureInfo.InvariantCulture,
+                            DateTimeStyles.AllowWhiteSpaces,
+                            out var flexibleDate)
+                            ? flexibleDate
+                            : (DateTime?)null;
+                }
+                catch (FormatException)
+                {
+                    parsedDate = null;
+                }
 
                 if (parsedDate.HasValue)
                 {

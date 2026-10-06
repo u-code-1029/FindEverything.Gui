@@ -22,6 +22,7 @@ public sealed class ProfilePluginLoaderTests
 
         var profile = Assert.Single(snapshot.Profiles);
         Assert.Equal("valid-profile", profile.Descriptor.Id);
+        Assert.Equal(ProfileKind.Assembly, profile.Descriptor.Kind);
         Assert.Equal(
             new[] { "name", "year", "revision", "captured-on", "approved", "amount" },
             profile.Descriptor.Fields.Select(static field => field.FieldId));
@@ -49,6 +50,145 @@ public sealed class ProfilePluginLoaderTests
         Assert.Null(minimal.Item.Values["captured-on"]);
         Assert.Null(minimal.Item.Values["approved"]);
         Assert.Null(minimal.Item.Values["amount"]);
+    }
+
+    [Fact]
+    public async Task LoadAsync_DeclarativeProfileMapsValuesWithoutAnAssembly()
+    {
+        using var packages = new TestProfilePackages();
+        packages.AddDeclarative("declarative", "declarative-profile", ValidPattern);
+        using var host = BuildHost(packages.RootPath);
+
+        var snapshot = await LoadAsync(host);
+
+        var profile = Assert.Single(snapshot.Profiles);
+        Assert.Equal(ProfileKind.Declarative, profile.Descriptor.Kind);
+        Assert.Equal(
+            new[] { "name", "year", "revision", "captured-on", "approved", "amount" },
+            profile.Descriptor.Fields.Select(static field => field.FieldId));
+
+        var result = profile.Map(new ProfilePathCandidate(
+            @"C:\root\alpha\2026",
+            "alpha/2026/r7/20261007/true/1234.50"));
+
+        Assert.Equal(ProfileMapStatus.Success, result.Status);
+        Assert.NotNull(result.Item);
+        Assert.Equal("alpha", result.Item.Values["name"]);
+        Assert.Equal(2026, result.Item.Values["year"]);
+        Assert.Equal(7, result.Item.Values["revision"]);
+        Assert.Equal(new DateTime(2026, 10, 7), result.Item.Values["captured-on"]);
+        Assert.Equal(true, result.Item.Values["approved"]);
+        Assert.Equal(1234.50m, result.Item.Values["amount"]);
+        Assert.Same(result.Item.Values, result.Item.Model);
+        Assert.IsAssignableFrom<IReadOnlyDictionary<string, object?>>(result.Item.Model);
+
+        var minimal = profile.Map(new ProfilePathCandidate(
+            @"C:\root\beta\2025",
+            "beta/2025"));
+
+        Assert.Equal(ProfileMapStatus.Success, minimal.Status);
+        Assert.NotNull(minimal.Item);
+        Assert.Null(minimal.Item.Values["revision"]);
+        Assert.Null(minimal.Item.Values["captured-on"]);
+        Assert.Null(minimal.Item.Values["approved"]);
+        Assert.Null(minimal.Item.Values["amount"]);
+    }
+
+    [Fact]
+    public async Task LoadAsync_LoadsBundledAndUserProfileRootsTogether()
+    {
+        using var bundledPackages = new TestProfilePackages();
+        bundledPackages.Add("assembly", "assembly-profile", ValidPattern);
+        using var userPackages = new TestProfilePackages();
+        userPackages.AddDeclarative("declarative", "user-profile", ValidPattern);
+        using var host = BuildHost(bundledPackages.RootPath, userPackages.RootPath);
+
+        var snapshot = await LoadAsync(host);
+
+        Assert.Equal(2, snapshot.Profiles.Count);
+        Assert.Contains(snapshot.Profiles, static profile =>
+            profile.Descriptor.Id == "assembly-profile"
+            && profile.Descriptor.Kind == ProfileKind.Assembly);
+        Assert.Contains(snapshot.Profiles, static profile =>
+            profile.Descriptor.Id == "user-profile"
+            && profile.Descriptor.Kind == ProfileKind.Declarative);
+    }
+
+    [Fact]
+    public async Task LoadAsync_DisablesDeclarativeProfileWithoutFields()
+    {
+        using var packages = new TestProfilePackages();
+        packages.AddDeclarative(
+            "missing-fields",
+            "missing-fields-profile",
+            ValidPattern,
+            includeFields: false);
+        using var host = BuildHost(packages.RootPath);
+
+        var snapshot = await LoadAsync(host);
+
+        Assert.Empty(snapshot.Profiles);
+        var report = Assert.Single(snapshot.Reports);
+        Assert.Equal(ProfilePluginStatus.Disabled, report.Status);
+        Assert.Contains(
+            report.Diagnostics,
+            static diagnostic => diagnostic.Code == "capture_fields_missing");
+    }
+
+    [Fact]
+    public async Task LoadAsync_DisablesDeclarativeProfileWithInvalidFieldContract()
+    {
+        using var packages = new TestProfilePackages();
+        packages.AddDeclarative(
+            "invalid-fields",
+            "invalid-fields-profile",
+            ValidPattern,
+            fields: new object[]
+            {
+                CreateDeclarativeField("duplicate", "valid", "String", required: true),
+                CreateDeclarativeField("duplicate", "not-valid-group", "Int32", required: false),
+            });
+        using var host = BuildHost(packages.RootPath);
+
+        var snapshot = await LoadAsync(host);
+
+        Assert.Empty(snapshot.Profiles);
+        var diagnostics = Assert.Single(snapshot.Reports).Diagnostics;
+        Assert.Contains(diagnostics, static item => item.Code == "capture_field_id_duplicate");
+        Assert.Contains(diagnostics, static item => item.Code == "capture_group_name_invalid");
+    }
+
+    [Fact]
+    public async Task LoadAsync_DisablesDeclarativeProfileWithInvalidValueFormats()
+    {
+        using var packages = new TestProfilePackages();
+        packages.AddDeclarative(
+            "invalid-formats",
+            "invalid-formats-profile",
+            "^(?<capturedOn>.+)/(?<label>.+)$",
+            fields: new object[]
+            {
+                CreateDeclarativeField(
+                    "captured-on",
+                    "capturedOn",
+                    "DateTime",
+                    required: true,
+                    parseFormat: "%"),
+                CreateDeclarativeField(
+                    "label",
+                    "label",
+                    "String",
+                    required: true,
+                    displayFormat: "N2"),
+            });
+        using var host = BuildHost(packages.RootPath);
+
+        var snapshot = await LoadAsync(host);
+
+        Assert.Empty(snapshot.Profiles);
+        var diagnostics = Assert.Single(snapshot.Reports).Diagnostics;
+        Assert.Contains(diagnostics, static item => item.Code == "capture_parse_format_invalid");
+        Assert.Contains(diagnostics, static item => item.Code == "capture_display_format_invalid");
     }
 
     [Fact]
@@ -161,13 +301,16 @@ public sealed class ProfilePluginLoaderTests
         Assert.Contains(result.Issues, static issue => issue.Code == "regex_timeout");
     }
 
-    private static IHost BuildHost(string profilesDirectory)
+    private static IHost BuildHost(
+        string profilesDirectory,
+        string? userProfilesDirectory = null)
     {
         var builder = Host.CreateApplicationBuilder();
         builder.Services.AddProfileRuntime();
         builder.Services.Configure<PluginDiscoveryOptions>(options =>
         {
             options.ProfilesDirectory = profilesDirectory;
+            options.UserProfilesDirectory = userProfilesDirectory;
             options.ContractMajor = ProfileContract.CurrentMajor;
         });
         return builder.Build();
@@ -239,6 +382,39 @@ public sealed class ProfilePluginLoaderTests
                 JsonSerializer.Serialize(manifest));
         }
 
+        public void AddDeclarative(
+            string directoryName,
+            string profileId,
+            string pattern,
+            bool includeFields = true,
+            IReadOnlyList<object>? fields = null)
+        {
+            var directory = Path.Combine(RootPath, directoryName);
+            Directory.CreateDirectory(directory);
+
+            var manifest = new
+            {
+                contractVersion = ProfileContract.CurrentMajor,
+                kind = "Declarative",
+                id = profileId,
+                version = "1.0.0",
+                displayName = profileId,
+                candidateKind = "Directory",
+                pathInput = "Relative",
+                fields = includeFields
+                    ? fields ?? CreateDeclarativeFields()
+                    : null,
+                rules = new[]
+                {
+                    CreateRule("first", pattern, 100),
+                },
+            };
+
+            File.WriteAllText(
+                Path.Combine(directory, "profile.json"),
+                JsonSerializer.Serialize(manifest));
+        }
+
         public void Dispose()
         {
             try
@@ -264,5 +440,49 @@ public sealed class ProfilePluginLoaderTests
                 ignoreCase = false,
                 timeoutMilliseconds,
             };
+
+        private static IReadOnlyList<object> CreateDeclarativeFields() =>
+            new object[]
+            {
+                CreateDeclarativeField("name", "name", "String", required: true, order: 10),
+                CreateDeclarativeField("year", "year", "Int32", required: true, order: 20),
+                CreateDeclarativeField("revision", "revision", "Int32", required: false, order: 30),
+                CreateDeclarativeField(
+                    "captured-on",
+                    "capturedOn",
+                    "DateTime",
+                    required: false,
+                    order: 40,
+                    parseFormat: "yyyyMMdd",
+                    displayFormat: "yyyy-MM-dd"),
+                CreateDeclarativeField("approved", "approved", "Boolean", required: false, order: 50),
+                CreateDeclarativeField(
+                    "amount",
+                    "amount",
+                    "Decimal",
+                    required: false,
+                    order: 60,
+                    displayFormat: "N2"),
+            };
     }
+
+    private static object CreateDeclarativeField(
+        string fieldId,
+        string groupName,
+        string kind,
+        bool required,
+        int order = 0,
+        string? parseFormat = null,
+        string? displayFormat = null) =>
+        new
+        {
+            fieldId,
+            groupName,
+            header = fieldId,
+            order,
+            required,
+            kind,
+            parseFormat,
+            displayFormat,
+        };
 }

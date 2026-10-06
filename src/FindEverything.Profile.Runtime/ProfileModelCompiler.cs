@@ -22,6 +22,13 @@ internal sealed class ProfileModelCompiler
         ArgumentNullException.ThrowIfNull(manifest);
 
         var diagnostics = new List<ProfileDiagnostic>();
+        if (manifest.Kind != ProfileKind.Assembly || manifest.ModelType is null)
+        {
+            return Failure(
+                "assembly_profile_contract_invalid",
+                "Assembly 컴파일러에는 modelType이 있는 Assembly 프로필이 필요합니다.");
+        }
+
         var modelType = assembly.GetType(manifest.ModelType, throwOnError: false, ignoreCase: false);
         if (modelType is null)
         {
@@ -53,6 +60,66 @@ internal sealed class ProfileModelCompiler
                 "CaptureFieldAttribute가 지정된 public 속성이 하나 이상 필요합니다."));
         }
 
+        Func<IReadOnlyDictionary<string, object?>, object>? createModel = null;
+        if (!diagnostics.Any(static diagnostic =>
+                diagnostic.Severity == ProfileDiagnosticSeverity.Error))
+        {
+            var constructorFactory = CompileConstructor(constructor);
+            var compiledFields = fields.ToArray();
+            createModel = values =>
+            {
+                var model = constructorFactory();
+                foreach (var field in compiledFields)
+                {
+                    field.SetValue(model, values[field.Descriptor.FieldId]);
+                }
+
+                return model;
+            };
+        }
+
+        return CompileProfile(manifest, fields, createModel, diagnostics);
+    }
+
+    public ProfileCompilationResult Compile(ValidatedProfileManifest manifest)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+
+        if (manifest.Kind != ProfileKind.Declarative)
+        {
+            return Failure(
+                "declarative_profile_contract_invalid",
+                "선언형 컴파일러에는 Declarative 프로필이 필요합니다.");
+        }
+
+        var fields = manifest.Fields
+            .Select(static field => new CompiledField(
+                new ProfileFieldDescriptor(
+                    field.FieldId,
+                    field.GroupName,
+                    field.Header,
+                    field.Order,
+                    field.Required,
+                    field.Kind,
+                    field.IsNullable,
+                    field.ParseFormat,
+                    field.DisplayFormat),
+                static (_, _) => { }))
+            .ToList();
+
+        return CompileProfile(
+            manifest,
+            fields,
+            static values => values,
+            new List<ProfileDiagnostic>());
+    }
+
+    private static ProfileCompilationResult CompileProfile(
+        ValidatedProfileManifest manifest,
+        IReadOnlyList<CompiledField> fields,
+        Func<IReadOnlyDictionary<string, object?>, object>? createModel,
+        List<ProfileDiagnostic> diagnostics)
+    {
         var rules = CompileRules(manifest.Rules, fields, diagnostics);
         if (diagnostics.Any(static diagnostic =>
                 diagnostic.Severity == ProfileDiagnosticSeverity.Error))
@@ -62,7 +129,13 @@ internal sealed class ProfileModelCompiler
                 Array.AsReadOnly(diagnostics.ToArray()));
         }
 
-        var createModel = CompileConstructor(constructor);
+        if (createModel is null)
+        {
+            return Failure(
+                "model_factory_missing",
+                "프로필 모델 팩터리를 만들 수 없습니다.");
+        }
+
         var descriptors = fields.Select(static field => field.Descriptor).ToArray();
         var descriptor = new ProfileDescriptor(
             manifest.Id,
@@ -79,7 +152,10 @@ internal sealed class ProfileModelCompiler
                     rule.MatchMode,
                     rule.IgnoreCase,
                     rule.TimeoutMilliseconds))
-                .ToArray()));
+                .ToArray()))
+        {
+            Kind = manifest.Kind,
+        };
 
         var profile = new CompiledProfile(
             descriptor,

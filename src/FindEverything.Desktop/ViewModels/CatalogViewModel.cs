@@ -16,6 +16,7 @@ namespace FindEverything.Desktop.ViewModels;
 public partial class CatalogViewModel : ObservableObject
 {
     private readonly ICatalogService _catalogService;
+    private readonly IProfileCatalog _profileCatalog;
     private readonly IValidatedSettingsState<WorkspaceOptions> _workspaceSettings;
     private readonly IValidatedSettingsState<IndexingOptions> _indexingSettings;
     private readonly IValidatedSettingsState<AppearanceOptions> _appearanceSettings;
@@ -89,6 +90,7 @@ public partial class CatalogViewModel : ObservableObject
         ILogger<CatalogViewModel> logger)
     {
         _catalogService = catalogService;
+        _profileCatalog = profileCatalog;
         _workspaceSettings = workspaceSettings;
         _indexingSettings = indexingSettings;
         _appearanceSettings = appearanceSettings;
@@ -99,20 +101,11 @@ public partial class CatalogViewModel : ObservableObject
         _snackbarService = snackbarService;
         _logger = logger;
 
-        Profiles = profileCatalog.Current.Profiles
-            .Select(static profile => new ProfileChoiceViewModel(profile))
-            .OrderBy(static profile => profile.DisplayName, StringComparer.CurrentCultureIgnoreCase)
-            .ToArray();
-
         var workspace = workspaceSettings.Current;
         RootPath = workspace.RootPath;
         DatabasePath = workspace.DatabasePath;
-        SelectedProfile = Profiles.FirstOrDefault(profile =>
-                string.Equals(
-                    profile.Id,
-                    workspace.SelectedProfileId,
-                    StringComparison.OrdinalIgnoreCase))
-            ?? Profiles.FirstOrDefault();
+        ApplyProfileSnapshot(profileCatalog.Current, workspace.SelectedProfileId);
+        _profileCatalog.Changed += OnProfileCatalogChanged;
 
         if (Profiles.Count == 0)
         {
@@ -149,6 +142,60 @@ public partial class CatalogViewModel : ObservableObject
         OpenSelectedCommand.NotifyCanExecuteChanged();
 
     partial void OnFilterTextChanged(string value) => ApplyFilter();
+
+    private void OnProfileCatalogChanged(object? sender, ProfileCatalogChangedEventArgs eventArgs)
+    {
+        var dispatcher = System.Windows.Application.Current?.Dispatcher;
+        if (dispatcher is null || dispatcher.CheckAccess())
+        {
+            ApplyChangedProfileSnapshot(eventArgs.Current);
+            return;
+        }
+
+        if (!dispatcher.HasShutdownStarted && !dispatcher.HasShutdownFinished)
+        {
+            _ = dispatcher.BeginInvoke(() =>
+                ApplyChangedProfileSnapshot(eventArgs.Current));
+        }
+    }
+
+    private void ApplyChangedProfileSnapshot(ProfileCatalogSnapshot snapshot)
+    {
+        var hadProfiles = Profiles.Count > 0;
+        ApplyProfileSnapshot(snapshot, SelectedProfile?.Id);
+        if (!hadProfiles && Profiles.Count > 0 && StatusTitle == "프로필 없음")
+        {
+            SetStatus(
+                "준비",
+                "새 프로필이 적용되었습니다. 검색 위치를 선택하세요.",
+                InfoBarSeverity.Informational);
+        }
+        else if (hadProfiles && Profiles.Count == 0)
+        {
+            SetStatus(
+                "프로필 없음",
+                "로드된 프로필이 없습니다. 프로필 화면에서 진단을 확인하세요.",
+                InfoBarSeverity.Warning);
+        }
+    }
+
+    private void ApplyProfileSnapshot(ProfileCatalogSnapshot snapshot, string? preferredProfileId)
+    {
+        var existingChoices = Profiles.ToDictionary(
+            static profile => profile.Id,
+            StringComparer.OrdinalIgnoreCase);
+        Profiles = snapshot.Profiles
+            .Select(profile =>
+                existingChoices.TryGetValue(profile.Descriptor.Id, out var existing)
+                && ReferenceEquals(existing.Profile, profile)
+                    ? existing
+                    : new ProfileChoiceViewModel(profile))
+            .OrderBy(static profile => profile.DisplayName, StringComparer.CurrentCultureIgnoreCase)
+            .ToArray();
+        SelectedProfile = Profiles.FirstOrDefault(profile =>
+                string.Equals(profile.Id, preferredProfileId, StringComparison.OrdinalIgnoreCase))
+            ?? Profiles.FirstOrDefault();
+    }
 
     [RelayCommand]
     private void BrowseRoot()
@@ -221,6 +268,15 @@ public partial class CatalogViewModel : ObservableObject
     {
         if (IsBusy)
         {
+            return;
+        }
+
+        if (_operationCoordinator.IsRunning)
+        {
+            SetStatus(
+                "다른 작업 진행 중",
+                "프로필 저장이 끝난 뒤 다시 시도하세요.",
+                InfoBarSeverity.Warning);
             return;
         }
 
