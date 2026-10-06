@@ -1,0 +1,3 @@
+[submodule "external/FindEverything"]
+	path = external/FindEverything
+	url = https://github.com/u-code-1029/FindEverything.git

@@ -1,0 +1,41 @@
+name: build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.401
+          cache: true
+          cache-dependency-path: '**/packages.lock.json'
+
+      - name: Restore
+        run: dotnet restore .\FindEverything.Gui.slnx --locked-mode
+
+      - name: Build
+        run: dotnet build .\FindEverything.Gui.slnx -c Release --no-restore
+
+      - name: Test
+        run: dotnet test .\FindEverything.Gui.slnx -c Release --no-build
+
+      - name: Restore win-x64 publish assets
+        # NuGet lock files are RID-specific. Keep the checked-in portable locks
+        # untouched and generate publish-only locks under each project's obj/.
+        run: dotnet restore .\src\FindEverything.Desktop\FindEverything.Desktop.csproj -r win-x64 -p:NuGetLockFilePath=obj\packages.win-x64.lock.json
+
+      - name: Publish win-x64
+        run: dotnet publish .\src\FindEverything.Desktop\FindEverything.Desktop.csproj -c Release -r win-x64 --self-contained true --no-restore -o .\artifacts\win-x64
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FindEverything.Gui-win-x64
+          path: artifacts/win-x64

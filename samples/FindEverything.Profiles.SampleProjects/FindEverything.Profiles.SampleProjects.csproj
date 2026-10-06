@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <GenerateDependencyFile>true</GenerateDependencyFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/FindEverything.Profile.Abstractions/FindEverything.Profile.Abstractions.csproj">
+      <Private>false</Private>
+    </ProjectReference>
+  </ItemGroup>
+  <Target Name="CopyProfilePackage" AfterTargets="Build">
+    <PropertyGroup>
+      <ProfileOutput>$(MSBuildThisFileDirectory)..\..\Profiles\sample-projects\</ProfileOutput>
+    </PropertyGroup>
+    <MakeDir Directories="$(ProfileOutput)" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(ProfileOutput)" />
+    <ItemGroup>
+      <_PrivateProfileDependency Include="@(ReferenceCopyLocalPaths)"
+                                 Condition="'%(Filename)' != 'FindEverything.Profile.Abstractions'" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_PrivateProfileDependency)"
+          DestinationFolder="$(ProfileOutput)"
+          SkipUnchangedFiles="true"
+          Condition="'@(_PrivateProfileDependency)' != ''" />
+    <Copy SourceFiles="$(ProjectDepsFilePath)" DestinationFolder="$(ProfileOutput)" Condition="Exists('$(ProjectDepsFilePath)')" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\profile.json" DestinationFolder="$(ProfileOutput)" />
+  </Target>
+</Project>

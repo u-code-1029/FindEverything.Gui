@@ -1,0 +1,24 @@
+<Project>
+  <PropertyGroup>
+    <!-- Every project in the pinned engine submodule owns explicit package versions. -->
+    <_ExternalFindEverythingMarker>external$([System.IO.Path]::DirectorySeparatorChar)FindEverything$([System.IO.Path]::DirectorySeparatorChar)</_ExternalFindEverythingMarker>
+    <_IsExternalFindEverythingProject>$([System.String]::Copy('$(MSBuildProjectFullPath)').Contains('$(_ExternalFindEverythingMarker)'))</_IsExternalFindEverythingProject>
+    <ManagePackageVersionsCentrally Condition="'$(_IsExternalFindEverythingProject)' != 'True'">true</ManagePackageVersionsCentrally>
+    <CentralPackageTransitivePinningEnabled Condition="'$(_IsExternalFindEverythingProject)' != 'True'">true</CentralPackageTransitivePinningEnabled>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.Options.DataAnnotations" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageVersion Include="WPF-UI" Version="4.3.0" />
+    <PackageVersion Include="WPF-UI.DependencyInjection" Version="4.3.0" />
+    <PackageVersion Include="xunit" Version="2.9.3" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.1" />
+  </ItemGroup>
+</Project>

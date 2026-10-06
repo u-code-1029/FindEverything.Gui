@@ -1,0 +1,54 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.17763.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
+    <AssemblyName>FindEverything.Gui</AssemblyName>
+    <RootNamespace>FindEverything.Desktop</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../FindEverything.Application/FindEverything.Application.csproj" />
+    <ProjectReference Include="../FindEverything.Infrastructure.FindEverything/FindEverything.Infrastructure.FindEverything.csproj" />
+    <ProjectReference Include="../FindEverything.Profile.Runtime/FindEverything.Profile.Runtime.csproj" />
+    <ProjectReference Include="../../samples/FindEverything.Profiles.SampleProjects/FindEverything.Profiles.SampleProjects.csproj"
+                      ReferenceOutputAssembly="false"
+                      PrivateAssets="all" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="Microsoft.Extensions.Options.DataAnnotations" />
+    <PackageReference Include="WPF-UI" />
+    <PackageReference Include="WPF-UI.DependencyInjection" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Update="appsettings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
+    <None Include="../../THIRD-PARTY-NOTICES.md"
+          Link="THIRD-PARTY-NOTICES.md"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+  <Target Name="CopySampleProfileToDesktopOutput" AfterTargets="Build">
+    <ItemGroup>
+      <SampleProfilePackage Include="$(MSBuildProjectDirectory)/../../Profiles/sample-projects/**/*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(SampleProfilePackage)"
+          DestinationFiles="@(SampleProfilePackage->'$(OutDir)Profiles/sample-projects/%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+  <Target Name="CopySampleProfileToDesktopPublish"
+          AfterTargets="Publish"
+          Condition="'$(PublishDir)' != ''">
+    <ItemGroup>
+      <SampleProfilePublishPackage Include="$(MSBuildProjectDirectory)/../../Profiles/sample-projects/**/*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(SampleProfilePublishPackage)"
+          DestinationFiles="@(SampleProfilePublishPackage->'$(PublishDir)Profiles/sample-projects/%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+</Project>
