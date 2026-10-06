@@ -44,6 +44,11 @@ public sealed class DesktopCompositionSmokeTests
             application.InitializeComponent();
 
             var configuration = new ConfigurationManager();
+            configuration.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Appearance:Theme"] = "Light",
+                ["Appearance:Backdrop"] = "None",
+            });
             var services = new ServiceCollection();
             services.AddLogging();
             services.AddSingleton<IConfiguration>(configuration);

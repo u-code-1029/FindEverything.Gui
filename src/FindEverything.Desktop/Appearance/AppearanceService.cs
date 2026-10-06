@@ -52,7 +52,13 @@ public sealed class AppearanceService : IAppearanceService, IDisposable
             && WindowBackdrop.IsSupported(WindowBackdropType.Auto)
                 ? WindowBackdropType.Auto
                 : WindowBackdropType.None;
-        window.SetCurrentValue(FluentWindow.WindowBackdropTypeProperty, backdrop);
+        // WPF-UI rebuilds WindowChrome when this dependency property changes.
+        // Re-applying the same value is unnecessary and can make a headless WPF
+        // host detach the same Freezable inheritance context twice.
+        if (window.WindowBackdropType != backdrop)
+        {
+            window.SetCurrentValue(FluentWindow.WindowBackdropTypeProperty, backdrop);
+        }
 
         StopWatchingIfNecessary(window);
         switch (options.Theme)
