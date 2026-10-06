@@ -50,13 +50,30 @@ dotnet publish .\src\FindEverything.Desktop\FindEverything.Desktop.csproj -c Rel
 
 앱에서 다음 순서로 실행합니다.
 
-1. `Catalog`에서 프로필과 검색 루트를 선택합니다.
+1. `카탈로그`에서 프로필과 검색 루트를 선택합니다.
 2. 색인 DB는 검색 루트 밖의 로컬 디스크 경로로 지정합니다.
-3. `스캔 후 조회`로 색인을 갱신하거나 `기존 색인 조회`로 기존 DB만 읽습니다.
+3. `인덱싱`으로 색인을 갱신하거나 `검색`으로 기존 DB만 읽습니다.
 4. 정규식에 맞는 폴더가 프로필 필드별 열로 표시됩니다.
 5. 행을 더블클릭하거나 `폴더 열기`를 눌러 Explorer에서 경로를 엽니다.
 
 사용자 설정은 `%LOCALAPPDATA%\UCode\FindEverything.Gui\appsettings.user.json`에 원자적으로 저장됩니다. 환경 변수는 `FINDEVERYTHING_` 접두사를 사용합니다.
+
+## 샘플 데이터 확인
+
+기본 프로필이 실제 폴더를 어떻게 객체로 바꾸는지 확인할 수 있도록
+`samples\SampleData\sample-projects`에 예제 폴더를 포함합니다. 소스에서 실행할
+때는 이 경로를 사용하고, publish 결과에서는 EXE 옆의
+`SampleData\sample-projects`를 사용하면 됩니다.
+
+1. 프로필에서 `샘플 프로젝트 폴더`를 선택합니다.
+2. 검색 루트로 바로 아래에 `Clients`가 있는 `sample-projects` 폴더를 선택합니다.
+3. 인덱스 DB는 검색 루트 밖의 경로로 지정합니다.
+4. `인덱싱`을 누르면 고객, 프로젝트, 연도와 선택 필드가 동적 열로 표시됩니다.
+
+현재 규칙은 연도 뒤의 수집일, 리비전, 승인, 금액 폴더가 모두 선택 항목입니다.
+따라서 깊은 예제 경로의 중간 폴더도 각각 완전한 규칙에 일치하며, 제공된 3개
+leaf 예제로부터 총 10개의 행이 표시되는 것이 정상입니다. 자세한 예상 결과는
+[`samples/SampleData/sample-projects/README.md`](samples/SampleData/sample-projects/README.md)를 참고하세요.
 
 ## 프로필 추가
 
