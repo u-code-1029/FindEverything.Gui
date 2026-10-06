@@ -70,11 +70,11 @@ public sealed class AtomicUserSettingsWriterTests
         services.AddFindEverythingApplication(configuration);
         services.AddSingleton(paths);
         services.AddSingleton<IUserSettingsWriter, AtomicUserSettingsWriter>();
-        return services.BuildServiceProvider(new ServiceProviderOptions
-        {
-            ValidateOnBuild = true,
-            ValidateScopes = true,
-        });
+        // This focused fixture intentionally composes only the settings slice.
+        // ICatalogService is registered by the application layer, but its engine
+        // and profile ports are outside the subject of these tests and are never
+        // resolved here.
+        return services.BuildServiceProvider();
     }
 
     private static AppPaths CreatePaths(string directory) =>

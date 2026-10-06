@@ -46,6 +46,7 @@ public sealed class DesktopCompositionSmokeTests
             var configuration = new ConfigurationManager();
             var services = new ServiceCollection();
             services.AddLogging();
+            services.AddSingleton<IConfiguration>(configuration);
             services
                 .AddFindEverythingApplication(configuration)
                 .AddFindEverythingInfrastructure()
