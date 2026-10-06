@@ -1,8 +1,10 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using System.Windows.Data;
 using FindEverything.Application.Catalog;
 using FindEverything.Application.Indexing;
 using FindEverything.Application.Options;
+using FindEverything.Desktop.Filtering;
 using FindEverything.Desktop.Services;
 using FindEverything.Profile.Runtime;
 using Microsoft.Extensions.Logging;
@@ -23,6 +25,7 @@ public partial class CatalogViewModel : ObservableObject
     private readonly IApplicationOperationCoordinator _operationCoordinator;
     private readonly ISnackbarService _snackbarService;
     private readonly ILogger<CatalogViewModel> _logger;
+    private CatalogItemViewModel[] _loadedItems = [];
 
     [ObservableProperty]
     private IReadOnlyList<ProfileChoiceViewModel> _profiles = [];
@@ -40,10 +43,19 @@ public partial class CatalogViewModel : ObservableObject
     private string? _databasePath;
 
     [ObservableProperty]
-    private IReadOnlyList<CatalogItemViewModel> _items = [];
+    private ListCollectionView _items = new(Array.Empty<CatalogItemViewModel>());
 
     [ObservableProperty]
     private CatalogItemViewModel? _selectedItem;
+
+    [ObservableProperty]
+    private string _filterText = string.Empty;
+
+    [ObservableProperty]
+    private bool _hasLoadedItems;
+
+    [ObservableProperty]
+    private string _filterSummary = "0개 항목";
 
     [ObservableProperty]
     private bool _isBusy;
@@ -55,7 +67,7 @@ public partial class CatalogViewModel : ObservableObject
     private string _statusTitle = "준비";
 
     [ObservableProperty]
-    private string _statusMessage = "인덱스를 만들거나 기존 인덱스를 검색할 수 있습니다.";
+    private string _statusMessage = "인덱스를 만들거나 기존 인덱스를 불러올 수 있습니다.";
 
     [ObservableProperty]
     private bool _isStatusOpen = true;
@@ -116,21 +128,27 @@ public partial class CatalogViewModel : ObservableObject
         Fields = value?.Profile.Descriptor.Fields
             .OrderBy(static field => field.Order)
             .ToArray() ?? [];
-        Items = [];
+        _loadedItems = [];
+        Items = CreateItemsView([]);
         SelectedItem = null;
+        FilterText = string.Empty;
+        HasLoadedItems = false;
+        FilterSummary = "0개 항목";
         ScanCommand.NotifyCanExecuteChanged();
-        SearchCommand.NotifyCanExecuteChanged();
+        LoadCommand.NotifyCanExecuteChanged();
     }
 
     partial void OnIsBusyChanged(bool value)
     {
         ScanCommand.NotifyCanExecuteChanged();
-        SearchCommand.NotifyCanExecuteChanged();
+        LoadCommand.NotifyCanExecuteChanged();
         CancelCommand.NotifyCanExecuteChanged();
     }
 
     partial void OnSelectedItemChanged(CatalogItemViewModel? value) =>
         OpenSelectedCommand.NotifyCanExecuteChanged();
+
+    partial void OnFilterTextChanged(string value) => ApplyFilter();
 
     [RelayCommand]
     private void BrowseRoot()
@@ -153,10 +171,10 @@ public partial class CatalogViewModel : ObservableObject
     }
 
     [RelayCommand(CanExecute = nameof(CanStart))]
-    private Task ScanAsync() => RunOperationAsync("인덱싱 및 검색", scanFirst: true);
+    private Task ScanAsync() => RunOperationAsync("인덱싱 및 불러오기", scanFirst: true);
 
     [RelayCommand(CanExecute = nameof(CanStart))]
-    private Task SearchAsync() => RunOperationAsync("검색", scanFirst: false);
+    private Task LoadAsync() => RunOperationAsync("불러오기", scanFirst: false);
 
     [RelayCommand(CanExecute = nameof(CanCancel))]
     private void Cancel()
@@ -263,9 +281,17 @@ public partial class CatalogViewModel : ObservableObject
 
     private void ApplyResult(CatalogResult result, bool scanned)
     {
-        Fields = result.Profile.Fields.OrderBy(static field => field.Order).ToArray();
-        Items = result.Items.Select(static item => new CatalogItemViewModel(item)).ToArray();
-        SelectedItem = Items.FirstOrDefault();
+        var selectedPath = SelectedItem?.FullPath;
+        var fields = result.Profile.Fields.OrderBy(static field => field.Order).ToArray();
+        Items = CreateItemsView([]);
+        Fields = fields;
+        _loadedItems = result.Items
+            .Select(item => new CatalogItemViewModel(item, fields))
+            .ToArray();
+        Items = CreateItemsView(_loadedItems);
+        HasLoadedItems = _loadedItems.Length > 0;
+        ApplyFilter(selectedPath);
+        ProgressMessage = $"{_loadedItems.Length:N0}개 항목을 불러왔습니다.";
 
         var scanIncomplete = result.ScanReport is { } scanReport
             && (scanReport.Status != IndexScanStatus.Completed
@@ -278,15 +304,40 @@ public partial class CatalogViewModel : ObservableObject
             ? string.Empty
             : $" · 인덱싱 상태 {result.ScanReport.Status} · 오류 {result.ScanReport.Errors.Count:N0}";
         SetStatus(
-            incomplete ? "부분 검색 결과" : scanned ? "인덱싱 및 검색 완료" : "검색 완료",
+            incomplete ? "부분 결과" : scanned ? "인덱싱 및 불러오기 완료" : "불러오기 완료",
             $"후보 {result.CandidateCount:N0} · 일치 {result.Items.Count:N0} · 규칙 외 {result.NoMatchCount:N0} · 변환 오류 {result.InvalidItems.Count:N0}{scanSummary}"
                 + (result.HasPendingScopes ? " · 아직 인덱싱되지 않은 범위가 있습니다." : string.Empty),
             severity);
-        ProgressMessage = $"{result.Items.Count:N0}개 항목 표시 중";
         ShowSnackbar(
-            scanned ? "인덱싱 및 검색 완료" : "검색 완료",
+            scanned ? "인덱싱 및 불러오기 완료" : "불러오기 완료",
             $"프로필 규칙에 맞는 {result.Items.Count:N0}개 폴더를 찾았습니다.",
             incomplete ? ControlAppearance.Caution : ControlAppearance.Success);
+    }
+
+    private void ApplyFilter(string? preferredSelectedPath = null)
+    {
+        var selectedPath = preferredSelectedPath ?? SelectedItem?.FullPath;
+        Items.Refresh();
+        SelectedItem = selectedPath is null
+            ? null
+            : Items.Cast<CatalogItemViewModel>().FirstOrDefault(item =>
+                string.Equals(item.FullPath, selectedPath, StringComparison.OrdinalIgnoreCase));
+        SelectedItem ??= Items.Count > 0
+            ? (CatalogItemViewModel)Items.GetItemAt(0)
+            : null;
+
+        FilterSummary = TextFilter.Normalize(FilterText).Length == 0
+            ? $"{_loadedItems.Length:N0}개 항목"
+            : $"{Items.Count:N0} / {_loadedItems.Length:N0}개 항목";
+    }
+
+    private ListCollectionView CreateItemsView(CatalogItemViewModel[] items)
+    {
+        var view = new ListCollectionView(items)
+        {
+            Filter = value => value is CatalogItemViewModel item && item.Matches(FilterText),
+        };
+        return view;
     }
 
     private WorkspaceSelection ValidateWorkspace()

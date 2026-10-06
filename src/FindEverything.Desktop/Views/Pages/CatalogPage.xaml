@@ -15,6 +15,7 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
@@ -78,8 +79,8 @@
                 <ui:Button
                     MinWidth="92"
                     Margin="0,0,8,0"
-                    Command="{Binding SearchCommand}"
-                    Content="검색" />
+                    Command="{Binding LoadCommand}"
+                    Content="불러오기" />
                 <ui:Button
                     MinWidth="72"
                     Margin="0,0,8,0"
@@ -118,9 +119,40 @@
             Severity="{Binding StatusSeverity}"
             Title="{Binding StatusTitle}" />
 
+        <Grid
+            Grid.Row="3"
+            Margin="0,0,0,12"
+            Visibility="{Binding HasLoadedItems, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <TextBlock
+                VerticalAlignment="Center"
+                Text="결과 필터" />
+            <ui:TextBox
+                Grid.Column="1"
+                MinWidth="280"
+                Margin="12,0"
+                AutomationProperties.Name="모든 결과 컬럼 필터"
+                ClearButtonEnabled="True"
+                PlaceholderText="모든 컬럼과 폴더 경로에서 검색"
+                Text="{Binding FilterText, UpdateSourceTrigger=PropertyChanged, Delay=200}" />
+            <TextBlock
+                Grid.Column="2"
+                MinWidth="110"
+                VerticalAlignment="Center"
+                AutomationProperties.LiveSetting="Polite"
+                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                Text="{Binding FilterSummary}"
+                TextAlignment="Right" />
+        </Grid>
+
         <DataGrid
             x:Name="ResultsGrid"
-            Grid.Row="3"
+            Grid.Row="4"
             behaviors:DynamicProfileGrid.Fields="{Binding Fields}"
             behaviors:DynamicProfileGrid.ProfileId="{Binding SelectedProfile.Id}"
             AutoGenerateColumns="False"

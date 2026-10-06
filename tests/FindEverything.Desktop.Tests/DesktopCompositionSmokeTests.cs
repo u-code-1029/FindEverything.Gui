@@ -1,11 +1,17 @@
 using System.IO;
 using System.Windows;
+using System.Windows.Documents;
+using System.Windows.Media;
 using System.Windows.Shell;
+using System.Windows.Threading;
 using FindEverything.Application;
+using FindEverything.Application.Catalog;
 using FindEverything.Application.Options;
 using FindEverything.Desktop;
 using FindEverything.Desktop.Appearance;
+using FindEverything.Desktop.Behaviors;
 using FindEverything.Desktop.Configuration;
+using FindEverything.Desktop.ViewModels;
 using FindEverything.Desktop.Views;
 using FindEverything.Desktop.Views.Pages;
 using FindEverything.Infrastructure.FindEverything;
@@ -99,6 +105,7 @@ public sealed class DesktopCompositionSmokeTests
             Assert.True(navigation.Navigate(typeof(CatalogPage)));
             Assert.True(navigation.Navigate(typeof(ProfilesPage)));
             Assert.True(navigation.Navigate(typeof(SettingsPage)));
+            VerifyDynamicGridHighlighting();
             window.Close();
             window = null;
         }
@@ -121,4 +128,91 @@ public sealed class DesktopCompositionSmokeTests
             completion.TrySetResult(failure);
         }
     }
+
+    private static void VerifyDynamicGridHighlighting()
+    {
+        var field = new ProfileFieldDescriptor(
+            "client",
+            "client",
+            "고객",
+            0,
+            Required: true,
+            ProfileFieldValueKind.String,
+            IsNullable: false,
+            ParseFormat: null,
+            DisplayFormat: null);
+        var item = new CatalogItemViewModel(
+            new CatalogItem(
+                @"C:\Archive\Apollo",
+                "Apollo",
+                "sample",
+                new object(),
+                new Dictionary<string, object?> { ["client"] = "Apollo" },
+                CoveragePending: false),
+            [field]);
+        var grid = new System.Windows.Controls.DataGrid
+        {
+            AutoGenerateColumns = false,
+            EnableColumnVirtualization = false,
+            EnableRowVirtualization = false,
+            IsReadOnly = true,
+            ItemsSource = new[] { item },
+            DataContext = new FilterContext(string.Empty),
+        };
+        DynamicProfileGrid.SetFields(grid, new[] { field });
+
+        var host = new Window
+        {
+            Width = 800,
+            Height = 240,
+            Content = grid,
+            Opacity = 0,
+            ShowInTaskbar = false,
+            WindowStyle = WindowStyle.None,
+        };
+        try
+        {
+            host.Show();
+            grid.UpdateLayout();
+            host.Dispatcher.Invoke(static () => { }, DispatcherPriority.DataBind);
+
+            var textBlock = Assert.Single(
+                FindVisualChildren<System.Windows.Controls.TextBlock>(grid),
+                block => TextHighlighting.GetDisplayText(block) == "Apollo");
+            Assert.Equal("Apollo", string.Concat(
+                textBlock.Inlines.OfType<Run>().Select(static run => run.Text)));
+
+            grid.DataContext = new FilterContext("  POL  ");
+            host.Dispatcher.Invoke(static () => { }, DispatcherPriority.DataBind);
+
+            var runs = textBlock.Inlines.OfType<Run>().ToArray();
+            Assert.Equal("Apollo", string.Concat(runs.Select(static run => run.Text)));
+            Assert.Single(runs, static run => run.Background is not null);
+            Assert.Contains(runs, static run => run.Text == "pol" && run.Background is not null);
+        }
+        finally
+        {
+            host.Close();
+        }
+    }
+
+    private static IEnumerable<T> FindVisualChildren<T>(DependencyObject parent)
+        where T : DependencyObject
+    {
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(parent); index++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, index);
+            if (child is T match)
+            {
+                yield return match;
+            }
+
+            foreach (var descendant in FindVisualChildren<T>(child))
+            {
+                yield return descendant;
+            }
+        }
+    }
+
+    private sealed record FilterContext(string FilterText);
 }

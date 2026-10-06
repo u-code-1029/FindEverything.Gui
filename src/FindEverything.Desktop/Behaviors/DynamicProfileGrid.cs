@@ -70,7 +70,7 @@ public static class DynamicProfileGrid
         dataGrid.ColumnReordered += OnColumnReordered;
         dataGrid.PreviewMouseLeftButtonUp -= OnGridMouseLeftButtonUp;
         dataGrid.PreviewMouseLeftButtonUp += OnGridMouseLeftButtonUp;
-        dataGrid.Columns.Add(new DataGridTextColumn
+        dataGrid.Columns.Add(new HighlightingTextColumn
         {
             Header = "상태",
             Binding = new Binding(nameof(ViewModels.CatalogItemViewModel.CoverageText)),
@@ -82,17 +82,12 @@ public static class DynamicProfileGrid
         {
             foreach (var field in fields.OfType<ProfileFieldDescriptor>().OrderBy(static field => field.Order))
             {
-                var binding = new Binding($"[{field.FieldId}]")
+                var binding = new Binding($"DisplayValues[{field.FieldId}]")
                 {
                     Mode = BindingMode.OneWay,
-                    TargetNullValue = "—",
                 };
-                if (!string.IsNullOrWhiteSpace(field.DisplayFormat))
-                {
-                    binding.StringFormat = $"{{0:{field.DisplayFormat}}}";
-                }
 
-                var column = new DataGridTextColumn
+                var column = new HighlightingTextColumn
                 {
                     Header = field.Header,
                     Binding = binding,
@@ -105,7 +100,7 @@ public static class DynamicProfileGrid
             }
         }
 
-        dataGrid.Columns.Add(new DataGridTextColumn
+        dataGrid.Columns.Add(new HighlightingTextColumn
         {
             Header = "폴더 경로",
             Binding = new Binding(nameof(ViewModels.CatalogItemViewModel.FullPath)),
@@ -218,5 +213,40 @@ public static class DynamicProfileGrid
                 value.Column.ActualWidth))
             .ToArray();
         store.Save(profileId, columns);
+    }
+
+    private sealed class HighlightingTextColumn : DataGridTextColumn
+    {
+        protected override FrameworkElement GenerateElement(DataGridCell cell, object dataItem)
+        {
+            var element = base.GenerateElement(cell, dataItem);
+            if (element is not TextBlock textBlock)
+            {
+                return element;
+            }
+
+            var displayBinding = BindingOperations.GetBindingBase(textBlock, TextBlock.TextProperty);
+            BindingOperations.ClearBinding(textBlock, TextBlock.TextProperty);
+            if (displayBinding is not null)
+            {
+                BindingOperations.SetBinding(
+                    textBlock,
+                    TextHighlighting.DisplayTextProperty,
+                    displayBinding);
+            }
+
+            BindingOperations.SetBinding(
+                textBlock,
+                TextHighlighting.HighlightTextProperty,
+                new Binding("DataContext.FilterText")
+                {
+                    Mode = BindingMode.OneWay,
+                    RelativeSource = new RelativeSource(
+                        RelativeSourceMode.FindAncestor,
+                        typeof(DataGrid),
+                        1),
+                });
+            return textBlock;
+        }
     }
 }

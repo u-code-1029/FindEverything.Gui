@@ -1,4 +1,6 @@
+using System.Globalization;
 using FindEverything.Application.Catalog;
+using FindEverything.Desktop.Filtering;
 using FindEverything.Profile.Runtime;
 
 namespace FindEverything.Desktop.ViewModels;
@@ -16,20 +18,83 @@ public sealed class ProfileChoiceViewModel(ILoadedProfile profile)
     public override string ToString() => DisplayName;
 }
 
-public sealed class CatalogItemViewModel(CatalogItem item)
+public sealed class CatalogItemViewModel
 {
-    public string FullPath { get; } = item.FullPath;
+    private readonly string[] _searchableValues;
 
-    public string RelativePath { get; } = item.RelativePath;
+    public CatalogItemViewModel(
+        CatalogItem item,
+        IReadOnlyList<ProfileFieldDescriptor> fields)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        ArgumentNullException.ThrowIfNull(fields);
 
-    public string MatchedRuleId { get; } = item.MatchedRuleId;
+        FullPath = item.FullPath;
+        RelativePath = item.RelativePath;
+        MatchedRuleId = item.MatchedRuleId;
+        CoveragePending = item.CoveragePending;
+        Values = item.Values;
 
-    public bool CoveragePending { get; } = item.CoveragePending;
+        var displayValues = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var searchableValues = new List<string>(fields.Count + 2)
+        {
+            CoverageText,
+        };
+        foreach (var field in fields)
+        {
+            Values.TryGetValue(field.FieldId, out var value);
+            var displayValue = FormatValue(value, field.DisplayFormat);
+            displayValues[field.FieldId] = displayValue;
+            searchableValues.Add(displayValue);
+        }
+
+        searchableValues.Add(FullPath);
+        DisplayValues = displayValues;
+        _searchableValues = searchableValues.ToArray();
+    }
+
+    public string FullPath { get; }
+
+    public string RelativePath { get; }
+
+    public string MatchedRuleId { get; }
+
+    public bool CoveragePending { get; }
 
     public string CoverageText => CoveragePending ? "대기 범위" : "완료";
 
-    public IReadOnlyDictionary<string, object?> Values { get; } = item.Values;
+    public IReadOnlyDictionary<string, object?> Values { get; }
 
-    public object? this[string fieldId] =>
-        Values.TryGetValue(fieldId, out var value) ? value : null;
+    public IReadOnlyDictionary<string, string> DisplayValues { get; }
+
+    public bool Matches(string? filterText)
+    {
+        var term = TextFilter.Normalize(filterText);
+        if (term.Length == 0)
+        {
+            return true;
+        }
+
+        return _searchableValues.Any(value =>
+            TextFilter.Contains(value, term));
+    }
+
+    private static string FormatValue(object? value, string? displayFormat)
+    {
+        if (value is null)
+        {
+            return "—";
+        }
+
+        try
+        {
+            return value is IFormattable formattable
+                ? formattable.ToString(displayFormat, CultureInfo.CurrentCulture) ?? string.Empty
+                : Convert.ToString(value, CultureInfo.CurrentCulture) ?? string.Empty;
+        }
+        catch (FormatException)
+        {
+            return Convert.ToString(value, CultureInfo.CurrentCulture) ?? string.Empty;
+        }
+    }
 }

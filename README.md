@@ -52,9 +52,10 @@ dotnet publish .\src\FindEverything.Desktop\FindEverything.Desktop.csproj -c Rel
 
 1. `카탈로그`에서 프로필과 검색 루트를 선택합니다.
 2. 색인 DB는 검색 루트 밖의 로컬 디스크 경로로 지정합니다.
-3. `인덱싱`으로 색인을 갱신하거나 `검색`으로 기존 DB만 읽습니다.
+3. `인덱싱`으로 색인을 갱신하거나 `불러오기`로 기존 DB만 읽습니다.
 4. 정규식에 맞는 폴더가 프로필 필드별 열로 표시됩니다.
-5. 행을 더블클릭하거나 `폴더 열기`를 눌러 Explorer에서 경로를 엽니다.
+5. `결과 필터`에 값을 입력하면 모든 표시 컬럼과 폴더 경로에서 일치하는 행만 남고, 일치 부분은 노란색으로 강조됩니다.
+6. 행을 더블클릭하거나 `선택 폴더 열기`를 눌러 Explorer에서 경로를 엽니다.
 
 사용자 설정은 `%LOCALAPPDATA%\UCode\FindEverything.Gui\appsettings.user.json`에 원자적으로 저장됩니다. 환경 변수는 `FINDEVERYTHING_` 접두사를 사용합니다.
 
