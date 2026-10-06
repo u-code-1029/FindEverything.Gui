@@ -19,8 +19,16 @@ public partial class CatalogPage
 
     private void OnResultsGridMouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
-        if (ResultsGrid.SelectedItem is CatalogItemViewModel item
-            && _viewModel.OpenItemCommand.CanExecute(item))
+        if (e.OriginalSource is not System.Windows.DependencyObject source
+            || System.Windows.Controls.ItemsControl.ContainerFromElement(ResultsGrid, source)
+                is not System.Windows.Controls.DataGridRow row
+            || row.Item is not CatalogItemViewModel item)
+        {
+            return;
+        }
+
+        ResultsGrid.SelectedItem = item;
+        if (_viewModel.OpenItemCommand.CanExecute(item))
         {
             _viewModel.OpenItemCommand.Execute(item);
         }

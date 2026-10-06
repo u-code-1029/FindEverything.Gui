@@ -60,4 +60,8 @@ public interface ICatalogService
 public interface IPathLauncher
 {
     void OpenDirectory(string path);
+
+    void OpenPath(string path);
+
+    void ShowInFolder(string path);
 }

@@ -9,6 +9,8 @@
             <ResourceDictionary.MergedDictionaries>
                 <ui:ThemesDictionary Theme="Light" />
                 <ui:ControlsDictionary />
+                <ResourceDictionary Source="Themes/DesignTokens.xaml" />
+                <ResourceDictionary Source="Themes/ComponentStyles.xaml" />
             </ResourceDictionary.MergedDictionaries>
 
             <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />

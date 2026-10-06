@@ -9,508 +9,632 @@
     Background="Transparent"
     Foreground="{DynamicResource TextFillColorPrimaryBrush}"
     mc:Ignorable="d">
-    <TabControl Margin="24,0,24,24">
-        <TabItem Header="GUI 프로필 편집기">
-            <ScrollViewer
-                HorizontalScrollBarVisibility="Disabled"
-                VerticalScrollBarVisibility="Auto">
-                <Grid Margin="8,20,8,32" MaxWidth="1240" HorizontalAlignment="Left">
+    <Page.Resources>
+        <Style x:Key="FieldLabelStyle" TargetType="TextBlock">
+            <Setter Property="Margin" Value="0,0,0,4" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style x:Key="EditorSectionStyle" BasedOn="{StaticResource FluentSurfaceStyle}" TargetType="Border">
+            <Setter Property="Margin" Value="0,0,0,16" />
+        </Style>
+        <Style x:Key="ActionableEditorInfoBarStyle" TargetType="ui:InfoBar">
+            <Setter Property="IsOpen" Value="False" />
+            <Setter Property="IsClosable" Value="False" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding EditorStatusSeverity}" Value="{x:Static ui:InfoBarSeverity.Warning}">
+                    <Setter Property="IsOpen" Value="True" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding EditorStatusSeverity}" Value="{x:Static ui:InfoBarSeverity.Error}">
+                    <Setter Property="IsOpen" Value="True" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="IconOnlyButtonStyle" TargetType="ui:Button">
+            <Setter Property="Width" Value="34" />
+            <Setter Property="Height" Value="32" />
+            <Setter Property="Padding" Value="0" />
+        </Style>
+    </Page.Resources>
+
+    <Grid Margin="24,0,24,24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Margin="0,20,0,16">
+            <TextBlock AutomationProperties.HeadingLevel="Level1" Style="{StaticResource PageTitleTextStyle}" Text="프로필" />
+            <TextBlock
+                Margin="0,4,0,0"
+                Style="{StaticResource PageSubtitleTextStyle}"
+                Text="경로에서 어떤 정보를 읽을지 화면에서 정의하고, 저장 전에 실제 경로로 결과를 확인합니다." />
+        </StackPanel>
+
+        <TabControl Grid.Row="1">
+            <TabItem Header="프로필 편집">
+                <Grid>
                     <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
-                    <ui:InfoBar
+                    <ScrollViewer
                         Grid.Row="0"
-                        Margin="0,0,0,16"
-                        IsClosable="False"
-                        IsOpen="True"
-                        Message="코드나 DLL 없이 폴더 경로의 정보를 추출하는 프로필을 만듭니다. 위에서부터 기본 정보, 결과 컬럼, 경로 규칙을 정의한 뒤 예제 경로로 시험하세요."
-                        Severity="Informational"
-                        Title="선언형 프로필 만들기" />
+                        HorizontalScrollBarVisibility="Disabled"
+                        VerticalScrollBarVisibility="Auto">
+                        <StackPanel Margin="8,16,8,0">
+                            <Border Style="{StaticResource EditorSectionStyle}">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
 
-                    <GroupBox Grid.Row="1" Margin="0,0,0,16" Padding="16" Header="내 프로필">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
+                                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="내 프로필" />
+                                    <TextBlock
+                                        Grid.Row="1"
+                                        Margin="0,4,0,12"
+                                        Style="{StaticResource CaptionTextStyle}"
+                                        Text="기존 프로필을 선택해 수정하거나 새 프로필을 만드세요." />
 
-                            <ComboBox
-                                MinWidth="300"
-                                Margin="0,0,8,0"
-                                VerticalContentAlignment="Center"
-                                DisplayMemberPath="DisplayName"
-                                ItemsSource="{Binding EditableProfiles}"
-                                SelectedItem="{Binding SelectedEditableProfile}" />
-                            <ui:Button
-                                Grid.Column="1"
-                                MinWidth="104"
-                                Margin="0,0,8,0"
-                                Command="{Binding LoadDraftCommand}"
-                                Content="선택 항목 열기" />
-                            <ui:Button
-                                Grid.Column="2"
-                                MinWidth="104"
-                                Margin="0,0,8,0"
-                                Appearance="Primary"
-                                Command="{Binding NewDraftCommand}"
-                                Content="새로 만들기" />
-                            <ui:Button
-                                Grid.Column="3"
-                                MinWidth="112"
-                                Command="{Binding OpenUserProfilesFolderCommand}"
-                                Content="프로필 폴더 열기" />
-                        </Grid>
-                    </GroupBox>
+                                    <Grid Grid.Row="2">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <ComboBox
+                                            AutomationProperties.Name="편집할 프로필"
+                                            DisplayMemberPath="DisplayName"
+                                            ItemsSource="{Binding EditableProfiles}"
+                                            SelectedItem="{Binding SelectedEditableProfile}" />
+                                        <WrapPanel Grid.Row="1" Margin="0,8,0,0">
+                                            <ui:Button
+                                                MinWidth="112"
+                                                Margin="0,0,8,8"
+                                                Command="{Binding LoadDraftCommand}"
+                                                Content="선택 항목 열기"
+                                                Icon="{ui:SymbolIcon Symbol=DocumentEdit20}" />
+                                            <ui:Button
+                                                MinWidth="112"
+                                                Margin="0,0,8,8"
+                                                Command="{Binding NewDraftCommand}"
+                                                Content="새로 만들기"
+                                                Icon="{ui:SymbolIcon Symbol=AddSquare20}" />
+                                            <ui:Button
+                                                MinWidth="120"
+                                                Margin="0,0,0,8"
+                                                Command="{Binding OpenUserProfilesFolderCommand}"
+                                                Content="프로필 폴더 열기"
+                                                Icon="{ui:SymbolIcon Symbol=FolderOpen20}" />
+                                        </WrapPanel>
+                                    </Grid>
+                                </Grid>
+                            </Border>
 
-                    <GroupBox Grid.Row="2" Margin="0,0,0,16" Padding="16" Header="1. 기본 정보" IsEnabled="{Binding IsEditorReady}">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="150" />
-                                <ColumnDefinition Width="320" />
-                                <ColumnDefinition Width="32" />
-                                <ColumnDefinition Width="150" />
-                                <ColumnDefinition Width="320" />
-                            </Grid.ColumnDefinitions>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                            </Grid.RowDefinitions>
+                            <Border IsEnabled="{Binding IsEditorReady}" Style="{StaticResource EditorSectionStyle}">
+                                <StackPanel>
+                                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="1. 기본 정보" />
+                                    <TextBlock
+                                        Margin="0,4,0,16"
+                                        Style="{StaticResource CaptionTextStyle}"
+                                        Text="목록에 표시할 이름과 프로필을 식별할 ID를 정합니다." />
 
-                            <StackPanel VerticalAlignment="Center">
-                                <TextBlock FontWeight="SemiBold" Text="표시 이름 *" />
-                                <TextBlock
-                                    FontSize="11"
-                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                    Text="화면에 보이는 이름" />
-                            </StackPanel>
-                            <ui:TextBox
-                                Grid.Column="1"
-                                Margin="8,4"
-                                ClearButtonEnabled="True"
-                                PlaceholderText="예: 프로젝트 폴더"
-                                Text="{Binding DraftDisplayName, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBlock Style="{StaticResource FieldLabelStyle}" Text="표시 이름 *" />
+                                    <TextBlock Style="{StaticResource CaptionTextStyle}" Text="사용자가 프로필 목록에서 보게 되는 이름입니다." />
+                                    <ui:TextBox
+                                        Margin="0,4,0,12"
+                                        AutomationProperties.Name="프로필 표시 이름"
+                                        ClearButtonEnabled="True"
+                                        PlaceholderText="예: 프로젝트 폴더"
+                                        Text="{Binding DraftDisplayName, UpdateSourceTrigger=PropertyChanged}" />
 
-                            <StackPanel Grid.Column="3" VerticalAlignment="Center">
-                                <TextBlock FontWeight="SemiBold" Text="프로필 ID *" />
-                                <TextBlock
-                                    FontSize="11"
-                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                    Text="소문자 영문/숫자로 시작 · 점과 하이픈 허용 · 최대 64자" />
-                            </StackPanel>
-                            <ui:TextBox
-                                Grid.Column="4"
-                                Margin="8,4"
-                                ClearButtonEnabled="True"
-                                IsEnabled="{Binding CanEditDraftId}"
-                                PlaceholderText="예: my-projects"
-                                Text="{Binding DraftId, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBlock Style="{StaticResource FieldLabelStyle}" Text="프로필 ID *" />
+                                    <TextBlock Style="{StaticResource CaptionTextStyle}" Text="소문자 영문 또는 숫자로 시작하고 점과 하이픈을 사용할 수 있습니다. 최대 64자입니다." />
+                                    <ui:TextBox
+                                        Margin="0,4,0,12"
+                                        AutomationProperties.Name="프로필 ID"
+                                        ClearButtonEnabled="True"
+                                        IsEnabled="{Binding CanEditDraftId}"
+                                        PlaceholderText="예: my-projects"
+                                        Text="{Binding DraftId, UpdateSourceTrigger=PropertyChanged}" />
 
-                            <StackPanel Grid.Row="1" Margin="0,8,0,0" VerticalAlignment="Center">
-                                <TextBlock FontWeight="SemiBold" Text="규칙에 넣을 경로" />
-                                <TextBlock
-                                    FontSize="11"
-                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                    Text="Relative: 선택한 루트 기준 / Full: 전체 경로" />
-                            </StackPanel>
-                            <ComboBox
-                                Grid.Row="1"
-                                Grid.Column="1"
-                                Margin="8,12,8,4"
-                                DisplayMemberPath="DisplayName"
-                                ItemsSource="{Binding PathInputChoices}"
-                                SelectedItem="{Binding SelectedPathInput}" />
-                        </Grid>
-                    </GroupBox>
+                                    <TextBlock Style="{StaticResource FieldLabelStyle}" Text="규칙에 넣을 경로" />
+                                    <TextBlock Style="{StaticResource CaptionTextStyle}" Text="상대 경로는 선택한 검색 위치를 제외하고, 전체 경로는 드라이브부터 규칙에 전달합니다." />
+                                    <ComboBox
+                                        Margin="0,4,0,0"
+                                        AutomationProperties.Name="규칙 경로 방식"
+                                        DisplayMemberPath="DisplayName"
+                                        ItemsSource="{Binding PathInputChoices}"
+                                        SelectedItem="{Binding SelectedPathInput}" />
+                                </StackPanel>
+                            </Border>
 
-                    <GroupBox Grid.Row="3" Margin="0,0,0,16" Padding="16" Header="2. 결과 컬럼" IsEnabled="{Binding IsEditorReady}">
-                        <Grid>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                            </Grid.RowDefinitions>
+                            <Border IsEnabled="{Binding IsEditorReady}" Style="{StaticResource EditorSectionStyle}">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
 
-                            <TextBlock
-                                Margin="0,0,0,10"
-                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Text="정규식의 이름 있는 그룹을 결과 컬럼에 연결합니다. 필수 컬럼이 비어 있거나 값 변환에 실패하면 해당 경로는 '규칙 위반'으로 표시됩니다."
-                                TextWrapping="Wrap" />
-                            <DataGrid
-                                Grid.Row="1"
-                                MinHeight="150"
-                                MaxHeight="300"
-                                AutoGenerateColumns="False"
-                                CanUserAddRows="False"
-                                CanUserDeleteRows="False"
-                                HeadersVisibility="Column"
-                                ItemsSource="{Binding DraftFields}">
-                                <DataGrid.Columns>
-                                    <DataGridTextColumn Width="1.3*" Binding="{Binding Header, UpdateSourceTrigger=PropertyChanged}" Header="표시 이름 (선택)" />
-                                    <DataGridTextColumn Width="1.2*" Binding="{Binding FieldId, UpdateSourceTrigger=PropertyChanged}" Header="Field ID *" />
-                                    <DataGridTextColumn Width="1.2*" Binding="{Binding GroupName, UpdateSourceTrigger=PropertyChanged}" Header="정규식 그룹 *" />
-                                    <DataGridTemplateColumn Width="120" Header="값 타입">
-                                        <DataGridTemplateColumn.CellTemplate>
-                                            <DataTemplate>
-                                                <TextBlock Margin="6,0" VerticalAlignment="Center" Text="{Binding KindDisplayName}" />
-                                            </DataTemplate>
-                                        </DataGridTemplateColumn.CellTemplate>
-                                        <DataGridTemplateColumn.CellEditingTemplate>
-                                            <DataTemplate>
-                                                <ComboBox
-                                                    DisplayMemberPath="DisplayName"
-                                                    ItemsSource="{Binding DataContext.FieldKindChoices, RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}}"
-                                                    SelectedValue="{Binding Kind, UpdateSourceTrigger=PropertyChanged}"
-                                                    SelectedValuePath="Value" />
-                                            </DataTemplate>
-                                        </DataGridTemplateColumn.CellEditingTemplate>
-                                    </DataGridTemplateColumn>
-                                    <DataGridCheckBoxColumn Width="70" Binding="{Binding Required, UpdateSourceTrigger=PropertyChanged}" Header="필수" />
-                                    <DataGridTextColumn Width="1.1*" Binding="{Binding ParseFormat, UpdateSourceTrigger=PropertyChanged}" Header="입력 형식" />
-                                    <DataGridTextColumn Width="1.1*" Binding="{Binding DisplayFormat, UpdateSourceTrigger=PropertyChanged}" Header="표시 형식" />
-                                    <DataGridTemplateColumn Width="124" Header="순서 / 삭제">
-                                        <DataGridTemplateColumn.CellTemplate>
-                                            <DataTemplate>
-                                                <StackPanel HorizontalAlignment="Center" Orientation="Horizontal">
-                                                    <ui:Button
-                                                        Width="32"
-                                                        Margin="0,0,3,0"
-                                                        Padding="0"
-                                                        Command="{Binding DataContext.MoveFieldUpCommand, RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}}"
-                                                        CommandParameter="{Binding}"
-                                                        Content="↑"
-                                                        ToolTip="위로 이동" />
-                                                    <ui:Button
-                                                        Width="32"
-                                                        Margin="0,0,3,0"
-                                                        Padding="0"
-                                                        Command="{Binding DataContext.MoveFieldDownCommand, RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}}"
-                                                        CommandParameter="{Binding}"
-                                                        Content="↓"
-                                                        ToolTip="아래로 이동" />
-                                                    <ui:Button
-                                                        Width="48"
-                                                        Padding="0"
-                                                        Appearance="Caution"
-                                                        Command="{Binding DataContext.RemoveFieldCommand, RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}}"
-                                                        CommandParameter="{Binding}"
-                                                        Content="삭제" />
-                                                </StackPanel>
-                                            </DataTemplate>
-                                        </DataGridTemplateColumn.CellTemplate>
-                                    </DataGridTemplateColumn>
-                                </DataGrid.Columns>
-                            </DataGrid>
-                            <DockPanel Grid.Row="2" Margin="0,10,0,0">
-                                <ui:Button
-                                    Width="112"
-                                    Margin="0,0,16,0"
-                                    HorizontalAlignment="Left"
-                                    Command="{Binding AddFieldCommand}"
-                                    Content="+ 컬럼 추가"
-                                    DockPanel.Dock="Left" />
-                                <TextBlock
-                                    VerticalAlignment="Center"
-                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                    Text="Field ID는 소문자 영문/숫자로 시작하며 점·밑줄·하이픈을 쓸 수 있습니다. 표시 이름을 비우면 Field ID가 사용됩니다. 날짜 입력 형식 예: yyyyMMdd · 숫자/날짜 표시 형식 예: N2, yyyy-MM-dd"
-                                    TextWrapping="Wrap" />
-                            </DockPanel>
-                        </Grid>
-                    </GroupBox>
+                                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="2. 결과 컬럼" />
+                                    <TextBlock
+                                        Grid.Row="1"
+                                        Margin="0,4,0,12"
+                                        Style="{StaticResource CaptionTextStyle}"
+                                        Text="정규식의 이름 있는 그룹을 결과 컬럼에 연결합니다. 필수 값이 없거나 변환할 수 없으면 해당 경로는 규칙 위반으로 표시됩니다." />
 
-                    <GroupBox Grid.Row="4" Margin="0,0,0,16" Padding="16" Header="3. 경로 규칙" IsEnabled="{Binding IsEditorReady}">
-                        <Grid>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                            </Grid.RowDefinitions>
+                                    <DataGrid
+                                        Grid.Row="2"
+                                        MinHeight="160"
+                                        AutoGenerateColumns="False"
+                                        CanUserAddRows="False"
+                                        CanUserDeleteRows="False"
+                                        HeadersVisibility="Column"
+                                        ItemsSource="{Binding DraftFields}"
+                                        ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                                        <DataGrid.Columns>
+                                            <DataGridTextColumn Width="1.3*" Binding="{Binding Header, UpdateSourceTrigger=PropertyChanged}" Header="표시 이름 (선택)" MinWidth="120" />
+                                            <DataGridTextColumn Width="1.2*" Binding="{Binding FieldId, UpdateSourceTrigger=PropertyChanged}" Header="Field ID *" MinWidth="110" />
+                                            <DataGridTextColumn Width="1.2*" Binding="{Binding GroupName, UpdateSourceTrigger=PropertyChanged}" Header="정규식 그룹 *" MinWidth="110" />
+                                            <DataGridTemplateColumn Width="120" Header="값 타입">
+                                                <DataGridTemplateColumn.CellTemplate>
+                                                    <DataTemplate>
+                                                        <TextBlock Margin="6,0" VerticalAlignment="Center" Text="{Binding KindDisplayName}" />
+                                                    </DataTemplate>
+                                                </DataGridTemplateColumn.CellTemplate>
+                                                <DataGridTemplateColumn.CellEditingTemplate>
+                                                    <DataTemplate>
+                                                        <ComboBox
+                                                            DisplayMemberPath="DisplayName"
+                                                            ItemsSource="{Binding DataContext.FieldKindChoices, RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}}"
+                                                            SelectedValue="{Binding Kind, UpdateSourceTrigger=PropertyChanged}"
+                                                            SelectedValuePath="Value" />
+                                                    </DataTemplate>
+                                                </DataGridTemplateColumn.CellEditingTemplate>
+                                            </DataGridTemplateColumn>
+                                            <DataGridCheckBoxColumn Width="70" Binding="{Binding Required, UpdateSourceTrigger=PropertyChanged}" Header="필수" />
+                                            <DataGridTextColumn Width="110" Binding="{Binding ParseFormat, UpdateSourceTrigger=PropertyChanged}" Header="입력 형식" />
+                                            <DataGridTextColumn Width="110" Binding="{Binding DisplayFormat, UpdateSourceTrigger=PropertyChanged}" Header="표시 형식" />
+                                            <DataGridTemplateColumn Width="118" Header="순서 / 삭제">
+                                                <DataGridTemplateColumn.CellTemplate>
+                                                    <DataTemplate>
+                                                        <StackPanel HorizontalAlignment="Center" Orientation="Horizontal">
+                                                            <ui:Button
+                                                                Margin="0,0,4,0"
+                                                                AutomationProperties.Name="컬럼 위로 이동"
+                                                                Command="{Binding DataContext.MoveFieldUpCommand, RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}}"
+                                                                CommandParameter="{Binding}"
+                                                                Icon="{ui:SymbolIcon Symbol=ArrowUp12}"
+                                                                Style="{StaticResource IconOnlyButtonStyle}"
+                                                                ToolTip="위로 이동" />
+                                                            <ui:Button
+                                                                Margin="0,0,4,0"
+                                                                AutomationProperties.Name="컬럼 아래로 이동"
+                                                                Command="{Binding DataContext.MoveFieldDownCommand, RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}}"
+                                                                CommandParameter="{Binding}"
+                                                                Icon="{ui:SymbolIcon Symbol=ArrowDown12}"
+                                                                Style="{StaticResource IconOnlyButtonStyle}"
+                                                                ToolTip="아래로 이동" />
+                                                            <ui:Button
+                                                                Appearance="Caution"
+                                                                AutomationProperties.Name="컬럼 삭제"
+                                                                Command="{Binding DataContext.RemoveFieldCommand, RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}}"
+                                                                CommandParameter="{Binding}"
+                                                                Icon="{ui:SymbolIcon Symbol=Delete12}"
+                                                                Style="{StaticResource IconOnlyButtonStyle}"
+                                                                ToolTip="삭제" />
+                                                        </StackPanel>
+                                                    </DataTemplate>
+                                                </DataGridTemplateColumn.CellTemplate>
+                                            </DataGridTemplateColumn>
+                                        </DataGrid.Columns>
+                                    </DataGrid>
 
-                            <TextBlock
-                                Margin="0,0,0,10"
-                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Text="예: Clients\\(?&lt;client&gt;[^\\]+)\\Projects\\(?&lt;project&gt;[^\\]+) — 그룹 이름은 위 컬럼의 '정규식 그룹'과 같아야 합니다. 규칙은 위에서부터 시험합니다."
-                                TextWrapping="Wrap" />
-                            <DataGrid
-                                Grid.Row="1"
-                                MinHeight="150"
-                                MaxHeight="300"
-                                AutoGenerateColumns="False"
-                                CanUserAddRows="False"
-                                CanUserDeleteRows="False"
-                                HeadersVisibility="Column"
-                                ItemsSource="{Binding DraftRules}">
-                                <DataGrid.Columns>
-                                    <DataGridTextColumn Width="1.1*" Binding="{Binding Id, UpdateSourceTrigger=PropertyChanged}" Header="규칙 ID (선택)" />
-                                    <DataGridTemplateColumn Width="100" Header="매칭">
-                                        <DataGridTemplateColumn.CellTemplate>
-                                            <DataTemplate>
-                                                <TextBlock Margin="6,0" VerticalAlignment="Center" Text="{Binding MatchModeDisplayName}" />
-                                            </DataTemplate>
-                                        </DataGridTemplateColumn.CellTemplate>
-                                        <DataGridTemplateColumn.CellEditingTemplate>
-                                            <DataTemplate>
-                                                <ComboBox
-                                                    DisplayMemberPath="DisplayName"
-                                                    ItemsSource="{Binding DataContext.MatchModeChoices, RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}}"
-                                                    SelectedValue="{Binding MatchMode, UpdateSourceTrigger=PropertyChanged}"
-                                                    SelectedValuePath="Value" />
-                                            </DataTemplate>
-                                        </DataGridTemplateColumn.CellEditingTemplate>
-                                    </DataGridTemplateColumn>
-                                    <DataGridCheckBoxColumn Width="110" Binding="{Binding IgnoreCase, UpdateSourceTrigger=PropertyChanged}" Header="대소문자 무시" />
-                                    <DataGridTextColumn Width="100" Binding="{Binding TimeoutMilliseconds, UpdateSourceTrigger=PropertyChanged}" Header="제한 (ms)" />
-                                    <DataGridTextColumn Width="3*" Binding="{Binding Pattern, UpdateSourceTrigger=PropertyChanged}" Header="정규식 Pattern *" />
-                                    <DataGridTemplateColumn Width="124" Header="순서 / 삭제">
-                                        <DataGridTemplateColumn.CellTemplate>
-                                            <DataTemplate>
-                                                <StackPanel HorizontalAlignment="Center" Orientation="Horizontal">
-                                                    <ui:Button
-                                                        Width="32"
-                                                        Margin="0,0,3,0"
-                                                        Padding="0"
-                                                        Command="{Binding DataContext.MoveRuleUpCommand, RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}}"
-                                                        CommandParameter="{Binding}"
-                                                        Content="↑"
-                                                        ToolTip="위로 이동" />
-                                                    <ui:Button
-                                                        Width="32"
-                                                        Margin="0,0,3,0"
-                                                        Padding="0"
-                                                        Command="{Binding DataContext.MoveRuleDownCommand, RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}}"
-                                                        CommandParameter="{Binding}"
-                                                        Content="↓"
-                                                        ToolTip="아래로 이동" />
-                                                    <ui:Button
-                                                        Width="48"
-                                                        Padding="0"
-                                                        Appearance="Caution"
-                                                        Command="{Binding DataContext.RemoveRuleCommand, RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}}"
-                                                        CommandParameter="{Binding}"
-                                                        Content="삭제" />
-                                                </StackPanel>
-                                            </DataTemplate>
-                                        </DataGridTemplateColumn.CellTemplate>
-                                    </DataGridTemplateColumn>
-                                </DataGrid.Columns>
-                            </DataGrid>
-                            <DockPanel Grid.Row="2" Margin="0,10,0,0">
-                                <ui:Button
-                                    Width="112"
-                                    Margin="0,0,16,0"
-                                    HorizontalAlignment="Left"
-                                    Command="{Binding AddRuleCommand}"
-                                    Content="+ 규칙 추가"
-                                    DockPanel.Dock="Left" />
-                                <TextBlock
-                                    VerticalAlignment="Center"
-                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                    Text="Full은 경로 전체가 일치해야 하고 Partial은 경로 일부만 일치해도 됩니다. 제한 시간은 1~10,000ms 범위입니다."
-                                    TextWrapping="Wrap" />
-                            </DockPanel>
-                        </Grid>
-                    </GroupBox>
+                                    <Grid Grid.Row="3" Margin="0,12,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <ui:Button
+                                            MinWidth="112"
+                                            Margin="0,0,16,0"
+                                            Command="{Binding AddFieldCommand}"
+                                            Content="컬럼 추가"
+                                            Icon="{ui:SymbolIcon Symbol=AddSquare20}" />
+                                        <TextBlock
+                                            Grid.Column="1"
+                                            VerticalAlignment="Center"
+                                            Style="{StaticResource CaptionTextStyle}"
+                                            Text="날짜 입력 형식 예: yyyyMMdd · 숫자/날짜 표시 형식 예: N2, yyyy-MM-dd" />
+                                    </Grid>
+                                </Grid>
+                            </Border>
 
-                    <GroupBox Grid.Row="5" Margin="0,0,0,16" Padding="16" Header="4. 예제 경로로 시험" IsEnabled="{Binding IsEditorReady}">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                            </Grid.RowDefinitions>
+                            <Border IsEnabled="{Binding IsEditorReady}" Style="{StaticResource EditorSectionStyle}">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
 
-                            <ui:TextBox
-                                Margin="0,0,8,0"
-                                ClearButtonEnabled="True"
-                                PlaceholderText="실제 폴더 경로 또는 상대 경로를 붙여 넣으세요"
-                                Text="{Binding SamplePath, UpdateSourceTrigger=PropertyChanged}" />
-                            <ui:Button
-                                Grid.Column="1"
-                                MinWidth="112"
-                                Appearance="Primary"
-                                Command="{Binding TestDraftCommand}"
-                                Content="경로 시험" />
-                            <TextBlock
-                                Grid.Row="1"
-                                Grid.ColumnSpan="2"
-                                Margin="0,10,0,8"
-                                FontWeight="SemiBold"
-                                Text="{Binding TestSummary}"
-                                TextWrapping="Wrap" />
-                            <DataGrid
-                                Grid.Row="2"
-                                Grid.ColumnSpan="2"
-                                MaxHeight="240"
-                                AutoGenerateColumns="False"
-                                CanUserAddRows="False"
-                                IsReadOnly="True"
-                                ItemsSource="{Binding TestRows}">
-                                <DataGrid.Columns>
-                                    <DataGridTextColumn Width="1.2*" Binding="{Binding FieldName}" Header="컬럼" />
-                                    <DataGridTextColumn Width="2*" Binding="{Binding Value}" Header="추출된 값" />
-                                    <DataGridTextColumn Width="1.2*" Binding="{Binding Status}" Header="상태" />
-                                </DataGrid.Columns>
-                            </DataGrid>
-                        </Grid>
-                    </GroupBox>
+                                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="3. 경로 규칙" />
+                                    <TextBlock
+                                        Grid.Row="1"
+                                        Margin="0,4,0,12"
+                                        Style="{StaticResource CaptionTextStyle}"
+                                        Text="규칙은 위에서부터 시험합니다. 정규식 그룹 이름은 결과 컬럼의 ‘정규식 그룹’과 같아야 합니다." />
 
-                    <Grid Grid.Row="6">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
+                                    <DataGrid
+                                        Grid.Row="2"
+                                        MinHeight="160"
+                                        AutoGenerateColumns="False"
+                                        CanUserAddRows="False"
+                                        CanUserDeleteRows="False"
+                                        HeadersVisibility="Column"
+                                        ItemsSource="{Binding DraftRules}"
+                                        ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                                        <DataGrid.Columns>
+                                            <DataGridTextColumn Width="120" Binding="{Binding Id, UpdateSourceTrigger=PropertyChanged}" Header="규칙 ID (선택)" />
+                                            <DataGridTemplateColumn Width="110" Header="매칭">
+                                                <DataGridTemplateColumn.CellTemplate>
+                                                    <DataTemplate>
+                                                        <TextBlock Margin="6,0" VerticalAlignment="Center" Text="{Binding MatchModeDisplayName}" />
+                                                    </DataTemplate>
+                                                </DataGridTemplateColumn.CellTemplate>
+                                                <DataGridTemplateColumn.CellEditingTemplate>
+                                                    <DataTemplate>
+                                                        <ComboBox
+                                                            DisplayMemberPath="DisplayName"
+                                                            ItemsSource="{Binding DataContext.MatchModeChoices, RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}}"
+                                                            SelectedValue="{Binding MatchMode, UpdateSourceTrigger=PropertyChanged}"
+                                                            SelectedValuePath="Value" />
+                                                    </DataTemplate>
+                                                </DataGridTemplateColumn.CellEditingTemplate>
+                                            </DataGridTemplateColumn>
+                                            <DataGridCheckBoxColumn Width="110" Binding="{Binding IgnoreCase, UpdateSourceTrigger=PropertyChanged}" Header="대소문자 무시" />
+                                            <DataGridTextColumn Width="100" Binding="{Binding TimeoutMilliseconds, UpdateSourceTrigger=PropertyChanged}" Header="제한 (ms)" />
+                                            <DataGridTextColumn Width="3*" Binding="{Binding Pattern, UpdateSourceTrigger=PropertyChanged}" Header="정규식 Pattern *" MinWidth="240" />
+                                            <DataGridTemplateColumn Width="118" Header="순서 / 삭제">
+                                                <DataGridTemplateColumn.CellTemplate>
+                                                    <DataTemplate>
+                                                        <StackPanel HorizontalAlignment="Center" Orientation="Horizontal">
+                                                            <ui:Button
+                                                                Margin="0,0,4,0"
+                                                                AutomationProperties.Name="규칙 위로 이동"
+                                                                Command="{Binding DataContext.MoveRuleUpCommand, RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}}"
+                                                                CommandParameter="{Binding}"
+                                                                Icon="{ui:SymbolIcon Symbol=ArrowUp12}"
+                                                                Style="{StaticResource IconOnlyButtonStyle}"
+                                                                ToolTip="위로 이동" />
+                                                            <ui:Button
+                                                                Margin="0,0,4,0"
+                                                                AutomationProperties.Name="규칙 아래로 이동"
+                                                                Command="{Binding DataContext.MoveRuleDownCommand, RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}}"
+                                                                CommandParameter="{Binding}"
+                                                                Icon="{ui:SymbolIcon Symbol=ArrowDown12}"
+                                                                Style="{StaticResource IconOnlyButtonStyle}"
+                                                                ToolTip="아래로 이동" />
+                                                            <ui:Button
+                                                                Appearance="Caution"
+                                                                AutomationProperties.Name="규칙 삭제"
+                                                                Command="{Binding DataContext.RemoveRuleCommand, RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}}"
+                                                                CommandParameter="{Binding}"
+                                                                Icon="{ui:SymbolIcon Symbol=Delete12}"
+                                                                Style="{StaticResource IconOnlyButtonStyle}"
+                                                                ToolTip="삭제" />
+                                                        </StackPanel>
+                                                    </DataTemplate>
+                                                </DataGridTemplateColumn.CellTemplate>
+                                            </DataGridTemplateColumn>
+                                        </DataGrid.Columns>
+                                    </DataGrid>
 
-                        <ui:InfoBar
-                            Margin="0,0,16,0"
-                            IsClosable="False"
-                            IsOpen="True"
-                            Message="{Binding EditorStatusMessage}"
-                            Severity="{Binding EditorStatusSeverity}"
-                            Title="검증 및 저장" />
-                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Orientation="Horizontal">
-                            <ui:Button
-                                MinWidth="96"
-                                Margin="0,0,8,0"
-                                Command="{Binding ValidateDraftCommand}"
-                                Content="검증" />
-                            <ui:Button
-                                MinWidth="120"
-                                Appearance="Primary"
-                                Command="{Binding SaveDraftCommand}"
-                                Content="검증 후 저장" />
+                                    <Grid Grid.Row="3" Margin="0,12,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <ui:Button
+                                            MinWidth="112"
+                                            Margin="0,0,16,0"
+                                            Command="{Binding AddRuleCommand}"
+                                            Content="규칙 추가"
+                                            Icon="{ui:SymbolIcon Symbol=AddSquare20}" />
+                                        <TextBlock
+                                            Grid.Column="1"
+                                            VerticalAlignment="Center"
+                                            Style="{StaticResource CaptionTextStyle}"
+                                            Text="Full은 경로 전체, Partial은 경로 일부가 일치하면 됩니다. 제한 시간은 1~10,000ms입니다." />
+                                    </Grid>
+                                </Grid>
+                            </Border>
+
+                            <Border IsEnabled="{Binding IsEditorReady}" Style="{StaticResource EditorSectionStyle}">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="4. 예제 경로로 시험" />
+                                    <TextBlock
+                                        Grid.Row="1"
+                                        Margin="0,4,0,12"
+                                        Style="{StaticResource CaptionTextStyle}"
+                                        Text="실제 폴더 경로나 상대 경로를 붙여 넣어 어떤 값이 추출되는지 확인하세요." />
+                                    <Grid Grid.Row="2">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <ui:TextBox
+                                            Margin="0,0,8,0"
+                                            AutomationProperties.Name="시험할 예제 경로"
+                                            ClearButtonEnabled="True"
+                                            PlaceholderText="실제 폴더 경로 또는 상대 경로"
+                                            Text="{Binding SamplePath, UpdateSourceTrigger=PropertyChanged}" />
+                                        <ui:Button
+                                            Grid.Column="1"
+                                            MinWidth="112"
+                                            Command="{Binding TestDraftCommand}"
+                                            Content="경로 시험"
+                                            Icon="{ui:SymbolIcon Symbol=CheckmarkCircle20}" />
+                                    </Grid>
+                                    <StackPanel Grid.Row="3" Margin="0,12,0,0">
+                                        <TextBlock
+                                            Margin="0,0,0,8"
+                                            FontWeight="SemiBold"
+                                            Text="{Binding TestSummary}"
+                                            TextWrapping="Wrap" />
+                                        <DataGrid
+                                            AutoGenerateColumns="False"
+                                            CanUserAddRows="False"
+                                            IsReadOnly="True"
+                                            ItemsSource="{Binding TestRows}"
+                                            ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                                            Style="{StaticResource FluentDataGridStyle}">
+                                            <DataGrid.Columns>
+                                                <DataGridTextColumn Width="1.2*" Binding="{Binding FieldName}" Header="컬럼" />
+                                                <DataGridTextColumn Width="2*" Binding="{Binding Value}" Header="추출된 값" />
+                                                <DataGridTextColumn Width="1.2*" Binding="{Binding Status}" Header="상태" />
+                                            </DataGrid.Columns>
+                                        </DataGrid>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
                         </StackPanel>
-                        <ProgressBar
-                            Grid.Row="1"
-                            Grid.ColumnSpan="2"
-                            Height="3"
-                            Margin="0,8,0,0"
-                            IsIndeterminate="True"
-                            Visibility="{Binding IsEditorBusy, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                    </Grid>
+                    </ScrollViewer>
+
+                    <Border
+                        Grid.Row="1"
+                        Margin="8,12,8,8"
+                        Style="{StaticResource FluentToolbarSurfaceStyle}">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <ui:InfoBar
+                                Margin="0,0,0,8"
+                                Message="{Binding EditorStatusMessage}"
+                                Severity="{Binding EditorStatusSeverity}"
+                                Style="{StaticResource ActionableEditorInfoBarStyle}"
+                                Title="검증이 필요합니다" />
+                            <Grid Grid.Row="1">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock
+                                    Margin="0,0,16,0"
+                                    VerticalAlignment="Center"
+                                    AutomationProperties.LiveSetting="Polite"
+                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                    Text="{Binding EditorStatusMessage}"
+                                    TextTrimming="CharacterEllipsis" />
+                                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                    <ui:Button
+                                        MinWidth="96"
+                                        Margin="0,0,8,0"
+                                        Command="{Binding ValidateDraftCommand}"
+                                        Content="검증"
+                                        Icon="{ui:SymbolIcon Symbol=CheckmarkCircle20}" />
+                                    <ui:Button
+                                        MinWidth="120"
+                                        Appearance="Primary"
+                                        Command="{Binding SaveDraftCommand}"
+                                        Content="검증 후 저장"
+                                        Icon="{ui:SymbolIcon Symbol=Save16}" />
+                                </StackPanel>
+                            </Grid>
+                            <ProgressBar
+                                Grid.Row="2"
+                                Height="3"
+                                Margin="0,8,0,0"
+                                IsIndeterminate="True"
+                                Visibility="{Binding IsEditorBusy, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                        </Grid>
+                    </Border>
                 </Grid>
-            </ScrollViewer>
-        </TabItem>
+            </TabItem>
 
-        <TabItem Header="로드 결과">
-            <ScrollViewer
-                HorizontalScrollBarVisibility="Disabled"
-                VerticalScrollBarVisibility="Auto">
-                <Grid Margin="8,20,8,32" MaxWidth="1240" HorizontalAlignment="Left">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
+            <TabItem Header="로드 상태">
+                <ScrollViewer
+                    HorizontalScrollBarVisibility="Disabled"
+                    VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="8,16,8,24">
+                        <StackPanel Margin="0,0,0,16">
+                            <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="프로필 로드 상태" />
+                            <TextBlock
+                                Margin="0,4,0,0"
+                                Style="{StaticResource PageSubtitleTextStyle}"
+                                Text="앱에서 사용할 수 있는 프로필을 선택하면 해석된 컬럼과 경로 규칙을 확인할 수 있습니다." />
+                        </StackPanel>
 
-                    <ui:InfoBar
-                        Grid.Row="0"
-                        Margin="0,0,0,16"
-                        IsClosable="False"
-                        IsOpen="True"
-                        Message="앱 시작 시 발견된 프로필의 실제 해석 결과입니다. 프로필을 선택하면 아래에서 컬럼과 규칙을 확인할 수 있습니다. Disabled 항목은 진단 메시지에서 원인을 확인하세요."
-                        Severity="Informational"
-                        Title="프로필 로드 상태" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="260" />
+                                <ColumnDefinition Width="16" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
 
-                    <GroupBox Grid.Row="1" Margin="0,0,0,16" Padding="12" Header="로드된 프로필">
-                        <DataGrid
-                            MinHeight="150"
-                            MaxHeight="260"
-                            AutoGenerateColumns="False"
-                            CanUserAddRows="False"
-                            IsReadOnly="True"
-                            ItemsSource="{Binding Profiles}"
-                            SelectedItem="{Binding SelectedProfile}"
-                            SelectionMode="Single">
-                            <DataGrid.Columns>
-                                <DataGridTextColumn Width="2*" Binding="{Binding DisplayName}" Header="표시 이름" />
-                                <DataGridTextColumn Width="2*" Binding="{Binding Id}" Header="프로필 ID" />
-                                <DataGridTextColumn Width="110" Binding="{Binding Kind}" Header="정의 방식" />
-                                <DataGridTextColumn Width="90" Binding="{Binding Version}" Header="버전" />
-                                <DataGridTextColumn Width="100" Binding="{Binding CandidateKind}" Header="검색 대상" />
-                                <DataGridTextColumn Width="110" Binding="{Binding PathInput}" Header="규칙 경로" />
-                                <DataGridTextColumn Width="70" Binding="{Binding FieldCount}" Header="컬럼 수" />
-                            </DataGrid.Columns>
-                        </DataGrid>
-                    </GroupBox>
+                            <Border Grid.Column="0" Style="{StaticResource FluentSurfaceStyle}">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="로드된 프로필" />
+                                    <TextBlock
+                                        Grid.Row="1"
+                                        Margin="0,4,0,12"
+                                        Style="{StaticResource CaptionTextStyle}"
+                                        Text="상세 내용을 볼 프로필을 선택하세요." />
+                                    <DataGrid
+                                        Grid.Row="2"
+                                        MinHeight="280"
+                                        AutoGenerateColumns="False"
+                                        CanUserAddRows="False"
+                                        HeadersVisibility="Column"
+                                        IsReadOnly="True"
+                                        ItemsSource="{Binding Profiles}"
+                                        ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                                        SelectedItem="{Binding SelectedProfile}"
+                                        SelectionMode="Single"
+                                        Style="{StaticResource FluentDataGridStyle}">
+                                        <DataGrid.Columns>
+                                            <DataGridTextColumn Width="*" Binding="{Binding DisplayName}" Header="표시 이름" MinWidth="140" />
+                                            <DataGridTextColumn Width="90" Binding="{Binding Kind}" Header="정의 방식" />
+                                        </DataGrid.Columns>
+                                    </DataGrid>
+                                </Grid>
+                            </Border>
 
-                    <GroupBox Grid.Row="2" Margin="0,0,0,16" Padding="12" Header="선택한 프로필의 결과 컬럼">
-                        <DataGrid
-                            MinHeight="150"
-                            MaxHeight="260"
-                            AutoGenerateColumns="False"
-                            CanUserAddRows="False"
-                            IsReadOnly="True"
-                            ItemsSource="{Binding Fields}">
-                            <DataGrid.Columns>
-                                <DataGridTextColumn Width="60" Binding="{Binding Order}" Header="순서" />
-                                <DataGridTextColumn Width="1.4*" Binding="{Binding Header}" Header="표시 이름" />
-                                <DataGridTextColumn Width="1.2*" Binding="{Binding FieldId}" Header="Field ID" />
-                                <DataGridTextColumn Width="1.2*" Binding="{Binding GroupName}" Header="정규식 그룹" />
-                                <DataGridTextColumn Width="100" Binding="{Binding Kind}" Header="값 타입" />
-                                <DataGridCheckBoxColumn Width="60" Binding="{Binding Required}" Header="필수" />
-                                <DataGridCheckBoxColumn Width="80" Binding="{Binding IsNullable}" Header="Nullable" />
-                                <DataGridTextColumn Width="1.1*" Binding="{Binding ParseFormat}" Header="입력 형식" />
-                                <DataGridTextColumn Width="1.1*" Binding="{Binding DisplayFormat}" Header="표시 형식" />
-                            </DataGrid.Columns>
-                        </DataGrid>
-                    </GroupBox>
+                            <StackPanel Grid.Column="2">
+                                <Border Style="{StaticResource EditorSectionStyle}">
+                                    <StackPanel>
+                                        <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="선택한 프로필" />
+                                        <TextBlock
+                                            Margin="0,4,0,12"
+                                            Style="{StaticResource CaptionTextStyle}"
+                                            Text="{Binding SelectedProfile.Id, StringFormat='프로필 ID: {0}'}"
+                                            TextTrimming="CharacterEllipsis" />
+                                        <WrapPanel>
+                                            <StackPanel MinWidth="120" Margin="0,0,16,8">
+                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="버전" />
+                                                <TextBlock Text="{Binding SelectedProfile.Version}" />
+                                            </StackPanel>
+                                            <StackPanel MinWidth="120" Margin="0,0,16,8">
+                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="검색 대상" />
+                                                <TextBlock Text="{Binding SelectedProfile.CandidateKind}" />
+                                            </StackPanel>
+                                            <StackPanel MinWidth="120" Margin="0,0,16,8">
+                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="규칙 경로" />
+                                                <TextBlock Text="{Binding SelectedProfile.PathInput}" />
+                                            </StackPanel>
+                                            <StackPanel MinWidth="100" Margin="0,0,0,8">
+                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="컬럼 수" />
+                                                <TextBlock Text="{Binding SelectedProfile.FieldCount}" />
+                                            </StackPanel>
+                                        </WrapPanel>
+                                    </StackPanel>
+                                </Border>
 
-                    <GroupBox Grid.Row="3" Margin="0,0,0,16" Padding="12" Header="선택한 프로필의 경로 규칙">
-                        <DataGrid
-                            MinHeight="150"
-                            MaxHeight="260"
-                            AutoGenerateColumns="False"
-                            CanUserAddRows="False"
-                            IsReadOnly="True"
-                            ItemsSource="{Binding Rules}">
-                            <DataGrid.Columns>
-                                <DataGridTextColumn Width="60" Binding="{Binding Order}" Header="순서" />
-                                <DataGridTextColumn Width="1.2*" Binding="{Binding Id}" Header="규칙 ID" />
-                                <DataGridTextColumn Width="90" Binding="{Binding MatchMode}" Header="매칭" />
-                                <DataGridCheckBoxColumn Width="110" Binding="{Binding IgnoreCase}" Header="대소문자 무시" />
-                                <DataGridTextColumn Width="100" Binding="{Binding TimeoutMilliseconds}" Header="제한 (ms)" />
-                                <DataGridTextColumn Width="3*" Binding="{Binding Pattern}" Header="정규식 Pattern" />
-                            </DataGrid.Columns>
-                        </DataGrid>
-                    </GroupBox>
+                                <Border Style="{StaticResource EditorSectionStyle}">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="결과 컬럼" />
+                                        <DataGrid
+                                            Grid.Row="1"
+                                            Margin="0,12,0,0"
+                                            MinHeight="160"
+                                            AutoGenerateColumns="False"
+                                            CanUserAddRows="False"
+                                            IsReadOnly="True"
+                                            ItemsSource="{Binding Fields}"
+                                            ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                                            Style="{StaticResource FluentDataGridStyle}">
+                                            <DataGrid.Columns>
+                                                <DataGridTextColumn Width="50" Binding="{Binding Order}" Header="#" />
+                                                <DataGridTextColumn Width="1.4*" Binding="{Binding Header}" Header="표시 이름" MinWidth="110" />
+                                                <DataGridTextColumn Width="1.2*" Binding="{Binding FieldId}" Header="Field ID" MinWidth="100" />
+                                                <DataGridTextColumn Width="1.2*" Binding="{Binding GroupName}" Header="정규식 그룹" MinWidth="100" />
+                                                <DataGridTextColumn Width="90" Binding="{Binding Kind}" Header="값 타입" />
+                                                <DataGridCheckBoxColumn Width="60" Binding="{Binding Required}" Header="필수" />
+                                                <DataGridCheckBoxColumn Width="75" Binding="{Binding IsNullable}" Header="Nullable" />
+                                                <DataGridTextColumn Width="100" Binding="{Binding ParseFormat}" Header="입력 형식" />
+                                                <DataGridTextColumn Width="100" Binding="{Binding DisplayFormat}" Header="표시 형식" />
+                                            </DataGrid.Columns>
+                                        </DataGrid>
+                                    </Grid>
+                                </Border>
 
-                    <GroupBox Grid.Row="4" Padding="12" Header="플러그인 및 선언형 프로필 진단">
-                        <DataGrid
-                            MinHeight="150"
-                            MaxHeight="280"
-                            AutoGenerateColumns="False"
-                            CanUserAddRows="False"
-                            IsReadOnly="True"
-                            ItemsSource="{Binding Reports}">
-                            <DataGrid.Columns>
-                                <DataGridTextColumn Width="100" Binding="{Binding StatusText}" Header="로드 상태" />
-                                <DataGridTextColumn Width="1.5*" Binding="{Binding DisplayName}" Header="표시 이름" />
-                                <DataGridTextColumn Width="1.4*" Binding="{Binding ProfileId}" Header="프로필 ID" />
-                                <DataGridTextColumn Width="3*" Binding="{Binding Diagnostics}" Header="검증 및 진단 메시지" />
-                                <DataGridTextColumn Width="2.5*" Binding="{Binding SourceDirectory}" Header="원본 폴더" />
-                            </DataGrid.Columns>
-                        </DataGrid>
-                    </GroupBox>
-                </Grid>
-            </ScrollViewer>
-        </TabItem>
-    </TabControl>
+                                <Border Margin="0" Style="{StaticResource FluentSurfaceStyle}">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="경로 규칙" />
+                                        <DataGrid
+                                            Grid.Row="1"
+                                            Margin="0,12,0,0"
+                                            MinHeight="160"
+                                            AutoGenerateColumns="False"
+                                            CanUserAddRows="False"
+                                            IsReadOnly="True"
+                                            ItemsSource="{Binding Rules}"
+                                            ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                                            Style="{StaticResource FluentDataGridStyle}">
+                                            <DataGrid.Columns>
+                                                <DataGridTextColumn Width="50" Binding="{Binding Order}" Header="#" />
+                                                <DataGridTextColumn Width="110" Binding="{Binding Id}" Header="규칙 ID" />
+                                                <DataGridTextColumn Width="90" Binding="{Binding MatchMode}" Header="매칭" />
+                                                <DataGridCheckBoxColumn Width="110" Binding="{Binding IgnoreCase}" Header="대소문자 무시" />
+                                                <DataGridTextColumn Width="90" Binding="{Binding TimeoutMilliseconds}" Header="제한 (ms)" />
+                                                <DataGridTextColumn Width="3*" Binding="{Binding Pattern}" Header="정규식 Pattern" MinWidth="240" />
+                                            </DataGrid.Columns>
+                                        </DataGrid>
+                                    </Grid>
+                                </Border>
+                            </StackPanel>
+                        </Grid>
+
+                        <Expander Margin="0,16,0,0" Header="고급: 플러그인 및 선언형 프로필 진단">
+                            <Border Margin="0,8,0,0" Style="{StaticResource FluentSurfaceStyle}">
+                                <DataGrid
+                                    MinHeight="160"
+                                    AutoGenerateColumns="False"
+                                    CanUserAddRows="False"
+                                    IsReadOnly="True"
+                                    ItemsSource="{Binding Reports}"
+                                    ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                                    Style="{StaticResource FluentDataGridStyle}">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Width="100" Binding="{Binding StatusText}" Header="로드 상태" />
+                                        <DataGridTextColumn Width="1.5*" Binding="{Binding DisplayName}" Header="표시 이름" />
+                                        <DataGridTextColumn Width="1.4*" Binding="{Binding ProfileId}" Header="프로필 ID" />
+                                        <DataGridTextColumn Width="3*" Binding="{Binding Diagnostics}" Header="검증 및 진단 메시지" />
+                                        <DataGridTextColumn Width="2.5*" Binding="{Binding SourceDirectory}" Header="원본 폴더" />
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </Border>
+                        </Expander>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+        </TabControl>
+    </Grid>
 </Page>

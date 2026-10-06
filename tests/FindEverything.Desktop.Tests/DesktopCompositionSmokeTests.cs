@@ -77,6 +77,7 @@ public sealed class DesktopCompositionSmokeTests
             });
 
             window = provider.GetRequiredService<MainWindow>();
+            Assert.NotNull(provider.GetRequiredService<FilesPage>());
             Assert.NotNull(provider.GetRequiredService<CatalogPage>());
             Assert.NotNull(provider.GetRequiredService<ProfilesPage>());
             Assert.NotNull(provider.GetRequiredService<SettingsPage>());
@@ -102,6 +103,7 @@ public sealed class DesktopCompositionSmokeTests
                     Backdrop = BackdropPreference.None,
                 });
             var navigation = provider.GetRequiredService<INavigationService>();
+            Assert.True(navigation.Navigate(typeof(FilesPage)));
             Assert.True(navigation.Navigate(typeof(CatalogPage)));
             Assert.True(navigation.Navigate(typeof(ProfilesPage)));
             Assert.True(navigation.Navigate(typeof(SettingsPage)));

@@ -90,6 +90,78 @@ internal sealed class FindEverythingIndexSession : IIndexSession
         }, cancellationToken);
     }
 
+    public Task<EntrySearchResult> SearchEntriesAsync(
+        EntrySearchRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ValidateEntrySearchRequest(request);
+
+        return ExecuteSerializedAsync(async () =>
+        {
+            var result = await _store.SearchAsync(new Engine.SearchQuery
+            {
+                RootPath = request.RootPath,
+                SearchText = request.Keyword,
+                Kind = request.Kind is null ? null : ToEngineKind(request.Kind.Value),
+                MinSizeBytes = request.MinSizeBytes,
+                MaxSizeBytes = request.MaxSizeBytes,
+                CreatedFromUtc = request.CreatedFromUtc,
+                CreatedBeforeUtc = request.CreatedBeforeUtc,
+                ModifiedFromUtc = request.ModifiedFromUtc,
+                ModifiedBeforeUtc = request.ModifiedBeforeUtc,
+                SortBy = ToEngineSortField(request.SortBy),
+                SortDirection = ToEngineSortDirection(request.SortDirection),
+                Limit = request.Limit,
+                Offset = request.Offset
+            }, cancellationToken).ConfigureAwait(false);
+
+            return new EntrySearchResult(
+                result.Entries.Select(ToApplicationEntry).ToArray(),
+                result.TotalCount,
+                result.HasMore,
+                result.HasPendingScopes);
+        }, cancellationToken);
+    }
+
+    public Task<IndexRootStatus> GetRootStatusAsync(
+        string rootPath,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(rootPath);
+        cancellationToken.ThrowIfCancellationRequested();
+        var normalizedRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(rootPath));
+        return ExecuteSerializedAsync(async () =>
+        {
+            if (!File.Exists(DatabasePath))
+                return MissingRootStatus(normalizedRoot);
+
+            try
+            {
+                var status = await _store.GetRootStatusAsync(
+                    normalizedRoot,
+                    cancellationToken).ConfigureAwait(false);
+                if (status is null || status.LastStatus is null || status.LastPublishedUtc is null)
+                    return UnindexedRootStatus(normalizedRoot);
+
+                return new IndexRootStatus(
+                    status.RootPath,
+                    IndexRootAvailability.Available,
+                    status.LastScanId,
+                    status.LastScopePath,
+                    status.LastStatus is null ? null : ToApplicationStatus(status.LastStatus.Value),
+                    status.LastPublishedUtc,
+                    status.EntryCount,
+                    status.LastErrorCount,
+                    status.HasPendingScopes);
+            }
+            catch (FileNotFoundException) when (!File.Exists(DatabasePath))
+            {
+                return MissingRootStatus(normalizedRoot);
+            }
+        }, cancellationToken);
+    }
+
     public async ValueTask DisposeAsync()
     {
         await _sessionGate.WaitAsync().ConfigureAwait(false);
@@ -210,6 +282,106 @@ internal sealed class FindEverythingIndexSession : IIndexSession
         Engine.ScanStatus.Deferred => IndexScanStatus.Deferred,
         _ => throw new ArgumentOutOfRangeException(nameof(status), status, "Unknown scan status.")
     };
+
+    private static IndexedPathEntry ToApplicationEntry(Engine.IndexedEntry entry) => new(
+        entry.FullPath,
+        entry.Name,
+        entry.ParentPath,
+        entry.Kind switch
+        {
+            Engine.EntryKind.File => IndexedPathKind.File,
+            Engine.EntryKind.Directory => IndexedPathKind.Directory,
+            _ => throw new ArgumentOutOfRangeException(nameof(entry), entry.Kind, "Unknown entry kind.")
+        },
+        entry.SizeBytes,
+        entry.CreatedUtc,
+        entry.ModifiedUtc,
+        entry.CoveragePending);
+
+    private static Engine.EntryKind ToEngineKind(IndexedPathKind kind) => kind switch
+    {
+        IndexedPathKind.File => Engine.EntryKind.File,
+        IndexedPathKind.Directory => Engine.EntryKind.Directory,
+        _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown entry kind.")
+    };
+
+    private static Engine.EntrySortField ToEngineSortField(EntrySortField sortField) => sortField switch
+    {
+        EntrySortField.Name => Engine.EntrySortField.Name,
+        EntrySortField.Path => Engine.EntrySortField.Path,
+        EntrySortField.Kind => Engine.EntrySortField.Kind,
+        EntrySortField.Size => Engine.EntrySortField.Size,
+        EntrySortField.Created => Engine.EntrySortField.Created,
+        EntrySortField.Modified => Engine.EntrySortField.Modified,
+        _ => throw new ArgumentOutOfRangeException(nameof(sortField), sortField, "Unknown sort field.")
+    };
+
+    private static Engine.SortDirection ToEngineSortDirection(EntrySortDirection sortDirection) =>
+        sortDirection switch
+        {
+            EntrySortDirection.Ascending => Engine.SortDirection.Ascending,
+            EntrySortDirection.Descending => Engine.SortDirection.Descending,
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(sortDirection),
+                sortDirection,
+                "Unknown sort direction.")
+        };
+
+    private static void ValidateEntrySearchRequest(EntrySearchRequest request)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.RootPath);
+        if (request.Limit is < 1 or > 1000)
+            throw new ArgumentOutOfRangeException(nameof(request), "Limit must be between 1 and 1000.");
+        if (request.Offset < 0)
+            throw new ArgumentOutOfRangeException(nameof(request), "Offset must be nonnegative.");
+        if (!Enum.IsDefined(request.SortBy) || !Enum.IsDefined(request.SortDirection)
+            || request.Kind is { } kind && !Enum.IsDefined(kind))
+        {
+            throw new ArgumentException("The search request contains an unsupported enum value.", nameof(request));
+        }
+
+        if (request.MinSizeBytes is < 0 || request.MaxSizeBytes is < 0
+            || request.MinSizeBytes > request.MaxSizeBytes)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(request),
+                "Size bounds must be nonnegative and the minimum cannot exceed the maximum.");
+        }
+
+        ValidateDateRange(request.CreatedFromUtc, request.CreatedBeforeUtc, nameof(request));
+        ValidateDateRange(request.ModifiedFromUtc, request.ModifiedBeforeUtc, nameof(request));
+    }
+
+    private static void ValidateDateRange(
+        DateTimeOffset? from,
+        DateTimeOffset? before,
+        string parameterName)
+    {
+        if (from is not null && before is not null && from >= before)
+            throw new ArgumentException("Date lower bounds must precede upper bounds.", parameterName);
+    }
+
+    private static IndexRootStatus MissingRootStatus(string rootPath) => new(
+        rootPath,
+        IndexRootAvailability.DatabaseMissing,
+        null,
+        null,
+        null,
+        null,
+        0,
+        0,
+        false);
+
+    private static IndexRootStatus UnindexedRootStatus(string rootPath) => new(
+        rootPath,
+        IndexRootAvailability.RootNotIndexed,
+        null,
+        null,
+        null,
+        null,
+        0,
+        0,
+        false);
 
     private static IndexDeferralReason ToApplicationDeferralReason(Engine.DeferralReason reason) => reason switch
     {

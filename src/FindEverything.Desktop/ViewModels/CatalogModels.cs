@@ -69,14 +69,7 @@ public sealed class CatalogItemViewModel
 
     public bool Matches(string? filterText)
     {
-        var term = TextFilter.Normalize(filterText);
-        if (term.Length == 0)
-        {
-            return true;
-        }
-
-        return _searchableValues.Any(value =>
-            TextFilter.Contains(value, term));
+        return TextFilter.MatchesAll(_searchableValues, filterText);
     }
 
     private static string FormatValue(object? value, string? displayFormat)

@@ -6,164 +6,302 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
-    Title="카탈로그"
+    Title="구조화 보기"
     Background="Transparent"
     Foreground="{DynamicResource TextFillColorPrimaryBrush}"
     mc:Ignorable="d">
-    <Grid Margin="32,0,32,24">
+    <Page.Resources>
+        <Style x:Key="FieldLabelStyle" TargetType="TextBlock">
+            <Setter Property="Margin" Value="0,0,0,4" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+        </Style>
+        <Style x:Key="ActionableInfoBarStyle" TargetType="ui:InfoBar">
+            <Setter Property="IsOpen" Value="False" />
+            <Setter Property="IsClosable" Value="False" />
+            <Style.Triggers>
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding IsStatusOpen}" Value="True" />
+                        <Condition Binding="{Binding StatusSeverity}" Value="{x:Static ui:InfoBarSeverity.Warning}" />
+                    </MultiDataTrigger.Conditions>
+                    <Setter Property="IsOpen" Value="True" />
+                </MultiDataTrigger>
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding IsStatusOpen}" Value="True" />
+                        <Condition Binding="{Binding StatusSeverity}" Value="{x:Static ui:InfoBarSeverity.Error}" />
+                    </MultiDataTrigger.Conditions>
+                    <Setter Property="IsOpen" Value="True" />
+                </MultiDataTrigger>
+            </Style.Triggers>
+        </Style>
+    </Page.Resources>
+
+    <Grid Margin="24,0,24,24">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <Grid Grid.Row="0" Margin="0,0,0,12">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="120" />
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-            </Grid.RowDefinitions>
+        <StackPanel Grid.Row="0" Margin="0,20,0,16">
+            <TextBlock AutomationProperties.HeadingLevel="Level1" Style="{StaticResource PageTitleTextStyle}" Text="구조화 보기" />
+            <TextBlock
+                Margin="0,4,0,0"
+                Style="{StaticResource PageSubtitleTextStyle}"
+                Text="폴더 경로에 담긴 정보를 선택한 프로필 규칙으로 추출해 한눈에 비교합니다." />
+        </StackPanel>
 
-            <TextBlock VerticalAlignment="Center" Text="프로필" />
-            <ComboBox
-                Grid.Column="1"
-                Margin="8,4"
-                DisplayMemberPath="DisplayName"
-                ItemsSource="{Binding Profiles}"
-                SelectedItem="{Binding SelectedProfile}" />
+        <Border Grid.Row="1" Margin="0,0,0,16" Style="{StaticResource FluentSurfaceStyle}">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
 
-            <TextBlock Grid.Row="1" VerticalAlignment="Center" Text="검색 루트" />
-            <TextBox
-                Grid.Row="1"
-                Grid.Column="1"
-                Margin="8,4"
-                Text="{Binding RootPath, UpdateSourceTrigger=PropertyChanged}" />
-            <ui:Button
-                Grid.Row="1"
-                Grid.Column="2"
-                MinWidth="72"
-                Margin="4"
-                Command="{Binding BrowseRootCommand}"
-                Content="찾아보기" />
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="220" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
 
-            <TextBlock Grid.Row="2" VerticalAlignment="Center" Text="인덱스 DB" />
-            <TextBox
-                Grid.Row="2"
-                Grid.Column="1"
-                Margin="8,4"
-                Text="{Binding DatabasePath, UpdateSourceTrigger=PropertyChanged}" />
-            <ui:Button
-                Grid.Row="2"
-                Grid.Column="2"
-                MinWidth="72"
-                Margin="4"
-                Command="{Binding BrowseDatabaseCommand}"
-                Content="찾아보기" />
-        </Grid>
+                    <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                        <TextBlock Style="{StaticResource FieldLabelStyle}" Text="프로필" />
+                        <ComboBox
+                            MinWidth="180"
+                            AutomationProperties.Name="구조화 프로필"
+                            DisplayMemberPath="DisplayName"
+                            ItemsSource="{Binding Profiles}"
+                            SelectedItem="{Binding SelectedProfile}" />
+                    </StackPanel>
 
-        <DockPanel Grid.Row="1" Margin="0,0,0,12">
-            <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
-                <ui:Button
-                    MinWidth="92"
-                    Margin="0,0,8,0"
-                    Appearance="Primary"
-                    Command="{Binding ScanCommand}"
-                    Content="인덱싱" />
-                <ui:Button
-                    MinWidth="92"
-                    Margin="0,0,8,0"
-                    Command="{Binding LoadCommand}"
-                    Content="불러오기" />
-                <ui:Button
-                    MinWidth="72"
-                    Margin="0,0,8,0"
-                    Appearance="Caution"
-                    Command="{Binding CancelCommand}"
-                    Content="취소" />
-                <ui:Button
-                    MinWidth="112"
-                    Command="{Binding OpenSelectedCommand}"
-                    Content="선택 폴더 열기" />
-            </StackPanel>
+                    <StackPanel Grid.Column="1" Margin="0,0,16,0">
+                        <TextBlock Style="{StaticResource FieldLabelStyle}" Text="검색 위치" />
+                        <ui:TextBox
+                            AutomationProperties.Name="검색 루트"
+                            ClearButtonEnabled="True"
+                            PlaceholderText="구조화할 폴더를 선택하세요"
+                            Text="{Binding RootPath, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
 
-            <StackPanel
-                HorizontalAlignment="Right"
-                VerticalAlignment="Center"
-                Orientation="Horizontal">
-                <ui:ProgressRing
-                    Width="20"
-                    Height="20"
-                    Margin="0,0,8,0"
-                    IsIndeterminate="True"
-                    Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                <TextBlock
-                    VerticalAlignment="Center"
-                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                    Text="{Binding ProgressMessage}" />
-            </StackPanel>
-        </DockPanel>
+                    <ui:Button
+                        Grid.Column="2"
+                        MinWidth="96"
+                        Margin="0,20,0,0"
+                        VerticalAlignment="Top"
+                        Command="{Binding BrowseRootCommand}"
+                        Content="위치 변경"
+                        Icon="{ui:SymbolIcon Symbol=FolderOpen20}" />
+                </Grid>
+
+                <Grid Grid.Row="1" Margin="0,12,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
+                        <ui:ProgressRing
+                            Width="20"
+                            Height="20"
+                            Margin="0,0,8,0"
+                            IsIndeterminate="True"
+                            Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                        <TextBlock
+                            VerticalAlignment="Center"
+                            AutomationProperties.LiveSetting="Polite"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                            Text="{Binding ProgressMessage}"
+                            TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+
+                    <ui:Button
+                        Grid.Column="1"
+                        MinWidth="120"
+                        Margin="8,0,0,0"
+                        Command="{Binding ScanCommand}"
+                        Content="인덱스 새로 고침"
+                        Icon="{ui:SymbolIcon Symbol=ArrowSync20}" />
+                    <ui:Button
+                        Grid.Column="2"
+                        MinWidth="96"
+                        Margin="8,0,0,0"
+                        Appearance="Primary"
+                        Command="{Binding LoadCommand}"
+                        Content="불러오기"
+                        Icon="{ui:SymbolIcon Symbol=ArrowDownload16}" />
+                    <ui:Button
+                        Grid.Column="3"
+                        MinWidth="72"
+                        Margin="8,0,0,0"
+                        Appearance="Caution"
+                        Command="{Binding CancelCommand}"
+                        Content="취소" />
+                    <ui:Button
+                        Grid.Column="4"
+                        MinWidth="112"
+                        Margin="8,0,0,0"
+                        Command="{Binding OpenSelectedCommand}"
+                        Content="선택 폴더 열기"
+                        Icon="{ui:SymbolIcon Symbol=FolderOpen20}" />
+                </Grid>
+
+                <Expander
+                    Grid.Row="2"
+                    Margin="0,12,0,0"
+                    Header="고급: 인덱스 데이터베이스">
+                    <Grid Margin="0,8,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <ui:TextBox
+                            AutomationProperties.Name="인덱스 데이터베이스 경로"
+                            ClearButtonEnabled="True"
+                            PlaceholderText="인덱스 데이터베이스 경로"
+                            Text="{Binding DatabasePath, UpdateSourceTrigger=PropertyChanged}" />
+                        <ui:Button
+                            Grid.Column="1"
+                            MinWidth="96"
+                            Margin="8,0,0,0"
+                            Command="{Binding BrowseDatabaseCommand}"
+                            Content="찾아보기" />
+                    </Grid>
+                </Expander>
+
+                <Border
+                    Grid.Row="3"
+                    Margin="0,12,0,0"
+                    Padding="12,8"
+                    Background="{DynamicResource ControlFillColorSecondaryBrush}"
+                    CornerRadius="6">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock FontWeight="SemiBold" Text="{Binding StatusTitle}" />
+                        <TextBlock
+                            Grid.Column="1"
+                            Margin="12,0,0,0"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                            Text="{Binding StatusMessage}"
+                            TextTrimming="CharacterEllipsis" />
+                    </Grid>
+                </Border>
+            </Grid>
+        </Border>
 
         <ui:InfoBar
             Grid.Row="2"
-            Margin="0,0,0,12"
-            IsClosable="False"
-            IsOpen="{Binding IsStatusOpen}"
+            Margin="0,0,0,16"
             Message="{Binding StatusMessage}"
             Severity="{Binding StatusSeverity}"
+            Style="{StaticResource ActionableInfoBarStyle}"
             Title="{Binding StatusTitle}" />
 
-        <Grid
-            Grid.Row="3"
-            Margin="0,0,0,12"
-            Visibility="{Binding HasLoadedItems, Converter={StaticResource BooleanToVisibilityConverter}}">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
+        <Grid Grid.Row="3">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
 
-            <TextBlock
-                VerticalAlignment="Center"
-                Text="결과 필터" />
+            <Border
+                Grid.Row="0"
+                Margin="0,0,0,8"
+                Padding="12,8"
+                Style="{StaticResource FluentToolbarSurfaceStyle}"
+                Visibility="{Binding HasLoadedItems, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock
+                        VerticalAlignment="Center"
+                        FontWeight="SemiBold"
+                        Text="구조화 결과" />
+                    <TextBlock
+                        Grid.Column="1"
+                        MinWidth="120"
+                        VerticalAlignment="Center"
+                        AutomationProperties.LiveSetting="Polite"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                        Text="{Binding FilterSummary}"
+                        TextAlignment="Right" />
+                </Grid>
+            </Border>
+
             <ui:TextBox
-                Grid.Column="1"
-                MinWidth="280"
-                Margin="12,0"
+                Grid.Row="1"
+                Margin="0,0,0,8"
                 AutomationProperties.Name="모든 결과 컬럼 필터"
                 ClearButtonEnabled="True"
+                Icon="{ui:SymbolIcon Symbol=Search12}"
                 PlaceholderText="모든 컬럼과 폴더 경로에서 검색"
-                Text="{Binding FilterText, UpdateSourceTrigger=PropertyChanged, Delay=200}" />
-            <TextBlock
-                Grid.Column="2"
-                MinWidth="110"
-                VerticalAlignment="Center"
-                AutomationProperties.LiveSetting="Polite"
-                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                Text="{Binding FilterSummary}"
-                TextAlignment="Right" />
-        </Grid>
+                Text="{Binding FilterText, UpdateSourceTrigger=PropertyChanged, Delay=200}"
+                Visibility="{Binding HasLoadedItems, Converter={StaticResource BooleanToVisibilityConverter}}" />
 
-        <DataGrid
-            x:Name="ResultsGrid"
-            Grid.Row="4"
-            behaviors:DynamicProfileGrid.Fields="{Binding Fields}"
-            behaviors:DynamicProfileGrid.ProfileId="{Binding SelectedProfile.Id}"
-            AutoGenerateColumns="False"
-            CanUserAddRows="False"
-            EnableColumnVirtualization="True"
-            EnableRowVirtualization="True"
-            IsReadOnly="True"
-            ItemsSource="{Binding Items}"
-            MouseDoubleClick="OnResultsGridMouseDoubleClick"
-            SelectedItem="{Binding SelectedItem}"
-            SelectionMode="Single"
-            SelectionUnit="FullRow" />
+            <DataGrid
+                x:Name="ResultsGrid"
+                Grid.Row="2"
+                behaviors:DynamicProfileGrid.Fields="{Binding Fields}"
+                behaviors:DynamicProfileGrid.ProfileId="{Binding SelectedProfile.Id}"
+                AutoGenerateColumns="False"
+                CanUserAddRows="False"
+                EnableColumnVirtualization="True"
+                EnableRowVirtualization="True"
+                IsReadOnly="True"
+                ItemsSource="{Binding Items}"
+                MouseDoubleClick="OnResultsGridMouseDoubleClick"
+                SelectedItem="{Binding SelectedItem}"
+                SelectionMode="Single"
+                SelectionUnit="FullRow"
+                Style="{StaticResource FluentDataGridStyle}"
+                Visibility="{Binding HasLoadedItems, Converter={StaticResource BooleanToVisibilityConverter}}" />
+
+            <Border Grid.RowSpan="3" Padding="24">
+                <Border.Style>
+                    <Style BasedOn="{StaticResource FluentEmptyStateStyle}" TargetType="Border">
+                        <Setter Property="Visibility" Value="Visible" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding HasLoadedItems}" Value="True">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <ui:SymbolIcon
+                        Margin="0,0,0,12"
+                        FontSize="32"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                        Symbol="TableSearch28" />
+                    <TextBlock
+                        HorizontalAlignment="Center"
+                        FontSize="20"
+                        FontWeight="SemiBold"
+                        Text="아직 불러온 구조화 결과가 없습니다" />
+                    <TextBlock
+                        MaxWidth="520"
+                        Margin="0,8,0,0"
+                        HorizontalAlignment="Center"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                        Text="검색 위치와 프로필을 선택한 뒤 불러오세요. 인덱스가 없다면 먼저 인덱스를 새로 고칩니다."
+                        TextAlignment="Center"
+                        TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+        </Grid>
     </Grid>
 </Page>

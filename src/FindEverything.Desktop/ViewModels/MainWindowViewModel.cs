@@ -9,15 +9,22 @@ public sealed class MainWindowViewModel
     public IReadOnlyList<object> MenuItems { get; } =
     [
         new NavigationViewItem(
-            "카탈로그",
-            SymbolRegular.Home24,
+            "파일 찾기",
+            SymbolRegular.Search24,
+            typeof(Views.Pages.FilesPage))
+        {
+            NavigationCacheMode = NavigationCacheMode.Required,
+        },
+        new NavigationViewItem(
+            "구조화 보기",
+            SymbolRegular.TableSimple24,
             typeof(Views.Pages.CatalogPage))
         {
             NavigationCacheMode = NavigationCacheMode.Required,
         },
         new NavigationViewItem(
             "프로필",
-            SymbolRegular.List24,
+            SymbolRegular.DocumentEdit24,
             typeof(Views.Pages.ProfilesPage))
         {
             NavigationCacheMode = NavigationCacheMode.Required,

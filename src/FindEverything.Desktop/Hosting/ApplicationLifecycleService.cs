@@ -76,6 +76,7 @@ public sealed class ApplicationLifecycleService(
             // WPF views must be constructed on the Dispatcher. Resolve every
             // top-level graph before showing the shell so navigation cannot reveal
             // a late DI failure.
+            _ = serviceProvider.GetRequiredService<FilesPage>();
             _ = serviceProvider.GetRequiredService<CatalogPage>();
             _ = serviceProvider.GetRequiredService<ProfilesPage>();
             _ = serviceProvider.GetRequiredService<SettingsPage>();
@@ -85,7 +86,7 @@ public sealed class ApplicationLifecycleService(
             void NavigateWhenLoaded(object? sender, System.Windows.RoutedEventArgs args)
             {
                 mainWindow.Loaded -= NavigateWhenLoaded;
-                _ = navigationService.Navigate(typeof(CatalogPage));
+                _ = navigationService.Navigate(typeof(FilesPage));
             }
 
             mainWindow.Loaded += NavigateWhenLoaded;

@@ -9,7 +9,7 @@ public interface IIndexSessionFactory
 }
 
 /// <summary>
-/// Provides engine-independent indexing and directory search operations.
+/// Provides engine-independent indexing, metadata search, and root status operations.
 /// </summary>
 public interface IIndexSession : IAsyncDisposable
 {
@@ -22,6 +22,14 @@ public interface IIndexSession : IAsyncDisposable
 
     Task<DirectorySearchResult> SearchDirectoriesAsync(
         DirectorySearchRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<EntrySearchResult> SearchEntriesAsync(
+        EntrySearchRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<IndexRootStatus> GetRootStatusAsync(
+        string rootPath,
         CancellationToken cancellationToken = default);
 }
 
@@ -154,4 +162,97 @@ public sealed record IndexedDirectory(
 
 public sealed record DirectorySearchResult(
     IReadOnlyList<IndexedDirectory> Directories,
+    bool HasPendingScopes);
+
+public enum IndexedPathKind
+{
+    File,
+    Directory
+}
+
+public enum EntrySortField
+{
+    Name,
+    Path,
+    Kind,
+    Size,
+    Created,
+    Modified
+}
+
+public enum EntrySortDirection
+{
+    Ascending,
+    Descending
+}
+
+/// <summary>
+/// Describes one server-side page of indexed file-system metadata to retrieve.
+/// Date lower bounds are inclusive and upper bounds are exclusive.
+/// </summary>
+public sealed record EntrySearchRequest(string RootPath)
+{
+    /// <summary>
+    /// Case-insensitive, whitespace-delimited literal terms; every term must occur in the name or full path.
+    /// </summary>
+    public string? Keyword { get; init; }
+
+    public IndexedPathKind? Kind { get; init; }
+
+    public long? MinSizeBytes { get; init; }
+
+    public long? MaxSizeBytes { get; init; }
+
+    public DateTimeOffset? CreatedFromUtc { get; init; }
+
+    public DateTimeOffset? CreatedBeforeUtc { get; init; }
+
+    public DateTimeOffset? ModifiedFromUtc { get; init; }
+
+    public DateTimeOffset? ModifiedBeforeUtc { get; init; }
+
+    public EntrySortField SortBy { get; init; } = EntrySortField.Name;
+
+    public EntrySortDirection SortDirection { get; init; } = EntrySortDirection.Ascending;
+
+    public int Limit { get; init; } = 250;
+
+    public int Offset { get; init; }
+}
+
+public sealed record IndexedPathEntry(
+    string FullPath,
+    string Name,
+    string ParentPath,
+    IndexedPathKind Kind,
+    long? SizeBytes,
+    DateTimeOffset CreatedUtc,
+    DateTimeOffset ModifiedUtc,
+    bool CoveragePending);
+
+public sealed record EntrySearchResult(
+    IReadOnlyList<IndexedPathEntry> Entries,
+    long TotalCount,
+    bool HasMore,
+    bool HasPendingScopes);
+
+public enum IndexRootAvailability
+{
+    DatabaseMissing,
+    RootNotIndexed,
+    Available
+}
+
+/// <summary>
+/// Reports whether an index exists for a root and, when available, its last published scan.
+/// </summary>
+public sealed record IndexRootStatus(
+    string RootPath,
+    IndexRootAvailability Availability,
+    Guid? LastScanId,
+    string? LastScopePath,
+    IndexScanStatus? LastStatus,
+    DateTimeOffset? LastPublishedUtc,
+    long EntryCount,
+    long LastErrorCount,
     bool HasPendingScopes);

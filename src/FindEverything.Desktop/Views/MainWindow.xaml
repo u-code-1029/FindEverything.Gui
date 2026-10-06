@@ -6,8 +6,8 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
     Title="{Binding ApplicationTitle}"
-    Width="1280"
-    Height="800"
+    Width="1360"
+    Height="860"
     MinWidth="960"
     MinHeight="640"
     ExtendsContentIntoTitleBar="True"
@@ -19,24 +19,18 @@
     <Grid>
         <ui:NavigationView
             x:Name="RootNavigation"
-            Padding="24,0,24,0"
-            BreadcrumbBar="{Binding ElementName=BreadcrumbBar}"
+            Padding="0"
             FooterMenuItemsSource="{Binding FooterMenuItems}"
             FrameMargin="0"
-            IsBackButtonVisible="Auto"
+            IsBackButtonVisible="Collapsed"
             IsFooterSeparatorVisible="True"
             IsPaneToggleVisible="True"
             IsTopSeparatorVisible="False"
             MenuItemsSource="{Binding MenuItems}"
-            OpenPaneLength="240"
+            OpenPaneLength="220"
             PaneDisplayMode="Left"
             TitleBar="{Binding ElementName=AppTitleBar}"
             Transition="FadeInWithSlide">
-            <ui:NavigationView.Header>
-                <ui:BreadcrumbBar
-                    x:Name="BreadcrumbBar"
-                    Margin="32,24,32,16" />
-            </ui:NavigationView.Header>
             <ui:NavigationView.ContentOverlay>
                 <Grid>
                     <ui:SnackbarPresenter x:Name="SnackbarPresenter" />

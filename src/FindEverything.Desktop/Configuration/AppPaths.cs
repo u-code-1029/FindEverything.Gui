@@ -8,6 +8,8 @@ public sealed record AppPaths(
 
     public string UserProfilesDirectory => Path.Combine(LocalDataDirectory, "Profiles");
 
+    public string IndexDatabaseFile => Path.Combine(LocalDataDirectory, "Indexes", "metadata.db");
+
     public static AppPaths Create()
     {
         var localApplicationData = Environment.GetFolderPath(

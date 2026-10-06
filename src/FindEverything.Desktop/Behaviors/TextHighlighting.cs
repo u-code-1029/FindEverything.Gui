@@ -20,7 +20,7 @@ public static class TextHighlighting
         typeof(TextHighlighting),
         new FrameworkPropertyMetadata(string.Empty, OnTextChanged));
 
-    private static readonly Brush MatchBackground = CreateMatchBackground();
+    private static readonly Brush FallbackMatchBackground = CreateMatchBackground();
 
     public static void SetDisplayText(DependencyObject element, string? value) =>
         element.SetValue(DisplayTextProperty, value);
@@ -47,46 +47,56 @@ public static class TextHighlighting
     private static void RebuildInlines(TextBlock textBlock)
     {
         var source = GetDisplayText(textBlock) ?? string.Empty;
-        var term = TextFilter.Normalize(GetHighlightText(textBlock));
+        var terms = TextFilter.Terms(GetHighlightText(textBlock));
         textBlock.Inlines.Clear();
 
-        if (term.Length == 0)
+        if (terms.Count == 0 || source.Length == 0)
         {
             textBlock.Inlines.Add(new Run(source));
             return;
         }
 
+        var matches = new bool[source.Length];
+        foreach (var term in terms)
+        {
+            var searchFrom = 0;
+            while (searchFrom < source.Length)
+            {
+                var matchIndex = source.IndexOf(term, searchFrom, StringComparison.OrdinalIgnoreCase);
+                if (matchIndex < 0)
+                {
+                    break;
+                }
+
+                Array.Fill(matches, true, matchIndex, term.Length);
+                searchFrom = matchIndex + term.Length;
+            }
+        }
+
         var position = 0;
         while (position < source.Length)
         {
-            var matchIndex = source.IndexOf(term, position, StringComparison.OrdinalIgnoreCase);
-            if (matchIndex < 0)
+            var highlighted = matches[position];
+            var end = position + 1;
+            while (end < source.Length && matches[end] == highlighted)
             {
-                textBlock.Inlines.Add(new Run(source[position..]));
-                break;
+                end++;
             }
 
-            if (matchIndex > position)
+            var run = new Run(source[position..end]);
+            if (highlighted)
             {
-                textBlock.Inlines.Add(new Run(source[position..matchIndex]));
-            }
-
-            var matchingRun = new Run(source.Substring(matchIndex, term.Length))
-            {
-                Background = SystemParameters.HighContrast
+                run.Background = SystemParameters.HighContrast
                     ? SystemColors.HighlightBrush
-                    : MatchBackground,
-                Foreground = SystemParameters.HighContrast
+                    : textBlock.TryFindResource("SystemFillColorCautionBackgroundBrush") as Brush
+                        ?? FallbackMatchBackground;
+                run.Foreground = SystemParameters.HighContrast
                     ? SystemColors.HighlightTextBrush
-                    : Brushes.Black,
-            };
-            textBlock.Inlines.Add(matchingRun);
-            position = matchIndex + term.Length;
-        }
+                    : Brushes.Black;
+            }
 
-        if (source.Length == 0)
-        {
-            textBlock.Inlines.Add(new Run());
+            textBlock.Inlines.Add(run);
+            position = end;
         }
     }
 

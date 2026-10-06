@@ -1,0 +1,433 @@
+<Page
+    x:Class="FindEverything.Desktop.Views.Pages.FilesPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:behaviors="clr-namespace:FindEverything.Desktop.Behaviors"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+    Title="파일 찾기"
+    Background="Transparent"
+    Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+    PreviewKeyDown="OnPagePreviewKeyDown"
+    mc:Ignorable="d">
+    <Grid Margin="{StaticResource PagePadding}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="0,20,0,20">
+            <TextBlock
+                AutomationProperties.HeadingLevel="Level1"
+                Style="{StaticResource PageTitleTextStyle}"
+                Text="파일 찾기" />
+            <TextBlock
+                Margin="0,4,0,0"
+                Style="{StaticResource PageSubtitleTextStyle}"
+                Text="선택한 위치를 색인해 파일과 폴더를 이름, 경로, 크기와 날짜로 빠르게 찾습니다." />
+        </StackPanel>
+
+        <Border Grid.Row="1" Margin="{StaticResource SectionMargin}" Style="{StaticResource FluentToolbarSurfaceStyle}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <ui:SymbolIcon
+                    Width="24"
+                    Height="24"
+                    Margin="4,0,12,0"
+                    VerticalAlignment="Center"
+                    Symbol="FolderOpen24" />
+
+                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                    <TextBlock
+                        FontWeight="SemiBold"
+                        Text="{Binding IndexStatusTitle}"
+                        TextTrimming="CharacterEllipsis" />
+                    <TextBlock
+                        Margin="0,2,0,0"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                        Text="{Binding RootPath, TargetNullValue=검색 위치가 선택되지 않았습니다.}"
+                        TextTrimming="CharacterEllipsis"
+                        ToolTip="{Binding RootPath}" />
+                    <TextBlock
+                        Margin="0,2,0,0"
+                        Style="{StaticResource CaptionTextStyle}"
+                        Text="{Binding IndexStatusDetail}" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="2" VerticalAlignment="Center" Orientation="Horizontal">
+                    <ui:Button
+                        MinWidth="104"
+                        Margin="0,0,8,0"
+                        AutomationProperties.Name="검색 위치 변경"
+                        Command="{Binding BrowseRootCommand}"
+                        Content="위치 변경"
+                        Icon="{ui:SymbolIcon Symbol=FolderOpen20}" />
+                    <ui:Button
+                        MinWidth="112"
+                        Margin="0,0,8,0"
+                        AutomationProperties.Name="인덱스 데이터베이스 위치 변경"
+                        Command="{Binding BrowseDatabaseCommand}"
+                        Content="인덱스 위치"
+                        Icon="{ui:SymbolIcon Symbol=DatabaseSearch20}"
+                        ToolTip="검색 범위 밖의 로컬 디스크에 인덱스 DB를 저장합니다." />
+                    <ui:Button
+                        MinWidth="144"
+                        Appearance="Secondary"
+                        AutomationProperties.Name="인덱스 새로 고침"
+                        Command="{Binding RefreshIndexCommand}"
+                        Content="인덱스 새로 고침"
+                        Icon="{ui:SymbolIcon Symbol=ArrowSync20}" />
+                    <ui:Button
+                        MinWidth="72"
+                        Margin="8,0,0,0"
+                        Appearance="Caution"
+                        Command="{Binding CancelCommand}"
+                        Content="취소" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <ui:InfoBar
+            Grid.Row="2"
+            Margin="{StaticResource SectionMargin}"
+            IsClosable="True"
+            IsOpen="{Binding IsStatusOpen, Mode=TwoWay}"
+            Message="{Binding StatusMessage}"
+            Severity="{Binding StatusSeverity}"
+            Title="{Binding StatusTitle}" />
+
+        <Grid Grid.Row="3" Margin="0,0,0,12" IsEnabled="{Binding CanSearch}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <ui:TextBox
+                x:Name="SearchBox"
+                Style="{StaticResource FluentSearchBoxStyle}"
+                AutomationProperties.Name="파일명 또는 경로 검색"
+                ClearButtonEnabled="True"
+                Icon="{ui:SymbolIcon Symbol=Search24}"
+                PlaceholderText="파일명 또는 경로 검색  (Ctrl+F)"
+                Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" />
+
+            <ComboBox
+                Grid.Column="1"
+                MinWidth="92"
+                Margin="8,0,0,0"
+                AutomationProperties.Name="항목 종류"
+                DisplayMemberPath="DisplayName"
+                ItemsSource="{Binding KindChoices}"
+                SelectedItem="{Binding SelectedKind}" />
+
+            <ToggleButton
+                x:Name="FilterButton"
+                Grid.Column="2"
+                MinWidth="88"
+                Margin="8,0,0,0"
+                AutomationProperties.Name="검색 필터"
+                Content="필터"
+                IsChecked="{Binding IsFilterOpen, Mode=TwoWay}" />
+
+            <ComboBox
+                Grid.Column="3"
+                MinWidth="112"
+                Margin="8,0,0,0"
+                AutomationProperties.Name="정렬 기준"
+                DisplayMemberPath="DisplayName"
+                ItemsSource="{Binding SortChoices}"
+                SelectedItem="{Binding SelectedSort}" />
+
+            <ui:Button
+                Grid.Column="4"
+                MinWidth="96"
+                Margin="8,0,0,0"
+                AutomationProperties.Name="정렬 방향 전환"
+                Command="{Binding ToggleSortDirectionCommand}"
+                Content="{Binding SortDirectionText}"
+                Icon="{ui:SymbolIcon Symbol=ArrowSort20}" />
+
+            <Popup
+                x:Name="FilterPopup"
+                AllowsTransparency="True"
+                IsOpen="{Binding IsFilterOpen, Mode=TwoWay}"
+                Placement="Bottom"
+                PlacementTarget="{Binding ElementName=FilterButton}"
+                StaysOpen="False">
+                <Border
+                    Width="460"
+                    Margin="0,8,0,0"
+                    DataContext="{Binding DataContext, ElementName=FilterButton}"
+                    Style="{StaticResource FluentSurfaceStyle}">
+                    <ScrollViewer MaxHeight="560" VerticalScrollBarVisibility="Auto">
+                        <StackPanel>
+                            <DockPanel Margin="0,0,0,16">
+                                <TextBlock
+                                    DockPanel.Dock="Left"
+                                    Style="{StaticResource SectionTitleTextStyle}"
+                                    Text="검색 필터" />
+                                <ui:Button
+                                    HorizontalAlignment="Right"
+                                    Command="{Binding ClearFiltersCommand}"
+                                    Content="모두 지우기" />
+                            </DockPanel>
+
+                            <TextBlock FontWeight="SemiBold" Text="파일 크기" />
+                            <TextBlock
+                                Margin="0,2,0,8"
+                                Style="{StaticResource CaptionTextStyle}"
+                                Text="크기 필터는 파일에만 적용되며 폴더는 결과에서 제외됩니다." />
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="16" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="최소" />
+                                    <Slider
+                                        Margin="0,6,0,0"
+                                        AutomationProperties.Name="최소 파일 크기"
+                                        IsSnapToTickEnabled="True"
+                                        Maximum="10"
+                                        Minimum="0"
+                                        TickFrequency="1"
+                                        Value="{Binding MinimumSizeStep}" />
+                                    <TextBlock Margin="0,4,0,0" Style="{StaticResource CaptionTextStyle}" Text="{Binding MinimumSizeText}" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="2">
+                                    <TextBlock Text="최대" />
+                                    <Slider
+                                        Margin="0,6,0,0"
+                                        AutomationProperties.Name="최대 파일 크기"
+                                        IsSnapToTickEnabled="True"
+                                        Maximum="11"
+                                        Minimum="1"
+                                        TickFrequency="1"
+                                        Value="{Binding MaximumSizeStep}" />
+                                    <TextBlock Margin="0,4,0,0" Style="{StaticResource CaptionTextStyle}" Text="{Binding MaximumSizeText}" />
+                                </StackPanel>
+                            </Grid>
+
+                            <Separator Margin="0,16" />
+                            <TextBlock FontWeight="SemiBold" Text="생성일" />
+                            <ComboBox
+                                Margin="0,8,0,0"
+                                AutomationProperties.Name="생성일 필터"
+                                DisplayMemberPath="DisplayName"
+                                ItemsSource="{Binding DateFilterChoices}"
+                                SelectedItem="{Binding SelectedCreatedDateFilter}" />
+                            <Grid Margin="0,8,0,0" Visibility="{Binding IsCreatedCustomRange, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="12" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <DatePicker AutomationProperties.Name="생성일 시작 날짜" SelectedDate="{Binding CreatedFromDate}" />
+                                <DatePicker Grid.Column="2" AutomationProperties.Name="생성일 종료 날짜" SelectedDate="{Binding CreatedToDate}" />
+                            </Grid>
+
+                            <TextBlock Margin="0,16,0,0" FontWeight="SemiBold" Text="수정일" />
+                            <ComboBox
+                                Margin="0,8,0,0"
+                                AutomationProperties.Name="수정일 필터"
+                                DisplayMemberPath="DisplayName"
+                                ItemsSource="{Binding DateFilterChoices}"
+                                SelectedItem="{Binding SelectedModifiedDateFilter}" />
+                            <Grid Margin="0,8,0,0" Visibility="{Binding IsModifiedCustomRange, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="12" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <DatePicker AutomationProperties.Name="수정일 시작 날짜" SelectedDate="{Binding ModifiedFromDate}" />
+                                <DatePicker Grid.Column="2" AutomationProperties.Name="수정일 종료 날짜" SelectedDate="{Binding ModifiedToDate}" />
+                            </Grid>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Border>
+            </Popup>
+        </Grid>
+
+        <Grid Grid.Row="4">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <DockPanel Margin="0,0,0,8" Visibility="{Binding HasIndex, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <TextBlock
+                    AutomationProperties.LiveSetting="Polite"
+                    DockPanel.Dock="Left"
+                    FontWeight="SemiBold"
+                    Text="{Binding ResultSummary}" />
+                <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
+                    <ui:ProgressRing
+                        Width="18"
+                        Height="18"
+                        Margin="0,0,8,0"
+                        IsIndeterminate="True"
+                        Visibility="{Binding IsSearching, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <TextBlock
+                        VerticalAlignment="Center"
+                        Style="{StaticResource CaptionTextStyle}"
+                        Text="{Binding ProgressMessage}" />
+                </StackPanel>
+            </DockPanel>
+
+            <DataGrid
+                x:Name="ResultsGrid"
+                Grid.Row="1"
+                Style="{StaticResource FluentDataGridStyle}"
+                AutomationProperties.Name="파일 검색 결과"
+                IsEnabled="{Binding CanSearch}"
+                ItemsSource="{Binding Items}"
+                MouseDoubleClick="OnResultsGridMouseDoubleClick"
+                ScrollViewer.ScrollChanged="OnResultsGridScrollChanged"
+                SelectedItem="{Binding SelectedItem}"
+                Sorting="OnResultsGridSorting"
+                Visibility="{Binding HasIndex, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <DataGrid.ContextMenu>
+                    <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                        <MenuItem Command="{Binding OpenSelectedCommand}" Header="열기" />
+                        <MenuItem Command="{Binding ShowSelectedInFolderCommand}" Header="탐색기에서 위치 열기" />
+                        <Separator />
+                        <MenuItem Command="{Binding CopySelectedPathCommand}" Header="경로 복사" />
+                    </ContextMenu>
+                </DataGrid.ContextMenu>
+                <DataGrid.Columns>
+                    <DataGridTemplateColumn Width="220" Header="이름" SortMemberPath="Name">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock
+                                    Margin="8,0"
+                                    VerticalAlignment="Center"
+                                    behaviors:TextHighlighting.DisplayText="{Binding Name}"
+                                    behaviors:TextHighlighting.HighlightText="{Binding DataContext.SearchText, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                    TextTrimming="CharacterEllipsis"
+                                    ToolTip="{Binding Name}" />
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Width="*" MinWidth="240" Header="경로" SortMemberPath="Path">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock
+                                    Margin="8,0"
+                                    VerticalAlignment="Center"
+                                    behaviors:TextHighlighting.DisplayText="{Binding ParentPath}"
+                                    behaviors:TextHighlighting.HighlightText="{Binding DataContext.SearchText, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                    TextTrimming="CharacterEllipsis"
+                                    ToolTip="{Binding FullPath}" />
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTextColumn Width="120" Binding="{Binding KindText}" Header="종류" SortMemberPath="Kind" />
+                    <DataGridTextColumn Width="110" Binding="{Binding SizeText}" Header="크기" SortMemberPath="Size" />
+                    <DataGridTextColumn Width="150" Binding="{Binding ModifiedLocal, StringFormat={}{0:g}}" Header="수정일" SortMemberPath="Modified" />
+                    <DataGridTextColumn Width="150" Binding="{Binding CreatedLocal, StringFormat={}{0:g}}" Header="생성일" SortMemberPath="Created" />
+                    <DataGridTextColumn Width="90" Binding="{Binding StatusText}" Header="상태" CanUserSort="False" />
+                </DataGrid.Columns>
+            </DataGrid>
+
+            <Border
+                Grid.Row="1"
+                Style="{StaticResource FluentEmptyStateStyle}"
+                Visibility="{Binding IsSetupStateVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <StackPanel MaxWidth="520" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <ui:SymbolIcon
+                        Width="48"
+                        Height="48"
+                        HorizontalAlignment="Center"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                        Symbol="FolderSearch24" />
+                    <TextBlock
+                        Margin="0,16,0,0"
+                        HorizontalAlignment="Center"
+                        Style="{StaticResource SectionTitleTextStyle}"
+                        Text="{Binding IndexStatusTitle}"
+                        TextAlignment="Center" />
+                    <TextBlock
+                        Margin="0,8,0,20"
+                        HorizontalAlignment="Center"
+                        Style="{StaticResource PageSubtitleTextStyle}"
+                        Text="{Binding IndexStatusDetail}"
+                        TextAlignment="Center" />
+                    <ui:Button
+                        MinWidth="160"
+                        HorizontalAlignment="Center"
+                        Appearance="Primary"
+                        Command="{Binding BrowseRootCommand}"
+                        Content="검색 위치 선택"
+                        Icon="{ui:SymbolIcon Symbol=FolderOpen20}"
+                        Visibility="{Binding HasNoRoot, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <ui:Button
+                        MinWidth="160"
+                        HorizontalAlignment="Center"
+                        Command="{Binding BrowseRootCommand}"
+                        Content="다른 위치 선택"
+                        Icon="{ui:SymbolIcon Symbol=FolderOpen20}"
+                        Visibility="{Binding HasRoot, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <ui:Button
+                        MinWidth="160"
+                        Margin="0,8,0,0"
+                        HorizontalAlignment="Center"
+                        Appearance="Primary"
+                        Command="{Binding RefreshIndexCommand}"
+                        Content="인덱스 만들기"
+                        Icon="{ui:SymbolIcon Symbol=ArrowSync20}"
+                        Visibility="{Binding HasRoot, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                </StackPanel>
+            </Border>
+
+            <Border
+                Grid.Row="1"
+                Style="{StaticResource FluentEmptyStateStyle}"
+                Visibility="{Binding IsNoResultsVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <StackPanel MaxWidth="520" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <ui:SymbolIcon
+                        Width="48"
+                        Height="48"
+                        HorizontalAlignment="Center"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                        Symbol="Search48" />
+                    <TextBlock
+                        Margin="0,16,0,0"
+                        HorizontalAlignment="Center"
+                        Style="{StaticResource SectionTitleTextStyle}"
+                        Text="일치하는 항목이 없습니다" />
+                    <TextBlock
+                        Margin="0,8,0,20"
+                        HorizontalAlignment="Center"
+                        Style="{StaticResource PageSubtitleTextStyle}"
+                        Text="검색어를 줄이거나 날짜·크기 필터를 지워 보세요."
+                        TextAlignment="Center" />
+                    <ui:Button Command="{Binding ClearSearchAndFiltersCommand}" Content="검색 및 필터 지우기" />
+                </StackPanel>
+            </Border>
+
+            <ui:Button
+                Grid.Row="2"
+                MinWidth="120"
+                Margin="0,8,0,0"
+                HorizontalAlignment="Center"
+                Command="{Binding LoadMoreCommand}"
+                Content="더 불러오기"
+                Visibility="{Binding HasMore, Converter={StaticResource BooleanToVisibilityConverter}}" />
+        </Grid>
+    </Grid>
+</Page>

@@ -51,6 +51,8 @@ public sealed class CatalogFilteringTests
         Assert.True(item.Matches("[Literal]"));
         Assert.True(item.Matches("완료"));
         Assert.True(item.Matches("—"));
+        Assert.True(item.Matches("Apollo 2026-10-07"));
+        Assert.False(item.Matches("Apollo not-present"));
         Assert.False(item.Matches("not-present"));
     }
 
@@ -100,6 +102,11 @@ public sealed class CatalogFilteringTests
             var runs = textBlock.Inlines.OfType<Run>().ToArray();
             Assert.Equal(source, string.Concat(runs.Select(static run => run.Text)));
             Assert.Equal(2, runs.Count(static run => run.Background is not null));
+
+            TextHighlighting.SetHighlightText(textBlock, "Apollo [x]");
+            runs = textBlock.Inlines.OfType<Run>().ToArray();
+            Assert.Equal(source, string.Concat(runs.Select(static run => run.Text)));
+            Assert.Equal(3, runs.Count(static run => run.Background is not null));
 
             TextHighlighting.SetHighlightText(textBlock, "[");
             runs = textBlock.Inlines.OfType<Run>().ToArray();

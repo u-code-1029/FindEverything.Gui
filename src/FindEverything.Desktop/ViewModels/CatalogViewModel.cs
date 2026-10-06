@@ -3,7 +3,6 @@ using CommunityToolkit.Mvvm.Input;
 using System.Windows.Data;
 using FindEverything.Application.Catalog;
 using FindEverything.Application.Indexing;
-using FindEverything.Application.Options;
 using FindEverything.Desktop.Filtering;
 using FindEverything.Desktop.Services;
 using FindEverything.Profile.Runtime;
@@ -17,10 +16,7 @@ public partial class CatalogViewModel : ObservableObject
 {
     private readonly ICatalogService _catalogService;
     private readonly IProfileCatalog _profileCatalog;
-    private readonly IValidatedSettingsState<WorkspaceOptions> _workspaceSettings;
-    private readonly IValidatedSettingsState<IndexingOptions> _indexingSettings;
-    private readonly IValidatedSettingsState<AppearanceOptions> _appearanceSettings;
-    private readonly IUserSettingsWriter _settingsWriter;
+    private readonly IWorkspaceContext _workspaceContext;
     private readonly IDesktopPickerService _pickerService;
     private readonly IPathLauncher _pathLauncher;
     private readonly IApplicationOperationCoordinator _operationCoordinator;
@@ -79,10 +75,7 @@ public partial class CatalogViewModel : ObservableObject
     public CatalogViewModel(
         ICatalogService catalogService,
         IProfileCatalog profileCatalog,
-        IValidatedSettingsState<WorkspaceOptions> workspaceSettings,
-        IValidatedSettingsState<IndexingOptions> indexingSettings,
-        IValidatedSettingsState<AppearanceOptions> appearanceSettings,
-        IUserSettingsWriter settingsWriter,
+        IWorkspaceContext workspaceContext,
         IDesktopPickerService pickerService,
         IPathLauncher pathLauncher,
         IApplicationOperationCoordinator operationCoordinator,
@@ -91,21 +84,19 @@ public partial class CatalogViewModel : ObservableObject
     {
         _catalogService = catalogService;
         _profileCatalog = profileCatalog;
-        _workspaceSettings = workspaceSettings;
-        _indexingSettings = indexingSettings;
-        _appearanceSettings = appearanceSettings;
-        _settingsWriter = settingsWriter;
+        _workspaceContext = workspaceContext;
         _pickerService = pickerService;
         _pathLauncher = pathLauncher;
         _operationCoordinator = operationCoordinator;
         _snackbarService = snackbarService;
         _logger = logger;
 
-        var workspace = workspaceSettings.Current;
+        var workspace = workspaceContext.Current;
         RootPath = workspace.RootPath;
         DatabasePath = workspace.DatabasePath;
         ApplyProfileSnapshot(profileCatalog.Current, workspace.SelectedProfileId);
         _profileCatalog.Changed += OnProfileCatalogChanged;
+        _workspaceContext.Changed += OnWorkspaceChanged;
 
         if (Profiles.Count == 0)
         {
@@ -156,6 +147,25 @@ public partial class CatalogViewModel : ObservableObject
         {
             _ = dispatcher.BeginInvoke(() =>
                 ApplyChangedProfileSnapshot(eventArgs.Current));
+        }
+    }
+
+    private void OnWorkspaceChanged(object? sender, WorkspaceChangedEventArgs eventArgs)
+    {
+        var dispatcher = System.Windows.Application.Current?.Dispatcher;
+        void Apply()
+        {
+            RootPath = eventArgs.Current.RootPath;
+            DatabasePath = eventArgs.Current.DatabasePath;
+        }
+
+        if (dispatcher is null || dispatcher.CheckAccess())
+        {
+            Apply();
+        }
+        else if (!dispatcher.HasShutdownStarted && !dispatcher.HasShutdownFinished)
+        {
+            _ = dispatcher.BeginInvoke(Apply);
         }
     }
 
@@ -438,27 +448,11 @@ public partial class CatalogViewModel : ObservableObject
         WorkspaceSelection workspace,
         CancellationToken cancellationToken)
     {
-        var indexing = _indexingSettings.Current;
-        var appearance = _appearanceSettings.Current;
-        await _settingsWriter.SaveAsync(
-            new UserSettingsUpdate(
-                new WorkspaceOptions
-                {
-                    SelectedProfileId = workspace.ProfileId,
-                    RootPath = workspace.RootPath,
-                    DatabasePath = workspace.DatabasePath,
-                },
-                new IndexingOptions
-                {
-                    SearchPageSize = indexing.SearchPageSize,
-                    MaxEntriesPerSecond = indexing.MaxEntriesPerSecond,
-                    DirectoryDelayMilliseconds = indexing.DirectoryDelayMilliseconds,
-                },
-                new AppearanceOptions
-                {
-                    Theme = appearance.Theme,
-                    Backdrop = appearance.Backdrop,
-                }),
+        await _workspaceContext.SaveAsync(
+            new WorkspaceSnapshot(
+                workspace.ProfileId,
+                workspace.RootPath,
+                workspace.DatabasePath),
             cancellationToken).ConfigureAwait(false);
     }
 

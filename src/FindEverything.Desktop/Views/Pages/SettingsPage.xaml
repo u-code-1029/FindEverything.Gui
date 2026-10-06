@@ -9,111 +9,182 @@
     Background="Transparent"
     Foreground="{DynamicResource TextFillColorPrimaryBrush}"
     mc:Ignorable="d">
-    <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <Grid Margin="32,0,32,32" MaxWidth="760" HorizontalAlignment="Left">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-            </Grid.RowDefinitions>
+    <Page.Resources>
+        <Style x:Key="FieldLabelStyle" TargetType="TextBlock">
+            <Setter Property="Margin" Value="0,0,0,4" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style x:Key="SettingsSectionStyle" BasedOn="{StaticResource FluentSurfaceStyle}" TargetType="Border">
+            <Setter Property="Margin" Value="0,0,0,16" />
+        </Style>
+        <Style x:Key="ActionableInfoBarStyle" TargetType="ui:InfoBar">
+            <Setter Property="IsOpen" Value="False" />
+            <Setter Property="IsClosable" Value="False" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding StatusSeverity}" Value="{x:Static ui:InfoBarSeverity.Warning}">
+                    <Setter Property="IsOpen" Value="True" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding StatusSeverity}" Value="{x:Static ui:InfoBarSeverity.Error}">
+                    <Setter Property="IsOpen" Value="True" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </Page.Resources>
 
-            <ui:InfoBar
-                Grid.Row="0"
-                Margin="0,0,0,20"
-                IsClosable="False"
-                IsOpen="True"
-                Message="{Binding StatusMessage}"
-                Severity="{Binding StatusSeverity}"
-                Title="사용자 설정" />
+    <Grid Margin="24,0,24,24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
 
-            <GroupBox Grid.Row="1" Header="인덱싱" Padding="20" Margin="0,0,0,16">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="240" />
-                        <ColumnDefinition Width="180" />
-                    </Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
+        <StackPanel Grid.Row="0" Margin="0,20,0,16">
+            <TextBlock AutomationProperties.HeadingLevel="Level1" Style="{StaticResource PageTitleTextStyle}" Text="설정" />
+            <TextBlock
+                Margin="0,4,0,0"
+                Style="{StaticResource PageSubtitleTextStyle}"
+                Text="파일 검색 성능과 앱의 모양을 내 환경에 맞게 조정합니다." />
+        </StackPanel>
 
-                    <TextBlock VerticalAlignment="Center" Text="검색 페이지 크기" />
-                    <TextBox
-                        Grid.Column="1"
-                        Margin="8,4"
-                        Text="{Binding SearchPageSize, UpdateSourceTrigger=PropertyChanged}" />
+        <ui:InfoBar
+            Grid.Row="1"
+            Margin="0,0,0,16"
+            Message="{Binding StatusMessage}"
+            Severity="{Binding StatusSeverity}"
+            Style="{StaticResource ActionableInfoBarStyle}"
+            Title="설정을 확인해 주세요" />
 
-                    <TextBlock Grid.Row="1" VerticalAlignment="Center" Text="초당 최대 항목 수" />
-                    <TextBox
-                        Grid.Row="1"
-                        Grid.Column="1"
-                        Margin="8,4"
-                        Text="{Binding MaxEntriesPerSecond, UpdateSourceTrigger=PropertyChanged}" />
+        <ScrollViewer
+            Grid.Row="2"
+            HorizontalScrollBarVisibility="Disabled"
+            VerticalScrollBarVisibility="Auto">
+            <StackPanel Margin="0,0,8,0" MaxWidth="760" HorizontalAlignment="Left">
+                <Border Style="{StaticResource SettingsSectionStyle}">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="검색과 인덱싱" />
+                        <TextBlock
+                            Margin="0,4,0,16"
+                            Style="{StaticResource PageSubtitleTextStyle}"
+                            Text="큰 디스크를 처리할 때 한 번에 읽는 양과 처리 속도를 조절합니다." />
 
-                    <TextBlock Grid.Row="2" VerticalAlignment="Center" Text="디렉터리 지연 (ms)" />
-                    <TextBox
-                        Grid.Row="2"
-                        Grid.Column="1"
-                        Margin="8,4"
-                        Text="{Binding DirectoryDelayMilliseconds, UpdateSourceTrigger=PropertyChanged}" />
-                </Grid>
-            </GroupBox>
+                        <TextBlock Style="{StaticResource FieldLabelStyle}" Text="검색 페이지 크기" />
+                        <TextBlock Style="{StaticResource CaptionTextStyle}" Text="한 번의 검색 요청에서 읽어 올 최대 항목 수입니다." />
+                        <TextBox
+                            MaxWidth="320"
+                            Margin="0,4,0,12"
+                            HorizontalAlignment="Stretch"
+                            AutomationProperties.Name="검색 페이지 크기"
+                            Text="{Binding SearchPageSize, UpdateSourceTrigger=PropertyChanged}" />
 
-            <GroupBox Grid.Row="2" Header="화면" Padding="20" Margin="0,0,0,16">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="240" />
-                        <ColumnDefinition Width="280" />
-                    </Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
+                        <TextBlock Style="{StaticResource FieldLabelStyle}" Text="초당 최대 항목 수" />
+                        <TextBlock Style="{StaticResource CaptionTextStyle}" Text="인덱싱이 시스템 자원을 너무 많이 사용하지 않도록 처리량을 제한합니다." />
+                        <TextBox
+                            MaxWidth="320"
+                            Margin="0,4,0,12"
+                            HorizontalAlignment="Stretch"
+                            AutomationProperties.Name="초당 최대 항목 수"
+                            Text="{Binding MaxEntriesPerSecond, UpdateSourceTrigger=PropertyChanged}" />
 
-                    <TextBlock VerticalAlignment="Center" Text="테마" />
-                    <ComboBox
-                        Grid.Column="1"
-                        Margin="8,4"
-                        DisplayMemberPath="DisplayName"
-                        ItemsSource="{Binding ThemeChoices}"
-                        SelectedItem="{Binding SelectedTheme}" />
+                        <TextBlock Style="{StaticResource FieldLabelStyle}" Text="디렉터리 지연 (ms)" />
+                        <TextBlock Style="{StaticResource CaptionTextStyle}" Text="각 폴더를 읽는 사이에 적용할 지연 시간입니다." />
+                        <TextBox
+                            MaxWidth="320"
+                            Margin="0,4,0,0"
+                            HorizontalAlignment="Stretch"
+                            AutomationProperties.Name="디렉터리 지연 시간"
+                            Text="{Binding DirectoryDelayMilliseconds, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
+                </Border>
 
-                    <TextBlock Grid.Row="1" VerticalAlignment="Center" Text="창 배경 효과" />
-                    <ComboBox
-                        Grid.Row="1"
-                        Grid.Column="1"
-                        Margin="8,4"
-                        DisplayMemberPath="DisplayName"
-                        ItemsSource="{Binding BackdropChoices}"
-                        SelectedItem="{Binding SelectedBackdrop}" />
-                </Grid>
-            </GroupBox>
+                <Border Style="{StaticResource SettingsSectionStyle}">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="화면" />
+                        <TextBlock
+                            Margin="0,4,0,16"
+                            Style="{StaticResource PageSubtitleTextStyle}"
+                            Text="Windows 설정과 어울리는 테마와 창 배경을 선택합니다." />
 
-            <StackPanel Grid.Row="3" Margin="0,0,0,20">
-                <TextBlock FontWeight="SemiBold" Text="사용자 설정 파일" />
-                <TextBlock
-                    Margin="0,6,0,0"
-                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                    Text="{Binding UserSettingsFile}"
-                    TextWrapping="Wrap" />
+                        <TextBlock Style="{StaticResource FieldLabelStyle}" Text="테마" />
+                        <ComboBox
+                            MaxWidth="360"
+                            Margin="0,4,0,12"
+                            HorizontalAlignment="Stretch"
+                            AutomationProperties.Name="앱 테마"
+                            DisplayMemberPath="DisplayName"
+                            ItemsSource="{Binding ThemeChoices}"
+                            SelectedItem="{Binding SelectedTheme}" />
+
+                        <TextBlock Style="{StaticResource FieldLabelStyle}" Text="창 배경 효과" />
+                        <ComboBox
+                            MaxWidth="360"
+                            Margin="0,4,0,0"
+                            HorizontalAlignment="Stretch"
+                            AutomationProperties.Name="창 배경 효과"
+                            DisplayMemberPath="DisplayName"
+                            ItemsSource="{Binding BackdropChoices}"
+                            SelectedItem="{Binding SelectedBackdrop}" />
+                    </StackPanel>
+                </Border>
+
+                <Expander Margin="0,0,0,16" Header="고급 정보">
+                    <Border Margin="0,8,0,0" Style="{StaticResource FluentSurfaceStyle}">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource FieldLabelStyle}" Text="사용자 설정 파일" />
+                            <TextBlock
+                                Margin="0,4,0,0"
+                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                Text="{Binding UserSettingsFile}"
+                                TextWrapping="Wrap" />
+                            <TextBlock
+                                Margin="0,12,0,0"
+                                Style="{StaticResource CaptionTextStyle}"
+                                Text="검색 위치와 인덱스 데이터베이스 경로는 파일 찾기 또는 구조화 보기에서 관리합니다." />
+                        </StackPanel>
+                    </Border>
+                </Expander>
             </StackPanel>
+        </ScrollViewer>
 
-            <StackPanel Grid.Row="4" Orientation="Horizontal">
-                <ui:Button
-                    MinWidth="96"
-                    Margin="0,0,8,0"
-                    Appearance="Primary"
-                    Command="{Binding SaveCommand}"
-                    Content="저장" />
-                <ui:Button
-                    MinWidth="96"
-                    Appearance="Caution"
-                    Command="{Binding ResetCommand}"
-                    Content="기본값 복원" />
-            </StackPanel>
-        </Grid>
-    </ScrollViewer>
+        <Border
+            Grid.Row="3"
+            Margin="0,12,0,0"
+            Style="{StaticResource FluentToolbarSurfaceStyle}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Margin="0,0,16,0" VerticalAlignment="Center" Orientation="Horizontal">
+                    <ui:ProgressRing
+                        Width="20"
+                        Height="20"
+                        Margin="0,0,8,0"
+                        IsIndeterminate="True"
+                        Visibility="{Binding IsSaving, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <TextBlock
+                        VerticalAlignment="Center"
+                        AutomationProperties.LiveSetting="Polite"
+                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                        Text="{Binding StatusMessage}"
+                        TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <ui:Button
+                        MinWidth="104"
+                        Margin="0,0,8,0"
+                        Appearance="Caution"
+                        Command="{Binding ResetCommand}"
+                        Content="기본값 복원" />
+                    <ui:Button
+                        MinWidth="96"
+                        Appearance="Primary"
+                        Command="{Binding SaveCommand}"
+                        Content="저장"
+                        Icon="{ui:SymbolIcon Symbol=Save16}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
 </Page>

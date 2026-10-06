@@ -54,6 +54,7 @@ public static class DependencyInjection
         services.AddSingleton<IContentDialogService, ContentDialogService>();
 
         services.AddSingleton<IApplicationOperationCoordinator, ApplicationOperationCoordinator>();
+        services.AddSingleton<IWorkspaceContext, WorkspaceContext>();
         services.AddSingleton<IDesktopPickerService, DesktopPickerService>();
         services.AddSingleton<IPathLauncher, ExplorerPathLauncher>();
         services.AddSingleton<IProfileAuthoringService, ProfileAuthoringService>();
@@ -68,6 +69,8 @@ public static class DependencyInjection
 
         services.AddSingleton<MainWindow>();
         services.AddSingleton<MainWindowViewModel>();
+        services.AddSingleton<FilesPage>();
+        services.AddSingleton<FileSearchViewModel>();
         services.AddSingleton<CatalogPage>();
         services.AddSingleton<CatalogViewModel>();
         services.AddSingleton<ProfilesPage>();

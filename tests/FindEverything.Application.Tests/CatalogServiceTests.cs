@@ -56,6 +56,14 @@ public sealed class CatalogServiceTests
             CancellationToken cancellationToken = default) =>
             Task.FromResult(new DirectorySearchResult(directories, HasPendingScopes: false));
 
+        public Task<EntrySearchResult> SearchEntriesAsync(
+            EntrySearchRequest request,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<IndexRootStatus> GetRootStatusAsync(
+            string rootPath,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
