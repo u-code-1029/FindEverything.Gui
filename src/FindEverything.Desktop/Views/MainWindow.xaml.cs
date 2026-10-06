@@ -1,15 +1,15 @@
+using System.Windows;
+using System.Windows.Shell;
 using FindEverything.Application.Options;
 using FindEverything.Desktop.Appearance;
 using FindEverything.Desktop.ViewModels;
 using Wpf.Ui;
+using Wpf.Ui.Controls;
 
 namespace FindEverything.Desktop.Views;
 
 public partial class MainWindow
 {
-    private readonly IAppearanceService _appearanceService;
-    private readonly IValidatedSettingsState<AppearanceOptions> _appearanceSettings;
-
     public MainWindow(
         MainWindowViewModel viewModel,
         INavigationService navigationService,
@@ -18,8 +18,6 @@ public partial class MainWindow
         IAppearanceService appearanceService,
         IValidatedSettingsState<AppearanceOptions> appearanceSettings)
     {
-        _appearanceService = appearanceService;
-        _appearanceSettings = appearanceSettings;
         DataContext = viewModel;
 
         InitializeComponent();
@@ -27,13 +25,37 @@ public partial class MainWindow
         navigationService.SetNavigationControl(RootNavigation);
         snackbarService.SetSnackbarPresenter(SnackbarPresenter);
         contentDialogService.SetDialogHost(DialogHost);
-        Loaded += OnLoaded;
+
+        // Select the final backdrop before Show() creates the HWND. WPF-UI installs
+        // WindowChrome from OnSourceInitialized, so changing None -> Auto after the
+        // window is loaded would replace a live Freezable and can make WindowsBase
+        // reject the old inheritance context.
+        appearanceService.Attach(this);
+        appearanceService.Apply(this, appearanceSettings.Current);
     }
 
-    private void OnLoaded(object sender, System.Windows.RoutedEventArgs e)
+    protected override void SetWindowChrome()
     {
-        Loaded -= OnLoaded;
-        _appearanceService.Attach(this);
-        _appearanceService.Apply(this, _appearanceSettings.Current);
+        var chrome = WindowChrome.GetWindowChrome(this);
+        if (chrome is null)
+        {
+            // Let FluentWindow perform its normal composition check and create the
+            // first instance. Later calls update that same attached Freezable.
+            base.SetWindowChrome();
+            return;
+        }
+
+        // WPF-UI 4.3 normally creates a new WindowChrome on every backdrop change.
+        // Updating the attached instance is supported by WindowChromeWorker and avoids
+        // detaching the same Freezable inheritance context twice in WindowsBase.
+        chrome.CaptionHeight = 0;
+        chrome.CornerRadius = default;
+        chrome.GlassFrameThickness = WindowBackdropType == WindowBackdropType.None
+            ? new Thickness(0.00001)
+            : new Thickness(-1);
+        chrome.ResizeBorderThickness = ResizeMode == ResizeMode.NoResize
+            ? default
+            : new Thickness(4);
+        chrome.UseAeroCaptionButtons = false;
     }
 }

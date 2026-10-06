@@ -1,7 +1,10 @@
 using System.IO;
 using System.Windows;
+using System.Windows.Shell;
 using FindEverything.Application;
+using FindEverything.Application.Options;
 using FindEverything.Desktop;
+using FindEverything.Desktop.Appearance;
 using FindEverything.Desktop.Configuration;
 using FindEverything.Desktop.Views;
 using FindEverything.Desktop.Views.Pages;
@@ -10,6 +13,7 @@ using FindEverything.Profile.Runtime;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Wpf.Ui;
+using Wpf.Ui.Controls;
 using Xunit;
 
 namespace FindEverything.Desktop.Tests;
@@ -46,8 +50,8 @@ public sealed class DesktopCompositionSmokeTests
             var configuration = new ConfigurationManager();
             configuration.AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["Appearance:Theme"] = "Light",
-                ["Appearance:Backdrop"] = "None",
+                ["Appearance:Theme"] = "System",
+                ["Appearance:Backdrop"] = "Auto",
             });
             var services = new ServiceCollection();
             services.AddLogging();
@@ -72,6 +76,25 @@ public sealed class DesktopCompositionSmokeTests
             Assert.NotNull(provider.GetRequiredService<SettingsPage>());
 
             window.Show();
+            var chrome = WindowChrome.GetWindowChrome(window);
+            Assert.NotNull(chrome);
+
+            // FluentWindow used to replace this Freezable whenever the backdrop
+            // changed. Keep the same WindowChrome even on hosts where Auto itself
+            // is not supported, so this exercises the WindowsBase failure path.
+            window.WindowBackdropType = WindowBackdropType.Auto;
+            Assert.Same(chrome, WindowChrome.GetWindowChrome(window));
+            window.WindowBackdropType = WindowBackdropType.None;
+            Assert.Same(chrome, WindowChrome.GetWindowChrome(window));
+
+            var appearance = provider.GetRequiredService<IAppearanceService>();
+            appearance.Apply(
+                window,
+                new AppearanceOptions
+                {
+                    Theme = ThemePreference.Light,
+                    Backdrop = BackdropPreference.None,
+                });
             var navigation = provider.GetRequiredService<INavigationService>();
             Assert.True(navigation.Navigate(typeof(CatalogPage)));
             Assert.True(navigation.Navigate(typeof(ProfilesPage)));
