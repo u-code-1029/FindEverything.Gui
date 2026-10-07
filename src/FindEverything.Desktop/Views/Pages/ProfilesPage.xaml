@@ -20,21 +20,6 @@
             <Setter Property="Margin" Value="0,0,0,16" />
         </Style>
         <Style
-            x:Key="ActionableEditorInfoBarStyle"
-            BasedOn="{StaticResource {x:Type ui:InfoBar}}"
-            TargetType="ui:InfoBar">
-            <Setter Property="IsOpen" Value="False" />
-            <Setter Property="IsClosable" Value="False" />
-            <Style.Triggers>
-                <DataTrigger Binding="{Binding EditorStatusSeverity}" Value="{x:Static ui:InfoBarSeverity.Warning}">
-                    <Setter Property="IsOpen" Value="True" />
-                </DataTrigger>
-                <DataTrigger Binding="{Binding EditorStatusSeverity}" Value="{x:Static ui:InfoBarSeverity.Error}">
-                    <Setter Property="IsOpen" Value="True" />
-                </DataTrigger>
-            </Style.Triggers>
-        </Style>
-        <Style
             x:Key="IconOnlyButtonStyle"
             BasedOn="{StaticResource {x:Type ui:Button}}"
             TargetType="ui:Button">
@@ -447,6 +432,23 @@
                                                                 ItemsSource="{Binding DataContext.DateSourcePresetChoices, RelativeSource={RelativeSource AncestorType={x:Type Page}}}"
                                                                 SelectedValue="{Binding DateSourcePreset, UpdateSourceTrigger=PropertyChanged}"
                                                                 SelectedValuePath="Value" />
+
+                                                            <TextBlock
+                                                                Margin="0,12,0,4"
+                                                                Style="{StaticResource FieldLabelStyle}"
+                                                                Text="경로 속 날짜 모양" />
+                                                            <ComboBox
+                                                                AutomationProperties.HelpText="경로에 표시된 날짜와 같은 예시를 선택합니다. 선택한 형식은 프로필의 날짜 입력 형식으로 저장됩니다."
+                                                                AutomationProperties.Name="날짜 입력 모양"
+                                                                DisplayMemberPath="DisplayName"
+                                                                ItemsSource="{Binding DateFormatChoices}"
+                                                                SelectedValue="{Binding ParseFormat, UpdateSourceTrigger=PropertyChanged}"
+                                                                SelectedValuePath="Format" />
+                                                            <TextBlock
+                                                                Margin="0,4,0,0"
+                                                                Style="{StaticResource CaptionTextStyle}"
+                                                                Text="{Binding DateFormatHelpText}"
+                                                                TextWrapping="Wrap" />
                                                         </StackPanel>
 
                                                         <CheckBox
@@ -552,15 +554,10 @@
                                                         <Expander
                                                             Margin="0,12,0,0"
                                                             HorizontalContentAlignment="Stretch"
-                                                            Header="고급 표시 형식">
+                                                            Header="고급 표시 설정">
                                                             <StackPanel Margin="0,8,0,0">
                                                                 <TextBlock Style="{StaticResource CaptionTextStyle}" Text="이 값의 내부 키" />
                                                                 <TextBlock Margin="0,2,0,12" FontFamily="Consolas" Text="{Binding FieldId}" />
-                                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="입력 형식" />
-                                                                <ui:TextBox
-                                                                    Margin="0,4,0,12"
-                                                                    PlaceholderText="날짜 예: yyyyMMdd"
-                                                                    Text="{Binding ParseFormat, UpdateSourceTrigger=PropertyChanged}" />
                                                                 <TextBlock Style="{StaticResource FieldLabelStyle}" Text="표시 형식" />
                                                                 <ui:TextBox
                                                                     Margin="0,4,0,0"
@@ -816,6 +813,7 @@
                     </ScrollViewer>
 
                     <Border
+                        x:Name="EditorFooter"
                         Grid.Row="1"
                         Margin="8,12,8,8"
                         Style="{StaticResource FluentToolbarSurfaceStyle}">
@@ -823,26 +821,21 @@
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
-                            <ui:InfoBar
-                                Margin="0,0,0,8"
-                                Message="{Binding EditorStatusMessage}"
-                                Severity="{Binding EditorStatusSeverity}"
-                                Style="{StaticResource ActionableEditorInfoBarStyle}"
-                                Title="검증이 필요합니다" />
-                            <Grid Grid.Row="1">
+                            <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <TextBlock
+                                    x:Name="EditorFooterStatusText"
                                     Margin="0,0,16,0"
                                     VerticalAlignment="Center"
                                     AutomationProperties.LiveSetting="Polite"
                                     Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                     Text="{Binding EditorStatusMessage}"
-                                    TextTrimming="CharacterEllipsis" />
+                                    TextTrimming="CharacterEllipsis"
+                                    ToolTip="{Binding EditorStatusMessage}" />
                                 <StackPanel Grid.Column="1" Orientation="Horizontal">
                                     <ui:Button
                                         MinWidth="96"
@@ -859,7 +852,7 @@
                                 </StackPanel>
                             </Grid>
                             <ProgressBar
-                                Grid.Row="2"
+                                Grid.Row="1"
                                 Height="3"
                                 Margin="0,8,0,0"
                                 IsIndeterminate="True"

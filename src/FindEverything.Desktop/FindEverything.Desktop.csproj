@@ -5,6 +5,21 @@
     <UseWPF>true</UseWPF>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained Condition="'$(RuntimeIdentifier)' == ''">false</WindowsAppSDKSelfContained>
+    <WindowsAppSDKSelfContained Condition="'$(RuntimeIdentifier)' != ''">true</WindowsAppSDKSelfContained>
+    <!-- A portable AnyCPU build has no native App SDK payload. Prevent the
+         framework-dependent module initializer from terminating the process on
+         machines without an installed Windows App Runtime; the hosted service
+         will simply report notifications as unavailable. RID publishes bundle
+         the payload and use the self-contained initializer instead. -->
+    <WindowsAppSdkBootstrapInitialize Condition="'$(RuntimeIdentifier)' == ''">false</WindowsAppSdkBootstrapInitialize>
+    <WindowsAppSdkIncludeVersionInfo>true</WindowsAppSdkIncludeVersionInfo>
+    <!-- This is a WPF app and is not published with NativeAOT. Disabling the
+         CsWinRT AOT optimizer avoids treating every MVVM field-backed generated
+         property as a WinRT ABI surface while retaining the normal projections
+         used by Windows App SDK notifications. -->
+    <CsWinRTAotOptimizerEnabled>false</CsWinRTAotOptimizerEnabled>
     <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
     <AssemblyName>FindEverything.Gui</AssemblyName>
     <RootNamespace>FindEverything.Desktop</RootNamespace>
@@ -22,8 +37,23 @@
     <PackageReference Include="CommunityToolkit.Mvvm" />
     <PackageReference Include="Microsoft.Extensions.Hosting" />
     <PackageReference Include="Microsoft.Extensions.Options.DataAnnotations" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.Foundation" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.Runtime" GeneratePathProperty="true" />
     <PackageReference Include="WPF-UI" />
     <PackageReference Include="WPF-UI.DependencyInjection" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(PkgMicrosoft_WindowsAppSDK_Runtime)' != ''">
+    <Content
+      Include="$(PkgMicrosoft_WindowsAppSDK_Runtime)/license.txt"
+      Link="WINDOWS-APP-SDK-LICENSE.txt"
+      CopyToOutputDirectory="PreserveNewest"
+      CopyToPublishDirectory="PreserveNewest" />
+    <Content
+      Include="$(PkgMicrosoft_WindowsAppSDK_Runtime)/NOTICE.txt"
+      Link="WINDOWS-APP-SDK-NOTICES.txt"
+      CopyToOutputDirectory="PreserveNewest"
+      CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <None Update="appsettings.json">

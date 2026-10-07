@@ -120,11 +120,25 @@
                     FontFamily="Cascadia Mono,Consolas"
                     FontSize="13"
                     ItemsSource="{Binding Lines}"
+                    PreviewMouseRightButtonDown="OnTraceListPreviewMouseRightButtonDown"
                     ScrollViewer.CanContentScroll="True"
                     ScrollViewer.HorizontalScrollBarVisibility="Auto"
                     ScrollViewer.VerticalScrollBarVisibility="Auto"
+                    SelectedItem="{Binding SelectedLine, Mode=TwoWay}"
                     VirtualizingPanel.IsVirtualizing="True"
                     VirtualizingPanel.VirtualizationMode="Recycling">
+                    <ListBox.ContextMenu>
+                        <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                            <MenuItem
+                                AutomationProperties.Name="선택한 로그 메시지 전체 복사"
+                                Command="{Binding CopySelectedMessageCommand}"
+                                Header="메시지 전체 복사" />
+                            <MenuItem
+                                AutomationProperties.Name="선택한 로그 경로만 복사"
+                                Command="{Binding CopySelectedPathCommand}"
+                                Header="경로만 복사" />
+                        </ContextMenu>
+                    </ListBox.ContextMenu>
                     <ListBox.ItemContainerStyle>
                         <Style BasedOn="{StaticResource {x:Type ListBoxItem}}" TargetType="ListBoxItem">
                             <Setter Property="HorizontalContentAlignment" Value="Stretch" />

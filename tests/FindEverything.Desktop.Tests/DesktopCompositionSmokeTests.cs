@@ -79,6 +79,7 @@ public sealed class DesktopCompositionSmokeTests
             });
             var services = new ServiceCollection();
             var blockingCatalogService = new BlockingCatalogService();
+            var completionNotifier = new RecordingScanCompletionNotifier();
             services.AddLogging();
             services.AddSingleton<IConfiguration>(configuration);
             services
@@ -91,6 +92,8 @@ public sealed class DesktopCompositionSmokeTests
             services.AddSingleton(blockingCatalogService);
             services.AddSingleton<ICatalogService>(
                 static provider => provider.GetRequiredService<BlockingCatalogService>());
+            services.AddSingleton(completionNotifier);
+            services.AddSingleton<IScanCompletionNotifier>(completionNotifier);
 
             using var provider = services.BuildServiceProvider(new ServiceProviderOptions
             {
@@ -175,15 +178,34 @@ public sealed class DesktopCompositionSmokeTests
             mainWindow.FindName("ScanConsolePanel"));
         var toggleButton = Assert.IsType<Wpf.Ui.Controls.Button>(
             mainWindow.FindName("ScanConsoleToggleButton"));
+        var navigation = Assert.IsType<NavigationView>(mainWindow.FindName("RootNavigation"));
+        var snackbarPresenter = Assert.IsType<SnackbarPresenter>(
+            mainWindow.FindName("SnackbarPresenter"));
         Assert.Equal(Visibility.Collapsed, panel.Visibility);
+        Assert.Equal(0, snackbarPresenter.Margin.Bottom);
+        mainWindow.UpdateLayout();
+        var navigationHeight = navigation.ActualHeight;
 
         panelController.Show();
         mainWindow.Dispatcher.Invoke(static () => { }, DispatcherPriority.Loaded);
+        mainWindow.UpdateLayout();
         Assert.True(viewModel.IsPanelOpen);
         Assert.Equal(Visibility.Visible, panel.Visibility);
+        Assert.Equal(0, navigation.FrameMargin.Bottom);
+        Assert.Equal(308, navigation.Padding.Bottom);
+        Assert.Equal(308, snackbarPresenter.Margin.Bottom);
+        Assert.InRange(Math.Abs(navigationHeight - navigation.ActualHeight), 0d, 1d);
         var traceList = Assert.IsType<ListBox>(panel.FindName("TraceList"));
         Assert.True(VirtualizingPanel.GetIsVirtualizing(traceList));
         Assert.Equal(VirtualizationMode.Recycling, VirtualizingPanel.GetVirtualizationMode(traceList));
+        Assert.Collection(
+            Assert.IsType<System.Windows.Controls.ContextMenu>(traceList.ContextMenu).Items.Cast<object>(),
+            item => Assert.Equal(
+                "메시지 전체 복사",
+                Assert.IsType<System.Windows.Controls.MenuItem>(item).Header),
+            item => Assert.Equal(
+                "경로만 복사",
+                Assert.IsType<System.Windows.Controls.MenuItem>(item).Header));
         Assert.Single(System.Windows.Application.Current.Windows.OfType<MainWindow>());
 
         var operationId = Guid.NewGuid();
@@ -226,6 +248,7 @@ public sealed class DesktopCompositionSmokeTests
         Assert.Equal(2, viewModel.Lines.Count);
         Assert.Contains("[MATCH] [PRUNE]", viewModel.Lines[1].Text, StringComparison.Ordinal);
         Assert.Contains("input=\"C:\\Root\\2026\\0521_Project\"", viewModel.Lines[1].Text, StringComparison.Ordinal);
+        Assert.Equal(@"C:\Root\2026\0521_Project", viewModel.Lines[1].Path);
         Assert.Equal(1, viewModel.VisitedCount);
         Assert.Equal(1, viewModel.MatchedCount);
         Assert.Equal(1, viewModel.PrunedCount);
@@ -234,6 +257,9 @@ public sealed class DesktopCompositionSmokeTests
         mainWindow.Dispatcher.Invoke(static () => { }, DispatcherPriority.Loaded);
         Assert.False(viewModel.IsPanelOpen);
         Assert.Equal(Visibility.Collapsed, panel.Visibility);
+        Assert.Equal(0, navigation.FrameMargin.Bottom);
+        Assert.Equal(0, navigation.Padding.Bottom);
+        Assert.Equal(0, snackbarPresenter.Margin.Bottom);
         Assert.Equal(2, viewModel.Lines.Count);
 
         toggleButton.Command.Execute(null);
@@ -252,6 +278,17 @@ public sealed class DesktopCompositionSmokeTests
         Assert.Equal(Visibility.Visible, badge.Visibility);
         badge.ApplyTemplate();
         Assert.Contains(FindVisualChildren<ProgressRing>(badge), static ring => ring.IsIndeterminate);
+        navigation.IsPaneOpen = false;
+        mainWindow.Dispatcher.Invoke(static () => { }, DispatcherPriority.DataBind);
+        Assert.Equal(40, badge.Width);
+        Assert.Equal(40, badge.Height);
+        var compactRing = Assert.Single(FindVisualChildren<ProgressRing>(badge));
+        Assert.Equal(HorizontalAlignment.Center, compactRing.HorizontalAlignment);
+        Assert.Equal(VerticalAlignment.Center, compactRing.VerticalAlignment);
+        navigation.IsPaneOpen = true;
+        mainWindow.Dispatcher.Invoke(static () => { }, DispatcherPriority.DataBind);
+        Assert.Equal(16, badge.Width);
+        Assert.Equal(16, badge.Height);
         catalog.IsScanning = false;
         mainWindow.Dispatcher.Invoke(static () => { }, DispatcherPriority.DataBind);
         Assert.Equal(Visibility.Collapsed, badge.Visibility);
@@ -281,6 +318,9 @@ public sealed class DesktopCompositionSmokeTests
         scanTask.GetAwaiter().GetResult();
         Assert.False(catalog.IsScanning);
         Assert.Equal(Visibility.Collapsed, badge.Visibility);
+        var notification = Assert.Single(
+            provider.GetRequiredService<RecordingScanCompletionNotifier>().Notices);
+        Assert.Equal("빠른 불러오기 완료", notification.Title);
     }
 
     private static void PumpDispatcherFor(Dispatcher dispatcher, TimeSpan duration)
@@ -355,7 +395,6 @@ public sealed class DesktopCompositionSmokeTests
     {
         foreach (var resourceKey in new[]
                  {
-                     "ActionableEditorInfoBarStyle",
                      "IconOnlyButtonStyle",
                      "GuidedModeChoiceStyle",
                  })
@@ -363,6 +402,10 @@ public sealed class DesktopCompositionSmokeTests
             var style = Assert.IsType<Style>(page.Resources[resourceKey]);
             Assert.NotNull(style.BasedOn);
         }
+
+        var editorFooter = Assert.IsType<Border>(page.FindName("EditorFooter"));
+        Assert.IsType<System.Windows.Controls.TextBlock>(page.FindName("EditorFooterStatusText"));
+        Assert.Empty(FindVisualChildren<Wpf.Ui.Controls.InfoBar>(editorFooter));
 
         var modeButtons = FindVisualChildren<RadioButton>(page)
             .Where(static button =>
@@ -644,6 +687,13 @@ public sealed class DesktopCompositionSmokeTests
 
         public ProfileMapResult Map(ProfilePathCandidate candidate) =>
             ProfileMapResult.NoMatch();
+    }
+
+    private sealed class RecordingScanCompletionNotifier : IScanCompletionNotifier
+    {
+        public List<ScanCompletionNotice> Notices { get; } = [];
+
+        public void Notify(ScanCompletionNotice notice) => Notices.Add(notice);
     }
 
     private sealed record FilterContext(string FilterText);

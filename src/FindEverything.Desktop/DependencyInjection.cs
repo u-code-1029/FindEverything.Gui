@@ -65,6 +65,13 @@ public static class DependencyInjection
         services.AddSingleton<IAppearanceService, AppearanceService>();
         services.AddSingleton<IUserSettingsWriter, AtomicUserSettingsWriter>();
         services.AddSingleton<IGridLayoutStore, GridLayoutStore>();
+        services.AddSingleton<WindowsAppNotificationService>();
+        services.AddSingleton<IWindowsAppNotificationSink>(
+            static provider => provider.GetRequiredService<WindowsAppNotificationService>());
+        services.AddSingleton<ITaskbarAttentionService, WindowsTaskbarAttentionService>();
+        services.AddSingleton<IScanCompletionNotifier, WindowsScanCompletionNotifier>();
+        services.AddHostedService(
+            static provider => provider.GetRequiredService<WindowsAppNotificationService>());
         services.AddSingleton<SettingsReloadDiagnostics>();
         services.AddSingleton<ISettingsReloadDiagnostics>(
             static provider => provider.GetRequiredService<SettingsReloadDiagnostics>());

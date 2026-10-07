@@ -16,6 +16,10 @@
     <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.12" />
     <PackageVersion Include="Microsoft.Extensions.Options.DataAnnotations" Version="10.0.12" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageVersion Include="Microsoft.WindowsAppSDK.Foundation" Version="2.3.12" />
+    <!-- Required transitive pin for the Windows App SDK Runtime 2.5.1 BOM. -->
+    <PackageVersion Include="Microsoft.WindowsAppSDK.InteractiveExperiences" Version="2.1.9" />
+    <PackageVersion Include="Microsoft.WindowsAppSDK.Runtime" Version="2.5.1" />
     <PackageVersion Include="WPF-UI" Version="4.3.0" />
     <PackageVersion Include="WPF-UI.DependencyInjection" Version="4.3.0" />
     <PackageVersion Include="xunit" Version="2.9.3" />

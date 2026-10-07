@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using FindEverything.Profile.Runtime;
 
@@ -16,6 +17,12 @@ public enum GuidedDateSourcePreset
     YearAndMonthDay,
     YearMonthAndDay,
 }
+
+/// <summary>
+/// A beginner-friendly date input choice. The example is what users see in a
+/// path; <see cref="Format"/> is the exact format persisted to the profile.
+/// </summary>
+public sealed record GuidedDateFormatChoice(string Format, string DisplayName);
 
 public enum GuidedSourcePart
 {
@@ -91,6 +98,19 @@ public sealed record GuidedPathAssignmentViewModel(
 /// </summary>
 public partial class ProfileFieldDraftViewModel : ObservableObject
 {
+    private static readonly IReadOnlyList<GuidedDateFormatChoice> CommonDateFormats =
+    [
+        new("yyyyMMdd", "20260521  ·  숫자 8자리"),
+        new("yyyy-MM-dd", "2026-05-21  ·  하이픈(-)"),
+        new("yyyy_MM_dd", "2026_05_21  ·  밑줄(_)"),
+        new("yyyy.MM.dd", "2026.05.21  ·  점(.)"),
+        new("yyyy MM dd", "2026 05 21  ·  공백"),
+        new("yyyy년 MM월 dd일", "2026년 05월 21일  ·  한글"),
+        new("MM-dd-yyyy", "05-21-2026  ·  월-일-연도"),
+        new("dd-MM-yyyy", "21-05-2026  ·  일-월-연도"),
+        new("yyyyMMdd_HHmmss", "20260521_143005  ·  날짜와 시간"),
+    ];
+
     private bool _isInitializing;
 
     [ObservableProperty]
@@ -112,6 +132,7 @@ public partial class ProfileFieldDraftViewModel : ObservableObject
     private bool _required;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DateFormatChoices))]
     private string _parseFormat = string.Empty;
 
     [ObservableProperty]
@@ -151,6 +172,44 @@ public partial class ProfileFieldDraftViewModel : ObservableObject
         IsDateTime && DateSourcePreset == GuidedDateSourcePreset.YearMonthAndDay;
 
     public bool HasGuidedAssignments => GuidedAssignments.Count > 0;
+
+    /// <summary>
+    /// Known formats are described with concrete path examples so guided-mode
+    /// users never need to know the .NET custom date format syntax. If a draft
+    /// came from expert mode with a custom format, keep it selectable without
+    /// rewriting the value.
+    /// </summary>
+    public IReadOnlyList<GuidedDateFormatChoice> DateFormatChoices
+    {
+        get
+        {
+            var choices = DateSourcePreset == GuidedDateSourcePreset.SingleValue
+                ? CommonDateFormats
+                : CommonDateFormats.Take(1).ToArray();
+            var current = ParseFormat?.Trim() ?? string.Empty;
+            if (current.Length == 0
+                || choices.Any(choice =>
+                    string.Equals(choice.Format, current, StringComparison.Ordinal)))
+            {
+                return choices;
+            }
+
+            return
+            [
+                .. choices,
+                new(current, $"현재 사용자 지정 형식 유지  ·  {current}"),
+            ];
+        }
+    }
+
+    public string DateFormatHelpText => DateSourcePreset switch
+    {
+        GuidedDateSourcePreset.YearAndMonthDay =>
+            "선택한 연도와 월일을 붙인 모습과 같은 예시를 고르세요. 예: 2026 + 0521 → 20260521",
+        GuidedDateSourcePreset.YearMonthAndDay =>
+            "선택한 연도, 월, 일을 붙인 모습과 같은 예시를 고르세요. 예: 2026 + 05 + 21 → 20260521",
+        _ => "경로에서 날짜가 보이는 모습과 같은 예시를 고르세요.",
+    };
 
     public bool SupportsGuidedAssignments =>
         TryInferGuidedDateSourcePreset(out _);
@@ -219,11 +278,36 @@ public partial class ProfileFieldDraftViewModel : ObservableObject
 
     partial void OnKindChanged(ProfileFieldValueKind value)
     {
+        if (!_isInitializing)
+        {
+            if (value != ProfileFieldValueKind.DateTime)
+            {
+                // parseFormat is a DateTime-only contract. Do not rebuild capture
+                // groups here: expert-mode composite fields must retain their
+                // explicit group order when the value kind changes.
+                ParseFormat = string.Empty;
+            }
+
+            if (value is ProfileFieldValueKind.String or ProfileFieldValueKind.Boolean)
+            {
+                DisplayFormat = string.Empty;
+            }
+            else if (value is ProfileFieldValueKind.Int32 or ProfileFieldValueKind.Decimal
+                     && DisplayFormat is "yyyy-MM-dd" or "yyyy-MM-dd HH:mm:ss")
+            {
+                // These are the guided editor's automatic date display defaults,
+                // not useful number formats. Preserve every other numeric format.
+                DisplayFormat = string.Empty;
+            }
+        }
+
         OnPropertyChanged(nameof(KindDisplayName));
         OnPropertyChanged(nameof(IsDateTime));
         OnPropertyChanged(nameof(UsesSingleDateSource));
         OnPropertyChanged(nameof(UsesYearAndMonthDay));
         OnPropertyChanged(nameof(UsesYearMonthAndDay));
+        OnPropertyChanged(nameof(DateFormatChoices));
+        OnPropertyChanged(nameof(DateFormatHelpText));
         OnPropertyChanged(nameof(SupportsGuidedAssignments));
     }
 
@@ -239,6 +323,26 @@ public partial class ProfileFieldDraftViewModel : ObservableObject
 
     partial void OnGroupNamesTextChanged(string value) => NotifySourceStateChanged();
 
+    partial void OnParseFormatChanged(string value)
+    {
+        if (_isInitializing || !IsDateTime)
+        {
+            return;
+        }
+
+        if (string.Equals(value, "yyyyMMdd_HHmmss", StringComparison.Ordinal)
+            && (string.IsNullOrWhiteSpace(DisplayFormat)
+                || string.Equals(DisplayFormat, "yyyy-MM-dd", StringComparison.Ordinal)))
+        {
+            DisplayFormat = "yyyy-MM-dd HH:mm:ss";
+        }
+        else if (!string.Equals(value, "yyyyMMdd_HHmmss", StringComparison.Ordinal)
+                 && string.Equals(DisplayFormat, "yyyy-MM-dd HH:mm:ss", StringComparison.Ordinal))
+        {
+            DisplayFormat = "yyyy-MM-dd";
+        }
+    }
+
     partial void OnDateSourcePresetChanged(GuidedDateSourcePreset value)
     {
         if (_isInitializing)
@@ -246,6 +350,8 @@ public partial class ProfileFieldDraftViewModel : ObservableObject
             OnPropertyChanged(nameof(UsesSingleDateSource));
             OnPropertyChanged(nameof(UsesYearAndMonthDay));
             OnPropertyChanged(nameof(UsesYearMonthAndDay));
+            OnPropertyChanged(nameof(DateFormatChoices));
+            OnPropertyChanged(nameof(DateFormatHelpText));
             return;
         }
 
@@ -260,6 +366,8 @@ public partial class ProfileFieldDraftViewModel : ObservableObject
         OnPropertyChanged(nameof(UsesSingleDateSource));
         OnPropertyChanged(nameof(UsesYearAndMonthDay));
         OnPropertyChanged(nameof(UsesYearMonthAndDay));
+        OnPropertyChanged(nameof(DateFormatChoices));
+        OnPropertyChanged(nameof(DateFormatHelpText));
         OnPropertyChanged(nameof(SupportsGuidedAssignments));
         NotifySourceStateChanged();
     }
@@ -308,7 +416,58 @@ public partial class ProfileFieldDraftViewModel : ObservableObject
         }
 
         GuidedAssignments.Add(new GuidedPathAssignmentViewModel(part, groupName, choice));
+        SuggestDateFormatFromAssignments();
         NotifySourceStateChanged();
+    }
+
+    public bool TryValidateGuidedDateSample(out string errorMessage)
+    {
+        errorMessage = string.Empty;
+        if (!IsDateTime || GuidedAssignments.Count == 0)
+        {
+            return true;
+        }
+
+        var requiredParts = RequiredDateSourceParts();
+        var selectedValues = new List<string>(requiredParts.Length);
+        foreach (var requiredPart in requiredParts)
+        {
+            var assignment = GuidedAssignments.FirstOrDefault(candidate => candidate.Part == requiredPart);
+            if (assignment is null)
+            {
+                // The template compiler reports incomplete field connections.
+                return true;
+            }
+
+            selectedValues.Add(assignment.Choice.Value);
+        }
+
+        var sample = string.Concat(selectedValues).Trim();
+        var format = ParseFormat?.Trim() ?? string.Empty;
+        bool isValid;
+        try
+        {
+            isValid = format.Length > 0
+                ? TryParseExactDate(sample, format)
+                : DateTime.TryParse(
+                    sample,
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.AllowWhiteSpaces,
+                    out _);
+        }
+        catch (FormatException)
+        {
+            isValid = false;
+        }
+
+        if (isValid)
+        {
+            return true;
+        }
+
+        var fieldName = string.IsNullOrWhiteSpace(Header) ? FieldId : Header;
+        errorMessage = $"‘{fieldName}’의 선택 값 ‘{sample}’은(는) 선택한 날짜 모양으로 읽을 수 없습니다. 경로 속 날짜 모양을 다시 선택하세요.";
+        return false;
     }
 
     public void RemoveAssignmentsOverlapping(GuidedPathChoiceViewModel choice)
@@ -398,6 +557,73 @@ public partial class ProfileFieldDraftViewModel : ObservableObject
             ? groups[index]
             : CreateGroupName(FieldId, part);
     }
+
+    private void SuggestDateFormatFromAssignments()
+    {
+        if (!IsDateTime)
+        {
+            return;
+        }
+
+        var requiredParts = RequiredDateSourceParts();
+        var selectedValues = new List<string>(requiredParts.Length);
+        foreach (var requiredPart in requiredParts)
+        {
+            var assignment = GuidedAssignments.FirstOrDefault(candidate => candidate.Part == requiredPart);
+            if (assignment is null)
+            {
+                return;
+            }
+
+            selectedValues.Add(assignment.Choice.Value);
+        }
+
+        var sample = string.Concat(selectedValues);
+        var currentFormat = ParseFormat?.Trim() ?? string.Empty;
+        if (currentFormat.Length > 0
+            && TryParseExactDate(sample.Trim(), currentFormat))
+        {
+            // The current selection can be intentional. This is especially
+            // important for ambiguous values such as 05-06-2026, which can be
+            // either month-day or day-month depending on the user's choice.
+            return;
+        }
+
+        foreach (var choice in CommonDateFormats)
+        {
+            if (TryParseExactDate(sample.Trim(), choice.Format))
+            {
+                ParseFormat = choice.Format;
+                return;
+            }
+        }
+    }
+
+    private static bool TryParseExactDate(string value, string format)
+    {
+        try
+        {
+            return DateTime.TryParseExact(
+                value,
+                format,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AllowWhiteSpaces,
+                out _);
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+    }
+
+    private GuidedSourcePart[] RequiredDateSourceParts() => DateSourcePreset switch
+    {
+        GuidedDateSourcePreset.YearAndMonthDay =>
+            [GuidedSourcePart.Year, GuidedSourcePart.MonthDay],
+        GuidedDateSourcePreset.YearMonthAndDay =>
+            [GuidedSourcePart.Year, GuidedSourcePart.Month, GuidedSourcePart.Day],
+        _ => [GuidedSourcePart.Value],
+    };
 
     private static string CreateGroupName(string fieldId, GuidedSourcePart? part)
     {

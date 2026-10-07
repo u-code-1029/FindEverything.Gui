@@ -2,7 +2,6 @@ using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Globalization;
-using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Media;
 using System.Windows.Threading;
@@ -31,7 +30,11 @@ public sealed record ScanConsoleLineViewModel(
     CatalogScanTraceKind Kind,
     ScanConsoleLineTone Tone,
     string Text,
-    string SessionSummary);
+    string SessionSummary,
+    string? Path)
+{
+    public bool HasPath => !string.IsNullOrWhiteSpace(Path);
+}
 
 public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceSink, IScanConsolePanelController
 {
@@ -50,6 +53,7 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
     private readonly LinkedList<ScanConsoleLineViewModel> _pending = [];
     private readonly Dispatcher _dispatcher;
     private readonly DispatcherTimer _drainTimer;
+    private readonly Action<string> _setClipboardText;
     private int _drainScheduled;
     private long _visited;
     private long _matched;
@@ -92,8 +96,20 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
     [ObservableProperty]
     private string _retentionSummary = $"표시 0 / 최대 {MaximumVisibleLines:N0}줄";
 
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(CopySelectedMessageCommand))]
+    [NotifyCanExecuteChangedFor(nameof(CopySelectedPathCommand))]
+    private ScanConsoleLineViewModel? _selectedLine;
+
     public ScanConsoleViewModel()
+        : this(System.Windows.Clipboard.SetText)
     {
+    }
+
+    internal ScanConsoleViewModel(Action<string> setClipboardText)
+    {
+        ArgumentNullException.ThrowIfNull(setClipboardText);
+        _setClipboardText = setClipboardText;
         _dispatcher = System.Windows.Application.Current?.Dispatcher
             ?? Dispatcher.CurrentDispatcher;
         _drainTimer = new DispatcherTimer(DispatcherPriority.Background, _dispatcher)
@@ -152,18 +168,28 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
     [RelayCommand(CanExecute = nameof(CanCopyAll))]
     private void CopyAll()
     {
-        try
+        var text = string.Join(Environment.NewLine, Lines.Select(static line => line.Text));
+        if (text.Length > 0)
         {
-            var text = string.Join(Environment.NewLine, Lines.Select(static line => line.Text));
-            if (text.Length > 0)
-            {
-                System.Windows.Clipboard.SetText(text);
-            }
+            TrySetClipboardText(text);
         }
-        catch (ExternalException)
+    }
+
+    [RelayCommand(CanExecute = nameof(CanCopySelectedMessage))]
+    private void CopySelectedMessage()
+    {
+        if (SelectedLine is { Text.Length: > 0 } line)
         {
-            // Another application can temporarily own the clipboard. The scan and
-            // its retained log remain intact, so the user can try again.
+            TrySetClipboardText(line.Text);
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanCopySelectedPath))]
+    private void CopySelectedPath()
+    {
+        if (SelectedLine is { HasPath: true, Path: { } path })
+        {
+            TrySetClipboardText(path);
         }
     }
 
@@ -187,12 +213,31 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
         }
 
         Lines.Clear();
+        SelectedLine = null;
         Interlocked.Exchange(ref _dropped, 0);
         UpdateCounterProperties();
         CopyAllCommand.NotifyCanExecuteChanged();
     }
 
     private bool CanCopyAll() => Lines.Count > 0;
+
+    private bool CanCopySelectedMessage() => SelectedLine is { Text.Length: > 0 };
+
+    private bool CanCopySelectedPath() => SelectedLine is { HasPath: true };
+
+    private void TrySetClipboardText(string text)
+    {
+        try
+        {
+            _setClipboardText(text);
+        }
+        catch (Exception)
+        {
+            // The clipboard can be temporarily locked or unavailable. Diagnostics
+            // are observational, so a failed copy must not close the panel or stop
+            // the active file-system scan. The user can retry from the same row.
+        }
+    }
 
     private void UpdateBackgroundCounters(CatalogScanTraceEvent value)
     {
@@ -318,6 +363,7 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
         if (line.Kind == CatalogScanTraceKind.Started)
         {
             Lines.Clear();
+            SelectedLine = null;
         }
 
         if (Lines.Count >= MaximumVisibleLines)
@@ -364,7 +410,7 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
             : $"표시 {Lines.Count:N0} / 최대 {MaximumVisibleLines:N0}줄";
     }
 
-    private static ScanConsoleLineViewModel CreateLine(CatalogScanTraceEvent value)
+    internal static ScanConsoleLineViewModel CreateLine(CatalogScanTraceEvent value)
     {
         var timestamp = value.TimestampUtc.ToLocalTime().ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture);
         var builder = new StringBuilder(timestamp.Length + 160);
@@ -411,7 +457,20 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
             value.Kind,
             tone,
             builder.ToString(),
-            CreateLifecycleSummary(value));
+            CreateLifecycleSummary(value),
+            GetCopyablePath(value));
+    }
+
+    private static string? GetCopyablePath(CatalogScanTraceEvent value)
+    {
+        var path = value.Kind switch
+        {
+            CatalogScanTraceKind.Started => value.RootPath,
+            CatalogScanTraceKind.DirectoryVisited or CatalogScanTraceKind.DiscoveryError => value.FullPath,
+            _ => null,
+        };
+
+        return string.IsNullOrWhiteSpace(path) ? null : path;
     }
 
     private static ScanConsoleLineTone AppendDirectoryVisit(

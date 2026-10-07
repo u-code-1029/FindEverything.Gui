@@ -21,6 +21,7 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
     private readonly IDesktopPickerService _pickerService;
     private readonly IPathLauncher _pathLauncher;
     private readonly IApplicationOperationCoordinator _operationCoordinator;
+    private readonly IScanCompletionNotifier _scanCompletionNotifier;
     private readonly ISnackbarService _snackbarService;
     private readonly ILogger<FileSearchViewModel> _logger;
     private CancellationTokenSource? _queryCancellation;
@@ -36,6 +37,7 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
         IDesktopPickerService pickerService,
         IPathLauncher pathLauncher,
         IApplicationOperationCoordinator operationCoordinator,
+        IScanCompletionNotifier scanCompletionNotifier,
         ISnackbarService snackbarService,
         ILogger<FileSearchViewModel> logger)
     {
@@ -45,6 +47,7 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
         _pickerService = pickerService;
         _pathLauncher = pathLauncher;
         _operationCoordinator = operationCoordinator;
+        _scanCompletionNotifier = scanCompletionNotifier;
         _snackbarService = snackbarService;
         _logger = logger;
 
@@ -418,6 +421,7 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
         IsBusy = true;
         ProgressMessage = "인덱스를 준비하고 있습니다…";
         var refreshResults = false;
+        ScanCompletionNotice? completionNotice = null;
         var progress = new Progress<IndexScanProgress>(value =>
         {
             ProgressMessage = $"{value.Entries:N0}개 항목 · {value.Directories:N0}개 폴더";
@@ -448,6 +452,11 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
                 null,
                 TimeSpan.FromSeconds(4));
             refreshResults = await RefreshStatusAsync().ConfigureAwait(true) && HasIndex;
+            completionNotice = new ScanCompletionNotice(
+                incomplete ? "일부 항목 색인 완료" : "인덱스 새로 고침 완료",
+                $"{report.Progress.Entries:N0}개 항목을 검색할 수 있습니다."
+                    + (incomplete ? $" 오류 {report.Errors.Count:N0}개를 확인하세요." : string.Empty),
+                incomplete);
         }
         catch (OperationCanceledException)
         {
@@ -462,6 +471,11 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
         finally
         {
             IsBusy = false;
+        }
+
+        if (completionNotice is not null)
+        {
+            _scanCompletionNotifier.Notify(completionNotice);
         }
 
         if (refreshResults)

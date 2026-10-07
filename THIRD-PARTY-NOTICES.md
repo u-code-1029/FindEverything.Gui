@@ -30,3 +30,14 @@ The complete license and bundled third-party notices are distributed in the `WPF
 
 - https://github.com/lepoco/wpfui/blob/4.3.0/LICENSE.md
 - https://github.com/lepoco/wpfui/blob/4.3.0/ThirdPartyNotices.txt
+
+## Microsoft Windows App SDK
+
+This application uses Microsoft Windows App SDK components to provide optional
+Windows app notifications. These components are licensed under the Microsoft
+Software License Terms for the Microsoft Windows App SDK and include software
+from third parties.
+
+The complete, unmodified terms and bundled notices are copied beside the
+application as `WINDOWS-APP-SDK-LICENSE.txt` and
+`WINDOWS-APP-SDK-NOTICES.txt` whenever the application is built or published.

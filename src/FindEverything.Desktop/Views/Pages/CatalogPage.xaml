@@ -18,23 +18,22 @@
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
         </Style>
-        <Style x:Key="ActionableInfoBarStyle" TargetType="ui:InfoBar">
-            <Setter Property="IsOpen" Value="False" />
-            <Setter Property="IsClosable" Value="False" />
+        <Style x:Key="NeutralActionableMessageStyle" TargetType="Border">
+            <Setter Property="Visibility" Value="Collapsed" />
             <Style.Triggers>
                 <MultiDataTrigger>
                     <MultiDataTrigger.Conditions>
                         <Condition Binding="{Binding IsStatusOpen}" Value="True" />
                         <Condition Binding="{Binding StatusSeverity}" Value="{x:Static ui:InfoBarSeverity.Warning}" />
                     </MultiDataTrigger.Conditions>
-                    <Setter Property="IsOpen" Value="True" />
+                    <Setter Property="Visibility" Value="Visible" />
                 </MultiDataTrigger>
                 <MultiDataTrigger>
                     <MultiDataTrigger.Conditions>
                         <Condition Binding="{Binding IsStatusOpen}" Value="True" />
                         <Condition Binding="{Binding StatusSeverity}" Value="{x:Static ui:InfoBarSeverity.Error}" />
                     </MultiDataTrigger.Conditions>
-                    <Setter Property="IsOpen" Value="True" />
+                    <Setter Property="Visibility" Value="Visible" />
                 </MultiDataTrigger>
             </Style.Triggers>
         </Style>
@@ -201,19 +200,42 @@
                             Margin="12,0,0,0"
                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                             Text="{Binding StatusMessage}"
-                            TextTrimming="CharacterEllipsis" />
+                            TextTrimming="CharacterEllipsis"
+                            ToolTip="{Binding StatusMessage}" />
                     </Grid>
                 </Border>
             </Grid>
         </Border>
 
-        <ui:InfoBar
+        <Border
             Grid.Row="2"
             Margin="0,0,0,16"
-            Message="{Binding StatusMessage}"
-            Severity="{Binding StatusSeverity}"
-            Style="{StaticResource ActionableInfoBarStyle}"
-            Title="{Binding StatusTitle}" />
+            Padding="12,9"
+            Background="{DynamicResource ControlFillColorSecondaryBrush}"
+            BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+            BorderThickness="1"
+            CornerRadius="6"
+            Style="{StaticResource NeutralActionableMessageStyle}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock
+                    VerticalAlignment="Center"
+                    FontWeight="SemiBold"
+                    Text="{Binding StatusTitle}" />
+                <TextBlock
+                    Grid.Column="1"
+                    Margin="12,0,0,0"
+                    VerticalAlignment="Center"
+                    AutomationProperties.LiveSetting="Polite"
+                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                    Text="{Binding StatusMessage}"
+                    TextTrimming="CharacterEllipsis"
+                    ToolTip="{Binding StatusMessage}" />
+            </Grid>
+        </Border>
 
         <Grid Grid.Row="3">
             <Grid.RowDefinitions>

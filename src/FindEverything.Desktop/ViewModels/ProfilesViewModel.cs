@@ -824,6 +824,14 @@ public partial class ProfilesViewModel : ObservableObject
         List<ProfileRegexRuleManifest> rules;
         if (IsGuidedMode)
         {
+            foreach (var field in DraftFields)
+            {
+                if (!field.TryValidateGuidedDateSample(out var dateError))
+                {
+                    throw new InvalidOperationException(dateError);
+                }
+            }
+
             var compileResult = _pathTemplateCompiler.Compile(DraftPathTemplate, fields);
             if (!compileResult.IsValid || string.IsNullOrEmpty(compileResult.Pattern))
             {

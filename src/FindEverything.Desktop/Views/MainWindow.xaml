@@ -19,15 +19,8 @@
     WindowStartupLocation="CenterScreen"
     mc:Ignorable="d">
     <Grid>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="*" />
-            <RowDefinition Height="Auto" />
-        </Grid.RowDefinitions>
-
         <ui:NavigationView
             x:Name="RootNavigation"
-            Padding="0"
-            FrameMargin="0"
             IsBackButtonVisible="Collapsed"
             IsFooterSeparatorVisible="True"
             IsPaneToggleVisible="True"
@@ -36,6 +29,21 @@
             PaneDisplayMode="Left"
             TitleBar="{Binding ElementName=AppTitleBar}"
             Transition="FadeInWithSlide">
+            <ui:NavigationView.Style>
+                <Style BasedOn="{StaticResource {x:Type ui:NavigationView}}" TargetType="{x:Type ui:NavigationView}">
+                    <Setter Property="FrameMargin" Value="0" />
+                    <Setter Property="Padding" Value="0" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding ScanConsole.IsPanelOpen}" Value="True">
+                            <!-- Padding is forwarded only to the page presenter.
+                                 ContentOverlay (and therefore this panel) keeps the
+                                 full content area, while the navigation pane is never
+                                 resized or covered. -->
+                            <Setter Property="Padding" Value="0,0,0,308" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </ui:NavigationView.Style>
             <ui:NavigationView.MenuItems>
                 <ui:NavigationViewItem
                     Content="파일 찾기"
@@ -54,18 +62,30 @@
                     <ui:NavigationViewItem.InfoBadge>
                         <ui:InfoBadge
                             x:Name="CatalogScanBadge"
-                            Width="16"
-                            Height="16"
                             AutomationProperties.Name="구조화 보기 스캔 진행 중"
                             AutomationProperties.LiveSetting="Polite"
                             ToolTip="구조화 보기에서 폴더를 스캔하고 있습니다."
                             Visibility="{Binding Catalog.IsScanning, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <ui:InfoBadge.Style>
+                                <Style TargetType="{x:Type ui:InfoBadge}">
+                                    <Setter Property="Width" Value="16" />
+                                    <Setter Property="Height" Value="16" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsPaneOpen, ElementName=RootNavigation}" Value="False">
+                                            <Setter Property="Width" Value="40" />
+                                            <Setter Property="Height" Value="40" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ui:InfoBadge.Style>
                             <ui:InfoBadge.Template>
                                 <ControlTemplate TargetType="{x:Type ui:InfoBadge}">
                                     <ui:ProgressRing
                                         Width="16"
                                         Height="16"
-                                        IsIndeterminate="True" />
+                                        HorizontalAlignment="Center"
+                                        IsIndeterminate="True"
+                                        VerticalAlignment="Center" />
                                 </ControlTemplate>
                             </ui:InfoBadge.Template>
                         </ui:InfoBadge>
@@ -88,7 +108,26 @@
             </ui:NavigationView.FooterMenuItems>
             <ui:NavigationView.ContentOverlay>
                 <Grid>
-                    <ui:SnackbarPresenter x:Name="SnackbarPresenter" />
+                    <ui:SnackbarPresenter x:Name="SnackbarPresenter">
+                        <ui:SnackbarPresenter.Style>
+                            <Style BasedOn="{StaticResource {x:Type ui:SnackbarPresenter}}" TargetType="{x:Type ui:SnackbarPresenter}">
+                                <Setter Property="Margin" Value="0" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ScanConsole.IsPanelOpen}" Value="True">
+                                        <Setter Property="Margin" Value="0,0,0,308" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ui:SnackbarPresenter.Style>
+                    </ui:SnackbarPresenter>
+                    <controls:ScanConsolePanel
+                        x:Name="ScanConsolePanel"
+                        Height="300"
+                        Margin="8,0,8,8"
+                        VerticalAlignment="Bottom"
+                        Panel.ZIndex="2"
+                        DataContext="{Binding ScanConsole}"
+                        Visibility="{Binding IsPanelOpen, Converter={StaticResource BooleanToVisibilityConverter}}" />
                 </Grid>
             </ui:NavigationView.ContentOverlay>
         </ui:NavigationView>
@@ -123,17 +162,8 @@
             </ui:TitleBar.TrailingContent>
         </ui:TitleBar>
 
-        <controls:ScanConsolePanel
-            x:Name="ScanConsolePanel"
-            Grid.Row="1"
-            Height="300"
-            Margin="8,0,8,8"
-            DataContext="{Binding ScanConsole}"
-            Visibility="{Binding IsPanelOpen, Converter={StaticResource BooleanToVisibilityConverter}}" />
-
         <ui:ContentDialogHost
             x:Name="DialogHost"
-            Grid.RowSpan="2"
             Panel.ZIndex="10" />
     </Grid>
 </ui:FluentWindow>

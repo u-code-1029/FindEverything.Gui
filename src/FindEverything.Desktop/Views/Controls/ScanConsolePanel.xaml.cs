@@ -1,5 +1,7 @@
 using System.Collections.Specialized;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Threading;
 using FindEverything.Desktop.ViewModels;
 
@@ -81,6 +83,26 @@ public partial class ScanConsolePanel
         NotifyCollectionChangedEventArgs eventArgs)
     {
         ScheduleScrollToEnd();
+    }
+
+    private void OnTraceListPreviewMouseRightButtonDown(
+        object sender,
+        MouseButtonEventArgs eventArgs)
+    {
+        if (sender is not ListBox listBox
+            || eventArgs.OriginalSource is not DependencyObject source)
+        {
+            return;
+        }
+
+        if (ItemsControl.ContainerFromElement(listBox, source) is ListBoxItem item)
+        {
+            item.IsSelected = true;
+            _ = item.Focus();
+            return;
+        }
+
+        listBox.SelectedItem = null;
     }
 
     private void ScheduleScrollToEnd()

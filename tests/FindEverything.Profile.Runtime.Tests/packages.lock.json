@@ -358,6 +358,12 @@
           "Microsoft.Extensions.Options.DataAnnotations": "[10.0.12, )"
         }
       },
+      "findeverything.profiles.sampleprojects": {
+        "type": "Project",
+        "dependencies": {
+          "FindEverything.Profile.Abstractions": "[1.0.0, )"
+        }
+      },
       "Microsoft.Extensions.DependencyInjection": {
         "type": "CentralTransitive",
         "requested": "[10.0.12, )",

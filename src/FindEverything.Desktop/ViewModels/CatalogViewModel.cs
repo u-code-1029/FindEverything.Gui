@@ -21,6 +21,7 @@ public partial class CatalogViewModel : ObservableObject
     private readonly IPathLauncher _pathLauncher;
     private readonly IApplicationOperationCoordinator _operationCoordinator;
     private readonly IScanConsolePanelController _scanConsolePanelController;
+    private readonly IScanCompletionNotifier _scanCompletionNotifier;
     private readonly ISnackbarService _snackbarService;
     private readonly ILogger<CatalogViewModel> _logger;
     private CatalogItemViewModel[] _loadedItems = [];
@@ -84,6 +85,7 @@ public partial class CatalogViewModel : ObservableObject
         IPathLauncher pathLauncher,
         IApplicationOperationCoordinator operationCoordinator,
         IScanConsolePanelController scanConsolePanelController,
+        IScanCompletionNotifier scanCompletionNotifier,
         ISnackbarService snackbarService,
         ILogger<CatalogViewModel> logger)
     {
@@ -94,6 +96,7 @@ public partial class CatalogViewModel : ObservableObject
         _pathLauncher = pathLauncher;
         _operationCoordinator = operationCoordinator;
         _scanConsolePanelController = scanConsolePanelController;
+        _scanCompletionNotifier = scanCompletionNotifier;
         _snackbarService = snackbarService;
         _logger = logger;
 
@@ -301,6 +304,7 @@ public partial class CatalogViewModel : ObservableObject
         SetStatus(operationName, $"{operationName} 작업을 시작했습니다.", InfoBarSeverity.Informational);
         var progress = CreateProgress();
         CatalogResult? result = null;
+        ScanCompletionNotice? completionNotice = null;
         try
         {
             // Capture UI-bound values before the coordinator moves the operation
@@ -331,9 +335,13 @@ public partial class CatalogViewModel : ObservableObject
                         cancellationToken).ConfigureAwait(false);
             }).ConfigureAwait(true);
 
-            ApplyResult(
+            var appliedNotice = ApplyResult(
                 result ?? throw new InvalidOperationException("카탈로그 결과를 받지 못했습니다."),
                 discoverDirectly);
+            if (discoverDirectly)
+            {
+                completionNotice = appliedNotice;
+            }
         }
         catch (OperationCanceledException)
         {
@@ -353,6 +361,11 @@ public partial class CatalogViewModel : ObservableObject
             IsScanning = false;
             IsBusy = false;
         }
+
+        if (completionNotice is not null)
+        {
+            _scanCompletionNotifier.Notify(completionNotice);
+        }
     }
 
     private static CatalogRequest CreateRequest(WorkspaceSelection workspace) =>
@@ -361,7 +374,7 @@ public partial class CatalogViewModel : ObservableObject
     private IProgress<CatalogOperationProgress> CreateProgress() =>
         new Progress<CatalogOperationProgress>(value => ProgressMessage = value.Message);
 
-    private void ApplyResult(CatalogResult result, bool discoveredDirectly)
+    private ScanCompletionNotice ApplyResult(CatalogResult result, bool discoveredDirectly)
     {
         var selectedPath = SelectedItem?.FullPath;
         var fields = result.Profile.Fields.OrderBy(static field => field.Order).ToArray();
@@ -393,15 +406,23 @@ public partial class CatalogViewModel : ObservableObject
             : $" · 방문 폴더 {result.DiscoveryReport.Progress.Directories:N0}"
               + $" · 하위 탐색 생략 {result.DiscoveryReport.Progress.PrunedDirectories:N0}"
               + $" · 오류 {result.DiscoveryReport.Progress.ErrorCount:N0}";
-        SetStatus(
-            incomplete ? "부분 결과" : discoveredDirectly ? "빠른 불러오기 완료" : "기존 인덱스 불러오기 완료",
-            $"후보 {result.CandidateCount:N0} · 일치 {result.Items.Count:N0} · 규칙 외 {result.NoMatchCount:N0} · 변환 오류 {result.InvalidItems.Count:N0}{discoverySummary}{scanSummary}"
-                + (result.HasPendingScopes ? " · 아직 인덱싱되지 않은 범위가 있습니다." : string.Empty),
-            severity);
+        var statusTitle = incomplete
+            ? "부분 결과"
+            : discoveredDirectly
+                ? "빠른 불러오기 완료"
+                : "기존 인덱스 불러오기 완료";
+        var statusMessage = $"후보 {result.CandidateCount:N0} · 일치 {result.Items.Count:N0} · 규칙 외 {result.NoMatchCount:N0} · 변환 오류 {result.InvalidItems.Count:N0}{discoverySummary}{scanSummary}"
+            + (result.HasPendingScopes ? " · 아직 인덱싱되지 않은 범위가 있습니다." : string.Empty);
+        SetStatus(statusTitle, statusMessage, severity);
         ShowSnackbar(
             discoveredDirectly ? "빠른 불러오기 완료" : "기존 인덱스 불러오기 완료",
             $"프로필 규칙에 맞는 {result.Items.Count:N0}개 폴더를 찾았습니다.",
             incomplete ? ControlAppearance.Caution : ControlAppearance.Success);
+        return new ScanCompletionNotice(
+            statusTitle,
+            $"프로필 규칙에 맞는 {result.Items.Count:N0}개 폴더를 찾았습니다."
+                + (incomplete ? " 일부 경로는 확인이 필요합니다." : string.Empty),
+            incomplete);
     }
 
     private void ApplyFilter(string? preferredSelectedPath = null)
