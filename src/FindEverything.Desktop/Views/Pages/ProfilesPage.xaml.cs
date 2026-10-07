@@ -13,6 +13,35 @@ public partial class ProfilesPage
         InitializeComponent();
     }
 
+    private void OnInsertTemplateFieldClick(object sender, System.Windows.RoutedEventArgs e)
+    {
+        if (sender is not System.Windows.FrameworkElement
+            {
+                DataContext: ProfileFieldDraftViewModel field,
+            } ||
+            DataContext is not ProfilesViewModel viewModel)
+        {
+            return;
+        }
+
+        var current = ProfilePathTemplateTextBox.Text ?? string.Empty;
+        var selectionStart = Math.Clamp(
+            ProfilePathTemplateTextBox.SelectionStart,
+            0,
+            current.Length);
+        var selectionLength = Math.Clamp(
+            ProfilePathTemplateTextBox.SelectionLength,
+            0,
+            current.Length - selectionStart);
+        var updated = current.Remove(selectionStart, selectionLength)
+            .Insert(selectionStart, field.TemplateToken);
+
+        viewModel.DraftPathTemplate = updated;
+        ProfilePathTemplateTextBox.Focus();
+        ProfilePathTemplateTextBox.SelectionStart = selectionStart + field.TemplateToken.Length;
+        ProfilePathTemplateTextBox.SelectionLength = 0;
+    }
+
     private void OnNestedDataGridPreviewMouseWheel(
         object sender,
         MouseWheelEventArgs e)

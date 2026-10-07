@@ -4,6 +4,7 @@ using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FindEverything.Application.Catalog;
+using FindEverything.Application.Profiles;
 using FindEverything.Desktop.Services;
 using FindEverything.Profile.Abstractions;
 using FindEverything.Profile.Runtime;
@@ -17,6 +18,7 @@ public partial class ProfilesViewModel : ObservableObject
 {
     private readonly IProfileCatalog _profileCatalog;
     private readonly IProfileAuthoringService _authoringService;
+    private readonly IProfilePathTemplateCompiler _pathTemplateCompiler;
     private readonly IPathLauncher _pathLauncher;
     private readonly IApplicationOperationCoordinator _operationCoordinator;
     private readonly ISnackbarService _snackbarService;
@@ -63,6 +65,25 @@ public partial class ProfilesViewModel : ObservableObject
     private string _samplePath = string.Empty;
 
     [ObservableProperty]
+    private ProfileEditorMode _editorMode = ProfileEditorMode.Guided;
+
+    [ObservableProperty]
+    private string _draftPathTemplate = string.Empty;
+
+    [ObservableProperty]
+    private string _generatedPatternPreview = string.Empty;
+
+    [ObservableProperty]
+    private string _templateStatusMessage = "실제 경로에서 변하는 부분을 결과 값으로 지정하세요.";
+
+    [ObservableProperty]
+    private InfoBarSeverity _templateStatusSeverity = InfoBarSeverity.Informational;
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(UseGuidedModeCommand))]
+    private bool _canUseGuidedMode = true;
+
+    [ObservableProperty]
     private IReadOnlyList<ProfileTestResultViewModel> _testRows = [];
 
     [ObservableProperty]
@@ -80,6 +101,7 @@ public partial class ProfilesViewModel : ObservableObject
     public ProfilesViewModel(
         IProfileCatalog profileCatalog,
         IProfileAuthoringService authoringService,
+        IProfilePathTemplateCompiler pathTemplateCompiler,
         IPathLauncher pathLauncher,
         IApplicationOperationCoordinator operationCoordinator,
         ISnackbarService snackbarService,
@@ -87,6 +109,7 @@ public partial class ProfilesViewModel : ObservableObject
     {
         _profileCatalog = profileCatalog;
         _authoringService = authoringService;
+        _pathTemplateCompiler = pathTemplateCompiler;
         _pathLauncher = pathLauncher;
         _operationCoordinator = operationCoordinator;
         _snackbarService = snackbarService;
@@ -126,6 +149,10 @@ public partial class ProfilesViewModel : ObservableObject
 
     public bool IsEditorReady => !IsEditorBusy;
 
+    public bool IsGuidedMode => EditorMode == ProfileEditorMode.Guided;
+
+    public bool IsExpertMode => EditorMode == ProfileEditorMode.Expert;
+
     public ObservableCollection<ProfileFieldDraftViewModel> DraftFields { get; } = [];
 
     public ObservableCollection<ProfileRuleDraftViewModel> DraftRules { get; } = [];
@@ -147,7 +174,34 @@ public partial class ProfilesViewModel : ObservableObject
     partial void OnSelectedPathInputChanged(SettingChoice<ProfilePathInput> value) =>
         MarkDraftChanged();
 
-    partial void OnSamplePathChanged(string value) => TestDraftCommand.NotifyCanExecuteChanged();
+    partial void OnSamplePathChanged(string value)
+    {
+        TestDraftCommand.NotifyCanExecuteChanged();
+        if (_isPopulatingDraft)
+        {
+            return;
+        }
+
+        TestRows = [];
+        TestSummary = "예제 경로가 변경되었습니다. 결과를 다시 확인하세요.";
+    }
+
+    partial void OnEditorModeChanged(ProfileEditorMode value)
+    {
+        OnPropertyChanged(nameof(IsGuidedMode));
+        OnPropertyChanged(nameof(IsExpertMode));
+    }
+
+    partial void OnDraftPathTemplateChanged(string value)
+    {
+        if (_isPopulatingDraft)
+        {
+            return;
+        }
+
+        RefreshTemplatePreview();
+        MarkDraftChanged();
+    }
 
     partial void OnIsEditorBusyChanged(bool value)
     {
@@ -157,6 +211,9 @@ public partial class ProfilesViewModel : ObservableObject
         ValidateDraftCommand.NotifyCanExecuteChanged();
         TestDraftCommand.NotifyCanExecuteChanged();
         SaveDraftCommand.NotifyCanExecuteChanged();
+        BuildTemplateFromSampleCommand.NotifyCanExecuteChanged();
+        UseExpertModeCommand.NotifyCanExecuteChanged();
+        UseGuidedModeCommand.NotifyCanExecuteChanged();
     }
 
     [RelayCommand(CanExecute = nameof(CanEdit))]
@@ -172,6 +229,8 @@ public partial class ProfilesViewModel : ObservableObject
             DraftDisplayName = "새 프로필";
             DraftId = $"profile-{DateTime.Now:yyyyMMddHHmmss}";
             SelectedPathInput = PathInputChoices[0];
+            EditorMode = ProfileEditorMode.Guided;
+            CanUseGuidedMode = true;
             DraftFields.Clear();
             DraftRules.Clear();
             AddFieldRow(new ProfileFieldDraftViewModel
@@ -182,13 +241,15 @@ public partial class ProfilesViewModel : ObservableObject
                 Kind = ProfileFieldValueKind.String,
                 Required = true,
             });
+            DraftPathTemplate = "{name}";
             AddRuleRow(new ProfileRuleDraftViewModel
             {
                 Id = "default",
                 MatchMode = ProfileRegexMatchMode.Full,
                 IgnoreCase = true,
                 TimeoutMilliseconds = 100,
-                Pattern = "^(?<name>.+)$",
+                Pattern = @"(?<name>[^\\/]+)",
+                PathTemplate = "{name}",
             });
             SamplePath = "Example";
             TestRows = [];
@@ -201,6 +262,8 @@ public partial class ProfilesViewModel : ObservableObject
         {
             _isPopulatingDraft = false;
         }
+
+        RefreshTemplatePreview();
     }
 
     [RelayCommand(CanExecute = nameof(CanLoadDraft))]
@@ -227,13 +290,103 @@ public partial class ProfilesViewModel : ObservableObject
         }).ConfigureAwait(true);
     }
 
-    [RelayCommand]
-    private void AddField() => AddFieldRow(new ProfileFieldDraftViewModel
+    [RelayCommand(CanExecute = nameof(CanEdit))]
+    private void BuildTemplateFromSample()
     {
-        Header = "새 컬럼",
-        FieldId = $"field-{DraftFields.Count + 1}",
-        GroupName = $"field{DraftFields.Count + 1}",
-    });
+        if (string.IsNullOrWhiteSpace(SamplePath))
+        {
+            TemplateStatusMessage = "먼저 실제 폴더 경로를 붙여 넣으세요.";
+            TemplateStatusSeverity = InfoBarSeverity.Warning;
+            return;
+        }
+
+        DraftPathTemplate = SamplePath
+            .Trim()
+            .Replace('\\', '/')
+            .Replace("{", "{{", StringComparison.Ordinal)
+            .Replace("}", "}}", StringComparison.Ordinal);
+        TemplateStatusMessage =
+            "아래 경로에서 바뀌는 글자를 선택한 뒤, 결과 값 카드의 ‘선택한 부분을 이 값으로 지정’을 누르세요.";
+        TemplateStatusSeverity = InfoBarSeverity.Informational;
+    }
+
+    [RelayCommand(CanExecute = nameof(CanSwitchToGuided))]
+    private void UseGuidedMode()
+    {
+        if (IsGuidedMode)
+        {
+            return;
+        }
+
+        if (!TryResolveGuidedTemplate(out var template))
+        {
+            CanUseGuidedMode = false;
+            OnPropertyChanged(nameof(IsGuidedMode));
+            OnPropertyChanged(nameof(IsExpertMode));
+            SetEditorStatus(
+                "이 정규식은 초보자 모드로 안전하게 바꿀 수 없습니다. 전문가 모드에서 계속 편집하세요.",
+                InfoBarSeverity.Warning);
+            return;
+        }
+
+        _isPopulatingDraft = true;
+        try
+        {
+            DraftPathTemplate = template;
+            EditorMode = ProfileEditorMode.Guided;
+        }
+        finally
+        {
+            _isPopulatingDraft = false;
+        }
+
+        RefreshTemplatePreview();
+        SetEditorStatus("초보자 모드로 전환했습니다.", InfoBarSeverity.Informational);
+    }
+
+    [RelayCommand(CanExecute = nameof(CanEdit))]
+    private void UseExpertMode()
+    {
+        if (IsExpertMode)
+        {
+            return;
+        }
+
+        if (!TryCompileTemplate(out var result))
+        {
+            ApplyTemplateErrors(result);
+            OnPropertyChanged(nameof(IsGuidedMode));
+            OnPropertyChanged(nameof(IsExpertMode));
+            SetEditorStatus(
+                "경로 템플릿 오류를 먼저 수정한 뒤 전문가 모드로 전환하세요.",
+                InfoBarSeverity.Warning);
+            return;
+        }
+
+        ReplaceRulesWithGuidedRule(result.Pattern!, DraftPathTemplate);
+        EditorMode = ProfileEditorMode.Expert;
+        CanUseGuidedMode = true;
+        SetEditorStatus(
+            "전문가 모드로 전환했습니다. 정규식을 직접 바꾸면 초보자 모드로 돌아갈 수 없습니다.",
+            InfoBarSeverity.Informational);
+    }
+
+    [RelayCommand]
+    private void AddField()
+    {
+        var number = NextFieldNumber();
+        AddFieldRow(new ProfileFieldDraftViewModel
+        {
+            Header = $"결과 값 {number}",
+            FieldId = $"field-{number}",
+            GroupName = $"field{number}",
+            Required = true,
+        });
+        if (IsGuidedMode)
+        {
+            RefreshTemplatePreview();
+        }
+    }
 
     [RelayCommand]
     private void RemoveField(ProfileFieldDraftViewModel? field)
@@ -241,6 +394,10 @@ public partial class ProfilesViewModel : ObservableObject
         if (field is not null && DraftFields.Remove(field))
         {
             field.PropertyChanged -= OnDraftRowChanged;
+            if (IsGuidedMode)
+            {
+                RefreshTemplatePreview();
+            }
             MarkDraftChanged();
         }
     }
@@ -304,8 +461,15 @@ public partial class ProfilesViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanEdit))]
     private void ValidateDraft()
     {
-        var review = _authoringService.Validate(BuildManifest());
-        ApplyReview(review, "검증을 통과했습니다. 저장하거나 예제 경로를 시험할 수 있습니다.");
+        try
+        {
+            var review = _authoringService.Validate(BuildManifest());
+            ApplyReview(review, "검증을 통과했습니다. 저장하거나 예제 경로를 시험할 수 있습니다.");
+        }
+        catch (InvalidOperationException exception)
+        {
+            SetEditorStatus(exception.Message, InfoBarSeverity.Error);
+        }
     }
 
     [RelayCommand(CanExecute = nameof(CanTestDraft))]
@@ -468,8 +632,48 @@ public partial class ProfilesViewModel : ObservableObject
 
     private bool CanTestDraft() => !IsEditorBusy && !string.IsNullOrWhiteSpace(SamplePath);
 
-    private ProfileManifest BuildManifest() =>
-        new()
+    private bool CanSwitchToGuided() => !IsEditorBusy && CanUseGuidedMode;
+
+    private ProfileManifest BuildManifest()
+    {
+        var fields = BuildFieldManifests();
+        List<ProfileRegexRuleManifest> rules;
+        if (IsGuidedMode)
+        {
+            var compileResult = _pathTemplateCompiler.Compile(DraftPathTemplate, fields);
+            if (!compileResult.IsValid || string.IsNullOrEmpty(compileResult.Pattern))
+            {
+                ApplyTemplateErrors(compileResult);
+                throw new InvalidOperationException(BuildTemplateErrorMessage(compileResult));
+            }
+
+            rules =
+            [
+                new ProfileRegexRuleManifest
+                {
+                    Id = "default",
+                    Pattern = compileResult.Pattern,
+                    MatchMode = ProfileRegexMatchMode.Full,
+                    IgnoreCase = true,
+                    TimeoutMilliseconds = 100,
+                    PathTemplate = DraftPathTemplate,
+                },
+            ];
+        }
+        else
+        {
+            rules = DraftRules.Select(rule => new ProfileRegexRuleManifest
+            {
+                Id = rule.Id.Trim(),
+                Pattern = rule.Pattern,
+                MatchMode = rule.MatchMode,
+                IgnoreCase = rule.IgnoreCase,
+                TimeoutMilliseconds = rule.TimeoutMilliseconds,
+                PathTemplate = GetRoundTripTemplate(rule, fields),
+            }).ToList();
+        }
+
+        return new ProfileManifest
         {
             ContractVersion = ProfileContract.CurrentMajor,
             Kind = ProfileKind.Declarative,
@@ -478,26 +682,10 @@ public partial class ProfilesViewModel : ObservableObject
             DisplayName = DraftDisplayName.Trim(),
             CandidateKind = ProfileCandidateKind.Directory,
             PathInput = SelectedPathInput.Value,
-            Fields = DraftFields.Select(static (field, index) => new ProfileFieldManifest
-            {
-                FieldId = field.FieldId.Trim(),
-                GroupName = field.GroupName.Trim(),
-                Header = field.Header.Trim(),
-                Order = (index + 1) * 10,
-                Required = field.Required,
-                Kind = field.Kind,
-                ParseFormat = NormalizeOptional(field.ParseFormat),
-                DisplayFormat = NormalizeOptional(field.DisplayFormat),
-            }).ToList(),
-            Rules = DraftRules.Select(static rule => new ProfileRegexRuleManifest
-            {
-                Id = rule.Id.Trim(),
-                Pattern = rule.Pattern,
-                MatchMode = rule.MatchMode,
-                IgnoreCase = rule.IgnoreCase,
-                TimeoutMilliseconds = rule.TimeoutMilliseconds,
-            }).ToList(),
+            Fields = fields,
+            Rules = rules,
         };
+    }
 
     private void PopulateDraft(ProfileManifest manifest)
     {
@@ -528,6 +716,22 @@ public partial class ProfilesViewModel : ObservableObject
                 AddRuleRow(new ProfileRuleDraftViewModel(rule));
             }
 
+            if (TryResolveGuidedTemplate(out var template))
+            {
+                DraftPathTemplate = template;
+                EditorMode = ProfileEditorMode.Guided;
+                CanUseGuidedMode = true;
+            }
+            else
+            {
+                DraftPathTemplate = manifest.Rules?.FirstOrDefault()?.PathTemplate ?? string.Empty;
+                EditorMode = ProfileEditorMode.Expert;
+                CanUseGuidedMode = false;
+                GeneratedPatternPreview = string.Empty;
+                TemplateStatusMessage = "이 프로필은 고급 정규식 기능을 사용하므로 전문가 모드로 열었습니다.";
+                TemplateStatusSeverity = InfoBarSeverity.Informational;
+            }
+
             SamplePath = string.Empty;
             TestRows = [];
             TestSummary = "실제 경로를 입력해 저장 전에 결과를 확인하세요.";
@@ -535,6 +739,11 @@ public partial class ProfilesViewModel : ObservableObject
         finally
         {
             _isPopulatingDraft = false;
+        }
+
+        if (IsGuidedMode)
+        {
+            RefreshTemplatePreview();
         }
     }
 
@@ -657,8 +866,43 @@ public partial class ProfilesViewModel : ObservableObject
         }
     }
 
-    private void OnDraftRowChanged(object? sender, PropertyChangedEventArgs eventArgs) =>
+    private void OnDraftRowChanged(object? sender, PropertyChangedEventArgs eventArgs)
+    {
+        if (_isPopulatingDraft)
+        {
+            return;
+        }
+
+        if (IsGuidedMode &&
+            sender is ProfileFieldDraftViewModel field &&
+            eventArgs.PropertyName == nameof(ProfileFieldDraftViewModel.Required))
+        {
+            var requiredToken = $"{{{field.FieldId}}}";
+            var optionalToken = $"{{{field.FieldId}?}}";
+            _isPopulatingDraft = true;
+            try
+            {
+                DraftPathTemplate = field.Required
+                    ? DraftPathTemplate.Replace(optionalToken, requiredToken, StringComparison.Ordinal)
+                    : DraftPathTemplate.Replace(requiredToken, optionalToken, StringComparison.Ordinal);
+            }
+            finally
+            {
+                _isPopulatingDraft = false;
+            }
+        }
+
+        if (IsGuidedMode)
+        {
+            RefreshTemplatePreview();
+        }
+        else
+        {
+            CanUseGuidedMode = TryResolveGuidedTemplate(out _);
+        }
+
         MarkDraftChanged();
+    }
 
     private void MarkDraftChanged()
     {
@@ -667,9 +911,144 @@ public partial class ProfilesViewModel : ObservableObject
             return;
         }
 
+        if (IsExpertMode)
+        {
+            CanUseGuidedMode = TryResolveGuidedTemplate(out _);
+        }
+
         TestRows = [];
         TestSummary = "초안이 변경되었습니다. 예제 경로를 다시 시험하세요.";
         SetEditorStatus("변경 사항이 있습니다. 검증 후 저장하세요.", InfoBarSeverity.Informational);
+    }
+
+    private List<ProfileFieldManifest> BuildFieldManifests() =>
+        DraftFields.Select(static (field, index) => new ProfileFieldManifest
+        {
+            FieldId = field.FieldId.Trim(),
+            GroupName = field.GroupName.Trim(),
+            Header = field.Header.Trim(),
+            Order = (index + 1) * 10,
+            Required = field.Required,
+            Kind = field.Kind,
+            ParseFormat = NormalizeOptional(field.ParseFormat),
+            DisplayFormat = NormalizeOptional(field.DisplayFormat),
+        }).ToList();
+
+    private bool TryCompileTemplate(out ProfilePathTemplateCompileResult result)
+    {
+        result = _pathTemplateCompiler.Compile(DraftPathTemplate, BuildFieldManifests());
+        return result.IsValid && !string.IsNullOrEmpty(result.Pattern);
+    }
+
+    private void RefreshTemplatePreview()
+    {
+        if (!TryCompileTemplate(out var result))
+        {
+            GeneratedPatternPreview = string.Empty;
+            ApplyTemplateErrors(result);
+            return;
+        }
+
+        GeneratedPatternPreview = result.Pattern!;
+        TemplateStatusMessage = "경로 규칙이 준비되었습니다. 아래에서 같은 경로를 시험해 보세요.";
+        TemplateStatusSeverity = InfoBarSeverity.Success;
+    }
+
+    private void ApplyTemplateErrors(ProfilePathTemplateCompileResult result)
+    {
+        TemplateStatusMessage = BuildTemplateErrorMessage(result);
+        TemplateStatusSeverity = InfoBarSeverity.Warning;
+    }
+
+    private static string BuildTemplateErrorMessage(ProfilePathTemplateCompileResult result)
+    {
+        if (result.Diagnostics.Count == 0)
+        {
+            return "경로 규칙을 완성하세요.";
+        }
+
+        return string.Join(
+            Environment.NewLine,
+            result.Diagnostics.Take(4).Select(static diagnostic => $"• {diagnostic.Message}"));
+    }
+
+    private bool TryResolveGuidedTemplate(out string template)
+    {
+        template = string.Empty;
+        if (DraftRules.Count != 1)
+        {
+            return false;
+        }
+
+        var rule = DraftRules[0];
+        if (string.IsNullOrWhiteSpace(rule.PathTemplate) ||
+            rule.MatchMode != ProfileRegexMatchMode.Full ||
+            !rule.IgnoreCase ||
+            rule.TimeoutMilliseconds != 100)
+        {
+            return false;
+        }
+
+        var result = _pathTemplateCompiler.Compile(rule.PathTemplate, BuildFieldManifests());
+        if (!result.IsValid ||
+            !string.Equals(result.Pattern, rule.Pattern, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        template = rule.PathTemplate;
+        return true;
+    }
+
+    private string? GetRoundTripTemplate(
+        ProfileRuleDraftViewModel rule,
+        IReadOnlyList<ProfileFieldManifest> fields)
+    {
+        if (DraftRules.Count != 1 || string.IsNullOrWhiteSpace(rule.PathTemplate))
+        {
+            return null;
+        }
+
+        var result = _pathTemplateCompiler.Compile(rule.PathTemplate, fields);
+        return result.IsValid &&
+               rule.MatchMode == ProfileRegexMatchMode.Full &&
+               rule.IgnoreCase &&
+               rule.TimeoutMilliseconds == 100 &&
+               string.Equals(result.Pattern, rule.Pattern, StringComparison.Ordinal)
+            ? rule.PathTemplate
+            : null;
+    }
+
+    private void ReplaceRulesWithGuidedRule(string pattern, string pathTemplate)
+    {
+        foreach (var rule in DraftRules)
+        {
+            rule.PropertyChanged -= OnDraftRowChanged;
+        }
+
+        DraftRules.Clear();
+        AddRuleRow(new ProfileRuleDraftViewModel
+        {
+            Id = "default",
+            Pattern = pattern,
+            MatchMode = ProfileRegexMatchMode.Full,
+            IgnoreCase = true,
+            TimeoutMilliseconds = 100,
+            PathTemplate = pathTemplate,
+        });
+    }
+
+    private int NextFieldNumber()
+    {
+        var number = 1;
+        while (DraftFields.Any(field =>
+                   string.Equals(field.FieldId, $"field-{number}", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(field.GroupName, $"field{number}", StringComparison.OrdinalIgnoreCase)))
+        {
+            number++;
+        }
+
+        return number;
     }
 
     private void SetEditorStatus(string message, InfoBarSeverity severity)

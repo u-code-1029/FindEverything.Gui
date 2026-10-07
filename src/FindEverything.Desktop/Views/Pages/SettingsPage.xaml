@@ -8,6 +8,7 @@
     Title="설정"
     Background="Transparent"
     Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+    ScrollViewer.CanContentScroll="False"
     mc:Ignorable="d">
     <Page.Resources>
         <Style x:Key="FieldLabelStyle" TargetType="TextBlock">
@@ -57,10 +58,12 @@
             Title="설정을 확인해 주세요" />
 
         <ScrollViewer
+            x:Name="SettingsScrollViewer"
             Grid.Row="2"
+            HorizontalContentAlignment="Stretch"
             HorizontalScrollBarVisibility="Disabled"
             VerticalScrollBarVisibility="Auto">
-            <StackPanel Margin="0,0,8,0" MaxWidth="760" HorizontalAlignment="Left">
+            <StackPanel Margin="0,0,8,0" HorizontalAlignment="Stretch">
                 <Border Style="{StaticResource SettingsSectionStyle}">
                     <StackPanel>
                         <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="검색과 인덱싱" />
@@ -72,7 +75,6 @@
                         <TextBlock Style="{StaticResource FieldLabelStyle}" Text="검색 페이지 크기" />
                         <TextBlock Style="{StaticResource CaptionTextStyle}" Text="한 번의 검색 요청에서 읽어 올 최대 항목 수입니다." />
                         <TextBox
-                            MaxWidth="320"
                             Margin="0,4,0,12"
                             HorizontalAlignment="Stretch"
                             AutomationProperties.Name="검색 페이지 크기"
@@ -81,7 +83,6 @@
                         <TextBlock Style="{StaticResource FieldLabelStyle}" Text="초당 최대 항목 수" />
                         <TextBlock Style="{StaticResource CaptionTextStyle}" Text="인덱싱이 시스템 자원을 너무 많이 사용하지 않도록 처리량을 제한합니다." />
                         <TextBox
-                            MaxWidth="320"
                             Margin="0,4,0,12"
                             HorizontalAlignment="Stretch"
                             AutomationProperties.Name="초당 최대 항목 수"
@@ -90,7 +91,6 @@
                         <TextBlock Style="{StaticResource FieldLabelStyle}" Text="디렉터리 지연 (ms)" />
                         <TextBlock Style="{StaticResource CaptionTextStyle}" Text="각 폴더를 읽는 사이에 적용할 지연 시간입니다." />
                         <TextBox
-                            MaxWidth="320"
                             Margin="0,4,0,0"
                             HorizontalAlignment="Stretch"
                             AutomationProperties.Name="디렉터리 지연 시간"
@@ -108,7 +108,6 @@
 
                         <TextBlock Style="{StaticResource FieldLabelStyle}" Text="테마" />
                         <ComboBox
-                            MaxWidth="360"
                             Margin="0,4,0,12"
                             HorizontalAlignment="Stretch"
                             AutomationProperties.Name="앱 테마"
@@ -118,7 +117,6 @@
 
                         <TextBlock Style="{StaticResource FieldLabelStyle}" Text="창 배경 효과" />
                         <ComboBox
-                            MaxWidth="360"
                             Margin="0,4,0,0"
                             HorizontalAlignment="Stretch"
                             AutomationProperties.Name="창 배경 효과"
@@ -128,7 +126,10 @@
                     </StackPanel>
                 </Border>
 
-                <Expander Margin="0,0,0,16" Header="고급 정보">
+                <Expander
+                    Margin="0,0,0,16"
+                    HorizontalContentAlignment="Stretch"
+                    Header="고급 정보">
                     <Border Margin="0,8,0,0" Style="{StaticResource FluentSurfaceStyle}">
                         <StackPanel>
                             <TextBlock Style="{StaticResource FieldLabelStyle}" Text="사용자 설정 파일" />

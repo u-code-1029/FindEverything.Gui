@@ -3,6 +3,12 @@ using FindEverything.Profile.Runtime;
 
 namespace FindEverything.Desktop.ViewModels;
 
+public enum ProfileEditorMode
+{
+    Guided,
+    Expert,
+}
+
 /// <summary>
 /// An editable field row in the declarative profile editor.
 /// </summary>
@@ -39,6 +45,14 @@ public partial class ProfileFieldDraftViewModel : ObservableObject
         _ => Kind.ToString(),
     };
 
+    public string TemplateToken => Required
+        ? $"{{{FieldId}}}"
+        : $"{{{FieldId}?}}";
+
+    public string TemplateActionLabel => string.IsNullOrWhiteSpace(Header)
+        ? "선택한 부분을 이 값으로 지정"
+        : $"선택한 부분을 ‘{Header}’ 값으로 지정";
+
     public ProfileFieldDraftViewModel()
     {
     }
@@ -58,6 +72,21 @@ public partial class ProfileFieldDraftViewModel : ObservableObject
 
     partial void OnKindChanged(ProfileFieldValueKind value) =>
         OnPropertyChanged(nameof(KindDisplayName));
+
+    partial void OnHeaderChanged(string value) =>
+        OnPropertyChanged(nameof(TemplateActionLabel));
+
+    partial void OnFieldIdChanged(string value)
+    {
+        OnPropertyChanged(nameof(TemplateToken));
+        OnPropertyChanged(nameof(TemplateActionLabel));
+    }
+
+    partial void OnRequiredChanged(bool value)
+    {
+        OnPropertyChanged(nameof(TemplateToken));
+        OnPropertyChanged(nameof(TemplateActionLabel));
+    }
 }
 
 /// <summary>
@@ -80,6 +109,9 @@ public partial class ProfileRuleDraftViewModel : ObservableObject
     [ObservableProperty]
     private string _pattern = string.Empty;
 
+    [ObservableProperty]
+    private string _pathTemplate = string.Empty;
+
     public string MatchModeDisplayName => MatchMode switch
     {
         ProfileRegexMatchMode.Full => "전체 일치",
@@ -100,6 +132,7 @@ public partial class ProfileRuleDraftViewModel : ObservableObject
         IgnoreCase = rule.IgnoreCase;
         TimeoutMilliseconds = rule.TimeoutMilliseconds;
         Pattern = rule.Pattern ?? string.Empty;
+        PathTemplate = rule.PathTemplate ?? string.Empty;
     }
 
     partial void OnMatchModeChanged(ProfileRegexMatchMode value) =>

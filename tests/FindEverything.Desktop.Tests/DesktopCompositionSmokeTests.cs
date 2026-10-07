@@ -82,7 +82,8 @@ public sealed class DesktopCompositionSmokeTests
             Assert.NotNull(provider.GetRequiredService<CatalogPage>());
             var profilesPage = provider.GetRequiredService<ProfilesPage>();
             Assert.NotNull(profilesPage);
-            Assert.NotNull(provider.GetRequiredService<SettingsPage>());
+            var settingsPage = provider.GetRequiredService<SettingsPage>();
+            Assert.NotNull(settingsPage);
 
             window.Height = window.MinHeight;
             window.Show();
@@ -111,6 +112,7 @@ public sealed class DesktopCompositionSmokeTests
             Assert.True(navigation.Navigate(typeof(ProfilesPage)));
             VerifyProfilesScrolling(window, profilesPage);
             Assert.True(navigation.Navigate(typeof(SettingsPage)));
+            VerifySettingsLayout(window, settingsPage);
             VerifyDynamicGridHighlighting();
             window.Close();
             window = null;
@@ -142,6 +144,10 @@ public sealed class DesktopCompositionSmokeTests
         var tabControl = Assert.IsType<TabControl>(page.FindName("ProfilesTabControl"));
         Assert.Equal(HorizontalAlignment.Stretch, tabControl.HorizontalContentAlignment);
         Assert.Equal(VerticalAlignment.Stretch, tabControl.VerticalContentAlignment);
+        var viewModel = Assert.IsType<ProfilesViewModel>(page.DataContext);
+        Assert.True(viewModel.IsGuidedMode);
+        Assert.NotEmpty(viewModel.GeneratedPatternPreview);
+        Assert.NotNull(page.FindName("ProfilePathTemplateTextBox"));
 
         PumpLayout(window, page);
         var editorScrollViewer = Assert.IsType<ScrollViewer>(
@@ -156,6 +162,26 @@ public sealed class DesktopCompositionSmokeTests
 
         tabControl.SelectedIndex = 0;
         PumpLayout(window, page);
+    }
+
+    private static void VerifySettingsLayout(Window window, SettingsPage page)
+    {
+        Assert.False(ScrollViewer.GetCanContentScroll(page));
+        PumpLayout(window, page);
+
+        var scrollViewer = Assert.IsType<ScrollViewer>(page.FindName("SettingsScrollViewer"));
+        Assert.Equal(HorizontalAlignment.Stretch, scrollViewer.HorizontalContentAlignment);
+        Assert.True(scrollViewer.ActualWidth > 0);
+
+        var inputs = FindVisualChildren<FrameworkElement>(scrollViewer)
+            .Where(static element => element is System.Windows.Controls.TextBox or ComboBox)
+            .ToArray();
+        Assert.NotEmpty(inputs);
+        foreach (var input in inputs)
+        {
+            Assert.Equal(double.PositiveInfinity, input.MaxWidth);
+            Assert.Equal(HorizontalAlignment.Stretch, input.HorizontalAlignment);
+        }
     }
 
     private static void VerifyScrollable(

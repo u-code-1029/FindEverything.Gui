@@ -59,6 +59,9 @@ public sealed class ProfileRegexRuleManifest
 {
     public string? Id { get; set; }
 
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? PathTemplate { get; set; }
+
     public string? Pattern { get; set; }
 
     [JsonConverter(typeof(JsonStringEnumConverter<ProfileRegexMatchMode>))]
