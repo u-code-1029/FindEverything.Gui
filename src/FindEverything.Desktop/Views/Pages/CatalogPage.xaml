@@ -107,6 +107,7 @@
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 
                     <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
@@ -126,6 +127,13 @@
 
                     <ui:Button
                         Grid.Column="1"
+                        MinWidth="112"
+                        Margin="8,0,0,0"
+                        Command="{Binding OpenScanConsoleCommand}"
+                        Content="탐색 로그"
+                        Icon="{ui:SymbolIcon Symbol=WindowConsole20}" />
+                    <ui:Button
+                        Grid.Column="2"
                         MinWidth="180"
                         Margin="8,0,0,0"
                         Appearance="Primary"
@@ -133,14 +141,14 @@
                         Content="프로필로 빠르게 불러오기"
                         Icon="{ui:SymbolIcon Symbol=ArrowDownload16}" />
                     <ui:Button
-                        Grid.Column="2"
+                        Grid.Column="3"
                         MinWidth="72"
                         Margin="8,0,0,0"
                         Appearance="Caution"
                         Command="{Binding CancelCommand}"
                         Content="취소" />
                     <ui:Button
-                        Grid.Column="3"
+                        Grid.Column="4"
                         MinWidth="112"
                         Margin="8,0,0,0"
                         Command="{Binding OpenSelectedCommand}"

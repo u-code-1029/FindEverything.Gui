@@ -7,11 +7,13 @@ using System.Windows.Shell;
 using System.Windows.Threading;
 using FindEverything.Application;
 using FindEverything.Application.Catalog;
+using FindEverything.Application.Indexing;
 using FindEverything.Application.Options;
 using FindEverything.Desktop;
 using FindEverything.Desktop.Appearance;
 using FindEverything.Desktop.Behaviors;
 using FindEverything.Desktop.Configuration;
+using FindEverything.Desktop.Services;
 using FindEverything.Desktop.ViewModels;
 using FindEverything.Desktop.Views;
 using FindEverything.Desktop.Views.Pages;
@@ -88,6 +90,7 @@ public sealed class DesktopCompositionSmokeTests
             Assert.NotNull(settingsPage);
 
             window.Height = window.MinHeight;
+            application.MainWindow = window;
             window.Show();
             var chrome = WindowChrome.GetWindowChrome(window);
             Assert.NotNull(chrome);
@@ -116,6 +119,7 @@ public sealed class DesktopCompositionSmokeTests
             VerifyProfilesScrolling(window, profilesPage);
             Assert.True(navigation.Navigate(typeof(SettingsPage)));
             VerifySettingsLayout(window, settingsPage);
+            VerifyScanConsole(provider, window);
             VerifyDynamicGridHighlighting();
             window.Close();
             window = null;
@@ -140,6 +144,100 @@ public sealed class DesktopCompositionSmokeTests
         }
     }
 
+    private static void VerifyScanConsole(IServiceProvider provider, MainWindow mainWindow)
+    {
+        var windowService = provider.GetRequiredService<IScanConsoleWindowService>();
+        var sink = provider.GetRequiredService<ICatalogScanTraceSink>();
+        var viewModel = provider.GetRequiredService<ScanConsoleViewModel>();
+        Assert.Same(viewModel, sink);
+
+        windowService.Show();
+        mainWindow.Dispatcher.Invoke(static () => { }, DispatcherPriority.Loaded);
+        var firstWindow = Assert.Single(
+            System.Windows.Application.Current.Windows.OfType<ScanConsoleWindow>());
+        Assert.Same(mainWindow, firstWindow.Owner);
+        var traceList = Assert.IsType<ListBox>(firstWindow.FindName("TraceList"));
+        Assert.True(VirtualizingPanel.GetIsVirtualizing(traceList));
+        Assert.Equal(VirtualizationMode.Recycling, VirtualizingPanel.GetVirtualizationMode(traceList));
+
+        windowService.Show();
+        Assert.Single(System.Windows.Application.Current.Windows.OfType<ScanConsoleWindow>());
+
+        var operationId = Guid.NewGuid();
+        sink.Report(new CatalogScanTraceEvent(
+            operationId,
+            1,
+            DateTimeOffset.UtcNow,
+            CatalogScanTraceKind.Started,
+            "test-profile",
+            "테스트 프로필",
+            @"C:\Root",
+            ProfilePathInput.Relative,
+            null,
+            null,
+            null,
+            null,
+            null,
+            new Dictionary<string, object?>(),
+            [],
+            null,
+            "시작"));
+        sink.Report(new CatalogScanTraceEvent(
+            operationId,
+            2,
+            DateTimeOffset.UtcNow,
+            CatalogScanTraceKind.DirectoryVisited,
+            "test-profile",
+            "테스트 프로필",
+            @"C:\Root",
+            ProfilePathInput.Relative,
+            @"C:\Root\2026\0521_Project",
+            @"2026\0521_Project",
+            @"2026\0521_Project",
+            ProfileMapStatus.Success,
+            "project-rule",
+            new Dictionary<string, object?> { ["date"] = new DateTime(2026, 5, 21) },
+            [],
+            DirectoryTraversalDecision.SkipDescendants,
+            "일치"));
+        PumpDispatcherFor(mainWindow.Dispatcher, TimeSpan.FromMilliseconds(150));
+
+        Assert.Equal(2, viewModel.Lines.Count);
+        Assert.Contains("[MATCH] [PRUNE]", viewModel.Lines[1].Text, StringComparison.Ordinal);
+        Assert.Contains("input=\"2026\\0521_Project\"", viewModel.Lines[1].Text, StringComparison.Ordinal);
+        Assert.Equal(1, viewModel.VisitedCount);
+        Assert.Equal(1, viewModel.MatchedCount);
+        Assert.Equal(1, viewModel.PrunedCount);
+
+        firstWindow.Close();
+        windowService.Show();
+        mainWindow.Dispatcher.Invoke(static () => { }, DispatcherPriority.Loaded);
+        var reopenedWindow = Assert.Single(
+            System.Windows.Application.Current.Windows.OfType<ScanConsoleWindow>());
+        Assert.NotSame(firstWindow, reopenedWindow);
+        Assert.Same(viewModel, reopenedWindow.DataContext);
+        reopenedWindow.Close();
+    }
+
+    private static void PumpDispatcherFor(Dispatcher dispatcher, TimeSpan duration)
+    {
+        var frame = new DispatcherFrame();
+        var timer = new DispatcherTimer(DispatcherPriority.ApplicationIdle, dispatcher)
+        {
+            Interval = duration,
+        };
+        timer.Tick += OnTick;
+        timer.Start();
+        Dispatcher.PushFrame(frame);
+
+        void OnTick(object? sender, EventArgs eventArgs)
+        {
+            timer.Stop();
+            timer.Tick -= OnTick;
+            frame.Continue = false;
+        }
+    }
+
     private static void VerifyProfilesScrolling(Window window, ProfilesPage page)
     {
         Assert.False(ScrollViewer.GetCanContentScroll(page));
@@ -158,6 +256,7 @@ public sealed class DesktopCompositionSmokeTests
         VerifyGuidedPathButtonAuthoring(viewModel);
 
         PumpLayout(window, page);
+        VerifyProfilesFluentControls(page);
         var editorScrollViewer = Assert.IsType<ScrollViewer>(
             page.FindName("ProfileEditorScrollViewer"));
         Assert.Equal(new Thickness(0, 0, 16, 0), editorScrollViewer.Padding);
@@ -172,6 +271,29 @@ public sealed class DesktopCompositionSmokeTests
 
         tabControl.SelectedIndex = 0;
         PumpLayout(window, page);
+    }
+
+    private static void VerifyProfilesFluentControls(ProfilesPage page)
+    {
+        foreach (var resourceKey in new[]
+                 {
+                     "ActionableEditorInfoBarStyle",
+                     "IconOnlyButtonStyle",
+                     "GuidedModeChoiceStyle",
+                 })
+        {
+            var style = Assert.IsType<Style>(page.Resources[resourceKey]);
+            Assert.NotNull(style.BasedOn);
+        }
+
+        var modeButtons = FindVisualChildren<RadioButton>(page)
+            .Where(static button =>
+                System.Windows.Automation.AutomationProperties.GetName(button) is
+                    "초보자 모드" or "전문가 모드")
+            .ToArray();
+        Assert.Equal(2, modeButtons.Length);
+        Assert.All(modeButtons, static button =>
+            Assert.Equal("ProfileEditorMode", button.GroupName));
     }
 
     private static void VerifyGuidedPathButtonAuthoring(ProfilesViewModel viewModel)

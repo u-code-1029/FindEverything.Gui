@@ -18,11 +18,13 @@ public sealed class CatalogServiceTests
         var hiddenPath = Path.Combine(terminalPath, "hidden");
         var siblingPath = Path.Combine(root, "sibling");
         var discovery = new FakeDiscoveryService(root, terminalPath, hiddenPath, siblingPath);
+        var trace = new RecordingTraceSink();
         var services = new ServiceCollection();
         services.AddFindEverythingApplication(new ConfigurationBuilder().Build());
         services.AddSingleton<IIndexSessionFactory, ThrowingSessionFactory>();
         services.AddSingleton<IDirectoryDiscoveryService>(discovery);
         services.AddSingleton<IProfileResolver>(new FakeProfileResolver(new PruningProfile()));
+        services.AddSingleton<ICatalogScanTraceSink>(trace);
 
         await using var provider = services.BuildServiceProvider();
         var service = provider.GetRequiredService<ICatalogService>();
@@ -40,6 +42,146 @@ public sealed class CatalogServiceTests
         Assert.Equal(1, Assert.IsType<DirectoryDiscoveryReport>(result.DiscoveryReport)
             .Progress.PrunedDirectories);
         Assert.Null(result.ScanReport);
+
+        Assert.Equal(
+            [
+                CatalogScanTraceKind.Started,
+                CatalogScanTraceKind.DirectoryVisited,
+                CatalogScanTraceKind.DirectoryVisited,
+                CatalogScanTraceKind.DirectoryVisited,
+                CatalogScanTraceKind.Completed,
+            ],
+            trace.Events.Select(static entry => entry.Kind));
+        Assert.Equal(
+            Enumerable.Range(1, trace.Events.Count).Select(static value => (long)value),
+            trace.Events.Select(static entry => entry.Sequence));
+        Assert.Single(trace.Events.Select(static entry => entry.OperationId).Distinct());
+
+        var visits = trace.Events
+            .Where(static entry => entry.Kind == CatalogScanTraceKind.DirectoryVisited)
+            .ToArray();
+        Assert.Equal([root, terminalPath, siblingPath], visits.Select(static entry => entry.FullPath));
+        Assert.Equal([".", "terminal", "sibling"], visits.Select(static entry => entry.RelativePath));
+        Assert.Equal([".", "terminal", "sibling"], visits.Select(static entry => entry.MatchInput));
+        Assert.All(visits, static entry => Assert.Equal(ProfilePathInput.Relative, entry.PathInput));
+        Assert.Equal(
+            [ProfileMapStatus.NoMatch, ProfileMapStatus.Invalid, ProfileMapStatus.Success],
+            visits.Select(static entry => entry.MappingStatus));
+        Assert.Null(visits[0].MatchedRuleId);
+        Assert.Equal("terminal-rule", visits[1].MatchedRuleId);
+        Assert.Equal("test-rule", visits[2].MatchedRuleId);
+        Assert.Empty(visits[0].Values);
+        Assert.Empty(visits[1].Values);
+        Assert.Equal("sibling", visits[2].Values["name"]);
+        Assert.Equal("conversion", Assert.Single(visits[1].Issues).Code);
+        Assert.Equal(DirectoryTraversalDecision.SkipDescendants, visits[1].TraversalDecision);
+        Assert.Equal(DirectoryTraversalDecision.Continue, visits[2].TraversalDecision);
+    }
+
+    [Fact]
+    public async Task Discover_publishes_discovery_errors_before_the_completed_event()
+    {
+        var root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "catalog-trace-errors"));
+        var deniedPath = Path.Combine(root, "denied");
+        var trace = new RecordingTraceSink();
+        var services = new ServiceCollection();
+        services.AddFindEverythingApplication(new ConfigurationBuilder().Build());
+        services.AddSingleton<IIndexSessionFactory, ThrowingSessionFactory>();
+        services.AddSingleton<IDirectoryDiscoveryService>(
+            new ReportingDiscoveryService(
+                root,
+                DirectoryDiscoveryStatus.Partial,
+                [new DirectoryDiscoveryError(deniedPath, "Access denied.")]));
+        services.AddSingleton<IProfileResolver>(new FakeProfileResolver(new FakeProfile()));
+        services.AddSingleton<ICatalogScanTraceSink>(trace);
+
+        await using var provider = services.BuildServiceProvider();
+        var service = provider.GetRequiredService<ICatalogService>();
+
+        var result = await service.DiscoverAsync(new CatalogRequest("test", root, "unused.db"));
+
+        Assert.Equal(DirectoryDiscoveryStatus.Partial, result.DiscoveryReport?.Status);
+        Assert.Equal(
+            [
+                CatalogScanTraceKind.Started,
+                CatalogScanTraceKind.DirectoryVisited,
+                CatalogScanTraceKind.DiscoveryError,
+                CatalogScanTraceKind.Completed,
+            ],
+            trace.Events.Select(static entry => entry.Kind));
+        var error = trace.Events[^2];
+        Assert.Equal(deniedPath, error.FullPath);
+        Assert.Equal("denied", error.RelativePath);
+        Assert.Equal("Access denied.", error.Message);
+    }
+
+    [Fact]
+    public async Task Discover_publishes_cancelled_and_failed_terminal_events()
+    {
+        var root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "catalog-trace-terminal"));
+
+        var cancelledTrace = new RecordingTraceSink();
+        var cancelledServices = new ServiceCollection();
+        cancelledServices.AddFindEverythingApplication(new ConfigurationBuilder().Build());
+        cancelledServices.AddSingleton<IIndexSessionFactory, ThrowingSessionFactory>();
+        cancelledServices.AddSingleton<IDirectoryDiscoveryService>(
+            new ReportingDiscoveryService(root, DirectoryDiscoveryStatus.Cancelled, []));
+        cancelledServices.AddSingleton<IProfileResolver>(new FakeProfileResolver(new FakeProfile()));
+        cancelledServices.AddSingleton<ICatalogScanTraceSink>(cancelledTrace);
+        await using (var provider = cancelledServices.BuildServiceProvider())
+        {
+            var service = provider.GetRequiredService<ICatalogService>();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+                service.DiscoverAsync(new CatalogRequest("test", root, "unused.db")));
+        }
+
+        Assert.Equal(
+            CatalogScanTraceKind.Cancelled,
+            cancelledTrace.Events[^1].Kind);
+        Assert.DoesNotContain(
+            cancelledTrace.Events,
+            static entry => entry.Kind is CatalogScanTraceKind.Completed or CatalogScanTraceKind.Failed);
+
+        var failedTrace = new RecordingTraceSink();
+        var failedServices = new ServiceCollection();
+        failedServices.AddFindEverythingApplication(new ConfigurationBuilder().Build());
+        failedServices.AddSingleton<IIndexSessionFactory, ThrowingSessionFactory>();
+        failedServices.AddSingleton<IDirectoryDiscoveryService, ThrowingDiscoveryService>();
+        failedServices.AddSingleton<IProfileResolver>(new FakeProfileResolver(new FakeProfile()));
+        failedServices.AddSingleton<ICatalogScanTraceSink>(failedTrace);
+        await using (var provider = failedServices.BuildServiceProvider())
+        {
+            var service = provider.GetRequiredService<ICatalogService>();
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.DiscoverAsync(new CatalogRequest("test", root, "unused.db")));
+            Assert.Equal("Discovery failed.", exception.Message);
+        }
+
+        Assert.Equal(
+            [CatalogScanTraceKind.Started, CatalogScanTraceKind.Failed],
+            failedTrace.Events.Select(static entry => entry.Kind));
+        Assert.Contains("Discovery failed.", failedTrace.Events[^1].Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Discover_ignores_trace_sink_failures()
+    {
+        var root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "catalog-trace-sink-failure"));
+        var services = new ServiceCollection();
+        services.AddFindEverythingApplication(new ConfigurationBuilder().Build());
+        services.AddSingleton<IIndexSessionFactory, ThrowingSessionFactory>();
+        services.AddSingleton<IDirectoryDiscoveryService>(
+            new ReportingDiscoveryService(root, DirectoryDiscoveryStatus.Completed, []));
+        services.AddSingleton<IProfileResolver>(new FakeProfileResolver(new FakeProfile()));
+        services.AddSingleton<ICatalogScanTraceSink, ThrowingTraceSink>();
+
+        await using var provider = services.BuildServiceProvider();
+        var service = provider.GetRequiredService<ICatalogService>();
+
+        var result = await service.DiscoverAsync(new CatalogRequest("test", root, "unused.db"));
+
+        Assert.Equal(1, result.CandidateCount);
+        Assert.Equal(DirectoryDiscoveryStatus.Completed, result.DiscoveryReport?.Status);
     }
 
     [Fact]
@@ -48,6 +190,7 @@ public sealed class CatalogServiceTests
         var root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "catalog-root"));
         var goodPath = Path.Combine(root, "good");
         var badPath = Path.Combine(root, "bad");
+        var trace = new RecordingTraceSink();
         var services = new ServiceCollection();
         services.AddFindEverythingApplication(new ConfigurationBuilder().Build());
         services.AddSingleton<IIndexSessionFactory>(new FakeSessionFactory([
@@ -56,6 +199,7 @@ public sealed class CatalogServiceTests
         ]));
         services.AddSingleton<IDirectoryDiscoveryService, UnsupportedDiscoveryService>();
         services.AddSingleton<IProfileResolver>(new FakeProfileResolver(new FakeProfile()));
+        services.AddSingleton<ICatalogScanTraceSink>(trace);
 
         await using var provider = services.BuildServiceProvider();
         var service = provider.GetRequiredService<ICatalogService>();
@@ -68,6 +212,7 @@ public sealed class CatalogServiceTests
         var invalid = Assert.Single(result.InvalidItems);
         Assert.Equal(badPath, invalid.FullPath);
         Assert.True(result.HasPendingScopes);
+        Assert.Empty(trace.Events);
     }
 
     [Fact]
@@ -185,6 +330,62 @@ public sealed class CatalogServiceTests
             IProgress<DirectoryDiscoveryProgress>? progress = null,
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
+    }
+
+    private sealed class ReportingDiscoveryService(
+        string root,
+        DirectoryDiscoveryStatus status,
+        IReadOnlyList<DirectoryDiscoveryError> errors) : IDirectoryDiscoveryService
+    {
+        public Task<DirectoryDiscoveryReport> DiscoverAsync(
+            DirectoryDiscoveryRequest request,
+            Func<DiscoveredDirectory, DirectoryTraversalDecision> visitDirectory,
+            IProgress<DirectoryDiscoveryProgress>? progress = null,
+            CancellationToken cancellationToken = default)
+        {
+            var decision = visitDirectory(new DiscoveredDirectory(
+                root,
+                Path.GetFileName(root),
+                root,
+                DateTimeOffset.MinValue,
+                DateTimeOffset.MinValue));
+            var reportProgress = new DirectoryDiscoveryProgress(
+                Entries: 1,
+                Directories: 1,
+                PrunedDirectories: decision == DirectoryTraversalDecision.SkipDescendants ? 1 : 0,
+                SkippedLinks: 0,
+                ErrorCount: errors.Count,
+                Elapsed: TimeSpan.Zero);
+            progress?.Report(reportProgress);
+            return Task.FromResult(new DirectoryDiscoveryReport(
+                root,
+                status,
+                reportProgress,
+                errors));
+        }
+    }
+
+    private sealed class ThrowingDiscoveryService : IDirectoryDiscoveryService
+    {
+        public Task<DirectoryDiscoveryReport> DiscoverAsync(
+            DirectoryDiscoveryRequest request,
+            Func<DiscoveredDirectory, DirectoryTraversalDecision> visitDirectory,
+            IProgress<DirectoryDiscoveryProgress>? progress = null,
+            CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("Discovery failed.");
+    }
+
+    private sealed class RecordingTraceSink : ICatalogScanTraceSink
+    {
+        public List<CatalogScanTraceEvent> Events { get; } = [];
+
+        public void Report(CatalogScanTraceEvent value) => Events.Add(value);
+    }
+
+    private sealed class ThrowingTraceSink : ICatalogScanTraceSink
+    {
+        public void Report(CatalogScanTraceEvent value) =>
+            throw new InvalidOperationException("The observer must not affect discovery.");
     }
 
     private sealed class FakeSession(

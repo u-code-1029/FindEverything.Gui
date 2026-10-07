@@ -19,7 +19,10 @@
         <Style x:Key="EditorSectionStyle" BasedOn="{StaticResource FluentSurfaceStyle}" TargetType="Border">
             <Setter Property="Margin" Value="0,0,0,16" />
         </Style>
-        <Style x:Key="ActionableEditorInfoBarStyle" TargetType="ui:InfoBar">
+        <Style
+            x:Key="ActionableEditorInfoBarStyle"
+            BasedOn="{StaticResource {x:Type ui:InfoBar}}"
+            TargetType="ui:InfoBar">
             <Setter Property="IsOpen" Value="False" />
             <Setter Property="IsClosable" Value="False" />
             <Style.Triggers>
@@ -31,7 +34,10 @@
                 </DataTrigger>
             </Style.Triggers>
         </Style>
-        <Style x:Key="IconOnlyButtonStyle" TargetType="ui:Button">
+        <Style
+            x:Key="IconOnlyButtonStyle"
+            BasedOn="{StaticResource {x:Type ui:Button}}"
+            TargetType="ui:Button">
             <Setter Property="Width" Value="34" />
             <Setter Property="Height" Value="32" />
             <Setter Property="Padding" Value="0" />
@@ -52,7 +58,10 @@
                 </DataTrigger>
             </Style.Triggers>
         </Style>
-        <Style x:Key="GuidedModeChoiceStyle" TargetType="RadioButton">
+        <Style
+            x:Key="GuidedModeChoiceStyle"
+            BasedOn="{StaticResource {x:Type RadioButton}}"
+            TargetType="RadioButton">
             <Setter Property="Margin" Value="0,0,12,8" />
             <Setter Property="Padding" Value="12,10" />
             <Setter Property="FontWeight" Value="SemiBold" />
@@ -160,6 +169,7 @@
                                             AutomationProperties.Name="초보자 모드"
                                             Command="{Binding UseGuidedModeCommand}"
                                             Content="초보자 · 경로에서 값 고르기"
+                                            GroupName="ProfileEditorMode"
                                             IsEnabled="{Binding CanUseGuidedMode}"
                                             IsChecked="{Binding IsGuidedMode, Mode=OneWay}"
                                             Style="{StaticResource GuidedModeChoiceStyle}" />
@@ -167,6 +177,7 @@
                                             AutomationProperties.Name="전문가 모드"
                                             Command="{Binding UseExpertModeCommand}"
                                             Content="전문가 · 정규식 직접 입력"
+                                            GroupName="ProfileEditorMode"
                                             IsChecked="{Binding IsExpertMode, Mode=OneWay}"
                                             Style="{StaticResource GuidedModeChoiceStyle}" />
                                     </WrapPanel>
@@ -642,9 +653,30 @@
                                                 <DataGridTemplateColumn.CellTemplate>
                                                     <DataTemplate>
                                                         <StackPanel HorizontalAlignment="Center" Orientation="Horizontal">
-                                                            <ui:Button Margin="0,0,4,0" Command="{Binding DataContext.MoveFieldUpCommand, RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}}" CommandParameter="{Binding}" Icon="{ui:SymbolIcon Symbol=ArrowUp12}" Style="{StaticResource IconOnlyButtonStyle}" ToolTip="위로 이동" />
-                                                            <ui:Button Margin="0,0,4,0" Command="{Binding DataContext.MoveFieldDownCommand, RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}}" CommandParameter="{Binding}" Icon="{ui:SymbolIcon Symbol=ArrowDown12}" Style="{StaticResource IconOnlyButtonStyle}" ToolTip="아래로 이동" />
-                                                            <ui:Button Appearance="Caution" Command="{Binding DataContext.RemoveFieldCommand, RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}}" CommandParameter="{Binding}" Icon="{ui:SymbolIcon Symbol=Delete12}" Style="{StaticResource IconOnlyButtonStyle}" ToolTip="삭제" />
+                                                            <ui:Button
+                                                                Margin="0,0,4,0"
+                                                                AutomationProperties.Name="전문가 결과 컬럼 위로 이동"
+                                                                Command="{Binding DataContext.MoveFieldUpCommand, RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}}"
+                                                                CommandParameter="{Binding}"
+                                                                Icon="{ui:SymbolIcon Symbol=ArrowUp12}"
+                                                                Style="{StaticResource IconOnlyButtonStyle}"
+                                                                ToolTip="위로 이동" />
+                                                            <ui:Button
+                                                                Margin="0,0,4,0"
+                                                                AutomationProperties.Name="전문가 결과 컬럼 아래로 이동"
+                                                                Command="{Binding DataContext.MoveFieldDownCommand, RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}}"
+                                                                CommandParameter="{Binding}"
+                                                                Icon="{ui:SymbolIcon Symbol=ArrowDown12}"
+                                                                Style="{StaticResource IconOnlyButtonStyle}"
+                                                                ToolTip="아래로 이동" />
+                                                            <ui:Button
+                                                                Appearance="Caution"
+                                                                AutomationProperties.Name="전문가 결과 컬럼 삭제"
+                                                                Command="{Binding DataContext.RemoveFieldCommand, RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}}"
+                                                                CommandParameter="{Binding}"
+                                                                Icon="{ui:SymbolIcon Symbol=Delete12}"
+                                                                Style="{StaticResource IconOnlyButtonStyle}"
+                                                                ToolTip="삭제" />
                                                         </StackPanel>
                                                     </DataTemplate>
                                                 </DataGridTemplateColumn.CellTemplate>
@@ -697,9 +729,30 @@
                                                 <DataGridTemplateColumn.CellTemplate>
                                                     <DataTemplate>
                                                         <StackPanel HorizontalAlignment="Center" Orientation="Horizontal">
-                                                            <ui:Button Margin="0,0,4,0" Command="{Binding DataContext.MoveRuleUpCommand, RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}}" CommandParameter="{Binding}" Icon="{ui:SymbolIcon Symbol=ArrowUp12}" Style="{StaticResource IconOnlyButtonStyle}" ToolTip="위로 이동" />
-                                                            <ui:Button Margin="0,0,4,0" Command="{Binding DataContext.MoveRuleDownCommand, RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}}" CommandParameter="{Binding}" Icon="{ui:SymbolIcon Symbol=ArrowDown12}" Style="{StaticResource IconOnlyButtonStyle}" ToolTip="아래로 이동" />
-                                                            <ui:Button Appearance="Caution" Command="{Binding DataContext.RemoveRuleCommand, RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}}" CommandParameter="{Binding}" Icon="{ui:SymbolIcon Symbol=Delete12}" Style="{StaticResource IconOnlyButtonStyle}" ToolTip="삭제" />
+                                                            <ui:Button
+                                                                Margin="0,0,4,0"
+                                                                AutomationProperties.Name="전문가 정규식 규칙 위로 이동"
+                                                                Command="{Binding DataContext.MoveRuleUpCommand, RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}}"
+                                                                CommandParameter="{Binding}"
+                                                                Icon="{ui:SymbolIcon Symbol=ArrowUp12}"
+                                                                Style="{StaticResource IconOnlyButtonStyle}"
+                                                                ToolTip="위로 이동" />
+                                                            <ui:Button
+                                                                Margin="0,0,4,0"
+                                                                AutomationProperties.Name="전문가 정규식 규칙 아래로 이동"
+                                                                Command="{Binding DataContext.MoveRuleDownCommand, RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}}"
+                                                                CommandParameter="{Binding}"
+                                                                Icon="{ui:SymbolIcon Symbol=ArrowDown12}"
+                                                                Style="{StaticResource IconOnlyButtonStyle}"
+                                                                ToolTip="아래로 이동" />
+                                                            <ui:Button
+                                                                Appearance="Caution"
+                                                                AutomationProperties.Name="전문가 정규식 규칙 삭제"
+                                                                Command="{Binding DataContext.RemoveRuleCommand, RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}}"
+                                                                CommandParameter="{Binding}"
+                                                                Icon="{ui:SymbolIcon Symbol=Delete12}"
+                                                                Style="{StaticResource IconOnlyButtonStyle}"
+                                                                ToolTip="삭제" />
                                                         </StackPanel>
                                                     </DataTemplate>
                                                 </DataGridTemplateColumn.CellTemplate>

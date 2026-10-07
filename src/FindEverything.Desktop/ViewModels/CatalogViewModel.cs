@@ -20,6 +20,7 @@ public partial class CatalogViewModel : ObservableObject
     private readonly IDesktopPickerService _pickerService;
     private readonly IPathLauncher _pathLauncher;
     private readonly IApplicationOperationCoordinator _operationCoordinator;
+    private readonly IScanConsoleWindowService _scanConsoleWindowService;
     private readonly ISnackbarService _snackbarService;
     private readonly ILogger<CatalogViewModel> _logger;
     private CatalogItemViewModel[] _loadedItems = [];
@@ -79,6 +80,7 @@ public partial class CatalogViewModel : ObservableObject
         IDesktopPickerService pickerService,
         IPathLauncher pathLauncher,
         IApplicationOperationCoordinator operationCoordinator,
+        IScanConsoleWindowService scanConsoleWindowService,
         ISnackbarService snackbarService,
         ILogger<CatalogViewModel> logger)
     {
@@ -88,6 +90,7 @@ public partial class CatalogViewModel : ObservableObject
         _pickerService = pickerService;
         _pathLauncher = pathLauncher;
         _operationCoordinator = operationCoordinator;
+        _scanConsoleWindowService = scanConsoleWindowService;
         _snackbarService = snackbarService;
         _logger = logger;
 
@@ -240,6 +243,20 @@ public partial class CatalogViewModel : ObservableObject
         _operationCoordinator.Cancel();
     }
 
+    [RelayCommand]
+    private void OpenScanConsole()
+    {
+        try
+        {
+            _scanConsoleWindowService.Show();
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "Could not open the scan diagnostics window.");
+            ShowSnackbar("탐색 로그 열기 실패", exception.Message, ControlAppearance.Danger);
+        }
+    }
+
     [RelayCommand(CanExecute = nameof(CanOpenSelected))]
     private void OpenSelected()
     {
@@ -300,6 +317,11 @@ public partial class CatalogViewModel : ObservableObject
             // to its background scheduler.
             var workspace = ValidateWorkspace(requiresDatabase: !discoverDirectly);
             var request = CreateRequest(workspace);
+            if (discoverDirectly)
+            {
+                OpenScanConsole();
+            }
+
             await _operationCoordinator.RunAsync(async cancellationToken =>
             {
                 await PersistWorkspaceAsync(workspace, cancellationToken).ConfigureAwait(false);
@@ -367,7 +389,7 @@ public partial class CatalogViewModel : ObservableObject
                 || scanReport.Errors.Count > 0);
         var discoveryIncomplete = result.DiscoveryReport is { } discoveryReport
             && (discoveryReport.Status != DirectoryDiscoveryStatus.Completed
-                || discoveryReport.Errors.Count > 0);
+                || discoveryReport.Progress.ErrorCount > 0);
         var incomplete = result.HasPendingScopes || scanIncomplete || discoveryIncomplete;
         var severity = incomplete
             ? InfoBarSeverity.Warning
@@ -379,7 +401,7 @@ public partial class CatalogViewModel : ObservableObject
             ? string.Empty
             : $" · 방문 폴더 {result.DiscoveryReport.Progress.Directories:N0}"
               + $" · 하위 탐색 생략 {result.DiscoveryReport.Progress.PrunedDirectories:N0}"
-              + $" · 오류 {result.DiscoveryReport.Errors.Count:N0}";
+              + $" · 오류 {result.DiscoveryReport.Progress.ErrorCount:N0}";
         SetStatus(
             incomplete ? "부분 결과" : discoveredDirectly ? "빠른 불러오기 완료" : "기존 인덱스 불러오기 완료",
             $"후보 {result.CandidateCount:N0} · 일치 {result.Items.Count:N0} · 규칙 외 {result.NoMatchCount:N0} · 변환 오류 {result.InvalidItems.Count:N0}{discoverySummary}{scanSummary}"

@@ -1,6 +1,7 @@
 using FindEverything.Application.Indexing;
 using FindEverything.Application.Options;
 using FindEverything.Profile.Runtime;
+using System.Collections.ObjectModel;
 
 namespace FindEverything.Application.Catalog;
 
@@ -8,7 +9,8 @@ internal sealed class CatalogService(
     IIndexSessionFactory sessionFactory,
     IDirectoryDiscoveryService directoryDiscovery,
     IProfileResolver profileResolver,
-    IValidatedSettingsState<IndexingOptions> indexingSettings) : ICatalogService, IDisposable
+    IValidatedSettingsState<IndexingOptions> indexingSettings,
+    ICatalogScanTraceSink scanTraceSink) : ICatalogService, IDisposable
 {
     private readonly SemaphoreSlim _operationGate = new(1, 1);
 
@@ -69,37 +71,68 @@ internal sealed class CatalogService(
         IProgress<CatalogOperationProgress>? progress,
         CancellationToken cancellationToken)
     {
-        progress?.Report(new(
-            CatalogOperationPhase.Preparing,
-            "프로필 기반 빠른 스캔을 준비하고 있습니다."));
+        var trace = new ScanTraceWriter(scanTraceSink, request, profile.Descriptor);
+        trace.Report(
+            CatalogScanTraceKind.Started,
+            message: "프로필 기반 빠른 스캔을 시작했습니다.");
 
-        var accumulator = new MappingAccumulator(profile, request.RootPath, progress);
-        var operationSettings = indexingSettings.Current;
-        var discoveryProgress = progress is null
-            ? null
-            : new InlineProgress<DirectoryDiscoveryProgress>(value => progress.Report(new(
-                CatalogOperationPhase.Scanning,
-                $"폴더 {value.Directories:N0}개를 확인하고 하위 탐색 {value.PrunedDirectories:N0}개를 생략했습니다.",
-                value.Directories)));
-
-        var report = await directoryDiscovery.DiscoverAsync(
-            new DirectoryDiscoveryRequest(request.RootPath)
-            {
-                MaxEntriesPerSecond = operationSettings.MaxEntriesPerSecond,
-                DirectoryDelay = TimeSpan.FromMilliseconds(
-                    operationSettings.DirectoryDelayMilliseconds),
-            },
-            accumulator.Visit,
-            discoveryProgress,
-            cancellationToken).ConfigureAwait(false);
-
-        if (report.Status == DirectoryDiscoveryStatus.Cancelled)
-            throw new OperationCanceledException(cancellationToken);
-
-        return accumulator.BuildResult(hasPendingScopes: false, scanReport: null) with
+        try
         {
-            DiscoveryReport = report,
-        };
+            progress?.Report(new(
+                CatalogOperationPhase.Preparing,
+                "프로필 기반 빠른 스캔을 준비하고 있습니다."));
+
+            var accumulator = new MappingAccumulator(profile, request.RootPath, progress, trace);
+            var operationSettings = indexingSettings.Current;
+            var discoveryProgress = progress is null
+                ? null
+                : new InlineProgress<DirectoryDiscoveryProgress>(value => progress.Report(new(
+                    CatalogOperationPhase.Scanning,
+                    $"폴더 {value.Directories:N0}개를 확인하고 하위 탐색 {value.PrunedDirectories:N0}개를 생략했습니다.",
+                    value.Directories)));
+
+            var report = await directoryDiscovery.DiscoverAsync(
+                new DirectoryDiscoveryRequest(request.RootPath)
+                {
+                    MaxEntriesPerSecond = operationSettings.MaxEntriesPerSecond,
+                    DirectoryDelay = TimeSpan.FromMilliseconds(
+                        operationSettings.DirectoryDelayMilliseconds),
+                },
+                accumulator.Visit,
+                discoveryProgress,
+                cancellationToken).ConfigureAwait(false);
+
+            foreach (var error in report.Errors)
+            {
+                trace.ReportDiscoveryError(error);
+            }
+
+            if (report.Status == DirectoryDiscoveryStatus.Cancelled)
+                throw new OperationCanceledException(cancellationToken);
+
+            var result = accumulator.BuildResult(hasPendingScopes: false, scanReport: null) with
+            {
+                DiscoveryReport = report,
+            };
+            trace.Report(
+                CatalogScanTraceKind.Completed,
+                message: CreateCompletionMessage(result, report));
+            return result;
+        }
+        catch (OperationCanceledException)
+        {
+            trace.Report(
+                CatalogScanTraceKind.Cancelled,
+                message: "빠른 스캔이 취소되었습니다.");
+            throw;
+        }
+        catch (Exception exception)
+        {
+            trace.Report(
+                CatalogScanTraceKind.Failed,
+                message: $"빠른 스캔에 실패했습니다: {exception.Message}");
+            throw;
+        }
     }
 
     private async Task<CatalogResult> LoadFromIndexAsync(
@@ -216,6 +249,16 @@ internal sealed class CatalogService(
 
     public void Dispose() => _operationGate.Dispose();
 
+    private static string CreateCompletionMessage(
+        CatalogResult result,
+        DirectoryDiscoveryReport report)
+    {
+        var errorSummary = report.Progress.ErrorCount == report.Errors.Count
+            ? $"오류 {report.Progress.ErrorCount:N0}개"
+            : $"오류 {report.Progress.ErrorCount:N0}개(상세 {report.Errors.Count:N0}개 기록)";
+        return $"빠른 스캔을 완료했습니다. 폴더 {result.CandidateCount:N0}개, 일치 {result.Items.Count:N0}개, {errorSummary}를 확인했습니다.";
+    }
+
     private sealed class InlineProgress<T>(Action<T> report) : IProgress<T>
     {
         public void Report(T value) => report(value);
@@ -224,7 +267,8 @@ internal sealed class CatalogService(
     private sealed class MappingAccumulator(
         ILoadedProfile profile,
         string rootPath,
-        IProgress<CatalogOperationProgress>? progress)
+        IProgress<CatalogOperationProgress>? progress,
+        ScanTraceWriter? trace = null)
     {
         private readonly List<CatalogItem> _items = [];
         private readonly List<CatalogInvalidItem> _invalidItems = [];
@@ -271,9 +315,15 @@ internal sealed class CatalogService(
                     _candidateCount));
             }
 
-            return mapping.ShouldPruneDescendants
+            var traversalDecision = mapping.ShouldPruneDescendants
                 ? DirectoryTraversalDecision.SkipDescendants
                 : DirectoryTraversalDecision.Continue;
+            trace?.ReportDirectoryVisited(
+                directory,
+                relativePath,
+                mapping,
+                traversalDecision);
+            return traversalDecision;
         }
 
         public CatalogResult BuildResult(bool hasPendingScopes, IndexScanReport? scanReport) =>
@@ -285,5 +335,137 @@ internal sealed class CatalogService(
                 _noMatchCount,
                 hasPendingScopes,
                 scanReport);
+    }
+
+    private sealed class ScanTraceWriter(
+        ICatalogScanTraceSink sink,
+        CatalogRequest request,
+        ProfileDescriptor profile)
+    {
+        private static readonly IReadOnlyDictionary<string, object?> EmptyValues =
+            new ReadOnlyDictionary<string, object?>(new Dictionary<string, object?>());
+        private static readonly IReadOnlyList<ProfileMappingIssue> EmptyIssues =
+            Array.Empty<ProfileMappingIssue>();
+        private readonly Guid _operationId = Guid.NewGuid();
+        private long _sequence;
+
+        public void ReportDirectoryVisited(
+            DiscoveredDirectory directory,
+            string relativePath,
+            ProfileMapResult mapping,
+            DirectoryTraversalDecision traversalDecision)
+        {
+            try
+            {
+                var matchInput = profile.PathInput == ProfilePathInput.Full
+                    ? directory.FullPath
+                    : relativePath;
+                var values = mapping.Item is null
+                    ? EmptyValues
+                    : new ReadOnlyDictionary<string, object?>(
+                        new Dictionary<string, object?>(mapping.Item.Values, StringComparer.Ordinal));
+                var issues = mapping.Issues.Count == 0
+                    ? EmptyIssues
+                    : Array.AsReadOnly(mapping.Issues.ToArray());
+
+                ReportCore(new CatalogScanTraceEvent(
+                    _operationId,
+                    Interlocked.Increment(ref _sequence),
+                    DateTimeOffset.UtcNow,
+                    CatalogScanTraceKind.DirectoryVisited,
+                    profile.Id,
+                    profile.DisplayName,
+                    request.RootPath,
+                    profile.PathInput,
+                    directory.FullPath,
+                    relativePath,
+                    matchInput,
+                    mapping.Status,
+                    mapping.MatchedRuleId,
+                    values,
+                    issues,
+                    traversalDecision,
+                    GetMappingMessage(mapping.Status, traversalDecision)));
+            }
+            catch (Exception)
+            {
+                // Snapshotting diagnostics from a custom profile must not affect
+                // the catalog result or the traversal decision.
+            }
+        }
+
+        public void ReportDiscoveryError(DirectoryDiscoveryError error)
+        {
+            string? relativePath = null;
+            if (!string.IsNullOrWhiteSpace(error.Path))
+            {
+                try
+                {
+                    relativePath = Path.GetRelativePath(request.RootPath, error.Path);
+                }
+                catch (Exception)
+                {
+                    // Diagnostics must not be able to change the scan result.
+                }
+            }
+
+            Report(
+                CatalogScanTraceKind.DiscoveryError,
+                fullPath: error.Path,
+                relativePath: relativePath,
+                message: error.Message);
+        }
+
+        public void Report(
+            CatalogScanTraceKind kind,
+            string? fullPath = null,
+            string? relativePath = null,
+            string? message = null) =>
+            ReportCore(new CatalogScanTraceEvent(
+                _operationId,
+                Interlocked.Increment(ref _sequence),
+                DateTimeOffset.UtcNow,
+                kind,
+                profile.Id,
+                profile.DisplayName,
+                request.RootPath,
+                profile.PathInput,
+                fullPath,
+                relativePath,
+                null,
+                null,
+                null,
+                EmptyValues,
+                EmptyIssues,
+                null,
+                message ?? string.Empty));
+
+        private void ReportCore(CatalogScanTraceEvent value)
+        {
+            try
+            {
+                sink.Report(value);
+            }
+            catch (Exception)
+            {
+                // A diagnostics consumer is observational and must never interrupt a scan.
+            }
+        }
+
+        private static string GetMappingMessage(
+            ProfileMapStatus status,
+            DirectoryTraversalDecision traversalDecision)
+        {
+            var message = status switch
+            {
+                ProfileMapStatus.Success => "프로필 규칙과 일치했습니다.",
+                ProfileMapStatus.Invalid => "규칙과 일치했지만 값을 변환하지 못했습니다.",
+                ProfileMapStatus.NoMatch => "프로필 규칙과 일치하지 않았습니다.",
+                _ => "프로필 판정을 완료했습니다.",
+            };
+            return traversalDecision == DirectoryTraversalDecision.SkipDescendants
+                ? $"{message} 하위 폴더 탐색을 생략합니다."
+                : message;
+        }
     }
 }

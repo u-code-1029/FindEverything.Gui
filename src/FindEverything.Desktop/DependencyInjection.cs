@@ -10,6 +10,7 @@ using FindEverything.Desktop.Views.Pages;
 using FindEverything.Profile.Runtime;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Wpf.Ui;
 using Wpf.Ui.DependencyInjection;
 
@@ -54,6 +55,7 @@ public static class DependencyInjection
         services.AddSingleton<IContentDialogService, ContentDialogService>();
 
         services.AddSingleton<IApplicationOperationCoordinator, ApplicationOperationCoordinator>();
+        services.AddSingleton<IScanConsoleWindowService, ScanConsoleWindowService>();
         services.AddSingleton<IWorkspaceContext, WorkspaceContext>();
         services.AddSingleton<IDesktopPickerService, DesktopPickerService>();
         services.AddSingleton<IPathLauncher, ExplorerPathLauncher>();
@@ -69,6 +71,10 @@ public static class DependencyInjection
 
         services.AddSingleton<MainWindow>();
         services.AddSingleton<MainWindowViewModel>();
+        services.AddTransient<ScanConsoleWindow>();
+        services.AddSingleton<ScanConsoleViewModel>();
+        services.Replace(ServiceDescriptor.Singleton<ICatalogScanTraceSink>(
+            static provider => provider.GetRequiredService<ScanConsoleViewModel>()));
         services.AddSingleton<FilesPage>();
         services.AddSingleton<FileSearchViewModel>();
         services.AddSingleton<CatalogPage>();
