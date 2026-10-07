@@ -165,6 +165,10 @@ public sealed class ProfileDefinitionCompilerTests
         var manifest = CompositeDateManifest();
         manifest.Rules![0].Pattern =
             @".*[\\/]FULL[\\/](?<year>\d{4})[\\/](?<monthDay>\d{4})_(?<name>[^\\/]+)";
+        // Windows CI runs WPF and runtime suites in parallel. Keep this contract
+        // test focused on absolute-path input instead of treating transient runner
+        // CPU pressure as a catastrophic-regex timeout.
+        manifest.Rules[0].TimeoutMilliseconds = 1_000;
 
         var profile = Compile(provider, manifest);
         var result = profile.Map(new ProfilePathCandidate(

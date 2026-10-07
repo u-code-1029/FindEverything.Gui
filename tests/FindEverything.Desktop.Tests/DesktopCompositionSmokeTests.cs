@@ -24,7 +24,9 @@ using FindEverything.Profile.Runtime;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Wpf.Ui;
+using Wpf.Ui.Appearance;
 using Wpf.Ui.Controls;
+using Wpf.Ui.Markup;
 using Xunit;
 
 namespace FindEverything.Desktop.Tests;
@@ -63,16 +65,14 @@ public sealed class DesktopCompositionSmokeTests
 
     private static void RunSmokeTest(TaskCompletionSource<Exception?> completion)
     {
-        App? application = null;
+        System.Windows.Application? application = null;
         MainWindow? window = null;
         Exception? failure = null;
-        var previousSynchronizationContext = SynchronizationContext.Current;
-        SynchronizationContext.SetSynchronizationContext(
-            new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
+        using var dispatcherContext = UseDispatcherSynchronizationContext(
+            Dispatcher.CurrentDispatcher);
         try
         {
-            application = new App();
-            application.InitializeComponent();
+            application = CreateTestApplication();
 
             var configuration = new ConfigurationManager();
             configuration.AddInMemoryCollection(new Dictionary<string, string?>
@@ -165,9 +165,34 @@ public sealed class DesktopCompositionSmokeTests
                 failure ??= exception;
             }
 
-            SynchronizationContext.SetSynchronizationContext(previousSynchronizationContext);
             completion.TrySetResult(failure);
         }
+    }
+
+    private static System.Windows.Application CreateTestApplication()
+    {
+        var application = new System.Windows.Application
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown,
+        };
+        application.Resources.MergedDictionaries.Add(
+            new ThemesDictionary { Theme = ApplicationTheme.Light });
+        application.Resources.MergedDictionaries.Add(new ControlsDictionary());
+        application.Resources.MergedDictionaries.Add(new ResourceDictionary
+        {
+            Source = new Uri(
+                "/FindEverything.Gui;component/Themes/DesignTokens.xaml",
+                UriKind.Relative),
+        });
+        application.Resources.MergedDictionaries.Add(new ResourceDictionary
+        {
+            Source = new Uri(
+                "/FindEverything.Gui;component/Themes/ComponentStyles.xaml",
+                UriKind.Relative),
+        });
+        application.Resources["BooleanToVisibilityConverter"] =
+            new BooleanToVisibilityConverter();
+        return application;
     }
 
     private static void VerifyScanConsole(
@@ -397,6 +422,10 @@ public sealed class DesktopCompositionSmokeTests
         }
     }
 
+    private static IDisposable UseDispatcherSynchronizationContext(
+        Dispatcher dispatcher) =>
+        new DispatcherSynchronizationContextScope(dispatcher);
+
     private static void PumpDispatcherUntil(
         Dispatcher dispatcher,
         Func<bool> condition,
@@ -480,7 +509,13 @@ public sealed class DesktopCompositionSmokeTests
         var nameField = Assert.Single(viewModel.DraftFields);
         viewModel.ClearFieldAssignmentsCommand.Execute(nameField);
         viewModel.SamplePath = @"C:\Archive\2026\0521_Project-A";
-        viewModel.BuildTemplateFromSampleCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+        var buildTemplateTask = viewModel.BuildTemplateFromSampleCommand.ExecuteAsync(null);
+        PumpDispatcherUntil(
+            window.Dispatcher,
+            () => buildTemplateTask.IsCompleted,
+            TimeSpan.FromSeconds(5));
+        buildTemplateTask.GetAwaiter().GetResult();
+        PumpDispatcherFor(window.Dispatcher, TimeSpan.FromMilliseconds(20));
         Assert.Equal(4, viewModel.GuidedPathSegments.Count);
 
         viewModel.BeginAssignValueCommand.Execute(nameField);
@@ -800,6 +835,18 @@ public sealed class DesktopCompositionSmokeTests
         public List<ScanCompletionNotice> Notices { get; } = [];
 
         public void Notify(ScanCompletionNotice notice) => Notices.Add(notice);
+    }
+
+    private sealed class DispatcherSynchronizationContextScope : IDisposable
+    {
+        private readonly SynchronizationContext? _previous = SynchronizationContext.Current;
+
+        public DispatcherSynchronizationContextScope(Dispatcher dispatcher) =>
+            SynchronizationContext.SetSynchronizationContext(
+                new DispatcherSynchronizationContext(dispatcher));
+
+        public void Dispose() =>
+            SynchronizationContext.SetSynchronizationContext(_previous);
     }
 
     private sealed record FilterContext(string FilterText);
