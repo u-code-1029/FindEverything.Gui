@@ -19,6 +19,7 @@ using FindEverything.Desktop.Views;
 using FindEverything.Desktop.Views.Controls;
 using FindEverything.Desktop.Views.Pages;
 using FindEverything.Infrastructure.FindEverything;
+using FindEverything.Profile.Abstractions;
 using FindEverything.Profile.Runtime;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -30,6 +31,19 @@ namespace FindEverything.Desktop.Tests;
 
 public sealed class DesktopCompositionSmokeTests
 {
+    [Fact]
+    public void Shipped_configuration_uses_the_runtime_profile_contract()
+    {
+        var configuration = new ConfigurationBuilder()
+            .SetBasePath(AppContext.BaseDirectory)
+            .AddJsonFile("appsettings.json", optional: false)
+            .Build();
+        var options = new PluginDiscoveryOptions();
+        configuration.GetSection(PluginDiscoveryOptions.SectionName).Bind(options);
+
+        Assert.Equal(ProfileContract.CurrentMajor, options.ContractMajor);
+    }
+
     [Fact]
     public async Task Shell_pages_and_navigation_resolve_on_an_sta_thread()
     {
