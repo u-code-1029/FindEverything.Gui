@@ -42,11 +42,19 @@ public sealed record CatalogResult(
     int CandidateCount,
     int NoMatchCount,
     bool HasPendingScopes,
-    IndexScanReport? ScanReport);
+    IndexScanReport? ScanReport)
+{
+    public DirectoryDiscoveryReport? DiscoveryReport { get; init; }
+}
 
 public interface ICatalogService
 {
     Task<CatalogResult> LoadExistingAsync(
+        CatalogRequest request,
+        IProgress<CatalogOperationProgress>? progress = null,
+        CancellationToken cancellationToken = default);
+
+    Task<CatalogResult> DiscoverAsync(
         CatalogRequest request,
         IProgress<CatalogOperationProgress>? progress = null,
         CancellationToken cancellationToken = default);

@@ -53,6 +53,31 @@ public sealed class ProfilePluginLoaderTests
     }
 
     [Fact]
+    public async Task LoadAsync_AssemblyProfileConcatenatesOrderedCaptureGroups()
+    {
+        using var packages = new TestProfilePackages();
+        packages.Add(
+            "composite-date",
+            "composite-date-profile",
+            "^(?<year>\\d{4})/(?<monthDay>\\d{4})$",
+            modelType: typeof(CompositeCaptureProfileModel));
+        using var host = BuildHost(packages.RootPath);
+
+        var snapshot = await LoadAsync(host);
+
+        var profile = Assert.Single(snapshot.Profiles);
+        var field = Assert.Single(profile.Descriptor.Fields);
+        Assert.Equal(["year", "monthDay"], field.EffectiveGroupNames);
+
+        var result = profile.Map(new ProfilePathCandidate(
+            @"C:\root\2026\0521",
+            "2026/0521"));
+
+        Assert.Equal(ProfileMapStatus.Success, result.Status);
+        Assert.Equal(new DateTime(2026, 5, 21), result.Item!.Values["captured-on"]);
+    }
+
+    [Fact]
     public async Task LoadAsync_DeclarativeProfileMapsValuesWithoutAnAssembly()
     {
         using var packages = new TestProfilePackages();
@@ -340,7 +365,8 @@ public sealed class ProfilePluginLoaderTests
             string firstPattern,
             string? secondPattern = null,
             int contractVersion = ProfileContract.CurrentMajor,
-            int timeoutMilliseconds = 100)
+            int timeoutMilliseconds = 100,
+            Type? modelType = null)
         {
             var directory = Path.Combine(RootPath, directoryName);
             Directory.CreateDirectory(directory);
@@ -364,6 +390,7 @@ public sealed class ProfilePluginLoaderTests
                 rules.Add(CreateRule("second", secondPattern, timeoutMilliseconds));
             }
 
+            modelType ??= typeof(TestProfileModel);
             var manifest = new
             {
                 contractVersion,
@@ -371,7 +398,7 @@ public sealed class ProfilePluginLoaderTests
                 version = "1.0.0",
                 displayName = profileId,
                 entryAssembly = assemblyFileName,
-                modelType = typeof(TestProfileModel).FullName,
+                modelType = modelType.FullName,
                 candidateKind = "Directory",
                 pathInput = "Relative",
                 rules,

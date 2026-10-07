@@ -28,3 +28,17 @@ public sealed class TestProfileModel
     [CaptureField("amount", "amount", Header = "Amount", Order = 60, DisplayFormat = "N2")]
     public decimal? Amount { get; set; }
 }
+
+public sealed class CompositeCaptureProfileModel
+{
+    [CaptureField(
+        "captured-on",
+        "year",
+        "monthDay",
+        Header = "Captured on",
+        Order = 10,
+        Required = true,
+        ParseFormat = "yyyyMMdd",
+        DisplayFormat = "yyyy-MM-dd")]
+    public DateTime CapturedOn { get; set; }
+}

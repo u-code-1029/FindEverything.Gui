@@ -64,7 +64,7 @@ public partial class CatalogViewModel : ObservableObject
     private string _statusTitle = "준비";
 
     [ObservableProperty]
-    private string _statusMessage = "인덱스를 만들거나 기존 인덱스를 불러올 수 있습니다.";
+    private string _statusMessage = "프로필로 폴더를 바로 찾거나 기존 인덱스에서 불러올 수 있습니다.";
 
     [ObservableProperty]
     private bool _isStatusOpen = true;
@@ -228,10 +228,10 @@ public partial class CatalogViewModel : ObservableObject
     }
 
     [RelayCommand(CanExecute = nameof(CanStart))]
-    private Task ScanAsync() => RunOperationAsync("인덱싱 및 불러오기", scanFirst: true);
+    private Task ScanAsync() => RunOperationAsync("프로필로 빠르게 불러오기", discoverDirectly: true);
 
     [RelayCommand(CanExecute = nameof(CanStart))]
-    private Task LoadAsync() => RunOperationAsync("불러오기", scanFirst: false);
+    private Task LoadAsync() => RunOperationAsync("기존 인덱스에서 불러오기", discoverDirectly: false);
 
     [RelayCommand(CanExecute = nameof(CanCancel))]
     private void Cancel()
@@ -274,7 +274,7 @@ public partial class CatalogViewModel : ObservableObject
 
     private bool CanOpenSelected() => SelectedItem is not null;
 
-    private async Task RunOperationAsync(string operationName, bool scanFirst)
+    private async Task RunOperationAsync(string operationName, bool discoverDirectly)
     {
         if (IsBusy)
         {
@@ -298,15 +298,18 @@ public partial class CatalogViewModel : ObservableObject
         {
             // Capture UI-bound values before the coordinator moves the operation
             // to its background scheduler.
-            var workspace = ValidateWorkspace();
+            var workspace = ValidateWorkspace(requiresDatabase: !discoverDirectly);
             var request = CreateRequest(workspace);
             await _operationCoordinator.RunAsync(async cancellationToken =>
             {
                 await PersistWorkspaceAsync(workspace, cancellationToken).ConfigureAwait(false);
-                EnsureDatabaseDirectory(workspace.DatabasePath);
+                if (!discoverDirectly)
+                {
+                    EnsureDatabaseDirectory(workspace.DatabasePath);
+                }
 
-                result = scanFirst
-                    ? await _catalogService.ScanAndLoadAsync(
+                result = discoverDirectly
+                    ? await _catalogService.DiscoverAsync(
                         request,
                         progress,
                         cancellationToken).ConfigureAwait(false)
@@ -318,7 +321,7 @@ public partial class CatalogViewModel : ObservableObject
 
             ApplyResult(
                 result ?? throw new InvalidOperationException("카탈로그 결과를 받지 못했습니다."),
-                scanFirst);
+                discoverDirectly);
         }
         catch (OperationCanceledException)
         {
@@ -345,7 +348,7 @@ public partial class CatalogViewModel : ObservableObject
     private IProgress<CatalogOperationProgress> CreateProgress() =>
         new Progress<CatalogOperationProgress>(value => ProgressMessage = value.Message);
 
-    private void ApplyResult(CatalogResult result, bool scanned)
+    private void ApplyResult(CatalogResult result, bool discoveredDirectly)
     {
         var selectedPath = SelectedItem?.FullPath;
         var fields = result.Profile.Fields.OrderBy(static field => field.Order).ToArray();
@@ -362,20 +365,28 @@ public partial class CatalogViewModel : ObservableObject
         var scanIncomplete = result.ScanReport is { } scanReport
             && (scanReport.Status != IndexScanStatus.Completed
                 || scanReport.Errors.Count > 0);
-        var incomplete = result.HasPendingScopes || scanIncomplete;
+        var discoveryIncomplete = result.DiscoveryReport is { } discoveryReport
+            && (discoveryReport.Status != DirectoryDiscoveryStatus.Completed
+                || discoveryReport.Errors.Count > 0);
+        var incomplete = result.HasPendingScopes || scanIncomplete || discoveryIncomplete;
         var severity = incomplete
             ? InfoBarSeverity.Warning
             : InfoBarSeverity.Success;
         var scanSummary = result.ScanReport is null
             ? string.Empty
             : $" · 인덱싱 상태 {result.ScanReport.Status} · 오류 {result.ScanReport.Errors.Count:N0}";
+        var discoverySummary = result.DiscoveryReport is null
+            ? string.Empty
+            : $" · 방문 폴더 {result.DiscoveryReport.Progress.Directories:N0}"
+              + $" · 하위 탐색 생략 {result.DiscoveryReport.Progress.PrunedDirectories:N0}"
+              + $" · 오류 {result.DiscoveryReport.Errors.Count:N0}";
         SetStatus(
-            incomplete ? "부분 결과" : scanned ? "인덱싱 및 불러오기 완료" : "불러오기 완료",
-            $"후보 {result.CandidateCount:N0} · 일치 {result.Items.Count:N0} · 규칙 외 {result.NoMatchCount:N0} · 변환 오류 {result.InvalidItems.Count:N0}{scanSummary}"
+            incomplete ? "부분 결과" : discoveredDirectly ? "빠른 불러오기 완료" : "기존 인덱스 불러오기 완료",
+            $"후보 {result.CandidateCount:N0} · 일치 {result.Items.Count:N0} · 규칙 외 {result.NoMatchCount:N0} · 변환 오류 {result.InvalidItems.Count:N0}{discoverySummary}{scanSummary}"
                 + (result.HasPendingScopes ? " · 아직 인덱싱되지 않은 범위가 있습니다." : string.Empty),
             severity);
         ShowSnackbar(
-            scanned ? "인덱싱 및 불러오기 완료" : "불러오기 완료",
+            discoveredDirectly ? "빠른 불러오기 완료" : "기존 인덱스 불러오기 완료",
             $"프로필 규칙에 맞는 {result.Items.Count:N0}개 폴더를 찾았습니다.",
             incomplete ? ControlAppearance.Caution : ControlAppearance.Success);
     }
@@ -406,7 +417,7 @@ public partial class CatalogViewModel : ObservableObject
         return view;
     }
 
-    private WorkspaceSelection ValidateWorkspace()
+    private WorkspaceSelection ValidateWorkspace(bool requiresDatabase)
     {
         if (SelectedProfile is null)
         {
@@ -424,21 +435,26 @@ public partial class CatalogViewModel : ObservableObject
             throw new DirectoryNotFoundException($"루트 폴더를 찾을 수 없습니다: {rootPath}");
         }
 
-        if (string.IsNullOrWhiteSpace(DatabasePath))
+        var databasePath = string.IsNullOrWhiteSpace(DatabasePath)
+            ? _workspaceContext.Current.DatabasePath
+            : Path.GetFullPath(DatabasePath);
+        if (requiresDatabase && string.IsNullOrWhiteSpace(DatabasePath))
         {
             throw new InvalidOperationException("인덱스 데이터베이스 경로를 선택하세요.");
         }
 
-        var databasePath = Path.GetFullPath(DatabasePath);
         var normalizedRoot = Path.TrimEndingDirectorySeparator(rootPath);
-        var rootPrefix = Path.EndsInDirectorySeparator(normalizedRoot)
-            ? normalizedRoot
-            : normalizedRoot + Path.DirectorySeparatorChar;
-        if (string.Equals(databasePath, normalizedRoot, StringComparison.OrdinalIgnoreCase)
-            || databasePath.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase))
+        if (requiresDatabase)
         {
-            throw new InvalidOperationException(
-                "인덱스 데이터베이스는 검색 루트 밖에 저장해야 합니다.");
+            var rootPrefix = Path.EndsInDirectorySeparator(normalizedRoot)
+                ? normalizedRoot
+                : normalizedRoot + Path.DirectorySeparatorChar;
+            if (string.Equals(databasePath, normalizedRoot, StringComparison.OrdinalIgnoreCase)
+                || databasePath.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    "인덱스 데이터베이스는 검색 루트 밖에 저장해야 합니다.");
+            }
         }
 
         return new WorkspaceSelection(SelectedProfile.Id, normalizedRoot, databasePath);

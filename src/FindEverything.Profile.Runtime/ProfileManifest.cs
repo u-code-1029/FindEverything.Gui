@@ -5,6 +5,10 @@ namespace FindEverything.Profile.Runtime;
 public static class ProfileManifestLimits
 {
     public const long MaximumLengthBytes = 1024 * 1024;
+
+    public const int MaximumCompositeGroupCount = 16;
+
+    public const int MaximumStopTraversalGroupCount = 16;
 }
 
 public sealed class ProfileManifest
@@ -41,6 +45,8 @@ public sealed class ProfileFieldManifest
 
     public string? GroupName { get; set; }
 
+    public List<string>? GroupNames { get; set; }
+
     public string? Header { get; set; }
 
     public int Order { get; set; }
@@ -70,6 +76,8 @@ public sealed class ProfileRegexRuleManifest
     public bool IgnoreCase { get; set; }
 
     public int TimeoutMilliseconds { get; set; } = 100;
+
+    public List<string>? StopTraversalWhenCapturedGroups { get; set; }
 }
 
 public enum ProfileKind

@@ -49,4 +49,22 @@
         <Setter Property="VirtualizingPanel.IsVirtualizing" Value="True" />
         <Setter Property="VirtualizingPanel.VirtualizationMode" Value="Recycling" />
     </Style>
+
+    <!--
+        WPF-UI renders a deliberately compact vertical scrollbar.  Give it a
+        dedicated content gutter so text fields and cards never sit underneath
+        the thumb, including at narrow window sizes.
+
+        This style is intentionally keyed: DataGrid owns its own scrollbar
+        column and must not receive a second gutter.
+    -->
+    <Style
+        x:Key="FluentGutteredScrollViewerStyle"
+        BasedOn="{StaticResource {x:Type ScrollViewer}}"
+        TargetType="ScrollViewer">
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="HorizontalScrollBarVisibility" Value="Disabled" />
+        <Setter Property="VerticalScrollBarVisibility" Value="Auto" />
+        <Setter Property="Padding" Value="0,0,16,0" />
+    </Style>
 </ResourceDictionary>

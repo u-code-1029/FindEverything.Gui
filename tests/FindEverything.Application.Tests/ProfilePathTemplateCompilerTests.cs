@@ -81,6 +81,89 @@ public sealed class ProfilePathTemplateCompilerTests
         Assert.Equal(@"Clients[\\/](?<name>[^\\/]+)", result.Pattern);
     }
 
+    [Fact]
+    public void Compile_emits_ordered_component_groups_for_a_composite_field()
+    {
+        var fields = new[]
+        {
+            CompositeField(
+                "captured-on",
+                ["year", "monthDay"],
+                ProfileFieldValueKind.DateTime),
+            Field("name", "name", ProfileFieldValueKind.String),
+        };
+
+        var result = _compiler.Compile(
+            "{captured-on@year}/{captured-on@monthDay}_{name}",
+            fields);
+
+        Assert.True(result.IsValid);
+        Assert.Equal(
+            @"(?<year>[^\\/]+)[\\/](?<monthDay>[^\\/]+)_(?<name>[^\\/]+)",
+            result.Pattern);
+        var regex = FullMatch(result.Pattern!);
+        Assert.Matches(regex, @"2026\0521_Project");
+        Assert.Matches(regex, "2026/0521_Project");
+    }
+
+    [Theory]
+    [InlineData("{captured-on}", "template_composite_field_requires_component")]
+    [InlineData(
+        "{captured-on@year}/{captured-on@year}",
+        "template_component_duplicate")]
+    [InlineData("{captured-on@missing}", "template_component_unknown")]
+    [InlineData("{captured-on@year}", "template_composite_field_incomplete")]
+    public void Compile_validates_composite_component_tokens(
+        string template,
+        string expectedCode)
+    {
+        var result = _compiler.Compile(
+            template,
+            [
+                CompositeField(
+                    "captured-on",
+                    ["year", "monthDay"],
+                    ProfileFieldValueKind.DateTime),
+            ]);
+
+        Assert.False(result.IsValid);
+        Assert.Contains(
+            result.Diagnostics,
+            diagnostic => diagnostic.Code == expectedCode);
+    }
+
+    [Fact]
+    public void Compile_rejects_groupName_and_groupNames_together()
+    {
+        var field = Field("captured-on", "date", ProfileFieldValueKind.DateTime);
+        field.GroupNames = ["year", "monthDay"];
+
+        var result = _compiler.Compile("{captured-on}", [field]);
+
+        Assert.False(result.IsValid);
+        Assert.Contains(
+            result.Diagnostics,
+            static diagnostic => diagnostic.Code == "template_group_sources_conflict");
+    }
+
+    [Fact]
+    public void Compile_limits_composite_group_count()
+    {
+        var groupNames = Enumerable
+            .Range(1, ProfileManifestLimits.MaximumCompositeGroupCount + 1)
+            .Select(static number => $"group{number}")
+            .ToArray();
+
+        var result = _compiler.Compile(
+            "literal",
+            [CompositeField("value", groupNames, ProfileFieldValueKind.String)]);
+
+        Assert.False(result.IsValid);
+        Assert.Contains(
+            result.Diagnostics,
+            static diagnostic => diagnostic.Code == "template_group_names_limit_exceeded");
+    }
+
     [Theory]
     [InlineData("fields-null", "template_fields_missing")]
     [InlineData("fields-missing", "template_fields_missing")]
@@ -260,6 +343,21 @@ public sealed class ProfilePathTemplateCompilerTests
             Header = fieldId,
             Required = required,
             Kind = kind,
+        };
+
+    private static ProfileFieldManifest CompositeField(
+        string fieldId,
+        IReadOnlyList<string> groupNames,
+        ProfileFieldValueKind kind,
+        bool required = true) =>
+        new()
+        {
+            FieldId = fieldId,
+            GroupNames = groupNames.ToList(),
+            Header = fieldId,
+            Required = required,
+            Kind = kind,
+            ParseFormat = kind == ProfileFieldValueKind.DateTime ? "yyyyMMdd" : null,
         };
 
     private static Regex FullMatch(string pattern) =>

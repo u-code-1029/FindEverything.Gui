@@ -7,17 +7,38 @@ namespace FindEverything.Profile.Abstractions;
 public sealed class CaptureFieldAttribute : Attribute
 {
     public CaptureFieldAttribute(string fieldId, string groupName)
+        : this(fieldId, groupName, [])
+    {
+    }
+
+    public CaptureFieldAttribute(
+        string fieldId,
+        string groupName,
+        params string[] additionalGroupNames)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(fieldId);
         ArgumentException.ThrowIfNullOrWhiteSpace(groupName);
+        ArgumentNullException.ThrowIfNull(additionalGroupNames);
+
+        foreach (var additionalGroupName in additionalGroupNames)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(additionalGroupName);
+        }
 
         FieldId = fieldId;
         GroupName = groupName;
+        GroupNames = [groupName, .. additionalGroupNames];
     }
 
     public string FieldId { get; }
 
     public string GroupName { get; }
+
+    /// <summary>
+    /// Gets the regular-expression groups in the order in which their captured
+    /// values are concatenated before conversion to the property type.
+    /// </summary>
+    public IReadOnlyList<string> GroupNames { get; }
 
     public string? Header { get; set; }
 

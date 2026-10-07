@@ -49,7 +49,7 @@ internal sealed class CompiledProfile : ILoadedProfile
                         "regex_timeout",
                         null,
                         $"정규식 규칙 '{rule.Id}'의 실행 시간이 제한을 초과했습니다: {exception.MatchTimeout.TotalMilliseconds:0} ms"),
-                });
+                }, matchedRuleId: null, shouldPruneDescendants: false);
             }
 
             if (!match.Success)
@@ -63,7 +63,10 @@ internal sealed class CompiledProfile : ILoadedProfile
                 continue;
             }
 
-            return MapMatch(candidate, rule, match);
+            var shouldPruneDescendants = rule.StopTraversalGroupNumbers.Length > 0
+                && rule.StopTraversalGroupNumbers.All(groupNumber =>
+                    HasCapturedValue(match, groupNumber));
+            return MapMatch(candidate, rule, match, shouldPruneDescendants);
         }
 
         return ProfileMapResult.NoMatch();
@@ -72,7 +75,8 @@ internal sealed class CompiledProfile : ILoadedProfile
     private ProfileMapResult MapMatch(
         ProfilePathCandidate candidate,
         CompiledRegexRule rule,
-        Match match)
+        Match match,
+        bool shouldPruneDescendants)
     {
         var parsedValues = new object?[_fields.Length];
         var issues = new List<ProfileMappingIssue>();
@@ -80,10 +84,22 @@ internal sealed class CompiledProfile : ILoadedProfile
         for (var index = 0; index < _fields.Length; index++)
         {
             var field = _fields[index];
-            var groupNumber = rule.GroupNumbers[index];
-            var group = groupNumber >= 0 ? match.Groups[groupNumber] : null;
+            var groupNumbers = rule.FieldGroupNumbers[index];
+            var capturedValues = new string?[groupNumbers.Length];
+            var capturedCount = 0;
+            for (var groupIndex = 0; groupIndex < groupNumbers.Length; groupIndex++)
+            {
+                var groupNumber = groupNumbers[groupIndex];
+                if (!HasCapturedValue(match, groupNumber))
+                {
+                    continue;
+                }
 
-            if (group is null || !group.Success || string.IsNullOrWhiteSpace(group.Value))
+                capturedValues[groupIndex] = match.Groups[groupNumber].Value;
+                capturedCount++;
+            }
+
+            if (capturedCount == 0)
             {
                 if (field.Descriptor.Required)
                 {
@@ -97,15 +113,26 @@ internal sealed class CompiledProfile : ILoadedProfile
                 continue;
             }
 
+            if (capturedCount != groupNumbers.Length)
+            {
+                issues.Add(new ProfileMappingIssue(
+                    "composite_capture_incomplete",
+                    field.Descriptor.FieldId,
+                    $"'{field.Descriptor.Header}'을(를) 구성하는 값 중 일부를 찾을 수 없습니다."));
+                continue;
+            }
+
+            var source = string.Concat(capturedValues);
+
             if (!InvariantValueParser.TryParse(
-                    group.Value,
+                    source,
                     field.Descriptor,
                     out var parsedValue))
             {
                 issues.Add(new ProfileMappingIssue(
                     "capture_conversion_failed",
                     field.Descriptor.FieldId,
-                    $"'{group.Value}'을(를) {field.Descriptor.Kind} 값으로 변환할 수 없습니다."));
+                    $"'{source}'을(를) {field.Descriptor.Kind} 값으로 변환할 수 없습니다."));
                 continue;
             }
 
@@ -114,7 +141,10 @@ internal sealed class CompiledProfile : ILoadedProfile
 
         if (issues.Count > 0)
         {
-            return ProfileMapResult.Invalid(issues);
+            return ProfileMapResult.Invalid(
+                issues,
+                rule.Id,
+                shouldPruneDescendants);
         }
 
         try
@@ -133,24 +163,40 @@ internal sealed class CompiledProfile : ILoadedProfile
             var readOnlyValues = new ReadOnlyDictionary<string, object?>(values);
             var model = _createModel(readOnlyValues);
 
-            return ProfileMapResult.Success(new MappedProfileItem(
-                Descriptor.Id,
-                candidate.FullPath,
-                candidate.RelativePath,
-                rule.Id,
-                model,
-                readOnlyValues));
+            return ProfileMapResult.Success(
+                new MappedProfileItem(
+                    Descriptor.Id,
+                    candidate.FullPath,
+                    candidate.RelativePath,
+                    rule.Id,
+                    model,
+                    readOnlyValues),
+                shouldPruneDescendants);
         }
         catch (Exception exception)
         {
-            return ProfileMapResult.Invalid(new[]
-            {
-                new ProfileMappingIssue(
-                    "model_creation_failed",
-                    null,
-                    $"프로필 모델을 만들 수 없습니다: {exception.GetBaseException().Message}"),
-            });
+            return ProfileMapResult.Invalid(
+                new[]
+                {
+                    new ProfileMappingIssue(
+                        "model_creation_failed",
+                        null,
+                        $"프로필 모델을 만들 수 없습니다: {exception.GetBaseException().Message}"),
+                },
+                rule.Id,
+                shouldPruneDescendants);
         }
+    }
+
+    private static bool HasCapturedValue(Match match, int groupNumber)
+    {
+        if (groupNumber < 0)
+        {
+            return false;
+        }
+
+        var group = match.Groups[groupNumber];
+        return group.Success && !string.IsNullOrWhiteSpace(group.Value);
     }
 }
 

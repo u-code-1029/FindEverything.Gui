@@ -1,6 +1,8 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Globalization;
+using System.Text;
+using System.Text.RegularExpressions;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FindEverything.Application.Catalog;
@@ -22,10 +24,12 @@ public partial class ProfilesViewModel : ObservableObject
     private readonly IPathLauncher _pathLauncher;
     private readonly IApplicationOperationCoordinator _operationCoordinator;
     private readonly ISnackbarService _snackbarService;
+    private readonly IContentDialogService _contentDialogService;
     private readonly ILogger<ProfilesViewModel> _logger;
     private string? _originalProfileId;
     private string _draftVersion = "1.0.0";
     private bool _isPopulatingDraft;
+    private string _analyzedNormalizedPath = string.Empty;
 
     [ObservableProperty]
     private IReadOnlyList<ProfileSummaryViewModel> _profiles = [];
@@ -34,10 +38,10 @@ public partial class ProfilesViewModel : ObservableObject
     private ProfileSummaryViewModel? _selectedProfile;
 
     [ObservableProperty]
-    private IReadOnlyList<ProfileFieldDescriptor> _fields = [];
+    private IReadOnlyList<ProfileFieldInspectionViewModel> _fields = [];
 
     [ObservableProperty]
-    private IReadOnlyList<ProfileRegexRuleDescriptor> _rules = [];
+    private IReadOnlyList<ProfileRuleInspectionViewModel> _rules = [];
 
     [ObservableProperty]
     private IReadOnlyList<PluginReportViewModel> _reports = [];
@@ -98,6 +102,22 @@ public partial class ProfilesViewModel : ObservableObject
     [ObservableProperty]
     private bool _isEditorBusy;
 
+    [ObservableProperty]
+    private IReadOnlyList<GuidedPathSegmentViewModel> _guidedPathSegments = [];
+
+    [ObservableProperty]
+    private bool _hasAnalyzedPath;
+
+    [ObservableProperty]
+    private bool _isAssignmentPickerOpen;
+
+    [ObservableProperty]
+    private string _assignmentPickerTitle = "먼저 결과 값에서 경로 조각 선택을 누르세요.";
+
+    private ProfileFieldDraftViewModel? _activeAssignmentField;
+
+    private GuidedSourcePart _activeAssignmentPart = GuidedSourcePart.Value;
+
     public ProfilesViewModel(
         IProfileCatalog profileCatalog,
         IProfileAuthoringService authoringService,
@@ -105,6 +125,7 @@ public partial class ProfilesViewModel : ObservableObject
         IPathLauncher pathLauncher,
         IApplicationOperationCoordinator operationCoordinator,
         ISnackbarService snackbarService,
+        IContentDialogService contentDialogService,
         ILogger<ProfilesViewModel> logger)
     {
         _profileCatalog = profileCatalog;
@@ -113,6 +134,7 @@ public partial class ProfilesViewModel : ObservableObject
         _pathLauncher = pathLauncher;
         _operationCoordinator = operationCoordinator;
         _snackbarService = snackbarService;
+        _contentDialogService = contentDialogService;
         _logger = logger;
 
         PathInputChoices =
@@ -133,6 +155,12 @@ public partial class ProfilesViewModel : ObservableObject
             new(ProfileRegexMatchMode.Full, "전체 일치 (권장)"),
             new(ProfileRegexMatchMode.Partial, "부분 일치"),
         ];
+        DateSourcePresetChoices =
+        [
+            new(GuidedDateSourcePreset.SingleValue, "한 조각에서 날짜 읽기"),
+            new(GuidedDateSourcePreset.YearAndMonthDay, "연도 + 월일"),
+            new(GuidedDateSourcePreset.YearMonthAndDay, "연도 + 월 + 일"),
+        ];
         SelectedPathInput = PathInputChoices[0];
 
         ApplySnapshot(profileCatalog.Current, preferredProfileId: null);
@@ -147,6 +175,8 @@ public partial class ProfilesViewModel : ObservableObject
 
     public IReadOnlyList<SettingChoice<ProfileRegexMatchMode>> MatchModeChoices { get; }
 
+    public IReadOnlyList<SettingChoice<GuidedDateSourcePreset>> DateSourcePresetChoices { get; }
+
     public bool IsEditorReady => !IsEditorBusy;
 
     public bool IsGuidedMode => EditorMode == ProfileEditorMode.Guided;
@@ -157,13 +187,17 @@ public partial class ProfilesViewModel : ObservableObject
 
     public ObservableCollection<ProfileRuleDraftViewModel> DraftRules { get; } = [];
 
+    public event EventHandler? AssignmentPickerRequested;
+
     partial void OnSelectedProfileChanged(ProfileSummaryViewModel? value)
     {
         Fields = value?.Descriptor.Fields
             .OrderBy(static field => field.Order)
+            .Select(static field => new ProfileFieldInspectionViewModel(field))
             .ToArray() ?? [];
         Rules = value?.Descriptor.Rules
             .OrderBy(static rule => rule.Order)
+            .Select(static rule => new ProfileRuleInspectionViewModel(rule))
             .ToArray() ?? [];
     }
 
@@ -188,6 +222,8 @@ public partial class ProfilesViewModel : ObservableObject
 
     partial void OnEditorModeChanged(ProfileEditorMode value)
     {
+        _activeAssignmentField = null;
+        IsAssignmentPickerOpen = false;
         OnPropertyChanged(nameof(IsGuidedMode));
         OnPropertyChanged(nameof(IsExpertMode));
     }
@@ -231,6 +267,8 @@ public partial class ProfilesViewModel : ObservableObject
             SelectedPathInput = PathInputChoices[0];
             EditorMode = ProfileEditorMode.Guided;
             CanUseGuidedMode = true;
+            _activeAssignmentField = null;
+            IsAssignmentPickerOpen = false;
             DraftFields.Clear();
             DraftRules.Clear();
             AddFieldRow(new ProfileFieldDraftViewModel
@@ -241,7 +279,7 @@ public partial class ProfilesViewModel : ObservableObject
                 Kind = ProfileFieldValueKind.String,
                 Required = true,
             });
-            DraftPathTemplate = "{name}";
+            DraftPathTemplate = "{name@name}";
             AddRuleRow(new ProfileRuleDraftViewModel
             {
                 Id = "default",
@@ -249,9 +287,14 @@ public partial class ProfilesViewModel : ObservableObject
                 IgnoreCase = true,
                 TimeoutMilliseconds = 100,
                 Pattern = @"(?<name>[^\\/]+)",
-                PathTemplate = "{name}",
+                PathTemplate = "{name@name}",
             });
             SamplePath = "Example";
+            AnalyzeSamplePathCore(SamplePath);
+            DraftFields[0].SetGuidedAssignment(
+                GuidedSourcePart.Value,
+                GuidedPathSegments[0].WholeChoice);
+            RebuildGuidedTemplate();
             TestRows = [];
             TestSummary = "기본 예제를 바로 시험하거나 실제 경로에 맞게 수정하세요.";
             SetEditorStatus(
@@ -291,7 +334,7 @@ public partial class ProfilesViewModel : ObservableObject
     }
 
     [RelayCommand(CanExecute = nameof(CanEdit))]
-    private void BuildTemplateFromSample()
+    private async Task BuildTemplateFromSampleAsync()
     {
         if (string.IsNullOrWhiteSpace(SamplePath))
         {
@@ -300,14 +343,143 @@ public partial class ProfilesViewModel : ObservableObject
             return;
         }
 
-        DraftPathTemplate = SamplePath
-            .Trim()
-            .Replace('\\', '/')
-            .Replace("{", "{{", StringComparison.Ordinal)
-            .Replace("}", "}}", StringComparison.Ordinal);
+        var normalizedSamplePath = SamplePath.Trim().Replace('\\', '/');
+        if (DraftFields.Any(static field => field.HasGuidedAssignments)
+            && !string.Equals(
+                normalizedSamplePath,
+                _analyzedNormalizedPath,
+                StringComparison.Ordinal))
+        {
+            var result = await _contentDialogService.ShowAsync(
+                new ContentDialog
+                {
+                    Title = "새 경로를 분석할까요?",
+                    Content = "현재 연결된 경로 조각이 초기화됩니다. 결과 값은 그대로 유지됩니다.",
+                    PrimaryButtonText = "새 경로 분석",
+                    CloseButtonText = "취소",
+                    DefaultButton = ContentDialogButton.Close,
+                },
+                CancellationToken.None).ConfigureAwait(true);
+            if (result != ContentDialogResult.Primary)
+            {
+                return;
+            }
+        }
+
+        _isPopulatingDraft = true;
+        try
+        {
+            foreach (var field in DraftFields)
+            {
+                field.ClearGuidedAssignments();
+            }
+
+            AnalyzeSamplePathCore(SamplePath);
+        }
+        finally
+        {
+            _isPopulatingDraft = false;
+        }
+
+        RebuildGuidedTemplate();
+        _activeAssignmentField = null;
+        IsAssignmentPickerOpen = false;
         TemplateStatusMessage =
-            "아래 경로에서 바뀌는 글자를 선택한 뒤, 결과 값 카드의 ‘선택한 부분을 이 값으로 지정’을 누르세요.";
+            "결과 값 카드에서 경로 조각 선택을 누른 뒤, 아래의 폴더 또는 세부 조각 버튼을 클릭하세요.";
         TemplateStatusSeverity = InfoBarSeverity.Informational;
+    }
+
+    [RelayCommand]
+    private void BeginAssignValue(ProfileFieldDraftViewModel? field) =>
+        BeginAssignment(field, GuidedSourcePart.Value);
+
+    [RelayCommand]
+    private void BeginAssignYear(ProfileFieldDraftViewModel? field) =>
+        BeginAssignment(field, GuidedSourcePart.Year);
+
+    [RelayCommand]
+    private void BeginAssignMonthDay(ProfileFieldDraftViewModel? field) =>
+        BeginAssignment(field, GuidedSourcePart.MonthDay);
+
+    [RelayCommand]
+    private void BeginAssignMonth(ProfileFieldDraftViewModel? field) =>
+        BeginAssignment(field, GuidedSourcePart.Month);
+
+    [RelayCommand]
+    private void BeginAssignDay(ProfileFieldDraftViewModel? field) =>
+        BeginAssignment(field, GuidedSourcePart.Day);
+
+    [RelayCommand]
+    private void AssignPathChoice(GuidedPathChoiceViewModel? choice)
+    {
+        if (choice is null || _activeAssignmentField is null || !HasAnalyzedPath)
+        {
+            return;
+        }
+
+        foreach (var field in DraftFields)
+        {
+            field.RemoveAssignmentsOverlapping(choice);
+        }
+
+        _activeAssignmentField.SetGuidedAssignment(_activeAssignmentPart, choice);
+        RebuildGuidedTemplate();
+
+        var nextPart = NextMissingSourcePart(_activeAssignmentField);
+        if (nextPart is null)
+        {
+            IsAssignmentPickerOpen = false;
+            TemplateStatusMessage = $"‘{_activeAssignmentField.Header}’ 연결을 완료했습니다.";
+            TemplateStatusSeverity = InfoBarSeverity.Success;
+            _activeAssignmentField = null;
+        }
+        else
+        {
+            BeginAssignment(_activeAssignmentField, nextPart.Value);
+        }
+
+        MarkDraftChanged();
+    }
+
+    [RelayCommand]
+    private void ClearFieldAssignments(ProfileFieldDraftViewModel? field)
+    {
+        if (field is null)
+        {
+            return;
+        }
+
+        field.ClearGuidedAssignments();
+        if (ReferenceEquals(field, _activeAssignmentField))
+        {
+            _activeAssignmentField = null;
+            IsAssignmentPickerOpen = false;
+        }
+
+        RebuildGuidedTemplate();
+        MarkDraftChanged();
+    }
+
+    [RelayCommand]
+    private void SelectTerminalField(ProfileFieldDraftViewModel? field)
+    {
+        foreach (var candidate in DraftFields)
+        {
+            candidate.IsTerminalField = ReferenceEquals(candidate, field);
+        }
+
+        MarkDraftChanged();
+    }
+
+    [RelayCommand]
+    private void ClearTerminalField()
+    {
+        foreach (var field in DraftFields)
+        {
+            field.IsTerminalField = false;
+        }
+
+        MarkDraftChanged();
     }
 
     [RelayCommand(CanExecute = nameof(CanSwitchToGuided))]
@@ -332,6 +504,13 @@ public partial class ProfilesViewModel : ObservableObject
         _isPopulatingDraft = true;
         try
         {
+            _ = TryResolveGuidedTerminalField(DraftRules[0], out var terminalField);
+            foreach (var field in DraftFields)
+            {
+                field.SynchronizeGuidedDateSourcePreset();
+                field.IsTerminalField = ReferenceEquals(field, terminalField);
+            }
+
             DraftPathTemplate = template;
             EditorMode = ProfileEditorMode.Guided;
         }
@@ -384,7 +563,7 @@ public partial class ProfilesViewModel : ObservableObject
         });
         if (IsGuidedMode)
         {
-            RefreshTemplatePreview();
+            RebuildGuidedTemplate();
         }
     }
 
@@ -394,9 +573,10 @@ public partial class ProfilesViewModel : ObservableObject
         if (field is not null && DraftFields.Remove(field))
         {
             field.PropertyChanged -= OnDraftRowChanged;
+            CloseAssignmentPickerFor(field);
             if (IsGuidedMode)
             {
-                RefreshTemplatePreview();
+                RebuildGuidedTemplate();
             }
             MarkDraftChanged();
         }
@@ -518,7 +698,7 @@ public partial class ProfilesViewModel : ObservableObject
                     .Select(field => new ProfileTestResultViewModel(
                         field.Header,
                         FormatValue(mapping.Item.Values[field.FieldId], field.DisplayFormat),
-                        field.Required ? "필수" : "선택"))
+                        BuildTestStatus(field, mapping.Item.Values[field.FieldId])))
                     .ToArray();
                 TestSummary = $"규칙 '{mapping.Item.MatchedRuleId}'에 일치했고 {TestRows.Count:N0}개 값을 변환했습니다.";
                 SetEditorStatus("예제 경로 시험을 통과했습니다.", InfoBarSeverity.Success);
@@ -657,6 +837,7 @@ public partial class ProfilesViewModel : ObservableObject
                     IgnoreCase = true,
                     TimeoutMilliseconds = 100,
                     PathTemplate = DraftPathTemplate,
+                    StopTraversalWhenCapturedGroups = GuidedTerminalGroups(),
                 },
             ];
         }
@@ -670,6 +851,7 @@ public partial class ProfilesViewModel : ObservableObject
                 IgnoreCase = rule.IgnoreCase,
                 TimeoutMilliseconds = rule.TimeoutMilliseconds,
                 PathTemplate = GetRoundTripTemplate(rule, fields),
+                StopTraversalWhenCapturedGroups = ParseNameList(rule.StopTraversalGroupsText),
             }).ToList();
         }
 
@@ -705,6 +887,11 @@ public partial class ProfilesViewModel : ObservableObject
                 ?? PathInputChoices[0];
             DraftFields.Clear();
             DraftRules.Clear();
+            GuidedPathSegments = [];
+            HasAnalyzedPath = false;
+            IsAssignmentPickerOpen = false;
+            _activeAssignmentField = null;
+            _analyzedNormalizedPath = string.Empty;
             foreach (var field in (manifest.Fields ?? [])
                          .OrderBy(static field => field.Order))
             {
@@ -715,6 +902,8 @@ public partial class ProfilesViewModel : ObservableObject
             {
                 AddRuleRow(new ProfileRuleDraftViewModel(rule));
             }
+
+            RestoreTerminalField(manifest.Rules?.FirstOrDefault()?.StopTraversalWhenCapturedGroups);
 
             if (TryResolveGuidedTemplate(out var template))
             {
@@ -873,18 +1062,29 @@ public partial class ProfilesViewModel : ObservableObject
             return;
         }
 
-        if (IsGuidedMode &&
-            sender is ProfileFieldDraftViewModel field &&
-            eventArgs.PropertyName == nameof(ProfileFieldDraftViewModel.Required))
+        if (sender is ProfileFieldDraftViewModel changedField
+            && ReferenceEquals(changedField, _activeAssignmentField)
+            && eventArgs.PropertyName is nameof(ProfileFieldDraftViewModel.Kind)
+                or nameof(ProfileFieldDraftViewModel.DateSourcePreset))
         {
-            var requiredToken = $"{{{field.FieldId}}}";
-            var optionalToken = $"{{{field.FieldId}?}}";
+            CloseAssignmentPickerFor(changedField);
+        }
+
+        if (sender is ProfileFieldDraftViewModel field
+            && eventArgs.PropertyName == nameof(ProfileFieldDraftViewModel.Kind)
+            && IsGuidedMode)
+        {
             _isPopulatingDraft = true;
             try
             {
-                DraftPathTemplate = field.Required
-                    ? DraftPathTemplate.Replace(optionalToken, requiredToken, StringComparison.Ordinal)
-                    : DraftPathTemplate.Replace(requiredToken, optionalToken, StringComparison.Ordinal);
+                if (field.IsDateTime)
+                {
+                    field.EnsureDateDefaults();
+                }
+                else
+                {
+                    field.DateSourcePreset = GuidedDateSourcePreset.SingleValue;
+                }
             }
             finally
             {
@@ -894,7 +1094,14 @@ public partial class ProfilesViewModel : ObservableObject
 
         if (IsGuidedMode)
         {
-            RefreshTemplatePreview();
+            if (HasAnalyzedPath)
+            {
+                RebuildGuidedTemplate();
+            }
+            else
+            {
+                RefreshTemplatePreview();
+            }
         }
         else
         {
@@ -922,16 +1129,21 @@ public partial class ProfilesViewModel : ObservableObject
     }
 
     private List<ProfileFieldManifest> BuildFieldManifests() =>
-        DraftFields.Select(static (field, index) => new ProfileFieldManifest
+        DraftFields.Select(static (field, index) =>
         {
-            FieldId = field.FieldId.Trim(),
-            GroupName = field.GroupName.Trim(),
-            Header = field.Header.Trim(),
-            Order = (index + 1) * 10,
-            Required = field.Required,
-            Kind = field.Kind,
-            ParseFormat = NormalizeOptional(field.ParseFormat),
-            DisplayFormat = NormalizeOptional(field.DisplayFormat),
+            var groupNames = ProfileFieldDraftViewModel.ParseGroupNames(field.GroupNamesText);
+            return new ProfileFieldManifest
+            {
+                FieldId = field.FieldId.Trim(),
+                GroupName = NormalizeOptional(field.GroupName),
+                GroupNames = groupNames.Count == 0 ? null : groupNames,
+                Header = field.Header.Trim(),
+                Order = (index + 1) * 10,
+                Required = field.Required,
+                Kind = field.Kind,
+                ParseFormat = NormalizeOptional(field.ParseFormat),
+                DisplayFormat = NormalizeOptional(field.DisplayFormat),
+            };
         }).ToList();
 
     private bool TryCompileTemplate(out ProfilePathTemplateCompileResult result)
@@ -984,7 +1196,9 @@ public partial class ProfilesViewModel : ObservableObject
         if (string.IsNullOrWhiteSpace(rule.PathTemplate) ||
             rule.MatchMode != ProfileRegexMatchMode.Full ||
             !rule.IgnoreCase ||
-            rule.TimeoutMilliseconds != 100)
+            rule.TimeoutMilliseconds != 100 ||
+            DraftFields.Any(static field => !field.SupportsGuidedAssignments) ||
+            !TryResolveGuidedTerminalField(rule, out _))
         {
             return false;
         }
@@ -997,6 +1211,30 @@ public partial class ProfilesViewModel : ObservableObject
         }
 
         template = rule.PathTemplate;
+        return true;
+    }
+
+    private bool TryResolveGuidedTerminalField(
+        ProfileRuleDraftViewModel rule,
+        out ProfileFieldDraftViewModel? terminalField)
+    {
+        terminalField = null;
+        var groups = ProfileFieldDraftViewModel.ParseGroupNames(rule.StopTraversalGroupsText);
+        if (groups.Count == 0)
+        {
+            return true;
+        }
+
+        var matches = DraftFields.Where(field =>
+                field.EffectiveGroupNames.SequenceEqual(groups, StringComparer.Ordinal))
+            .Take(2)
+            .ToArray();
+        if (matches.Length != 1)
+        {
+            return false;
+        }
+
+        terminalField = matches[0];
         return true;
     }
 
@@ -1035,7 +1273,228 @@ public partial class ProfilesViewModel : ObservableObject
             IgnoreCase = true,
             TimeoutMilliseconds = 100,
             PathTemplate = pathTemplate,
+            StopTraversalGroupsText = string.Join(", ", GuidedTerminalGroups() ?? []),
         });
+    }
+
+    private void BeginAssignment(
+        ProfileFieldDraftViewModel? field,
+        GuidedSourcePart part)
+    {
+        if (field is null)
+        {
+            return;
+        }
+
+        if (!HasAnalyzedPath)
+        {
+            TemplateStatusMessage = "먼저 실제 경로를 붙여 넣고 ‘경로 분석’을 누르세요.";
+            TemplateStatusSeverity = InfoBarSeverity.Warning;
+            return;
+        }
+
+        if (field.IsDateTime)
+        {
+            field.EnsureDateDefaults();
+        }
+
+        _activeAssignmentField = field;
+        _activeAssignmentPart = part;
+        IsAssignmentPickerOpen = true;
+        AssignmentPickerTitle =
+            $"‘{field.Header}’의 {GuidedPathAssignmentViewModel.SourcePartDisplayName(part)}으로 사용할 조각을 선택하세요.";
+        TemplateStatusMessage = "폴더명 전체 또는 아래의 세부 조각 버튼을 클릭하세요.";
+        TemplateStatusSeverity = InfoBarSeverity.Informational;
+        AssignmentPickerRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void CloseAssignmentPickerFor(ProfileFieldDraftViewModel field)
+    {
+        if (!ReferenceEquals(field, _activeAssignmentField))
+        {
+            return;
+        }
+
+        _activeAssignmentField = null;
+        IsAssignmentPickerOpen = false;
+    }
+
+    private static GuidedSourcePart? NextMissingSourcePart(ProfileFieldDraftViewModel field)
+    {
+        if (!field.IsDateTime || field.DateSourcePreset == GuidedDateSourcePreset.SingleValue)
+        {
+            return null;
+        }
+
+        var requiredParts = field.DateSourcePreset == GuidedDateSourcePreset.YearAndMonthDay
+            ? new[] { GuidedSourcePart.Year, GuidedSourcePart.MonthDay }
+            : new[] { GuidedSourcePart.Year, GuidedSourcePart.Month, GuidedSourcePart.Day };
+        foreach (var part in requiredParts)
+        {
+            if (!field.HasAssignment(part))
+            {
+                return part;
+            }
+        }
+
+        return null;
+    }
+
+    private void AnalyzeSamplePathCore(string samplePath)
+    {
+        _analyzedNormalizedPath = samplePath.Trim().Replace('\\', '/');
+        var segments = new List<GuidedPathSegmentViewModel>();
+        var segmentMatches = Regex.Matches(
+            _analyzedNormalizedPath,
+            @"[^/]+",
+            RegexOptions.CultureInvariant,
+            TimeSpan.FromMilliseconds(100));
+        for (var segmentIndex = 0; segmentIndex < segmentMatches.Count; segmentIndex++)
+        {
+            var match = segmentMatches[segmentIndex];
+            var value = match.Value;
+            var wholeChoice = new GuidedPathChoiceViewModel(
+                segmentIndex,
+                match.Index,
+                match.Length,
+                value,
+                value,
+                $"‘{value}’ 폴더 전체",
+                IsWholeSegment: true);
+            var partMatches = Regex.Matches(
+                value,
+                @"[^_\-\s]+",
+                RegexOptions.CultureInvariant,
+                TimeSpan.FromMilliseconds(100));
+            var partChoices = partMatches.Count > 1
+                ? partMatches
+                    .Cast<Match>()
+                    .Select(part => new GuidedPathChoiceViewModel(
+                        segmentIndex,
+                        match.Index + part.Index,
+                        part.Length,
+                        part.Value,
+                        part.Value,
+                        $"‘{value}’의 ‘{part.Value}’ 부분",
+                        IsWholeSegment: false))
+                    .ToArray()
+                : [];
+            segments.Add(new GuidedPathSegmentViewModel(
+                segmentIndex,
+                match.Index > 0 ? "\\" : string.Empty,
+                value,
+                wholeChoice,
+                partChoices));
+        }
+
+        GuidedPathSegments = segments;
+        HasAnalyzedPath = segments.Count > 0;
+    }
+
+    private void RebuildGuidedTemplate()
+    {
+        if (!HasAnalyzedPath)
+        {
+            return;
+        }
+
+        var assignments = DraftFields
+            .SelectMany(field => field.GuidedAssignments.Select(assignment => (Field: field, Assignment: assignment)))
+            .OrderBy(static item => item.Assignment.Choice.Start)
+            .ToArray();
+        var template = new StringBuilder();
+        var cursor = 0;
+        foreach (var item in assignments)
+        {
+            var choice = item.Assignment.Choice;
+            if (choice.Start < cursor || choice.Start + choice.Length > _analyzedNormalizedPath.Length)
+            {
+                continue;
+            }
+
+            template.Append(EscapeTemplateLiteral(_analyzedNormalizedPath[cursor..choice.Start]));
+            template.Append('{')
+                .Append(item.Field.FieldId.Trim())
+                .Append('@')
+                .Append(item.Assignment.GroupName);
+            if (!item.Field.Required)
+            {
+                template.Append('?');
+            }
+
+            template.Append('}');
+            cursor = choice.Start + choice.Length;
+        }
+
+        template.Append(EscapeTemplateLiteral(_analyzedNormalizedPath[cursor..]));
+        var wasPopulating = _isPopulatingDraft;
+        _isPopulatingDraft = true;
+        try
+        {
+            DraftPathTemplate = template.ToString();
+        }
+        finally
+        {
+            _isPopulatingDraft = wasPopulating;
+        }
+
+        RefreshTemplatePreview();
+    }
+
+    private static string EscapeTemplateLiteral(string value) =>
+        value
+            .Replace("{", "{{", StringComparison.Ordinal)
+            .Replace("}", "}}", StringComparison.Ordinal);
+
+    private List<string>? GuidedTerminalGroups()
+    {
+        var field = DraftFields.FirstOrDefault(static candidate => candidate.IsTerminalField);
+        return field?.EffectiveGroupNames.Count > 0
+            ? field.EffectiveGroupNames.ToList()
+            : null;
+    }
+
+    private void RestoreTerminalField(IReadOnlyList<string>? terminalGroups)
+    {
+        if (terminalGroups is null || terminalGroups.Count == 0)
+        {
+            return;
+        }
+
+        var field = DraftFields.FirstOrDefault(candidate =>
+            candidate.EffectiveGroupNames.SequenceEqual(terminalGroups, StringComparer.Ordinal));
+        if (field is not null)
+        {
+            field.IsTerminalField = true;
+        }
+    }
+
+    private string BuildTestStatus(ProfileFieldDescriptor field, object? value)
+    {
+        var draft = DraftFields.FirstOrDefault(candidate =>
+            string.Equals(candidate.FieldId, field.FieldId, StringComparison.OrdinalIgnoreCase));
+        if (draft is null || draft.GuidedAssignments.Count <= 1)
+        {
+            return field.Required ? "필수" : "선택";
+        }
+
+        var sourceValues = draft.EffectiveGroupNames
+            .Select(groupName => draft.GuidedAssignments.FirstOrDefault(assignment =>
+                string.Equals(assignment.GroupName, groupName, StringComparison.Ordinal))?.Choice.Value)
+            .Where(static source => !string.IsNullOrEmpty(source))
+            .ToArray();
+        if (sourceValues.Length <= 1)
+        {
+            return field.Required ? "필수" : "선택";
+        }
+
+        return $"{string.Join(" + ", sourceValues)} → {string.Concat(sourceValues)} → {FormatValue(value, field.DisplayFormat)}";
+    }
+
+    private static List<string>? ParseNameList(string? value)
+    {
+        var groupNames = ProfileFieldDraftViewModel.ParseGroupNames(value);
+        return groupNames.Count == 0 ? null : groupNames;
     }
 
     private int NextFieldNumber()
@@ -1120,6 +1579,46 @@ public sealed class ProfileSummaryViewModel(ProfileDescriptor descriptor)
         : "전체 경로";
 
     public int FieldCount => Descriptor.Fields.Count;
+}
+
+public sealed class ProfileFieldInspectionViewModel(ProfileFieldDescriptor descriptor)
+{
+    public int Order => descriptor.Order;
+
+    public string Header => descriptor.Header;
+
+    public string FieldId => descriptor.FieldId;
+
+    public string CaptureGroups => string.Join(" → ", descriptor.EffectiveGroupNames);
+
+    public ProfileFieldValueKind Kind => descriptor.Kind;
+
+    public bool Required => descriptor.Required;
+
+    public bool IsNullable => descriptor.IsNullable;
+
+    public string? ParseFormat => descriptor.ParseFormat;
+
+    public string? DisplayFormat => descriptor.DisplayFormat;
+}
+
+public sealed class ProfileRuleInspectionViewModel(ProfileRegexRuleDescriptor descriptor)
+{
+    public int Order => descriptor.Order;
+
+    public string Id => descriptor.Id;
+
+    public ProfileRegexMatchMode MatchMode => descriptor.MatchMode;
+
+    public bool IgnoreCase => descriptor.IgnoreCase;
+
+    public int TimeoutMilliseconds => descriptor.TimeoutMilliseconds;
+
+    public string Pattern => descriptor.Pattern;
+
+    public string StopTraversalGroups => descriptor.StopTraversalWhenCapturedGroups.Count == 0
+        ? "없음 · 계속 탐색"
+        : string.Join(" + ", descriptor.StopTraversalWhenCapturedGroups);
 }
 
 public sealed class PluginReportViewModel(ProfilePluginReport report)

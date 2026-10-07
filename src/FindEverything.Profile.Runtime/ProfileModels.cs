@@ -21,7 +21,13 @@ public sealed record ProfileFieldDescriptor(
     ProfileFieldValueKind Kind,
     bool IsNullable,
     string? ParseFormat,
-    string? DisplayFormat);
+    string? DisplayFormat)
+{
+    public IReadOnlyList<string> GroupNames { get; init; } = Array.Empty<string>();
+
+    public IReadOnlyList<string> EffectiveGroupNames =>
+        GroupNames.Count > 0 ? GroupNames : new[] { GroupName };
+}
 
 public sealed record ProfileRegexRuleDescriptor(
     int Order,
@@ -29,7 +35,11 @@ public sealed record ProfileRegexRuleDescriptor(
     string Pattern,
     ProfileRegexMatchMode MatchMode,
     bool IgnoreCase,
-    int TimeoutMilliseconds);
+    int TimeoutMilliseconds)
+{
+    public IReadOnlyList<string> StopTraversalWhenCapturedGroups { get; init; } =
+        Array.Empty<string>();
+}
 
 public sealed record ProfileDescriptor(
     string Id,
@@ -67,11 +77,15 @@ public sealed class ProfileMapResult
     private ProfileMapResult(
         ProfileMapStatus status,
         MappedProfileItem? item,
-        IReadOnlyList<ProfileMappingIssue> issues)
+        IReadOnlyList<ProfileMappingIssue> issues,
+        string? matchedRuleId,
+        bool shouldPruneDescendants)
     {
         Status = status;
         Item = item;
         Issues = issues;
+        MatchedRuleId = matchedRuleId;
+        ShouldPruneDescendants = shouldPruneDescendants;
     }
 
     public ProfileMapStatus Status { get; }
@@ -80,14 +94,43 @@ public sealed class ProfileMapResult
 
     public IReadOnlyList<ProfileMappingIssue> Issues { get; }
 
+    public string? MatchedRuleId { get; }
+
+    public bool ShouldPruneDescendants { get; }
+
     public static ProfileMapResult NoMatch() =>
-        new(ProfileMapStatus.NoMatch, null, Array.Empty<ProfileMappingIssue>());
+        new(ProfileMapStatus.NoMatch, null, Array.Empty<ProfileMappingIssue>(), null, false);
 
+    // Keep the original one-argument factory as a real overload, rather than an
+    // optional parameter, so already-compiled profile integrations retain their
+    // binary call target.
     public static ProfileMapResult Success(MappedProfileItem item) =>
-        new(ProfileMapStatus.Success, item, Array.Empty<ProfileMappingIssue>());
+        Success(item, shouldPruneDescendants: false);
 
+    public static ProfileMapResult Success(
+        MappedProfileItem item,
+        bool shouldPruneDescendants) =>
+        new(
+            ProfileMapStatus.Success,
+            item,
+            Array.Empty<ProfileMappingIssue>(),
+            item.MatchedRuleId,
+            shouldPruneDescendants);
+
+    // Preserve the original public signature for binary compatibility.
     public static ProfileMapResult Invalid(IEnumerable<ProfileMappingIssue> issues) =>
-        new(ProfileMapStatus.Invalid, null, Array.AsReadOnly(issues.ToArray()));
+        Invalid(issues, matchedRuleId: null, shouldPruneDescendants: false);
+
+    public static ProfileMapResult Invalid(
+        IEnumerable<ProfileMappingIssue> issues,
+        string? matchedRuleId,
+        bool shouldPruneDescendants) =>
+        new(
+            ProfileMapStatus.Invalid,
+            null,
+            Array.AsReadOnly(issues.ToArray()),
+            matchedRuleId,
+            shouldPruneDescendants);
 }
 
 public enum ProfileDiagnosticSeverity

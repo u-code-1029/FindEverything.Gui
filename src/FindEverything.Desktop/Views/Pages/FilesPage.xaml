@@ -10,6 +10,7 @@
     Background="Transparent"
     Foreground="{DynamicResource TextFillColorPrimaryBrush}"
     PreviewKeyDown="OnPagePreviewKeyDown"
+    ScrollViewer.CanContentScroll="False"
     mc:Ignorable="d">
     <Grid Margin="{StaticResource PagePadding}">
         <Grid.RowDefinitions>
@@ -171,7 +172,10 @@
                     Margin="0,8,0,0"
                     DataContext="{Binding DataContext, ElementName=FilterButton}"
                     Style="{StaticResource FluentSurfaceStyle}">
-                    <ScrollViewer MaxHeight="560" VerticalScrollBarVisibility="Auto">
+                    <ScrollViewer
+                        x:Name="FileFilterScrollViewer"
+                        MaxHeight="560"
+                        Style="{StaticResource FluentGutteredScrollViewerStyle}">
                         <StackPanel>
                             <DockPanel Margin="0,0,0,16">
                                 <TextBlock

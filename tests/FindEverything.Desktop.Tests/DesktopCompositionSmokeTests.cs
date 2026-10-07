@@ -78,8 +78,10 @@ public sealed class DesktopCompositionSmokeTests
             });
 
             window = provider.GetRequiredService<MainWindow>();
-            Assert.NotNull(provider.GetRequiredService<FilesPage>());
-            Assert.NotNull(provider.GetRequiredService<CatalogPage>());
+            var filesPage = provider.GetRequiredService<FilesPage>();
+            Assert.NotNull(filesPage);
+            var catalogPage = provider.GetRequiredService<CatalogPage>();
+            Assert.NotNull(catalogPage);
             var profilesPage = provider.GetRequiredService<ProfilesPage>();
             Assert.NotNull(profilesPage);
             var settingsPage = provider.GetRequiredService<SettingsPage>();
@@ -108,6 +110,7 @@ public sealed class DesktopCompositionSmokeTests
                 });
             var navigation = provider.GetRequiredService<INavigationService>();
             Assert.True(navigation.Navigate(typeof(FilesPage)));
+            VerifyPageScrollContracts(filesPage, catalogPage);
             Assert.True(navigation.Navigate(typeof(CatalogPage)));
             Assert.True(navigation.Navigate(typeof(ProfilesPage)));
             VerifyProfilesScrolling(window, profilesPage);
@@ -147,21 +150,98 @@ public sealed class DesktopCompositionSmokeTests
         var viewModel = Assert.IsType<ProfilesViewModel>(page.DataContext);
         Assert.True(viewModel.IsGuidedMode);
         Assert.NotEmpty(viewModel.GeneratedPatternPreview);
-        Assert.NotNull(page.FindName("ProfilePathTemplateTextBox"));
+        var templateBox = Assert.IsType<Wpf.Ui.Controls.TextBox>(
+            page.FindName("ProfilePathTemplateTextBox"));
+        Assert.True(templateBox.IsReadOnly);
+        Assert.IsType<Border>(page.FindName("AssignmentPickerPanel"));
+        Assert.NotEmpty(viewModel.GuidedPathSegments);
+        VerifyGuidedPathButtonAuthoring(viewModel);
 
         PumpLayout(window, page);
         var editorScrollViewer = Assert.IsType<ScrollViewer>(
             page.FindName("ProfileEditorScrollViewer"));
+        Assert.Equal(new Thickness(0, 0, 16, 0), editorScrollViewer.Padding);
         VerifyScrollable(window, page, editorScrollViewer);
 
         tabControl.SelectedIndex = 1;
         PumpLayout(window, page);
         var loadStatusScrollViewer = Assert.IsType<ScrollViewer>(
             page.FindName("ProfileLoadStatusScrollViewer"));
+        Assert.Equal(new Thickness(0, 0, 16, 0), loadStatusScrollViewer.Padding);
         VerifyScrollable(window, page, loadStatusScrollViewer);
 
         tabControl.SelectedIndex = 0;
         PumpLayout(window, page);
+    }
+
+    private static void VerifyGuidedPathButtonAuthoring(ProfilesViewModel viewModel)
+    {
+        var nameField = Assert.Single(viewModel.DraftFields);
+        viewModel.ClearFieldAssignmentsCommand.Execute(nameField);
+        viewModel.SamplePath = @"Archive\2026\0521_Project-A";
+        viewModel.BuildTemplateFromSampleCommand.ExecuteAsync(null).GetAwaiter().GetResult();
+        Assert.Equal(3, viewModel.GuidedPathSegments.Count);
+
+        viewModel.BeginAssignValueCommand.Execute(nameField);
+        viewModel.AssignPathChoiceCommand.Execute(viewModel.GuidedPathSegments[0].WholeChoice);
+
+        viewModel.AddFieldCommand.Execute(null);
+        var dateField = viewModel.DraftFields[1];
+        dateField.Header = "기준일";
+        dateField.Kind = ProfileFieldValueKind.DateTime;
+        dateField.DateSourcePreset = GuidedDateSourcePreset.YearAndMonthDay;
+        viewModel.BeginAssignYearCommand.Execute(dateField);
+        viewModel.AssignPathChoiceCommand.Execute(viewModel.GuidedPathSegments[1].WholeChoice);
+        var monthDay = Assert.Single(
+            viewModel.GuidedPathSegments[2].PartChoices,
+            static choice => choice.Value == "0521");
+        viewModel.AssignPathChoiceCommand.Execute(monthDay);
+
+        Assert.Equal(
+            "{name@name}/{field-1@field_1Year}/{field-1@field_1MonthDay}_Project-A",
+            viewModel.DraftPathTemplate);
+        Assert.NotEmpty(viewModel.GeneratedPatternPreview);
+        Assert.Contains("Project-A", viewModel.DraftPathTemplate);
+
+        viewModel.SelectTerminalFieldCommand.Execute(dateField);
+        viewModel.UseExpertModeCommand.Execute(null);
+        Assert.True(viewModel.IsExpertMode);
+        var rule = Assert.Single(viewModel.DraftRules);
+        Assert.Equal(
+            "field_1Year, field_1MonthDay",
+            rule.StopTraversalGroupsText);
+
+        rule.StopTraversalGroupsText = "year, arbitrary";
+        Assert.False(viewModel.CanUseGuidedMode);
+        rule.StopTraversalGroupsText = "field_1Year, field_1MonthDay";
+        Assert.True(viewModel.CanUseGuidedMode);
+
+        dateField.GroupName = "legacyDate";
+        viewModel.ValidateDraftCommand.Execute(null);
+        Assert.Contains("동시에", viewModel.EditorStatusMessage);
+        dateField.GroupName = string.Empty;
+        Assert.True(viewModel.CanUseGuidedMode);
+
+        viewModel.UseGuidedModeCommand.Execute(null);
+        Assert.True(viewModel.IsGuidedMode);
+        Assert.True(dateField.IsTerminalField);
+
+        viewModel.AddFieldCommand.Execute(null);
+        var removedWhilePicking = viewModel.DraftFields[^1];
+        viewModel.BeginAssignValueCommand.Execute(removedWhilePicking);
+        Assert.True(viewModel.IsAssignmentPickerOpen);
+        viewModel.RemoveFieldCommand.Execute(removedWhilePicking);
+        Assert.False(viewModel.IsAssignmentPickerOpen);
+
+        viewModel.AddFieldCommand.Execute(null);
+        var changedWhilePicking = viewModel.DraftFields[^1];
+        changedWhilePicking.Kind = ProfileFieldValueKind.DateTime;
+        changedWhilePicking.DateSourcePreset = GuidedDateSourcePreset.YearAndMonthDay;
+        viewModel.BeginAssignMonthDayCommand.Execute(changedWhilePicking);
+        Assert.True(viewModel.IsAssignmentPickerOpen);
+        changedWhilePicking.DateSourcePreset = GuidedDateSourcePreset.SingleValue;
+        Assert.False(viewModel.IsAssignmentPickerOpen);
+        viewModel.RemoveFieldCommand.Execute(changedWhilePicking);
     }
 
     private static void VerifySettingsLayout(Window window, SettingsPage page)
@@ -171,6 +251,7 @@ public sealed class DesktopCompositionSmokeTests
 
         var scrollViewer = Assert.IsType<ScrollViewer>(page.FindName("SettingsScrollViewer"));
         Assert.Equal(HorizontalAlignment.Stretch, scrollViewer.HorizontalContentAlignment);
+        Assert.Equal(new Thickness(0, 0, 16, 0), scrollViewer.Padding);
         Assert.True(scrollViewer.ActualWidth > 0);
 
         var inputs = FindVisualChildren<FrameworkElement>(scrollViewer)
@@ -182,6 +263,17 @@ public sealed class DesktopCompositionSmokeTests
             Assert.Equal(double.PositiveInfinity, input.MaxWidth);
             Assert.Equal(HorizontalAlignment.Stretch, input.HorizontalAlignment);
         }
+    }
+
+    private static void VerifyPageScrollContracts(FilesPage filesPage, CatalogPage catalogPage)
+    {
+        Assert.False(ScrollViewer.GetCanContentScroll(filesPage));
+        Assert.False(ScrollViewer.GetCanContentScroll(catalogPage));
+        var filterScrollViewer = Assert.IsType<ScrollViewer>(
+            filesPage.FindName("FileFilterScrollViewer"));
+        Assert.Equal(new Thickness(0, 0, 16, 0), filterScrollViewer.Padding);
+        Assert.Equal(ScrollBarVisibility.Disabled, filterScrollViewer.HorizontalScrollBarVisibility);
+        Assert.Equal(ScrollBarVisibility.Auto, filterScrollViewer.VerticalScrollBarVisibility);
     }
 
     private static void VerifyScrollable(

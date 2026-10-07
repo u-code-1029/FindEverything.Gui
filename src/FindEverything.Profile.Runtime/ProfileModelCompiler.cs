@@ -16,6 +16,11 @@ internal sealed class ProfileModelCompiler
         RegexOptions.CultureInvariant,
         TimeSpan.FromMilliseconds(100));
 
+    private static readonly Regex GroupNamePattern = new(
+        "^[A-Za-z_][A-Za-z0-9_]*$",
+        RegexOptions.CultureInvariant,
+        TimeSpan.FromMilliseconds(100));
+
     public ProfileCompilationResult Compile(Assembly assembly, ValidatedProfileManifest manifest)
     {
         ArgumentNullException.ThrowIfNull(assembly);
@@ -96,14 +101,17 @@ internal sealed class ProfileModelCompiler
             .Select(static field => new CompiledField(
                 new ProfileFieldDescriptor(
                     field.FieldId,
-                    field.GroupName,
+                    field.GroupNames[0],
                     field.Header,
                     field.Order,
                     field.Required,
                     field.Kind,
                     field.IsNullable,
                     field.ParseFormat,
-                    field.DisplayFormat),
+                    field.DisplayFormat)
+                {
+                    GroupNames = field.GroupNames,
+                },
                 static (_, _) => { }))
             .ToList();
 
@@ -151,7 +159,11 @@ internal sealed class ProfileModelCompiler
                     rule.Pattern,
                     rule.MatchMode,
                     rule.IgnoreCase,
-                    rule.TimeoutMilliseconds))
+                    rule.TimeoutMilliseconds)
+                {
+                    StopTraversalWhenCapturedGroups =
+                        rule.StopTraversalWhenCapturedGroups,
+                })
                 .ToArray()))
         {
             Kind = manifest.Kind,
@@ -218,11 +230,48 @@ internal sealed class ProfileModelCompiler
                 continue;
             }
 
-            if (string.IsNullOrWhiteSpace(attribute.GroupName))
+            var groupNames = attribute.GroupNames;
+            if (groupNames.Count == 0)
             {
                 diagnostics.Add(Error(
                     "capture_group_name_missing",
                     $"정규식 그룹 이름이 필요합니다: {property.Name}"));
+                continue;
+            }
+
+            if (groupNames.Count > ProfileManifestLimits.MaximumCompositeGroupCount)
+            {
+                diagnostics.Add(Error(
+                    "capture_group_names_limit_exceeded",
+                    $"캡처 필드 '{property.Name}'의 정규식 그룹은 최대 {ProfileManifestLimits.MaximumCompositeGroupCount}개까지 사용할 수 있습니다."));
+                continue;
+            }
+
+            var groupNamesValid = true;
+            var seenGroupNames = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var groupName in groupNames)
+            {
+                if (string.IsNullOrWhiteSpace(groupName)
+                    || !GroupNamePattern.IsMatch(groupName))
+                {
+                    diagnostics.Add(Error(
+                        "capture_group_name_invalid",
+                        $"캡처 필드 '{property.Name}'의 정규식 그룹 이름이 올바르지 않습니다: {groupName}"));
+                    groupNamesValid = false;
+                    continue;
+                }
+
+                if (!seenGroupNames.Add(groupName))
+                {
+                    diagnostics.Add(Error(
+                        "capture_group_name_duplicate",
+                        $"캡처 필드 '{property.Name}'의 정규식 그룹 이름이 중복되었습니다: {groupName}"));
+                    groupNamesValid = false;
+                }
+            }
+
+            if (!groupNamesValid)
+            {
                 continue;
             }
 
@@ -242,19 +291,33 @@ internal sealed class ProfileModelCompiler
                 continue;
             }
 
+            var parseFormat = NormalizeOptional(attribute.ParseFormat);
+            if (groupNames.Count > 1
+                && kind == ProfileFieldValueKind.DateTime
+                && parseFormat is null)
+            {
+                diagnostics.Add(Error(
+                    "capture_composite_datetime_parse_format_missing",
+                    $"복합 날짜 필드 '{property.Name}'에는 ParseFormat이 필요합니다."));
+                continue;
+            }
+
             var header = string.IsNullOrWhiteSpace(attribute.Header)
                 ? property.Name
                 : attribute.Header.Trim();
             var descriptor = new ProfileFieldDescriptor(
                 attribute.FieldId,
-                attribute.GroupName,
+                groupNames[0],
                 header,
                 attribute.Order,
                 attribute.Required,
                 kind,
                 isNullable,
-                NormalizeOptional(attribute.ParseFormat),
-                NormalizeOptional(attribute.DisplayFormat));
+                parseFormat,
+                NormalizeOptional(attribute.DisplayFormat))
+            {
+                GroupNames = Array.AsReadOnly(groupNames.ToArray()),
+            };
 
             fields.Add(new CompiledField(
                 descriptor,
@@ -295,18 +358,42 @@ internal sealed class ProfileModelCompiler
                     effectivePattern,
                     options,
                     TimeSpan.FromMilliseconds(sourceRule.TimeoutMilliseconds));
-                var groupNumbers = new int[fields.Count];
+                var fieldGroupNumbers = new int[fields.Count][];
 
                 for (var index = 0; index < fields.Count; index++)
                 {
                     var field = fields[index];
-                    var groupNumber = regex.GroupNumberFromName(field.Descriptor.GroupName);
-                    groupNumbers[index] = groupNumber;
-                    if (groupNumber < 0 && field.Descriptor.Required)
+                    var groupNames = field.Descriptor.EffectiveGroupNames;
+                    var groupNumbers = new int[groupNames.Count];
+                    fieldGroupNumbers[index] = groupNumbers;
+                    for (var groupIndex = 0; groupIndex < groupNames.Count; groupIndex++)
+                    {
+                        var groupName = groupNames[groupIndex];
+                        var groupNumber = regex.GroupNumberFromName(groupName);
+                        groupNumbers[groupIndex] = groupNumber;
+                        if (groupNumber < 0 && field.Descriptor.Required)
+                        {
+                            diagnostics.Add(Error(
+                                "required_group_not_defined",
+                                $"규칙 '{sourceRule.Id}'에 필수 그룹 '{groupName}'이(가) 없습니다."));
+                        }
+                    }
+                }
+
+                var stopTraversalGroupNumbers = sourceRule.StopTraversalWhenCapturedGroups
+                    .Select(groupName => new
+                    {
+                        Name = groupName,
+                        Number = regex.GroupNumberFromName(groupName),
+                    })
+                    .ToArray();
+                foreach (var group in stopTraversalGroupNumbers)
+                {
+                    if (group.Number < 0)
                     {
                         diagnostics.Add(Error(
-                            "required_group_not_defined",
-                            $"규칙 '{sourceRule.Id}'에 필수 그룹 '{field.Descriptor.GroupName}'이(가) 없습니다."));
+                            "stop_traversal_group_not_defined",
+                            $"규칙 '{sourceRule.Id}'에 하위 탐색 중단 그룹 '{group.Name}'이(가) 없습니다."));
                     }
                 }
 
@@ -314,7 +401,10 @@ internal sealed class ProfileModelCompiler
                     sourceRule.Id,
                     sourceRule.MatchMode,
                     regex,
-                    groupNumbers));
+                    fieldGroupNumbers,
+                    stopTraversalGroupNumbers
+                        .Select(static group => group.Number)
+                        .ToArray()));
             }
             catch (ArgumentException exception)
             {
@@ -414,4 +504,5 @@ internal sealed record CompiledRegexRule(
     string Id,
     ProfileRegexMatchMode MatchMode,
     Regex Regex,
-    int[] GroupNumbers);
+    int[][] FieldGroupNumbers,
+    int[] StopTraversalGroupNumbers);

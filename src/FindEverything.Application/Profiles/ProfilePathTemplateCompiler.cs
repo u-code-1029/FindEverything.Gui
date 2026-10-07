@@ -51,20 +51,27 @@ public sealed class ProfilePathTemplateCompiler : IProfilePathTemplateCompiler
             return Failure(diagnostics);
         }
 
-        var usedFieldIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var usedGroupNames = new HashSet<string>(StringComparer.Ordinal);
         var segments = pathTemplate
             .Split(['/', '\\'], StringSplitOptions.None)
             .Select(segment => ParseSegment(
                 segment,
                 fieldsById,
-                usedFieldIds,
+                usedGroupNames,
                 diagnostics))
             .ToArray();
 
         ValidateOptionalSegments(segments, diagnostics);
         foreach (var field in fieldsById.Values)
         {
-            if (field.Required && !usedFieldIds.Contains(field.FieldId))
+            var usedGroupCount = field.GroupNames.Count(usedGroupNames.Contains);
+            if (usedGroupCount > 0 && usedGroupCount < field.GroupNames.Count)
+            {
+                diagnostics.Add(Error(
+                    "template_composite_field_incomplete",
+                    $"복합 필드 '{field.FieldId}'의 모든 경로 조각을 템플릿에 추가하세요."));
+            }
+            else if (field.Required && usedGroupCount == 0)
             {
                 diagnostics.Add(Error(
                     "template_required_field_missing",
@@ -107,7 +114,6 @@ public sealed class ProfilePathTemplateCompiler : IProfilePathTemplateCompiler
             }
 
             var fieldId = Normalize(source.FieldId);
-            var groupName = Normalize(source.GroupName);
             var displayId = fieldId ?? $"#{index + 1}";
 
             if (fieldId is null || !FieldIdPattern.IsMatch(fieldId))
@@ -118,24 +124,14 @@ public sealed class ProfilePathTemplateCompiler : IProfilePathTemplateCompiler
                 continue;
             }
 
-            var field = new TemplateField(
-                fieldId,
-                groupName ?? string.Empty,
-                source.Required,
-                source.Kind);
+            var groupNames = ValidateGroupNames(source, displayId, diagnostics);
+            var field = new TemplateField(fieldId, groupNames, source.Required, source.Kind);
             if (!fieldsById.TryAdd(fieldId, field))
             {
                 diagnostics.Add(Error(
                     "template_field_definition_duplicate",
                     $"경로 템플릿 필드 정의가 중복되었습니다: {fieldId}"));
                 continue;
-            }
-
-            if (groupName is null || !GroupNamePattern.IsMatch(groupName))
-            {
-                diagnostics.Add(Error(
-                    "template_group_name_invalid",
-                    $"필드 '{displayId}'의 정규식 그룹 이름이 올바르지 않습니다."));
             }
 
             if (!Enum.IsDefined(source.Kind))
@@ -150,10 +146,79 @@ public sealed class ProfilePathTemplateCompiler : IProfilePathTemplateCompiler
         return fieldsById;
     }
 
+    private static IReadOnlyList<string> ValidateGroupNames(
+        ProfileFieldManifest source,
+        string displayId,
+        ICollection<ProfilePathTemplateDiagnostic> diagnostics)
+    {
+        var groupName = Normalize(source.GroupName);
+        if (groupName is not null && source.GroupNames is not null)
+        {
+            diagnostics.Add(Error(
+                "template_group_sources_conflict",
+                $"필드 '{displayId}'에는 groupName과 groupNames를 동시에 사용할 수 없습니다."));
+            return Array.Empty<string>();
+        }
+
+        if (source.GroupNames is null)
+        {
+            if (groupName is null || !GroupNamePattern.IsMatch(groupName))
+            {
+                diagnostics.Add(Error(
+                    "template_group_name_invalid",
+                    $"필드 '{displayId}'의 정규식 그룹 이름이 올바르지 않습니다."));
+                return Array.Empty<string>();
+            }
+
+            return new[] { groupName };
+        }
+
+        if (source.GroupNames.Count == 0)
+        {
+            diagnostics.Add(Error(
+                "template_group_names_missing",
+                $"필드 '{displayId}'의 groupNames에는 하나 이상의 그룹이 필요합니다."));
+            return Array.Empty<string>();
+        }
+
+        if (source.GroupNames.Count > ProfileManifestLimits.MaximumCompositeGroupCount)
+        {
+            diagnostics.Add(Error(
+                "template_group_names_limit_exceeded",
+                $"필드 '{displayId}'의 groupNames는 최대 {ProfileManifestLimits.MaximumCompositeGroupCount}개까지 사용할 수 있습니다."));
+        }
+
+        var result = new List<string>(source.GroupNames.Count);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var sourceGroupName in source.GroupNames)
+        {
+            var normalized = Normalize(sourceGroupName);
+            if (normalized is null || !GroupNamePattern.IsMatch(normalized))
+            {
+                diagnostics.Add(Error(
+                    "template_group_name_invalid",
+                    $"필드 '{displayId}'의 groupNames에 올바르지 않은 그룹 이름이 있습니다."));
+                continue;
+            }
+
+            if (!seen.Add(normalized))
+            {
+                diagnostics.Add(Error(
+                    "template_group_name_duplicate",
+                    $"필드 '{displayId}'의 groupNames에 중복된 그룹이 있습니다: {normalized}"));
+                continue;
+            }
+
+            result.Add(normalized);
+        }
+
+        return result;
+    }
+
     private static TemplateSegment ParseSegment(
         string source,
         IReadOnlyDictionary<string, TemplateField> fieldsById,
-        ISet<string> usedFieldIds,
+        ISet<string> usedGroupNames,
         ICollection<ProfilePathTemplateDiagnostic> diagnostics)
     {
         var nodes = new List<TemplateNode>();
@@ -196,8 +261,18 @@ public sealed class ProfilePathTemplateCompiler : IProfilePathTemplateCompiler
 
                 var token = source[(index + 1)..closingBrace];
                 var isOptional = token.EndsWith('?');
-                var fieldId = isOptional ? token[..^1] : token;
-                if (!FieldIdPattern.IsMatch(fieldId))
+                var tokenBody = isOptional ? token[..^1] : token;
+                var separatorIndex = tokenBody.IndexOf('@');
+                var fieldId = separatorIndex < 0
+                    ? tokenBody
+                    : tokenBody[..separatorIndex];
+                var groupName = separatorIndex < 0
+                    ? null
+                    : tokenBody[(separatorIndex + 1)..];
+                if (!FieldIdPattern.IsMatch(fieldId)
+                    || (groupName is not null && !GroupNamePattern.IsMatch(groupName))
+                    || (separatorIndex >= 0
+                        && tokenBody.IndexOf('@', separatorIndex + 1) >= 0))
                 {
                     diagnostics.Add(Error(
                         "template_placeholder_invalid",
@@ -221,11 +296,42 @@ public sealed class ProfilePathTemplateCompiler : IProfilePathTemplateCompiler
                     continue;
                 }
 
-                if (!usedFieldIds.Add(field.FieldId))
+                string captureGroupName;
+                if (groupName is null)
+                {
+                    if (field.GroupNames.Count != 1)
+                    {
+                        diagnostics.Add(Error(
+                            "template_composite_field_requires_component",
+                            $"복합 필드 '{field.FieldId}'은(는) '{{필드@그룹}}' 형식으로 경로 조각을 선택해야 합니다."));
+                        index = closingBrace + 1;
+                        continue;
+                    }
+
+                    captureGroupName = field.GroupNames[0];
+                }
+                else if (!field.GroupNames.Contains(groupName, StringComparer.Ordinal))
                 {
                     diagnostics.Add(Error(
-                        "template_field_duplicate",
-                        $"필드 '{field.FieldId}'은(는) 경로 템플릿에서 한 번만 사용할 수 있습니다."));
+                        "template_component_unknown",
+                        $"필드 '{field.FieldId}'에 그룹 '{groupName}'이(가) 정의되어 있지 않습니다."));
+                    index = closingBrace + 1;
+                    continue;
+                }
+                else
+                {
+                    captureGroupName = groupName;
+                }
+
+                if (!usedGroupNames.Add(captureGroupName))
+                {
+                    diagnostics.Add(Error(
+                        groupName is null
+                            ? "template_field_duplicate"
+                            : "template_component_duplicate",
+                        groupName is null
+                            ? $"필드 '{field.FieldId}'은(는) 경로 템플릿에서 한 번만 사용할 수 있습니다."
+                            : $"경로 조각 '{field.FieldId}@{groupName}'은(는) 템플릿에서 한 번만 사용할 수 있습니다."));
                 }
 
                 if (isOptional && field.Required)
@@ -241,7 +347,7 @@ public sealed class ProfilePathTemplateCompiler : IProfilePathTemplateCompiler
                         $"선택 필드 '{field.FieldId}'에는 '?'가 있는 선택 플레이스홀더를 사용해야 합니다."));
                 }
 
-                nodes.Add(new FieldNode(field));
+                nodes.Add(new FieldNode(field, captureGroupName));
                 index = closingBrace + 1;
                 continue;
             }
@@ -356,7 +462,7 @@ public sealed class ProfilePathTemplateCompiler : IProfilePathTemplateCompiler
                 case FieldNode field:
                     pattern
                         .Append("(?<")
-                        .Append(field.Field.GroupName)
+                        .Append(field.GroupName)
                         .Append('>')
                         .Append(ValuePattern(field.Field.Kind))
                         .Append(')');
@@ -391,7 +497,7 @@ public sealed class ProfilePathTemplateCompiler : IProfilePathTemplateCompiler
 
     private sealed record TemplateField(
         string FieldId,
-        string GroupName,
+        IReadOnlyList<string> GroupNames,
         bool Required,
         ProfileFieldValueKind Kind);
 
@@ -407,5 +513,7 @@ public sealed class ProfilePathTemplateCompiler : IProfilePathTemplateCompiler
 
     private sealed record LiteralNode(string Value) : TemplateNode;
 
-    private sealed record FieldNode(TemplateField Field) : TemplateNode;
+    private sealed record FieldNode(
+        TemplateField Field,
+        string GroupName) : TemplateNode;
 }

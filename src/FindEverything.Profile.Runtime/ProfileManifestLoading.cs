@@ -9,11 +9,12 @@ internal sealed record ValidatedRegexRule(
     string Pattern,
     ProfileRegexMatchMode MatchMode,
     bool IgnoreCase,
-    int TimeoutMilliseconds);
+    int TimeoutMilliseconds,
+    IReadOnlyList<string> StopTraversalWhenCapturedGroups);
 
 internal sealed record ValidatedProfileField(
     string FieldId,
-    string GroupName,
+    IReadOnlyList<string> GroupNames,
     string Header,
     int Order,
     bool Required,
@@ -344,7 +345,6 @@ internal sealed class ProfileManifestValidator
         {
             var source = fields[index];
             var fieldId = NormalizeRequired(source.FieldId);
-            var groupName = NormalizeRequired(source.GroupName);
             var displayId = fieldId ?? $"#{index + 1}";
             var valid = true;
 
@@ -363,20 +363,7 @@ internal sealed class ProfileManifestValidator
                 valid = false;
             }
 
-            if (groupName is null)
-            {
-                diagnostics.Add(Error(
-                    "capture_group_name_missing",
-                    $"필드 '{displayId}'에 groupName이 필요합니다."));
-                valid = false;
-            }
-            else if (!GroupNamePattern.IsMatch(groupName))
-            {
-                diagnostics.Add(Error(
-                    "capture_group_name_invalid",
-                    $"필드 '{displayId}'의 groupName은 문자 또는 밑줄로 시작하고 영숫자와 밑줄만 포함해야 합니다."));
-                valid = false;
-            }
+            var groupNames = ValidateGroupNames(source, displayId, diagnostics, ref valid);
 
             if (!Enum.IsDefined(source.Kind))
             {
@@ -410,6 +397,16 @@ internal sealed class ProfileManifestValidator
                 }
             }
 
+            if (groupNames.Count > 1
+                && source.Kind == ProfileFieldValueKind.DateTime
+                && parseFormat is null)
+            {
+                diagnostics.Add(Error(
+                    "capture_composite_datetime_parse_format_missing",
+                    $"복합 날짜 필드 '{displayId}'에는 parseFormat이 필요합니다."));
+                valid = false;
+            }
+
             var displayFormat = NormalizeRequired(source.DisplayFormat);
             if (displayFormat is not null
                 && !ValidateDisplayFormat(source.Kind, displayFormat, out var formatError))
@@ -428,7 +425,7 @@ internal sealed class ProfileManifestValidator
 
             validated.Add(new ValidatedProfileField(
                 fieldId!,
-                groupName!,
+                Array.AsReadOnly(groupNames.ToArray()),
                 NormalizeRequired(source.Header) ?? fieldId!,
                 source.Order,
                 source.Required,
@@ -447,6 +444,92 @@ internal sealed class ProfileManifestValidator
         });
 
         return validated;
+    }
+
+    private static List<string> ValidateGroupNames(
+        ProfileFieldManifest source,
+        string displayId,
+        ICollection<ProfileDiagnostic> diagnostics,
+        ref bool valid)
+    {
+        var groupName = NormalizeRequired(source.GroupName);
+        var hasGroupNamesProperty = source.GroupNames is not null;
+        if (groupName is not null && hasGroupNamesProperty)
+        {
+            diagnostics.Add(Error(
+                "capture_group_sources_conflict",
+                $"필드 '{displayId}'에는 groupName과 groupNames를 동시에 사용할 수 없습니다."));
+            valid = false;
+            return [];
+        }
+
+        if (!hasGroupNamesProperty)
+        {
+            if (groupName is null)
+            {
+                diagnostics.Add(Error(
+                    "capture_group_name_missing",
+                    $"필드 '{displayId}'에 groupName 또는 groupNames가 필요합니다."));
+                valid = false;
+                return [];
+            }
+
+            if (!GroupNamePattern.IsMatch(groupName))
+            {
+                diagnostics.Add(Error(
+                    "capture_group_name_invalid",
+                    $"필드 '{displayId}'의 groupName은 문자 또는 밑줄로 시작하고 영숫자와 밑줄만 포함해야 합니다."));
+                valid = false;
+                return [];
+            }
+
+            return [groupName];
+        }
+
+        if (source.GroupNames!.Count == 0)
+        {
+            diagnostics.Add(Error(
+                "capture_group_names_missing",
+                $"필드 '{displayId}'의 groupNames에는 하나 이상의 그룹이 필요합니다."));
+            valid = false;
+            return [];
+        }
+
+        if (source.GroupNames.Count > ProfileManifestLimits.MaximumCompositeGroupCount)
+        {
+            diagnostics.Add(Error(
+                "capture_group_names_limit_exceeded",
+                $"필드 '{displayId}'의 groupNames는 최대 {ProfileManifestLimits.MaximumCompositeGroupCount}개까지 사용할 수 있습니다."));
+            valid = false;
+        }
+
+        var result = new List<string>(source.GroupNames.Count);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var sourceGroupName in source.GroupNames)
+        {
+            var normalized = NormalizeRequired(sourceGroupName);
+            if (normalized is null || !GroupNamePattern.IsMatch(normalized))
+            {
+                diagnostics.Add(Error(
+                    "capture_group_name_invalid",
+                    $"필드 '{displayId}'의 groupNames에는 올바른 정규식 그룹 이름만 사용할 수 있습니다."));
+                valid = false;
+                continue;
+            }
+
+            if (!seen.Add(normalized))
+            {
+                diagnostics.Add(Error(
+                    "capture_group_name_duplicate",
+                    $"필드 '{displayId}'의 groupNames에 중복된 그룹이 있습니다: {normalized}"));
+                valid = false;
+                continue;
+            }
+
+            result.Add(normalized);
+        }
+
+        return result;
     }
 
     private static bool ValidateDisplayFormat(
@@ -497,6 +580,10 @@ internal sealed class ProfileManifestValidator
             var source = rules[index];
             var ruleId = NormalizeRequired(source.Id) ?? $"rule-{index + 1}";
             var pattern = source.Pattern;
+            var stopTraversalGroups = ValidateStopTraversalGroups(
+                source.StopTraversalWhenCapturedGroups,
+                ruleId,
+                diagnostics);
 
             if (!RuleIdPattern.IsMatch(ruleId))
             {
@@ -542,11 +629,56 @@ internal sealed class ProfileManifestValidator
                     pattern,
                     source.MatchMode,
                     source.IgnoreCase,
-                    source.TimeoutMilliseconds));
+                    source.TimeoutMilliseconds,
+                    Array.AsReadOnly(stopTraversalGroups.ToArray())));
             }
         }
 
         return validated;
+    }
+
+    private static List<string> ValidateStopTraversalGroups(
+        IReadOnlyList<string>? sourceGroups,
+        string ruleId,
+        ICollection<ProfileDiagnostic> diagnostics)
+    {
+        var result = new List<string>();
+        if (sourceGroups is null)
+        {
+            return result;
+        }
+
+        if (sourceGroups.Count > ProfileManifestLimits.MaximumStopTraversalGroupCount)
+        {
+            diagnostics.Add(Error(
+                "stop_traversal_group_limit_exceeded",
+                $"정규식 규칙 '{ruleId}'의 하위 탐색 중단 그룹은 최대 {ProfileManifestLimits.MaximumStopTraversalGroupCount}개까지 사용할 수 있습니다."));
+        }
+
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var sourceGroup in sourceGroups)
+        {
+            var groupName = NormalizeRequired(sourceGroup);
+            if (groupName is null || !GroupNamePattern.IsMatch(groupName))
+            {
+                diagnostics.Add(Error(
+                    "stop_traversal_group_name_invalid",
+                    $"정규식 규칙 '{ruleId}'의 하위 탐색 중단 그룹 이름이 올바르지 않습니다."));
+                continue;
+            }
+
+            if (!seen.Add(groupName))
+            {
+                diagnostics.Add(Error(
+                    "stop_traversal_group_duplicate",
+                    $"정규식 규칙 '{ruleId}'의 하위 탐색 중단 그룹이 중복되었습니다: {groupName}"));
+                continue;
+            }
+
+            result.Add(groupName);
+        }
+
+        return result;
     }
 
     private static bool IsWithinDirectory(string directory, string path)

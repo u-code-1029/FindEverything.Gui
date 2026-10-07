@@ -10,6 +10,7 @@ public static class ServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
         services.TryAddSingleton<IIndexSessionFactory, FindEverythingIndexSessionFactory>();
+        services.TryAddSingleton<IDirectoryDiscoveryService, DirectoryDiscoveryService>();
         return services;
     }
 }

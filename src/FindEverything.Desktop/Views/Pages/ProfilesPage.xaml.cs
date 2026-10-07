@@ -11,35 +11,19 @@ public partial class ProfilesPage
     {
         DataContext = viewModel;
         InitializeComponent();
+        viewModel.AssignmentPickerRequested += OnAssignmentPickerRequested;
     }
 
-    private void OnInsertTemplateFieldClick(object sender, System.Windows.RoutedEventArgs e)
+    private void OnAssignmentPickerRequested(object? sender, EventArgs e)
     {
-        if (sender is not System.Windows.FrameworkElement
-            {
-                DataContext: ProfileFieldDraftViewModel field,
-            } ||
-            DataContext is not ProfilesViewModel viewModel)
+        if (Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished)
         {
             return;
         }
 
-        var current = ProfilePathTemplateTextBox.Text ?? string.Empty;
-        var selectionStart = Math.Clamp(
-            ProfilePathTemplateTextBox.SelectionStart,
-            0,
-            current.Length);
-        var selectionLength = Math.Clamp(
-            ProfilePathTemplateTextBox.SelectionLength,
-            0,
-            current.Length - selectionStart);
-        var updated = current.Remove(selectionStart, selectionLength)
-            .Insert(selectionStart, field.TemplateToken);
-
-        viewModel.DraftPathTemplate = updated;
-        ProfilePathTemplateTextBox.Focus();
-        ProfilePathTemplateTextBox.SelectionStart = selectionStart + field.TemplateToken.Length;
-        ProfilePathTemplateTextBox.SelectionLength = 0;
+        _ = Dispatcher.BeginInvoke(
+            System.Windows.Threading.DispatcherPriority.Loaded,
+            new Action(() => AssignmentPickerPanel.BringIntoView()));
     }
 
     private void OnNestedDataGridPreviewMouseWheel(
