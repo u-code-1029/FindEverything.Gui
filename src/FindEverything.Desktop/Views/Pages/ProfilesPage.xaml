@@ -8,6 +8,7 @@
     Title="프로필"
     Background="Transparent"
     Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+    ScrollViewer.CanContentScroll="False"
     mc:Ignorable="d">
     <Page.Resources>
         <Style x:Key="FieldLabelStyle" TargetType="TextBlock">
@@ -51,7 +52,11 @@
                 Text="경로에서 어떤 정보를 읽을지 화면에서 정의하고, 저장 전에 실제 경로로 결과를 확인합니다." />
         </StackPanel>
 
-        <TabControl Grid.Row="1">
+        <TabControl
+            x:Name="ProfilesTabControl"
+            Grid.Row="1"
+            HorizontalContentAlignment="Stretch"
+            VerticalContentAlignment="Stretch">
             <TabItem Header="프로필 편집">
                 <Grid>
                     <Grid.RowDefinitions>
@@ -60,6 +65,7 @@
                     </Grid.RowDefinitions>
 
                     <ScrollViewer
+                        x:Name="ProfileEditorScrollViewer"
                         Grid.Row="0"
                         HorizontalScrollBarVisibility="Disabled"
                         VerticalScrollBarVisibility="Auto">
@@ -175,6 +181,7 @@
                                         CanUserDeleteRows="False"
                                         HeadersVisibility="Column"
                                         ItemsSource="{Binding DraftFields}"
+                                        PreviewMouseWheel="OnNestedDataGridPreviewMouseWheel"
                                         ScrollViewer.VerticalScrollBarVisibility="Disabled">
                                         <DataGrid.Columns>
                                             <DataGridTextColumn Width="1.3*" Binding="{Binding Header, UpdateSourceTrigger=PropertyChanged}" Header="표시 이름 (선택)" MinWidth="120" />
@@ -278,6 +285,7 @@
                                         CanUserDeleteRows="False"
                                         HeadersVisibility="Column"
                                         ItemsSource="{Binding DraftRules}"
+                                        PreviewMouseWheel="OnNestedDataGridPreviewMouseWheel"
                                         ScrollViewer.VerticalScrollBarVisibility="Disabled">
                                         <DataGrid.Columns>
                                             <DataGridTextColumn Width="120" Binding="{Binding Id, UpdateSourceTrigger=PropertyChanged}" Header="규칙 ID (선택)" />
@@ -398,6 +406,7 @@
                                             CanUserAddRows="False"
                                             IsReadOnly="True"
                                             ItemsSource="{Binding TestRows}"
+                                            PreviewMouseWheel="OnNestedDataGridPreviewMouseWheel"
                                             ScrollViewer.VerticalScrollBarVisibility="Disabled"
                                             Style="{StaticResource FluentDataGridStyle}">
                                             <DataGrid.Columns>
@@ -468,6 +477,7 @@
 
             <TabItem Header="로드 상태">
                 <ScrollViewer
+                    x:Name="ProfileLoadStatusScrollViewer"
                     HorizontalScrollBarVisibility="Disabled"
                     VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="8,16,8,24">
@@ -507,6 +517,7 @@
                                         HeadersVisibility="Column"
                                         IsReadOnly="True"
                                         ItemsSource="{Binding Profiles}"
+                                        PreviewMouseWheel="OnNestedDataGridPreviewMouseWheel"
                                         ScrollViewer.VerticalScrollBarVisibility="Disabled"
                                         SelectedItem="{Binding SelectedProfile}"
                                         SelectionMode="Single"
@@ -564,6 +575,7 @@
                                             CanUserAddRows="False"
                                             IsReadOnly="True"
                                             ItemsSource="{Binding Fields}"
+                                            PreviewMouseWheel="OnNestedDataGridPreviewMouseWheel"
                                             ScrollViewer.VerticalScrollBarVisibility="Disabled"
                                             Style="{StaticResource FluentDataGridStyle}">
                                             <DataGrid.Columns>
@@ -596,6 +608,7 @@
                                             CanUserAddRows="False"
                                             IsReadOnly="True"
                                             ItemsSource="{Binding Rules}"
+                                            PreviewMouseWheel="OnNestedDataGridPreviewMouseWheel"
                                             ScrollViewer.VerticalScrollBarVisibility="Disabled"
                                             Style="{StaticResource FluentDataGridStyle}">
                                             <DataGrid.Columns>
@@ -620,6 +633,7 @@
                                     CanUserAddRows="False"
                                     IsReadOnly="True"
                                     ItemsSource="{Binding Reports}"
+                                    PreviewMouseWheel="OnNestedDataGridPreviewMouseWheel"
                                     ScrollViewer.VerticalScrollBarVisibility="Disabled"
                                     Style="{StaticResource FluentDataGridStyle}">
                                     <DataGrid.Columns>

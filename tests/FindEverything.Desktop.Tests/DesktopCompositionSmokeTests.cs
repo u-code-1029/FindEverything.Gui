@@ -1,5 +1,6 @@
 using System.IO;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Media;
 using System.Windows.Shell;
@@ -79,9 +80,11 @@ public sealed class DesktopCompositionSmokeTests
             window = provider.GetRequiredService<MainWindow>();
             Assert.NotNull(provider.GetRequiredService<FilesPage>());
             Assert.NotNull(provider.GetRequiredService<CatalogPage>());
-            Assert.NotNull(provider.GetRequiredService<ProfilesPage>());
+            var profilesPage = provider.GetRequiredService<ProfilesPage>();
+            Assert.NotNull(profilesPage);
             Assert.NotNull(provider.GetRequiredService<SettingsPage>());
 
+            window.Height = window.MinHeight;
             window.Show();
             var chrome = WindowChrome.GetWindowChrome(window);
             Assert.NotNull(chrome);
@@ -106,6 +109,7 @@ public sealed class DesktopCompositionSmokeTests
             Assert.True(navigation.Navigate(typeof(FilesPage)));
             Assert.True(navigation.Navigate(typeof(CatalogPage)));
             Assert.True(navigation.Navigate(typeof(ProfilesPage)));
+            VerifyProfilesScrolling(window, profilesPage);
             Assert.True(navigation.Navigate(typeof(SettingsPage)));
             VerifyDynamicGridHighlighting();
             window.Close();
@@ -129,6 +133,59 @@ public sealed class DesktopCompositionSmokeTests
 
             completion.TrySetResult(failure);
         }
+    }
+
+    private static void VerifyProfilesScrolling(Window window, ProfilesPage page)
+    {
+        Assert.False(ScrollViewer.GetCanContentScroll(page));
+
+        var tabControl = Assert.IsType<TabControl>(page.FindName("ProfilesTabControl"));
+        Assert.Equal(HorizontalAlignment.Stretch, tabControl.HorizontalContentAlignment);
+        Assert.Equal(VerticalAlignment.Stretch, tabControl.VerticalContentAlignment);
+
+        PumpLayout(window, page);
+        var editorScrollViewer = Assert.IsType<ScrollViewer>(
+            page.FindName("ProfileEditorScrollViewer"));
+        VerifyScrollable(window, page, editorScrollViewer);
+
+        tabControl.SelectedIndex = 1;
+        PumpLayout(window, page);
+        var loadStatusScrollViewer = Assert.IsType<ScrollViewer>(
+            page.FindName("ProfileLoadStatusScrollViewer"));
+        VerifyScrollable(window, page, loadStatusScrollViewer);
+
+        tabControl.SelectedIndex = 0;
+        PumpLayout(window, page);
+    }
+
+    private static void VerifyScrollable(
+        Window window,
+        FrameworkElement page,
+        ScrollViewer scrollViewer)
+    {
+        Assert.True(scrollViewer.ActualHeight > 0);
+        Assert.True(scrollViewer.ExtentHeight > scrollViewer.ViewportHeight);
+        Assert.True(scrollViewer.ScrollableHeight > 0);
+        Assert.Equal(Visibility.Visible, scrollViewer.ComputedVerticalScrollBarVisibility);
+
+        scrollViewer.ScrollToEnd();
+        PumpLayout(window, page);
+        Assert.True(scrollViewer.VerticalOffset > 0);
+        Assert.InRange(
+            Math.Abs(scrollViewer.ScrollableHeight - scrollViewer.VerticalOffset),
+            0d,
+            1d);
+
+        scrollViewer.ScrollToHome();
+        PumpLayout(window, page);
+    }
+
+    private static void PumpLayout(Window window, FrameworkElement element)
+    {
+        window.Dispatcher.Invoke(static () => { }, DispatcherPriority.Loaded);
+        element.UpdateLayout();
+        window.Dispatcher.Invoke(static () => { }, DispatcherPriority.Render);
+        element.UpdateLayout();
     }
 
     private static void VerifyDynamicGridHighlighting()
