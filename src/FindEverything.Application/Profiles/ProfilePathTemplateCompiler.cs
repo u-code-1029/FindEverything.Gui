@@ -53,7 +53,7 @@ public sealed class ProfilePathTemplateCompiler : IProfilePathTemplateCompiler
 
         var usedFieldIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var segments = pathTemplate
-            .Split('/', StringSplitOptions.None)
+            .Split(['/', '\\'], StringSplitOptions.None)
             .Select(segment => ParseSegment(
                 segment,
                 fieldsById,

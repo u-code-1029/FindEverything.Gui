@@ -69,6 +69,19 @@ public sealed class ProfilePathTemplateCompilerTests
     }
 
     [Theory]
+    [InlineData("Clients/{name}")]
+    [InlineData(@"Clients\{name}")]
+    public void Compile_accepts_either_template_path_separator(string template)
+    {
+        var result = _compiler.Compile(
+            template,
+            [Field("name", "name", ProfileFieldValueKind.String)]);
+
+        Assert.True(result.IsValid);
+        Assert.Equal(@"Clients[\\/](?<name>[^\\/]+)", result.Pattern);
+    }
+
+    [Theory]
     [InlineData("fields-null", "template_fields_missing")]
     [InlineData("fields-missing", "template_fields_missing")]
     [InlineData("template-missing", "template_missing")]
