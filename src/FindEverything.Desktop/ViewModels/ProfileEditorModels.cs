@@ -760,6 +760,54 @@ public partial class ProfileRuleDraftViewModel : ObservableObject
 }
 
 /// <summary>
+/// An editable rule that prevents direct discovery from entering a directory.
+/// Only the directory's leaf name is supplied to this regular expression.
+/// </summary>
+public partial class ProfileDirectoryNameExclusionRuleDraftViewModel : ObservableObject
+{
+    [ObservableProperty]
+    private string _id = string.Empty;
+
+    [ObservableProperty]
+    private string _pattern = string.Empty;
+
+    [ObservableProperty]
+    private ProfileRegexMatchMode _matchMode = ProfileRegexMatchMode.Full;
+
+    [ObservableProperty]
+    private bool _ignoreCase = true;
+
+    [ObservableProperty]
+    private int _timeoutMilliseconds = 100;
+
+    public string MatchModeDisplayName => MatchMode switch
+    {
+        ProfileRegexMatchMode.Full => "폴더 이름 전체 일치",
+        ProfileRegexMatchMode.Partial => "폴더 이름 일부 일치",
+        _ => MatchMode.ToString(),
+    };
+
+    public ProfileDirectoryNameExclusionRuleDraftViewModel()
+    {
+    }
+
+    public ProfileDirectoryNameExclusionRuleDraftViewModel(
+        ProfileDirectoryNameExclusionRuleManifest rule)
+    {
+        ArgumentNullException.ThrowIfNull(rule);
+
+        Id = rule.Id ?? string.Empty;
+        Pattern = rule.Pattern ?? string.Empty;
+        MatchMode = rule.MatchMode;
+        IgnoreCase = rule.IgnoreCase;
+        TimeoutMilliseconds = rule.TimeoutMilliseconds;
+    }
+
+    partial void OnMatchModeChanged(ProfileRegexMatchMode value) =>
+        OnPropertyChanged(nameof(MatchModeDisplayName));
+}
+
+/// <summary>
 /// A single value produced by testing an example path in the profile editor.
 /// </summary>
 public sealed class ProfileTestResultViewModel

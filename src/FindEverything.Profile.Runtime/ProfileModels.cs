@@ -41,6 +41,14 @@ public sealed record ProfileRegexRuleDescriptor(
         Array.Empty<string>();
 }
 
+public sealed record ProfileDirectoryNameExclusionRuleDescriptor(
+    int Order,
+    string Id,
+    string Pattern,
+    ProfileRegexMatchMode MatchMode,
+    bool IgnoreCase,
+    int TimeoutMilliseconds);
+
 public sealed record ProfileDescriptor(
     string Id,
     string Version,
@@ -50,6 +58,10 @@ public sealed record ProfileDescriptor(
     IReadOnlyList<ProfileRegexRuleDescriptor> Rules)
 {
     public ProfileKind Kind { get; init; } = ProfileKind.Assembly;
+
+    public IReadOnlyList<ProfileDirectoryNameExclusionRuleDescriptor>
+        ExcludedDirectoryNameRules { get; init; } =
+            Array.Empty<ProfileDirectoryNameExclusionRuleDescriptor>();
 }
 
 public sealed record ProfilePathCandidate
@@ -85,6 +97,18 @@ public enum ProfileMapStatus
 }
 
 public sealed record ProfileMappingIssue(string Code, string? FieldId, string Message);
+
+public sealed record ProfileDirectoryNameExclusionResult(
+    bool IsExcluded,
+    string? MatchedRuleId,
+    IReadOnlyList<ProfileMappingIssue> Issues)
+{
+    public static ProfileDirectoryNameExclusionResult NotExcluded() =>
+        new(false, null, Array.Empty<ProfileMappingIssue>());
+
+    public static ProfileDirectoryNameExclusionResult Excluded(string matchedRuleId) =>
+        new(true, matchedRuleId, Array.Empty<ProfileMappingIssue>());
+}
 
 public sealed class ProfileMapResult
 {
@@ -178,6 +202,17 @@ public interface ILoadedProfile
     ProfileDescriptor Descriptor { get; }
 
     ProfileMapResult Map(ProfilePathCandidate candidate);
+
+    /// <summary>
+    /// Evaluates only one directory's leaf name. Callers must not pass a full path.
+    /// Existing binary profiles that do not define exclusion rules remain opt-in and
+    /// therefore never exclude a directory.
+    /// </summary>
+    ProfileDirectoryNameExclusionResult EvaluateDirectoryName(string directoryName)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(directoryName);
+        return ProfileDirectoryNameExclusionResult.NotExcluded();
+    }
 }
 
 public sealed class ProfileCatalogSnapshot

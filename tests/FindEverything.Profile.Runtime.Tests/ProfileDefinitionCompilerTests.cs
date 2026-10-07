@@ -176,6 +176,260 @@ public sealed class ProfileDefinitionCompilerTests
     }
 
     [Fact]
+    public void Directory_exclusion_rules_match_only_the_supplied_leaf_name()
+    {
+        using var provider = BuildProvider();
+        var manifest = CompositeDateManifest();
+        manifest.ExcludedDirectoryNameRules =
+        [
+            new ProfileDirectoryNameExclusionRuleManifest
+            {
+                Id = "generated-folder",
+                Pattern = "name",
+                MatchMode = ProfileRegexMatchMode.Full,
+                TimeoutMilliseconds = 100,
+            },
+        ];
+        var profile = Compile(provider, manifest);
+
+        var excluded = profile.EvaluateDirectoryName("name");
+        var similarName = profile.EvaluateDirectoryName("name-backup");
+        var parentPathText = profile.EvaluateDirectoryName("C:-abc-def-name");
+
+        Assert.True(excluded.IsExcluded);
+        Assert.Equal("generated-folder", excluded.MatchedRuleId);
+        Assert.False(similarName.IsExcluded);
+        Assert.False(parentPathText.IsExcluded);
+        var descriptor = Assert.Single(profile.Descriptor.ExcludedDirectoryNameRules);
+        Assert.Equal("name", descriptor.Pattern);
+        Assert.Equal(ProfileRegexMatchMode.Full, descriptor.MatchMode);
+    }
+
+    [Fact]
+    public void Directory_exclusion_rule_can_use_partial_and_case_insensitive_matching()
+    {
+        using var provider = BuildProvider();
+        var manifest = CompositeDateManifest();
+        manifest.ExcludedDirectoryNameRules =
+        [
+            new ProfileDirectoryNameExclusionRuleManifest
+            {
+                Id = "cache",
+                Pattern = "cache",
+                MatchMode = ProfileRegexMatchMode.Partial,
+                IgnoreCase = true,
+                TimeoutMilliseconds = 100,
+            },
+        ];
+        var profile = Compile(provider, manifest);
+
+        var result = profile.EvaluateDirectoryName("Project-CACHE-v2");
+
+        Assert.True(result.IsExcluded);
+        Assert.Equal("cache", result.MatchedRuleId);
+    }
+
+    [Fact]
+    public void Directory_exclusion_regex_timeout_is_reported_and_fails_open()
+    {
+        using var provider = BuildProvider();
+        var manifest = CompositeDateManifest();
+        manifest.ExcludedDirectoryNameRules =
+        [
+            new ProfileDirectoryNameExclusionRuleManifest
+            {
+                Id = "pathological",
+                Pattern = "(a+)+$",
+                MatchMode = ProfileRegexMatchMode.Full,
+                TimeoutMilliseconds = 1,
+            },
+            new ProfileDirectoryNameExclusionRuleManifest
+            {
+                Id = "later-catch-all",
+                Pattern = ".*",
+                MatchMode = ProfileRegexMatchMode.Full,
+                TimeoutMilliseconds = 100,
+            },
+        ];
+        var profile = Compile(provider, manifest);
+
+        var result = profile.EvaluateDirectoryName(new string('a', 100_000) + "!");
+
+        Assert.False(result.IsExcluded);
+        Assert.Null(result.MatchedRuleId);
+        Assert.Contains(
+            result.Issues,
+            static issue => issue.Code == "directory_exclusion_regex_timeout");
+    }
+
+    [Fact]
+    public void Directory_exclusion_allows_a_whitespace_leaf_name()
+    {
+        using var provider = BuildProvider();
+        var profile = Compile(provider, CompositeDateManifest());
+
+        var exception = Record.Exception(() => profile.EvaluateDirectoryName("   "));
+
+        Assert.Null(exception);
+    }
+
+    [Theory]
+    [InlineData("(", "excluded_directory_name_regex_invalid", 100)]
+    [InlineData("valid", "excluded_directory_name_timeout_invalid", 0)]
+    [InlineData("valid", "excluded_directory_name_timeout_invalid", 10001)]
+    public void Validation_rejects_invalid_directory_exclusion_regex_settings(
+        string pattern,
+        string expectedCode,
+        int timeoutMilliseconds)
+    {
+        using var provider = BuildProvider();
+        var manifest = CompositeDateManifest();
+        manifest.ExcludedDirectoryNameRules =
+        [
+            new ProfileDirectoryNameExclusionRuleManifest
+            {
+                Id = "exclude",
+                Pattern = pattern,
+                TimeoutMilliseconds = timeoutMilliseconds,
+            },
+        ];
+
+        var review = provider
+            .GetRequiredService<IProfileDefinitionCompiler>()
+            .Validate(manifest);
+
+        Assert.False(review.IsValid);
+        Assert.Contains(review.Diagnostics, diagnostic => diagnostic.Code == expectedCode);
+    }
+
+    [Fact]
+    public void Validation_rejects_excessive_directory_exclusion_rules_and_pattern_length()
+    {
+        using var provider = BuildProvider();
+        var manifest = CompositeDateManifest();
+        manifest.ExcludedDirectoryNameRules = Enumerable
+            .Range(1, ProfileManifestLimits.MaximumExcludedDirectoryNameRuleCount + 1)
+            .Select(index => new ProfileDirectoryNameExclusionRuleManifest
+            {
+                Id = $"exclude-{index}",
+                Pattern = index == 1
+                    ? new string(
+                        'x',
+                        ProfileManifestLimits.MaximumExcludedDirectoryNamePatternLength + 1)
+                    : $"folder-{index}",
+                TimeoutMilliseconds = 100,
+            })
+            .ToList();
+
+        var review = provider
+            .GetRequiredService<IProfileDefinitionCompiler>()
+            .Validate(manifest);
+
+        Assert.False(review.IsValid);
+        Assert.Contains(
+            review.Diagnostics,
+            static diagnostic => diagnostic.Code == "excluded_directory_name_rule_limit_exceeded");
+        Assert.Contains(
+            review.Diagnostics,
+            static diagnostic => diagnostic.Code == "excluded_directory_name_pattern_too_long");
+    }
+
+    [Fact]
+    public void Validation_rejects_excessive_path_rule_count()
+    {
+        using var provider = BuildProvider();
+        var manifest = CompositeDateManifest();
+        manifest.Rules = Enumerable
+            .Range(1, ProfileManifestLimits.MaximumRegexRuleCount + 1)
+            .Select(index => new ProfileRegexRuleManifest
+            {
+                Id = $"rule-{index}",
+                Pattern = "never-match",
+                MatchMode = ProfileRegexMatchMode.Partial,
+                TimeoutMilliseconds = 100,
+            })
+            .ToList();
+
+        var review = provider
+            .GetRequiredService<IProfileDefinitionCompiler>()
+            .Validate(manifest);
+
+        Assert.False(review.IsValid);
+        Assert.Contains(
+            review.Diagnostics,
+            static diagnostic => diagnostic.Code == "regex_rule_limit_exceeded");
+    }
+
+    [Fact]
+    public void Validation_rejects_path_rule_aggregate_timeout_budget()
+    {
+        using var provider = BuildProvider();
+        var manifest = CompositeDateManifest();
+        var timeout = (ProfileManifestLimits.MaximumAggregateRegexTimeoutMilliseconds / 2) + 1;
+        manifest.Rules =
+        [
+            new ProfileRegexRuleManifest
+            {
+                Id = "first",
+                Pattern = "first",
+                MatchMode = ProfileRegexMatchMode.Partial,
+                TimeoutMilliseconds = timeout,
+            },
+            new ProfileRegexRuleManifest
+            {
+                Id = "second",
+                Pattern = "second",
+                MatchMode = ProfileRegexMatchMode.Partial,
+                TimeoutMilliseconds = timeout,
+            },
+        ];
+
+        var review = provider
+            .GetRequiredService<IProfileDefinitionCompiler>()
+            .Validate(manifest);
+
+        Assert.False(review.IsValid);
+        var diagnostic = Assert.Single(
+            review.Diagnostics,
+            static diagnostic => diagnostic.Code == "regex_timeout_budget_exceeded");
+        Assert.Contains("현재 합계", diagnostic.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Validation_accepts_path_rule_timeout_at_the_aggregate_budget_boundary()
+    {
+        using var provider = BuildProvider();
+        var manifest = CompositeDateManifest();
+        manifest.Rules![0].TimeoutMilliseconds =
+            ProfileManifestLimits.MaximumAggregateRegexTimeoutMilliseconds;
+
+        var review = provider
+            .GetRequiredService<IProfileDefinitionCompiler>()
+            .Validate(manifest);
+
+        Assert.True(review.IsValid);
+    }
+
+    [Fact]
+    public void Validation_rejects_excessive_path_pattern_length()
+    {
+        using var provider = BuildProvider();
+        var manifest = CompositeDateManifest();
+        manifest.Rules![0].Pattern = new string(
+            'x',
+            ProfileManifestLimits.MaximumRegexPatternLength + 1);
+
+        var review = provider
+            .GetRequiredService<IProfileDefinitionCompiler>()
+            .Validate(manifest);
+
+        Assert.False(review.IsValid);
+        Assert.Contains(
+            review.Diagnostics,
+            static diagnostic => diagnostic.Code == "regex_pattern_too_long");
+    }
+
+    [Fact]
     public void Test_rejects_a_relative_sample_path()
     {
         using var provider = BuildProvider();

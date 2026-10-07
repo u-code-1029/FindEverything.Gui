@@ -11,6 +11,8 @@ public enum CatalogScanTraceKind
     Completed = 3,
     Cancelled = 4,
     Failed = 5,
+    DirectoryExcluded = 6,
+    DirectoryExclusionIssue = 7,
 }
 
 /// <summary>

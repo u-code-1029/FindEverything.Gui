@@ -9,20 +9,55 @@ internal sealed class CompiledProfile : ILoadedProfile
     private readonly Func<IReadOnlyDictionary<string, object?>, object> _createModel;
     private readonly CompiledField[] _fields;
     private readonly CompiledRegexRule[] _rules;
+    private readonly CompiledDirectoryNameExclusionRule[] _excludedDirectoryNameRules;
 
     public CompiledProfile(
         ProfileDescriptor descriptor,
         Func<IReadOnlyDictionary<string, object?>, object> createModel,
         CompiledField[] fields,
-        CompiledRegexRule[] rules)
+        CompiledRegexRule[] rules,
+        CompiledDirectoryNameExclusionRule[] excludedDirectoryNameRules)
     {
         Descriptor = descriptor;
         _createModel = createModel;
         _fields = fields;
         _rules = rules;
+        _excludedDirectoryNameRules = excludedDirectoryNameRules;
     }
 
     public ProfileDescriptor Descriptor { get; }
+
+    public ProfileDirectoryNameExclusionResult EvaluateDirectoryName(string directoryName)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(directoryName);
+
+        foreach (var rule in _excludedDirectoryNameRules)
+        {
+            try
+            {
+                if (rule.Regex.IsMatch(directoryName))
+                {
+                    return ProfileDirectoryNameExclusionResult.Excluded(rule.Id);
+                }
+            }
+            catch (RegexMatchTimeoutException exception)
+            {
+                // Stop after the first timeout so a list of pathological patterns
+                // cannot multiply the per-rule timeout into a minutes-long,
+                // non-cancellable traversal callback. This is intentionally
+                // fail-open: the directory is still mapped and traversed.
+                return new ProfileDirectoryNameExclusionResult(
+                    false,
+                    null,
+                    [new ProfileMappingIssue(
+                        "directory_exclusion_regex_timeout",
+                        null,
+                        $"폴더 이름 제외 규칙 '{rule.Id}'의 실행 시간이 제한을 초과했습니다: {exception.MatchTimeout.TotalMilliseconds:0} ms")]);
+            }
+        }
+
+        return ProfileDirectoryNameExclusionResult.NotExcluded();
+    }
 
     public ProfileMapResult Map(ProfilePathCandidate candidate)
     {

@@ -4,7 +4,6 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    xmlns:controls="clr-namespace:FindEverything.Desktop.Views.Controls"
     xmlns:pages="clr-namespace:FindEverything.Desktop.Views.Pages"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
     Title="{Binding ApplicationTitle}"
@@ -26,24 +25,11 @@
             IsPaneToggleVisible="True"
             IsTopSeparatorVisible="False"
             OpenPaneLength="220"
+            FrameMargin="0"
+            Padding="0"
             PaneDisplayMode="Left"
             TitleBar="{Binding ElementName=AppTitleBar}"
             Transition="FadeInWithSlide">
-            <ui:NavigationView.Style>
-                <Style BasedOn="{StaticResource {x:Type ui:NavigationView}}" TargetType="{x:Type ui:NavigationView}">
-                    <Setter Property="FrameMargin" Value="0" />
-                    <Setter Property="Padding" Value="0" />
-                    <Style.Triggers>
-                        <DataTrigger Binding="{Binding ScanConsole.IsPanelOpen}" Value="True">
-                            <!-- Padding is forwarded only to the page presenter.
-                                 ContentOverlay (and therefore this panel) keeps the
-                                 full content area, while the navigation pane is never
-                                 resized or covered. -->
-                            <Setter Property="Padding" Value="0,0,0,308" />
-                        </DataTrigger>
-                    </Style.Triggers>
-                </Style>
-            </ui:NavigationView.Style>
             <ui:NavigationView.MenuItems>
                 <ui:NavigationViewItem
                     Content="파일 찾기"
@@ -107,28 +93,7 @@
                     TargetPageType="{x:Type pages:SettingsPage}" />
             </ui:NavigationView.FooterMenuItems>
             <ui:NavigationView.ContentOverlay>
-                <Grid>
-                    <ui:SnackbarPresenter x:Name="SnackbarPresenter">
-                        <ui:SnackbarPresenter.Style>
-                            <Style BasedOn="{StaticResource {x:Type ui:SnackbarPresenter}}" TargetType="{x:Type ui:SnackbarPresenter}">
-                                <Setter Property="Margin" Value="0" />
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding ScanConsole.IsPanelOpen}" Value="True">
-                                        <Setter Property="Margin" Value="0,0,0,308" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </ui:SnackbarPresenter.Style>
-                    </ui:SnackbarPresenter>
-                    <controls:ScanConsolePanel
-                        x:Name="ScanConsolePanel"
-                        Height="300"
-                        Margin="8,0,8,8"
-                        VerticalAlignment="Bottom"
-                        Panel.ZIndex="2"
-                        DataContext="{Binding ScanConsole}"
-                        Visibility="{Binding IsPanelOpen, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                </Grid>
+                <ui:SnackbarPresenter x:Name="SnackbarPresenter" />
             </ui:NavigationView.ContentOverlay>
         </ui:NavigationView>
 

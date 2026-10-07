@@ -7,6 +7,27 @@ namespace FindEverything.Desktop.Tests;
 public sealed class ProfileEditorModelsTests
 {
     [Fact]
+    public void Directory_name_exclusion_draft_preserves_regex_options()
+    {
+        var draft = new ProfileDirectoryNameExclusionRuleDraftViewModel(
+            new ProfileDirectoryNameExclusionRuleManifest
+            {
+                Id = "skip-cache",
+                Pattern = "temp|cache",
+                MatchMode = ProfileRegexMatchMode.Partial,
+                IgnoreCase = true,
+                TimeoutMilliseconds = 250,
+            });
+
+        Assert.Equal("skip-cache", draft.Id);
+        Assert.Equal("temp|cache", draft.Pattern);
+        Assert.Equal(ProfileRegexMatchMode.Partial, draft.MatchMode);
+        Assert.True(draft.IgnoreCase);
+        Assert.Equal(250, draft.TimeoutMilliseconds);
+        Assert.Equal("폴더 이름 일부 일치", draft.MatchModeDisplayName);
+    }
+
+    [Fact]
     public void Composite_date_manifest_round_trip_preserves_group_order_and_custom_formats()
     {
         var source = new ProfileFieldManifest

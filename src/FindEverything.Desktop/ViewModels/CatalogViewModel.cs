@@ -394,7 +394,11 @@ public partial class CatalogViewModel : ObservableObject
         var discoveryIncomplete = result.DiscoveryReport is { } discoveryReport
             && (discoveryReport.Status != DirectoryDiscoveryStatus.Completed
                 || discoveryReport.Progress.ErrorCount > 0);
-        var incomplete = result.HasPendingScopes || scanIncomplete || discoveryIncomplete;
+        var exclusionIncomplete = result.DirectoryExclusionIssues.Count > 0;
+        var incomplete = result.HasPendingScopes
+            || scanIncomplete
+            || discoveryIncomplete
+            || exclusionIncomplete;
         var severity = incomplete
             ? InfoBarSeverity.Warning
             : InfoBarSeverity.Success;
@@ -406,12 +410,18 @@ public partial class CatalogViewModel : ObservableObject
             : $" · 방문 폴더 {result.DiscoveryReport.Progress.Directories:N0}"
               + $" · 하위 탐색 생략 {result.DiscoveryReport.Progress.PrunedDirectories:N0}"
               + $" · 오류 {result.DiscoveryReport.Progress.ErrorCount:N0}";
+        var exclusionSummary = discoveredDirectly
+            ? $" · 이름 규칙 제외 {result.ExcludedDirectoryCount:N0}"
+              + (exclusionIncomplete
+                  ? $" · 제외 규칙 경고 {result.DirectoryExclusionIssues.Count:N0}"
+                  : string.Empty)
+            : string.Empty;
         var statusTitle = incomplete
             ? "부분 결과"
             : discoveredDirectly
                 ? "빠른 불러오기 완료"
                 : "기존 인덱스 불러오기 완료";
-        var statusMessage = $"후보 {result.CandidateCount:N0} · 일치 {result.Items.Count:N0} · 규칙 외 {result.NoMatchCount:N0} · 변환 오류 {result.InvalidItems.Count:N0}{discoverySummary}{scanSummary}"
+        var statusMessage = $"후보 {result.CandidateCount:N0} · 일치 {result.Items.Count:N0} · 규칙 외 {result.NoMatchCount:N0} · 변환 오류 {result.InvalidItems.Count:N0}{exclusionSummary}{discoverySummary}{scanSummary}"
             + (result.HasPendingScopes ? " · 아직 인덱싱되지 않은 범위가 있습니다." : string.Empty);
         SetStatus(statusTitle, statusMessage, severity);
         ShowSnackbar(

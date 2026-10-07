@@ -9,6 +9,16 @@ public static class ProfileManifestLimits
     public const int MaximumCompositeGroupCount = 16;
 
     public const int MaximumStopTraversalGroupCount = 16;
+
+    public const int MaximumRegexRuleCount = 64;
+
+    public const int MaximumRegexPatternLength = 4096;
+
+    public const int MaximumAggregateRegexTimeoutMilliseconds = 10_000;
+
+    public const int MaximumExcludedDirectoryNameRuleCount = 64;
+
+    public const int MaximumExcludedDirectoryNamePatternLength = 4096;
 }
 
 public sealed class ProfileManifest
@@ -33,7 +43,27 @@ public sealed class ProfileManifest
     [JsonConverter(typeof(JsonStringEnumConverter<ProfileCandidateKind>))]
     public ProfileCandidateKind CandidateKind { get; set; } = ProfileCandidateKind.Directory;
 
+    /// <summary>
+    /// Optional regular-expression rules that prune directories by leaf name during
+    /// profile-aware direct discovery. The full path is never supplied to these rules.
+    /// </summary>
+    public List<ProfileDirectoryNameExclusionRuleManifest>? ExcludedDirectoryNameRules { get; set; }
+
     public List<ProfileRegexRuleManifest>? Rules { get; set; }
+}
+
+public sealed class ProfileDirectoryNameExclusionRuleManifest
+{
+    public string? Id { get; set; }
+
+    public string? Pattern { get; set; }
+
+    [JsonConverter(typeof(JsonStringEnumConverter<ProfileRegexMatchMode>))]
+    public ProfileRegexMatchMode MatchMode { get; set; } = ProfileRegexMatchMode.Full;
+
+    public bool IgnoreCase { get; set; }
+
+    public int TimeoutMilliseconds { get; set; } = 100;
 }
 
 public sealed class ProfileFieldManifest

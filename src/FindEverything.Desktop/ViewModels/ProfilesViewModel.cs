@@ -45,6 +45,10 @@ public partial class ProfilesViewModel : ObservableObject
     private IReadOnlyList<ProfileRuleInspectionViewModel> _rules = [];
 
     [ObservableProperty]
+    private IReadOnlyList<ProfileDirectoryNameExclusionRuleInspectionViewModel>
+        _excludedDirectoryNameRules = [];
+
+    [ObservableProperty]
     private IReadOnlyList<PluginReportViewModel> _reports = [];
 
     [ObservableProperty]
@@ -87,6 +91,12 @@ public partial class ProfilesViewModel : ObservableObject
 
     [ObservableProperty]
     private IReadOnlyList<ProfileTestResultViewModel> _testRows = [];
+
+    [ObservableProperty]
+    private IReadOnlyList<ProfileRegexDebugRuleViewModel> _regexDebugRules = [];
+
+    [ObservableProperty]
+    private string _regexDebugInputPath = string.Empty;
 
     [ObservableProperty]
     private string _testSummary = "예제 경로를 입력하면 실제 변환 결과를 미리 볼 수 있습니다.";
@@ -174,9 +184,14 @@ public partial class ProfilesViewModel : ObservableObject
 
     public bool IsExpertMode => EditorMode == ProfileEditorMode.Expert;
 
+    public bool HasRegexDebugRules => RegexDebugRules.Count > 0;
+
     public ObservableCollection<ProfileFieldDraftViewModel> DraftFields { get; } = [];
 
     public ObservableCollection<ProfileRuleDraftViewModel> DraftRules { get; } = [];
+
+    public ObservableCollection<ProfileDirectoryNameExclusionRuleDraftViewModel>
+        DraftExcludedDirectoryNameRules { get; } = [];
 
     public event EventHandler? AssignmentPickerRequested;
 
@@ -189,6 +204,11 @@ public partial class ProfilesViewModel : ObservableObject
         Rules = value?.Descriptor.Rules
             .OrderBy(static rule => rule.Order)
             .Select(static rule => new ProfileRuleInspectionViewModel(rule))
+            .ToArray() ?? [];
+        ExcludedDirectoryNameRules = value?.Descriptor.ExcludedDirectoryNameRules
+            .OrderBy(static rule => rule.Order)
+            .Select(static rule =>
+                new ProfileDirectoryNameExclusionRuleInspectionViewModel(rule))
             .ToArray() ?? [];
     }
 
@@ -205,8 +225,16 @@ public partial class ProfilesViewModel : ObservableObject
         }
 
         TestRows = [];
+        ClearRegexDebugResults();
         TestSummary = "예제 경로가 변경되었습니다. 결과를 다시 확인하세요.";
+        SetEditorStatus(
+            "예제 경로가 변경되었습니다. 결과를 다시 시험하세요.",
+            InfoBarSeverity.Informational);
     }
+
+    partial void OnRegexDebugRulesChanged(
+        IReadOnlyList<ProfileRegexDebugRuleViewModel> value) =>
+        OnPropertyChanged(nameof(HasRegexDebugRules));
 
     partial void OnEditorModeChanged(ProfileEditorMode value)
     {
@@ -238,6 +266,7 @@ public partial class ProfilesViewModel : ObservableObject
         BuildTemplateFromSampleCommand.NotifyCanExecuteChanged();
         UseExpertModeCommand.NotifyCanExecuteChanged();
         UseGuidedModeCommand.NotifyCanExecuteChanged();
+        AddDirectoryExclusionRuleCommand.NotifyCanExecuteChanged();
     }
 
     [RelayCommand(CanExecute = nameof(CanEdit))]
@@ -258,6 +287,7 @@ public partial class ProfilesViewModel : ObservableObject
             IsAssignmentPickerOpen = false;
             DraftFields.Clear();
             DraftRules.Clear();
+            DraftExcludedDirectoryNameRules.Clear();
             AddFieldRow(new ProfileFieldDraftViewModel
             {
                 Header = "이름",
@@ -286,6 +316,8 @@ public partial class ProfilesViewModel : ObservableObject
             }
             RebuildGuidedTemplate();
             TestRows = [];
+            ClearRegexDebugResults();
+            AddDirectoryExclusionRuleCommand.NotifyCanExecuteChanged();
             TestSummary = "기본 예제를 바로 시험하거나 실제 경로에 맞게 수정하세요.";
             SetEditorStatus(
                 "새 프로필 초안을 만들었습니다. 예제 값을 수정한 뒤 검증하세요.",
@@ -605,14 +637,25 @@ public partial class ProfilesViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void AddRule() => AddRuleRow(new ProfileRuleDraftViewModel
+    private void AddRule()
     {
-        Id = $"rule-{DraftRules.Count + 1}",
-        MatchMode = ProfileRegexMatchMode.Full,
-        IgnoreCase = true,
-        TimeoutMilliseconds = 100,
-        Pattern = "^$",
-    });
+        if (DraftRules.Count >= ProfileManifestLimits.MaximumRegexRuleCount)
+        {
+            SetEditorStatus(
+                $"경로 정규식 규칙은 최대 {ProfileManifestLimits.MaximumRegexRuleCount}개까지 추가할 수 있습니다.",
+                InfoBarSeverity.Warning);
+            return;
+        }
+
+        AddRuleRow(new ProfileRuleDraftViewModel
+        {
+            Id = $"rule-{DraftRules.Count + 1}",
+            MatchMode = ProfileRegexMatchMode.Full,
+            IgnoreCase = true,
+            TimeoutMilliseconds = 100,
+            Pattern = "^$",
+        });
+    }
 
     [RelayCommand]
     private void RemoveRule(ProfileRuleDraftViewModel? rule)
@@ -620,6 +663,41 @@ public partial class ProfilesViewModel : ObservableObject
         if (rule is not null && DraftRules.Remove(rule))
         {
             rule.PropertyChanged -= OnDraftRowChanged;
+            MarkDraftChanged();
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanAddDirectoryExclusionRule))]
+    private void AddDirectoryExclusionRule()
+    {
+        var suffix = 1;
+        string id;
+        do
+        {
+            id = $"exclude-{suffix++}";
+        }
+        while (DraftExcludedDirectoryNameRules.Any(rule =>
+                   string.Equals(rule.Id, id, StringComparison.OrdinalIgnoreCase)));
+
+        AddDirectoryExclusionRuleRow(
+            new ProfileDirectoryNameExclusionRuleDraftViewModel
+            {
+                Id = id,
+                MatchMode = ProfileRegexMatchMode.Full,
+                IgnoreCase = true,
+                TimeoutMilliseconds = 100,
+            });
+        AddDirectoryExclusionRuleCommand.NotifyCanExecuteChanged();
+    }
+
+    [RelayCommand]
+    private void RemoveDirectoryExclusionRule(
+        ProfileDirectoryNameExclusionRuleDraftViewModel? rule)
+    {
+        if (rule is not null && DraftExcludedDirectoryNameRules.Remove(rule))
+        {
+            rule.PropertyChanged -= OnDraftRowChanged;
+            AddDirectoryExclusionRuleCommand.NotifyCanExecuteChanged();
             MarkDraftChanged();
         }
     }
@@ -657,57 +735,83 @@ public partial class ProfilesViewModel : ObservableObject
     }
 
     [RelayCommand(CanExecute = nameof(CanTestDraft))]
-    private void TestDraft()
+    private async Task TestDraftAsync()
     {
-        ProfileDefinitionTestResult result;
-        try
+        await RunEditorOperationAsync(async () =>
         {
-            result = _authoringService.Test(BuildManifest(), SamplePath.Trim());
-        }
-        catch (Exception exception)
-        {
-            SetEditorStatus(exception.Message, InfoBarSeverity.Error);
-            return;
-        }
-
-        if (!result.Review.IsValid || result.Mapping is null)
-        {
-            ApplyReview(result.Review, string.Empty);
             TestRows = [];
-            TestSummary = "프로필 정의 오류를 먼저 수정하세요.";
-            return;
-        }
+            ClearRegexDebugResults();
+            TestSummary = "절대 경로와 정규식 규칙을 확인하고 있습니다.";
+            SetEditorStatus("예제 경로를 시험하고 있습니다.", InfoBarSeverity.Informational);
 
-        var mapping = result.Mapping;
-        switch (mapping.Status)
-        {
-            case ProfileMapStatus.NoMatch:
+            ProfileDefinitionTestResult result;
+            try
+            {
+                var manifest = BuildManifest();
+                var samplePath = SamplePath.Trim();
+                var evaluation = await Task.Run(() =>
+                {
+                    var canonicalSamplePath = _pathCanonicalizer.Canonicalize(samplePath);
+                    var debugRules = ProfileRegexDebugBuilder.Build(
+                        canonicalSamplePath,
+                        manifest.Rules ?? []);
+                    var definitionResult = _authoringService.Test(
+                        manifest,
+                        canonicalSamplePath);
+                    return (canonicalSamplePath, debugRules, definitionResult);
+                }).ConfigureAwait(true);
+
+                RegexDebugInputPath = evaluation.canonicalSamplePath;
+                RegexDebugRules = evaluation.debugRules;
+                result = evaluation.definitionResult;
+            }
+            catch
+            {
                 TestRows = [];
-                TestSummary = "어떤 규칙에도 일치하지 않습니다. 입력한 절대 경로와 정규식을 확인하세요.";
-                SetEditorStatus(TestSummary, InfoBarSeverity.Warning);
-                break;
-            case ProfileMapStatus.Invalid:
-                TestRows = mapping.Issues
-                    .Select(issue => new ProfileTestResultViewModel(
-                        issue.FieldId ?? "규칙",
-                        null,
-                        issue.Message))
-                    .ToArray();
-                TestSummary = "경로는 일치했지만 값을 변환할 수 없습니다.";
-                SetEditorStatus(TestSummary, InfoBarSeverity.Error);
-                break;
-            case ProfileMapStatus.Success when mapping.Item is not null:
-                var profile = result.Review.Profile!;
-                TestRows = profile.Descriptor.Fields
-                    .Select(field => new ProfileTestResultViewModel(
-                        field.Header,
-                        FormatValue(mapping.Item.Values[field.FieldId], field.DisplayFormat),
-                        BuildTestStatus(field, mapping.Item.Values[field.FieldId])))
-                    .ToArray();
-                TestSummary = $"규칙 '{mapping.Item.MatchedRuleId}'에 일치했고 {TestRows.Count:N0}개 값을 변환했습니다.";
-                SetEditorStatus("예제 경로 시험을 통과했습니다.", InfoBarSeverity.Success);
-                break;
-        }
+                ClearRegexDebugResults();
+                TestSummary = "예제 경로 시험을 완료하지 못했습니다.";
+                throw;
+            }
+
+            if (!result.Review.IsValid || result.Mapping is null)
+            {
+                ApplyReview(result.Review, string.Empty);
+                TestRows = [];
+                TestSummary = "프로필 정의 오류를 먼저 수정하세요.";
+                return;
+            }
+
+            var mapping = result.Mapping;
+            switch (mapping.Status)
+            {
+                case ProfileMapStatus.NoMatch:
+                    TestRows = [];
+                    TestSummary = "어떤 규칙에도 일치하지 않습니다. 입력한 절대 경로와 정규식을 확인하세요.";
+                    SetEditorStatus(TestSummary, InfoBarSeverity.Warning);
+                    break;
+                case ProfileMapStatus.Invalid:
+                    TestRows = mapping.Issues
+                        .Select(issue => new ProfileTestResultViewModel(
+                            issue.FieldId ?? "규칙",
+                            null,
+                            issue.Message))
+                        .ToArray();
+                    TestSummary = "경로는 일치했지만 값을 변환할 수 없습니다.";
+                    SetEditorStatus(TestSummary, InfoBarSeverity.Error);
+                    break;
+                case ProfileMapStatus.Success when mapping.Item is not null:
+                    var profile = result.Review.Profile!;
+                    TestRows = profile.Descriptor.Fields
+                        .Select(field => new ProfileTestResultViewModel(
+                            field.Header,
+                            FormatValue(mapping.Item.Values[field.FieldId], field.DisplayFormat),
+                            BuildTestStatus(field, mapping.Item.Values[field.FieldId])))
+                        .ToArray();
+                    TestSummary = $"규칙 '{mapping.Item.MatchedRuleId}'에 일치했고 {TestRows.Count:N0}개 값을 변환했습니다.";
+                    SetEditorStatus("예제 경로 시험을 통과했습니다.", InfoBarSeverity.Success);
+                    break;
+            }
+        }).ConfigureAwait(true);
     }
 
     [RelayCommand(CanExecute = nameof(CanEdit))]
@@ -818,6 +922,11 @@ public partial class ProfilesViewModel : ObservableObject
 
     private bool CanSwitchToGuided() => !IsEditorBusy && CanUseGuidedMode;
 
+    private bool CanAddDirectoryExclusionRule() =>
+        !IsEditorBusy
+        && DraftExcludedDirectoryNameRules.Count
+            < ProfileManifestLimits.MaximumExcludedDirectoryNameRuleCount;
+
     private ProfileManifest BuildManifest()
     {
         var fields = BuildFieldManifests();
@@ -876,6 +985,17 @@ public partial class ProfilesViewModel : ObservableObject
             DisplayName = DraftDisplayName.Trim(),
             CandidateKind = ProfileCandidateKind.Directory,
             Fields = fields,
+            ExcludedDirectoryNameRules = DraftExcludedDirectoryNameRules.Count == 0
+                ? null
+                : DraftExcludedDirectoryNameRules.Select(rule =>
+                    new ProfileDirectoryNameExclusionRuleManifest
+                    {
+                        Id = rule.Id.Trim(),
+                        Pattern = rule.Pattern,
+                        MatchMode = rule.MatchMode,
+                        IgnoreCase = rule.IgnoreCase,
+                        TimeoutMilliseconds = rule.TimeoutMilliseconds,
+                    }).ToList(),
             Rules = rules,
         };
     }
@@ -895,6 +1015,7 @@ public partial class ProfilesViewModel : ObservableObject
             DraftId = manifest.Id ?? string.Empty;
             DraftFields.Clear();
             DraftRules.Clear();
+            DraftExcludedDirectoryNameRules.Clear();
             GuidedPathSegments = [];
             HasAnalyzedPath = false;
             IsAssignmentPickerOpen = false;
@@ -910,6 +1031,14 @@ public partial class ProfilesViewModel : ObservableObject
             {
                 AddRuleRow(new ProfileRuleDraftViewModel(rule));
             }
+
+            foreach (var rule in manifest.ExcludedDirectoryNameRules ?? [])
+            {
+                AddDirectoryExclusionRuleRow(
+                    new ProfileDirectoryNameExclusionRuleDraftViewModel(rule));
+            }
+
+            AddDirectoryExclusionRuleCommand.NotifyCanExecuteChanged();
 
             RestoreTerminalField(manifest.Rules?.FirstOrDefault()?.StopTraversalWhenCapturedGroups);
 
@@ -931,6 +1060,7 @@ public partial class ProfilesViewModel : ObservableObject
 
             SamplePath = string.Empty;
             TestRows = [];
+            ClearRegexDebugResults();
             TestSummary = "실제 경로를 입력해 저장 전에 결과를 확인하세요.";
         }
         finally
@@ -1050,6 +1180,14 @@ public partial class ProfilesViewModel : ObservableObject
         MarkDraftChanged();
     }
 
+    private void AddDirectoryExclusionRuleRow(
+        ProfileDirectoryNameExclusionRuleDraftViewModel rule)
+    {
+        rule.PropertyChanged += OnDraftRowChanged;
+        DraftExcludedDirectoryNameRules.Add(rule);
+        MarkDraftChanged();
+    }
+
     private void DetachRows()
     {
         foreach (var field in DraftFields)
@@ -1061,12 +1199,23 @@ public partial class ProfilesViewModel : ObservableObject
         {
             rule.PropertyChanged -= OnDraftRowChanged;
         }
+
+        foreach (var rule in DraftExcludedDirectoryNameRules)
+        {
+            rule.PropertyChanged -= OnDraftRowChanged;
+        }
     }
 
     private void OnDraftRowChanged(object? sender, PropertyChangedEventArgs eventArgs)
     {
         if (_isPopulatingDraft)
         {
+            return;
+        }
+
+        if (sender is ProfileDirectoryNameExclusionRuleDraftViewModel)
+        {
+            MarkDraftChanged();
             return;
         }
 
@@ -1132,8 +1281,15 @@ public partial class ProfilesViewModel : ObservableObject
         }
 
         TestRows = [];
+        ClearRegexDebugResults();
         TestSummary = "초안이 변경되었습니다. 예제 경로를 다시 시험하세요.";
         SetEditorStatus("변경 사항이 있습니다. 검증 후 저장하세요.", InfoBarSeverity.Informational);
+    }
+
+    private void ClearRegexDebugResults()
+    {
+        RegexDebugRules = [];
+        RegexDebugInputPath = string.Empty;
     }
 
     private List<ProfileFieldManifest> BuildFieldManifests() =>
@@ -1583,6 +1739,8 @@ public sealed class ProfileSummaryViewModel(ProfileDescriptor descriptor)
         : Descriptor.CandidateKind.ToString();
 
     public int FieldCount => Descriptor.Fields.Count;
+
+    public int ExcludedDirectoryRuleCount => Descriptor.ExcludedDirectoryNameRules.Count;
 }
 
 public sealed class ProfileFieldInspectionViewModel(ProfileFieldDescriptor descriptor)
@@ -1623,6 +1781,22 @@ public sealed class ProfileRuleInspectionViewModel(ProfileRegexRuleDescriptor de
     public string StopTraversalGroups => descriptor.StopTraversalWhenCapturedGroups.Count == 0
         ? "없음 · 계속 탐색"
         : string.Join(" + ", descriptor.StopTraversalWhenCapturedGroups);
+}
+
+public sealed class ProfileDirectoryNameExclusionRuleInspectionViewModel(
+    ProfileDirectoryNameExclusionRuleDescriptor descriptor)
+{
+    public int Order => descriptor.Order;
+
+    public string Id => descriptor.Id;
+
+    public ProfileRegexMatchMode MatchMode => descriptor.MatchMode;
+
+    public bool IgnoreCase => descriptor.IgnoreCase;
+
+    public int TimeoutMilliseconds => descriptor.TimeoutMilliseconds;
+
+    public string Pattern => descriptor.Pattern;
 }
 
 public sealed class PluginReportViewModel(ProfilePluginReport report)

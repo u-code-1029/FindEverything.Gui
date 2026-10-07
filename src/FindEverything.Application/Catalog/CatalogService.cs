@@ -124,7 +124,8 @@ internal sealed class CatalogService(
                 profileRootPath,
                 pathCanonicalizer,
                 progress,
-                trace);
+                applyDirectoryNameExclusions: true,
+                trace: trace);
             var operationSettings = indexingSettings.Current;
             var discoveryProgress = progress is null
                 ? null
@@ -271,7 +272,8 @@ internal sealed class CatalogService(
             request.RootPath,
             profileRootPath,
             pathCanonicalizer,
-            progress);
+            progress,
+            applyDirectoryNameExclusions: false);
         foreach (var directory in searchResult.Directories)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -308,7 +310,7 @@ internal sealed class CatalogService(
         var errorSummary = report.Progress.ErrorCount == report.Errors.Count
             ? $"오류 {report.Progress.ErrorCount:N0}개"
             : $"오류 {report.Progress.ErrorCount:N0}개(상세 {report.Errors.Count:N0}개 기록)";
-        return $"빠른 스캔을 완료했습니다. 폴더 {result.CandidateCount:N0}개, 일치 {result.Items.Count:N0}개, {errorSummary}를 확인했습니다.";
+        return $"빠른 스캔을 완료했습니다. 후보 {result.CandidateCount:N0}개, 제외 {result.ExcludedDirectoryCount:N0}개, 일치 {result.Items.Count:N0}개, 제외 규칙 경고 {result.DirectoryExclusionIssues.Count:N0}개, {errorSummary}를 확인했습니다.";
     }
 
     private sealed class InlineProgress<T>(Action<T> report) : IProgress<T>
@@ -322,12 +324,15 @@ internal sealed class CatalogService(
         string profileRootPath,
         IProfilePathCanonicalizer pathCanonicalizer,
         IProgress<CatalogOperationProgress>? progress,
+        bool applyDirectoryNameExclusions,
         ScanTraceWriter? trace = null)
     {
         private readonly List<CatalogItem> _items = [];
         private readonly List<CatalogInvalidItem> _invalidItems = [];
+        private readonly List<CatalogDirectoryExclusionIssue> _directoryExclusionIssues = [];
         private int _candidateCount;
         private int _noMatchCount;
+        private int _excludedDirectoryCount;
 
         public DirectoryTraversalDecision Visit(DiscoveredDirectory directory) =>
             Visit(directory, coveragePending: false);
@@ -337,6 +342,37 @@ internal sealed class CatalogService(
             bool coveragePending)
         {
             var relativePath = Path.GetRelativePath(rootPath, directory.FullPath);
+            // The selected root is an explicit boundary, not one of its own
+            // descendants. Skipping it would also require passing a drive/UNC root
+            // in place of a leaf name on some file systems.
+            if (applyDirectoryNameExclusions && relativePath != ".")
+            {
+                var exclusion = profile.EvaluateDirectoryName(directory.Name);
+                if (exclusion.Issues.Count > 0)
+                {
+                    _directoryExclusionIssues.Add(new CatalogDirectoryExclusionIssue(
+                        directory.FullPath,
+                        relativePath,
+                        exclusion.Issues));
+                    trace?.ReportDirectoryExclusionIssue(
+                        directory.FullPath,
+                        relativePath,
+                        directory.Name,
+                        exclusion.Issues);
+                }
+
+                if (exclusion.IsExcluded)
+                {
+                    _excludedDirectoryCount++;
+                    trace?.ReportDirectoryExcluded(
+                        directory.FullPath,
+                        relativePath,
+                        directory.Name,
+                        exclusion);
+                    return DirectoryTraversalDecision.SkipDescendants;
+                }
+            }
+
             var absolutePath = ResolveProfileInputPath(directory.FullPath, relativePath);
             var mapping = profile.Map(new ProfilePathCandidate(absolutePath));
             _candidateCount++;
@@ -412,7 +448,11 @@ internal sealed class CatalogService(
                 _candidateCount,
                 _noMatchCount,
                 hasPendingScopes,
-                scanReport);
+                scanReport)
+            {
+                ExcludedDirectoryCount = _excludedDirectoryCount,
+                DirectoryExclusionIssues = _directoryExclusionIssues.AsReadOnly(),
+            };
     }
 
     private sealed class ScanTraceWriter(
@@ -466,6 +506,76 @@ internal sealed class CatalogService(
             {
                 // Snapshotting diagnostics from a custom profile must not affect
                 // the catalog result or the traversal decision.
+            }
+        }
+
+        public void ReportDirectoryExcluded(
+            string discoveredPath,
+            string relativePath,
+            string directoryName,
+            ProfileDirectoryNameExclusionResult exclusion)
+        {
+            try
+            {
+                var issues = exclusion.Issues.Count == 0
+                    ? EmptyIssues
+                    : Array.AsReadOnly(exclusion.Issues.ToArray());
+                ReportCore(new CatalogScanTraceEvent(
+                    _operationId,
+                    Interlocked.Increment(ref _sequence),
+                    DateTimeOffset.UtcNow,
+                    CatalogScanTraceKind.DirectoryExcluded,
+                    profile.Id,
+                    profile.DisplayName,
+                    request.RootPath,
+                    discoveredPath,
+                    relativePath,
+                    directoryName,
+                    null,
+                    exclusion.MatchedRuleId,
+                    EmptyValues,
+                    issues,
+                    DirectoryTraversalDecision.SkipDescendants,
+                    "폴더 이름 제외 규칙과 일치해 현재 폴더와 하위 탐색을 생략합니다."));
+            }
+            catch (Exception)
+            {
+                // Snapshotting diagnostics must not affect traversal.
+            }
+        }
+
+        public void ReportDirectoryExclusionIssue(
+            string discoveredPath,
+            string relativePath,
+            string directoryName,
+            IReadOnlyList<ProfileMappingIssue> exclusionIssues)
+        {
+            try
+            {
+                var issues = exclusionIssues.Count == 0
+                    ? EmptyIssues
+                    : Array.AsReadOnly(exclusionIssues.ToArray());
+                ReportCore(new CatalogScanTraceEvent(
+                    _operationId,
+                    Interlocked.Increment(ref _sequence),
+                    DateTimeOffset.UtcNow,
+                    CatalogScanTraceKind.DirectoryExclusionIssue,
+                    profile.Id,
+                    profile.DisplayName,
+                    request.RootPath,
+                    discoveredPath,
+                    relativePath,
+                    directoryName,
+                    null,
+                    null,
+                    EmptyValues,
+                    issues,
+                    DirectoryTraversalDecision.Continue,
+                    "폴더 이름 제외 규칙을 평가하는 중 문제가 발생해 안전하게 탐색을 계속합니다."));
+            }
+            catch (Exception)
+            {
+                // Snapshotting diagnostics must not affect traversal.
             }
         }
 

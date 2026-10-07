@@ -164,6 +164,9 @@
                                             <DataTrigger Binding="{Binding Tone}" Value="{x:Static viewModels:ScanConsoleLineTone.Error}">
                                                 <Setter Property="Foreground" Value="#F48771" />
                                             </DataTrigger>
+                                            <DataTrigger Binding="{Binding Tone}" Value="{x:Static viewModels:ScanConsoleLineTone.Warning}">
+                                                <Setter Property="Foreground" Value="#D7BA7D" />
+                                            </DataTrigger>
                                             <DataTrigger Binding="{Binding Tone}" Value="{x:Static viewModels:ScanConsoleLineTone.Lifecycle}">
                                                 <Setter Property="Foreground" Value="#75BEFF" />
                                             </DataTrigger>
@@ -204,7 +207,7 @@
                             Margin="0,3,0,0"
                             FontSize="11"
                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="MATCH 일치 · NO MATCH 규칙 외 · INVALID 변환 오류 · PRUNE 하위 탐색 중단" />
+                            Text="MATCH 일치 · NO MATCH 규칙 외 · INVALID 변환 오류 · EXCLUDED 이름 규칙 제외 · PRUNE 하위 탐색 중단" />
                     </StackPanel>
                     <TextBlock
                         Grid.Column="1"

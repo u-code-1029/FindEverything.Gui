@@ -129,6 +129,9 @@ internal sealed class ProfileModelCompiler
         List<ProfileDiagnostic> diagnostics)
     {
         var rules = CompileRules(manifest.Rules, fields, diagnostics);
+        var excludedDirectoryNameRules = CompileExcludedDirectoryNameRules(
+            manifest.ExcludedDirectoryNameRules,
+            diagnostics);
         if (diagnostics.Any(static diagnostic =>
                 diagnostic.Severity == ProfileDiagnosticSeverity.Error))
         {
@@ -166,13 +169,24 @@ internal sealed class ProfileModelCompiler
                 .ToArray()))
         {
             Kind = manifest.Kind,
+            ExcludedDirectoryNameRules = Array.AsReadOnly(manifest.ExcludedDirectoryNameRules
+                .Select(static (rule, index) =>
+                    new ProfileDirectoryNameExclusionRuleDescriptor(
+                        index + 1,
+                        rule.Id,
+                        rule.Pattern,
+                        rule.MatchMode,
+                        rule.IgnoreCase,
+                        rule.TimeoutMilliseconds))
+                .ToArray()),
         };
 
         var profile = new CompiledProfile(
             descriptor,
             createModel,
             fields.ToArray(),
-            rules.ToArray());
+            rules.ToArray(),
+            excludedDirectoryNameRules.ToArray());
 
         return new ProfileCompilationResult(
             profile,
@@ -417,6 +431,44 @@ internal sealed class ProfileModelCompiler
         return rules;
     }
 
+    private static List<CompiledDirectoryNameExclusionRule>
+        CompileExcludedDirectoryNameRules(
+            IReadOnlyList<ValidatedDirectoryNameExclusionRule> sourceRules,
+            ICollection<ProfileDiagnostic> diagnostics)
+    {
+        var rules = new List<CompiledDirectoryNameExclusionRule>(sourceRules.Count);
+        foreach (var sourceRule in sourceRules)
+        {
+            try
+            {
+                var options = RegexOptions.Compiled | RegexOptions.CultureInvariant;
+                if (sourceRule.IgnoreCase)
+                {
+                    options |= RegexOptions.IgnoreCase;
+                }
+
+                var effectivePattern = sourceRule.MatchMode == ProfileRegexMatchMode.Full
+                    ? $"\\A(?:{sourceRule.Pattern})\\z"
+                    : sourceRule.Pattern;
+                rules.Add(new CompiledDirectoryNameExclusionRule(
+                    sourceRule.Id,
+                    new Regex(
+                        effectivePattern,
+                        options,
+                        TimeSpan.FromMilliseconds(sourceRule.TimeoutMilliseconds))));
+            }
+            catch (ArgumentException exception)
+            {
+                diagnostics.Add(Error(
+                    "excluded_directory_name_regex_invalid",
+                    $"폴더 이름 제외 규칙 '{sourceRule.Id}'을(를) 컴파일할 수 없습니다.",
+                    exception.Message));
+            }
+        }
+
+        return rules;
+    }
+
     private static Func<object> CompileConstructor(ConstructorInfo constructor)
     {
         var body = Expression.Convert(Expression.New(constructor), typeof(object));
@@ -505,3 +557,7 @@ internal sealed record CompiledRegexRule(
     Regex Regex,
     int[][] FieldGroupNumbers,
     int[] StopTraversalGroupNumbers);
+
+internal sealed record CompiledDirectoryNameExclusionRule(
+    string Id,
+    Regex Regex);

@@ -22,6 +22,7 @@ public enum ScanConsoleLineTone
     NoMatch = 3,
     Pruned = 4,
     Error = 5,
+    Warning = 6,
 }
 
 public sealed record ScanConsoleLineViewModel(
@@ -252,6 +253,13 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
             return;
         }
 
+        if (value.Kind == CatalogScanTraceKind.DirectoryExcluded)
+        {
+            _ = Interlocked.Increment(ref _visited);
+            _ = Interlocked.Increment(ref _pruned);
+            return;
+        }
+
         if (value.Kind != CatalogScanTraceKind.DirectoryVisited)
         {
             return;
@@ -429,6 +437,12 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
             case CatalogScanTraceKind.DirectoryVisited:
                 tone = AppendDirectoryVisit(builder, value);
                 break;
+            case CatalogScanTraceKind.DirectoryExcluded:
+                tone = AppendDirectoryExclusion(builder, value);
+                break;
+            case CatalogScanTraceKind.DirectoryExclusionIssue:
+                tone = AppendDirectoryExclusionIssue(builder, value);
+                break;
             case CatalogScanTraceKind.DiscoveryError:
                 tone = ScanConsoleLineTone.Error;
                 builder.Append("[IO ERROR] path=\"").Append(Escape(value.FullPath)).Append("\"")
@@ -466,7 +480,10 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
         var path = value.Kind switch
         {
             CatalogScanTraceKind.Started => value.RootPath,
-            CatalogScanTraceKind.DirectoryVisited or CatalogScanTraceKind.DiscoveryError => value.FullPath,
+            CatalogScanTraceKind.DirectoryVisited
+                or CatalogScanTraceKind.DirectoryExcluded
+                or CatalogScanTraceKind.DirectoryExclusionIssue
+                or CatalogScanTraceKind.DiscoveryError => value.FullPath,
             _ => null,
         };
 
@@ -550,6 +567,69 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
 
         builder.Append(" | full=\"").Append(Escape(value.FullPath)).Append('"');
         return tone;
+    }
+
+    private static ScanConsoleLineTone AppendDirectoryExclusion(
+        StringBuilder builder,
+        CatalogScanTraceEvent value)
+    {
+        builder.Append("[EXCLUDED] [PRUNE] ")
+            .Append('#').Append(value.Sequence.ToString("000000", CultureInfo.InvariantCulture))
+            .Append(" name=\"").Append(Escape(value.MatchInput)).Append('"');
+
+        if (!string.IsNullOrWhiteSpace(value.MatchedRuleId))
+        {
+            builder.Append(" | rule=").Append(value.MatchedRuleId);
+        }
+
+        if (value.Issues.Count > 0)
+        {
+            builder.Append(" | issues={");
+            for (var index = 0; index < value.Issues.Count; index++)
+            {
+                if (index > 0)
+                {
+                    builder.Append("; ");
+                }
+
+                var issue = value.Issues[index];
+                builder.Append(issue.Code).Append(": ").Append(Escape(issue.Message));
+            }
+
+            builder.Append('}');
+        }
+
+        builder.Append(" | full=\"").Append(Escape(value.FullPath)).Append('"');
+        return ScanConsoleLineTone.Pruned;
+    }
+
+    private static ScanConsoleLineTone AppendDirectoryExclusionIssue(
+        StringBuilder builder,
+        CatalogScanTraceEvent value)
+    {
+        builder.Append("[EXCLUDE WARNING] [CONTINUE] ")
+            .Append('#').Append(value.Sequence.ToString("000000", CultureInfo.InvariantCulture))
+            .Append(" name=\"").Append(Escape(value.MatchInput)).Append('"');
+
+        if (value.Issues.Count > 0)
+        {
+            builder.Append(" | issues={");
+            for (var index = 0; index < value.Issues.Count; index++)
+            {
+                if (index > 0)
+                {
+                    builder.Append("; ");
+                }
+
+                var issue = value.Issues[index];
+                builder.Append(issue.Code).Append(": ").Append(Escape(issue.Message));
+            }
+
+            builder.Append('}');
+        }
+
+        builder.Append(" | full=\"").Append(Escape(value.FullPath)).Append('"');
+        return ScanConsoleLineTone.Warning;
     }
 
     private static string CreateLifecycleSummary(CatalogScanTraceEvent value) =>

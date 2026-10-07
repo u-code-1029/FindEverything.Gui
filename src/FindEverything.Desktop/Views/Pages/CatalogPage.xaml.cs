@@ -9,11 +9,15 @@ public partial class CatalogPage
 {
     private readonly CatalogViewModel _viewModel;
 
-    public CatalogPage(CatalogViewModel viewModel, IGridLayoutStore gridLayoutStore)
+    public CatalogPage(
+        CatalogViewModel viewModel,
+        ScanConsoleViewModel scanConsoleViewModel,
+        IGridLayoutStore gridLayoutStore)
     {
         _viewModel = viewModel;
         DataContext = viewModel;
         InitializeComponent();
+        ScanConsolePanel.DataContext = scanConsoleViewModel;
         DynamicProfileGrid.SetLayoutStore(ResultsGrid, gridLayoutStore);
     }
 

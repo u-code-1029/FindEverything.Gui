@@ -141,7 +141,7 @@ public sealed class DesktopCompositionSmokeTests
             VerifyProfilesScrolling(window, profilesPage);
             Assert.True(navigation.Navigate(typeof(SettingsPage)));
             VerifySettingsLayout(window, settingsPage);
-            VerifyScanConsole(provider, window);
+            VerifyScanConsole(provider, window, catalogPage);
             VerifyDynamicGridHighlighting();
             window.Close();
             window = null;
@@ -166,7 +166,10 @@ public sealed class DesktopCompositionSmokeTests
         }
     }
 
-    private static void VerifyScanConsole(IServiceProvider provider, MainWindow mainWindow)
+    private static void VerifyScanConsole(
+        IServiceProvider provider,
+        MainWindow mainWindow,
+        CatalogPage catalogPage)
     {
         var panelController = provider.GetRequiredService<IScanConsolePanelController>();
         var sink = provider.GetRequiredService<ICatalogScanTraceSink>();
@@ -174,8 +177,15 @@ public sealed class DesktopCompositionSmokeTests
         Assert.Same(viewModel, sink);
         Assert.Same(viewModel, panelController);
 
+        Assert.True(provider.GetRequiredService<INavigationService>().Navigate(typeof(CatalogPage)));
+        mainWindow.Dispatcher.Invoke(static () => { }, DispatcherPriority.Loaded);
+        mainWindow.UpdateLayout();
+
         var panel = Assert.IsType<ScanConsolePanel>(
-            mainWindow.FindName("ScanConsolePanel"));
+            catalogPage.FindName("ScanConsolePanel"));
+        Assert.Null(mainWindow.FindName("ScanConsolePanel"));
+        var pageLayout = Assert.IsType<Grid>(catalogPage.FindName("CatalogPageLayout"));
+        var pageContent = Assert.IsType<Grid>(catalogPage.FindName("CatalogPageContent"));
         var toggleButton = Assert.IsType<Wpf.Ui.Controls.Button>(
             mainWindow.FindName("ScanConsoleToggleButton"));
         var navigation = Assert.IsType<NavigationView>(mainWindow.FindName("RootNavigation"));
@@ -185,6 +195,8 @@ public sealed class DesktopCompositionSmokeTests
         Assert.Equal(0, snackbarPresenter.Margin.Bottom);
         mainWindow.UpdateLayout();
         var navigationHeight = navigation.ActualHeight;
+        var pageLayoutHeight = pageLayout.ActualHeight;
+        var pageContentHeight = pageContent.ActualHeight;
 
         panelController.Show();
         mainWindow.Dispatcher.Invoke(static () => { }, DispatcherPriority.Loaded);
@@ -192,9 +204,11 @@ public sealed class DesktopCompositionSmokeTests
         Assert.True(viewModel.IsPanelOpen);
         Assert.Equal(Visibility.Visible, panel.Visibility);
         Assert.Equal(0, navigation.FrameMargin.Bottom);
-        Assert.Equal(308, navigation.Padding.Bottom);
-        Assert.Equal(308, snackbarPresenter.Margin.Bottom);
+        Assert.Equal(0, navigation.Padding.Bottom);
+        Assert.Equal(0, snackbarPresenter.Margin.Bottom);
         Assert.InRange(Math.Abs(navigationHeight - navigation.ActualHeight), 0d, 1d);
+        Assert.InRange(Math.Abs(pageLayoutHeight - pageLayout.ActualHeight), 0d, 1d);
+        Assert.True(pageContent.ActualHeight < pageContentHeight);
         var traceList = Assert.IsType<ListBox>(panel.FindName("TraceList"));
         Assert.True(VirtualizingPanel.GetIsVirtualizing(traceList));
         Assert.Equal(VirtualizationMode.Recycling, VirtualizingPanel.GetVirtualizationMode(traceList));
@@ -371,7 +385,7 @@ public sealed class DesktopCompositionSmokeTests
         Assert.True(templateBox.IsReadOnly);
         Assert.IsType<Border>(page.FindName("AssignmentPickerPanel"));
         Assert.NotEmpty(viewModel.GuidedPathSegments);
-        VerifyGuidedPathButtonAuthoring(viewModel);
+        VerifyGuidedPathButtonAuthoring(window, viewModel);
 
         PumpLayout(window, page);
         VerifyProfilesFluentControls(page);
@@ -417,7 +431,9 @@ public sealed class DesktopCompositionSmokeTests
             Assert.Equal("ProfileEditorMode", button.GroupName));
     }
 
-    private static void VerifyGuidedPathButtonAuthoring(ProfilesViewModel viewModel)
+    private static void VerifyGuidedPathButtonAuthoring(
+        Window window,
+        ProfilesViewModel viewModel)
     {
         var nameField = Assert.Single(viewModel.DraftFields);
         viewModel.ClearFieldAssignmentsCommand.Execute(nameField);
@@ -485,6 +501,28 @@ public sealed class DesktopCompositionSmokeTests
         changedWhilePicking.DateSourcePreset = GuidedDateSourcePreset.SingleValue;
         Assert.False(viewModel.IsAssignmentPickerOpen);
         viewModel.RemoveFieldCommand.Execute(changedWhilePicking);
+
+        viewModel.AddDirectoryExclusionRuleCommand.Execute(null);
+        var exclusion = Assert.Single(viewModel.DraftExcludedDirectoryNameRules);
+        exclusion.Pattern = "cache";
+        Assert.Equal(ProfileRegexMatchMode.Full, exclusion.MatchMode);
+
+        var testTask = viewModel.TestDraftCommand.ExecuteAsync(null);
+        PumpDispatcherUntil(
+            window.Dispatcher,
+            () => testTask.IsCompleted,
+            TimeSpan.FromSeconds(5));
+        testTask.GetAwaiter().GetResult();
+
+        Assert.Equal(2, viewModel.TestRows.Count);
+        Assert.True(viewModel.HasRegexDebugRules);
+        Assert.Single(viewModel.RegexDebugRules);
+        Assert.Equal(Path.GetFullPath(viewModel.SamplePath), viewModel.RegexDebugInputPath);
+
+        viewModel.SamplePath += "-changed";
+        Assert.Empty(viewModel.TestRows);
+        Assert.False(viewModel.HasRegexDebugRules);
+        Assert.Contains("다시 시험", viewModel.EditorStatusMessage, StringComparison.Ordinal);
     }
 
     private static void VerifySettingsLayout(Window window, SettingsPage page)

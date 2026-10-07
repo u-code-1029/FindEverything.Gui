@@ -166,6 +166,46 @@ public sealed class CatalogServiceTests
     }
 
     [Fact]
+    public async Task Discover_publishes_directory_exclusion_issues_and_continues_mapping()
+    {
+        var root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "catalog-exclusion-issue"));
+        var childPath = Path.Combine(root, "slow-name");
+        var trace = new RecordingTraceSink();
+        var services = new ServiceCollection();
+        services.AddFindEverythingApplication(new ConfigurationBuilder().Build());
+        services.AddSingleton<IIndexSessionFactory, ThrowingSessionFactory>();
+        services.AddSingleton<IDirectoryDiscoveryService>(
+            new SingleChildDiscoveryService(root, childPath));
+        services.AddSingleton<IProfileResolver>(new FakeProfileResolver(
+            new DirectoryExclusionProfile(reportIssue: true)));
+        services.AddSingleton<ICatalogScanTraceSink>(trace);
+
+        await using var provider = services.BuildServiceProvider();
+        var result = await provider.GetRequiredService<ICatalogService>().DiscoverAsync(
+            new CatalogRequest("test", root, "unused.db"));
+
+        Assert.Equal(2, result.CandidateCount);
+        Assert.Equal(0, result.ExcludedDirectoryCount);
+        var exclusionIssue = Assert.Single(result.DirectoryExclusionIssues);
+        Assert.Equal(childPath, exclusionIssue.FullPath);
+        Assert.Equal(
+            "directory_exclusion_regex_timeout",
+            Assert.Single(exclusionIssue.Issues).Code);
+        var issueTrace = Assert.Single(
+            trace.Events,
+            static entry => entry.Kind == CatalogScanTraceKind.DirectoryExclusionIssue);
+        Assert.Equal(childPath, issueTrace.FullPath);
+        Assert.Equal("slow-name", issueTrace.MatchInput);
+        Assert.Equal(
+            "directory_exclusion_regex_timeout",
+            Assert.Single(issueTrace.Issues).Code);
+        Assert.Contains(
+            trace.Events,
+            entry => entry.Kind == CatalogScanTraceKind.DirectoryVisited
+                && entry.FullPath == childPath);
+    }
+
+    [Fact]
     public async Task Discover_publishes_cancelled_and_failed_terminal_events()
     {
         var root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "catalog-trace-terminal"));
@@ -263,6 +303,35 @@ public sealed class CatalogServiceTests
         Assert.Equal(badPath, invalid.FullPath);
         Assert.True(result.HasPendingScopes);
         Assert.Empty(trace.Events);
+    }
+
+    [Fact]
+    public async Task LoadExisting_does_not_apply_direct_discovery_directory_exclusions()
+    {
+        var root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "catalog-index-exclusion"));
+        var directoryPath = Path.Combine(root, "excluded");
+        var services = new ServiceCollection();
+        services.AddFindEverythingApplication(new ConfigurationBuilder().Build());
+        services.AddSingleton<IIndexSessionFactory>(new FakeSessionFactory([
+            new IndexedDirectory(
+                directoryPath,
+                "excluded",
+                root,
+                DateTimeOffset.MinValue,
+                DateTimeOffset.MinValue,
+                false),
+        ]));
+        services.AddSingleton<IDirectoryDiscoveryService, UnsupportedDiscoveryService>();
+        services.AddSingleton<IProfileResolver>(new FakeProfileResolver(
+            new DirectoryExclusionProfile(excludedName: "excluded")));
+
+        await using var provider = services.BuildServiceProvider();
+        var result = await provider.GetRequiredService<ICatalogService>().LoadExistingAsync(
+            new CatalogRequest("test", root, "index.db"));
+
+        Assert.Equal(directoryPath, Assert.Single(result.Items).FullPath);
+        Assert.Equal(0, result.ExcludedDirectoryCount);
+        Assert.Empty(result.DirectoryExclusionIssues);
     }
 
     [Fact]
@@ -452,6 +521,43 @@ public sealed class CatalogServiceTests
                 status,
                 reportProgress,
                 errors));
+        }
+    }
+
+    private sealed class SingleChildDiscoveryService(
+        string root,
+        string childPath) : IDirectoryDiscoveryService
+    {
+        public Task<DirectoryDiscoveryReport> DiscoverAsync(
+            DirectoryDiscoveryRequest request,
+            Func<DiscoveredDirectory, DirectoryTraversalDecision> visitDirectory,
+            IProgress<DirectoryDiscoveryProgress>? progress = null,
+            CancellationToken cancellationToken = default)
+        {
+            _ = visitDirectory(new DiscoveredDirectory(
+                root,
+                Path.GetFileName(root),
+                root,
+                DateTimeOffset.MinValue,
+                DateTimeOffset.MinValue));
+            _ = visitDirectory(new DiscoveredDirectory(
+                childPath,
+                Path.GetFileName(childPath),
+                root,
+                DateTimeOffset.MinValue,
+                DateTimeOffset.MinValue));
+            var reportProgress = new DirectoryDiscoveryProgress(
+                Entries: 2,
+                Directories: 2,
+                PrunedDirectories: 0,
+                SkippedLinks: 0,
+                ErrorCount: 0,
+                Elapsed: TimeSpan.Zero);
+            return Task.FromResult(new DirectoryDiscoveryReport(
+                root,
+                DirectoryDiscoveryStatus.Completed,
+                reportProgress,
+                []));
         }
     }
 
@@ -645,6 +751,35 @@ public sealed class CatalogServiceTests
                 "test-rule",
                 new object(),
                 values));
+        }
+    }
+
+    private sealed class DirectoryExclusionProfile(
+        string? excludedName = null,
+        bool reportIssue = false) : ILoadedProfile
+    {
+        private readonly FakeProfile _inner = new();
+
+        public ProfileDescriptor Descriptor => _inner.Descriptor;
+
+        public ProfileMapResult Map(ProfilePathCandidate candidate) => _inner.Map(candidate);
+
+        public ProfileDirectoryNameExclusionResult EvaluateDirectoryName(string directoryName)
+        {
+            if (reportIssue)
+            {
+                return new ProfileDirectoryNameExclusionResult(
+                    false,
+                    null,
+                    [new ProfileMappingIssue(
+                        "directory_exclusion_regex_timeout",
+                        null,
+                        "Test timeout.")]);
+            }
+
+            return string.Equals(directoryName, excludedName, StringComparison.Ordinal)
+                ? ProfileDirectoryNameExclusionResult.Excluded("test-exclusion")
+                : ProfileDirectoryNameExclusionResult.NotExcluded();
         }
     }
 }

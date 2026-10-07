@@ -27,6 +27,11 @@ public sealed record CatalogInvalidItem(
     string RelativePath,
     IReadOnlyList<ProfileMappingIssue> Issues);
 
+public sealed record CatalogDirectoryExclusionIssue(
+    string FullPath,
+    string RelativePath,
+    IReadOnlyList<ProfileMappingIssue> Issues);
+
 public sealed record CatalogItem(
     string FullPath,
     string RelativePath,
@@ -45,6 +50,11 @@ public sealed record CatalogResult(
     IndexScanReport? ScanReport)
 {
     public DirectoryDiscoveryReport? DiscoveryReport { get; init; }
+
+    public int ExcludedDirectoryCount { get; init; }
+
+    public IReadOnlyList<CatalogDirectoryExclusionIssue> DirectoryExclusionIssues { get; init; } =
+        Array.Empty<CatalogDirectoryExclusionIssue>();
 }
 
 public interface ICatalogService

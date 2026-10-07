@@ -45,11 +45,15 @@ public sealed class ProfileAuthoringServiceTests
         Assert.True(File.Exists(expectedManifestPath));
         var savedJson = await File.ReadAllTextAsync(expectedManifestPath);
         Assert.DoesNotContain("pathInput", savedJson, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("excludedDirectoryNameRules", savedJson, StringComparison.Ordinal);
 
         var profile = Assert.Single(snapshot.Profiles);
         Assert.Equal("gui-sample", profile.Descriptor.Id);
         Assert.Equal("GUI Sample", profile.Descriptor.DisplayName);
         Assert.Equal(ProfileKind.Declarative, profile.Descriptor.Kind);
+        var exclusion = Assert.Single(profile.Descriptor.ExcludedDirectoryNameRules);
+        Assert.Equal("skip-node-modules", exclusion.Id);
+        Assert.Equal("node_modules", exclusion.Pattern);
 
         var mapping = profile.Map(new ProfilePathCandidate(
             @"C:\Archive\Acme\2026"));
@@ -64,6 +68,9 @@ public sealed class ProfileAuthoringServiceTests
         var savedManifest = Assert.IsType<ProfileManifest>(await service.LoadAsync(summary));
         Assert.Equal(ProfileKind.Declarative, savedManifest.Kind);
         Assert.Equal("GUI Sample", savedManifest.DisplayName);
+        Assert.Equal(
+            "skip-node-modules",
+            Assert.Single(savedManifest.ExcludedDirectoryNameRules!).Id);
 
         var samplePath = Path.GetFullPath(Path.Combine(directory.Path, "Beta", "2025"));
         var sample = service.Test(savedManifest, samplePath);
@@ -108,6 +115,44 @@ public sealed class ProfileAuthoringServiceTests
         Assert.Same(ProfileCatalogSnapshot.Empty, catalog.Current);
         Assert.Equal(0, changedCount);
         Assert.False(Directory.Exists(paths.UserProfilesDirectory));
+    }
+
+    [Fact]
+    public void Test_uses_the_runtime_path_regex_timeout_budget()
+    {
+        using var directory = new TemporaryDirectory();
+        var paths = CreatePaths(directory.Path);
+        using var provider = CreateProvider(directory.Path, paths);
+        var service = provider.GetRequiredService<IProfileAuthoringService>();
+        var manifest = CreateValidManifest();
+        var timeout = (ProfileManifestLimits.MaximumAggregateRegexTimeoutMilliseconds / 2) + 1;
+        manifest.Rules =
+        [
+            new ProfileRegexRuleManifest
+            {
+                Id = "first",
+                Pattern = "first",
+                MatchMode = ProfileRegexMatchMode.Partial,
+                TimeoutMilliseconds = timeout,
+            },
+            new ProfileRegexRuleManifest
+            {
+                Id = "second",
+                Pattern = "second",
+                MatchMode = ProfileRegexMatchMode.Partial,
+                TimeoutMilliseconds = timeout,
+            },
+        ];
+
+        var result = service.Test(
+            manifest,
+            Path.GetFullPath(Path.Combine(directory.Path, "sample")));
+
+        Assert.False(result.Review.IsValid);
+        Assert.Null(result.Mapping);
+        Assert.Contains(
+            result.Review.Diagnostics,
+            static diagnostic => diagnostic.Code == "regex_timeout_budget_exceeded");
     }
 
     [Fact]
@@ -257,6 +302,17 @@ public sealed class ProfileAuthoringServiceTests
             Version = "1.0.0",
             DisplayName = "GUI Sample",
             CandidateKind = ProfileCandidateKind.Directory,
+            ExcludedDirectoryNameRules =
+            [
+                new ProfileDirectoryNameExclusionRuleManifest
+                {
+                    Id = "skip-node-modules",
+                    Pattern = "node_modules",
+                    MatchMode = ProfileRegexMatchMode.Full,
+                    IgnoreCase = true,
+                    TimeoutMilliseconds = 100,
+                },
+            ],
             Fields =
             [
                 new ProfileFieldManifest
