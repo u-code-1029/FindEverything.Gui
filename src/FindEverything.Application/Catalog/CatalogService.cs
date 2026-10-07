@@ -10,7 +10,9 @@ internal sealed class CatalogService(
     IDirectoryDiscoveryService directoryDiscovery,
     IProfileResolver profileResolver,
     IValidatedSettingsState<IndexingOptions> indexingSettings,
-    ICatalogScanTraceSink scanTraceSink) : ICatalogService, IDisposable
+    ICatalogScanTraceSink scanTraceSink,
+    AbsoluteProfilePathCanonicalizer absolutePathCanonicalizer,
+    IProfilePathCanonicalizer pathCanonicalizer) : ICatalogService, IDisposable
 {
     private readonly SemaphoreSlim _operationGate = new(1, 1);
 
@@ -20,7 +22,13 @@ internal sealed class CatalogService(
         CancellationToken cancellationToken = default) =>
         ExecuteLockedAsync(
             request,
-            (profile, token) => LoadFromIndexAsync(request, profile, progress, token),
+            (normalizedRequest, profileRootPath, profile, token) =>
+                LoadFromIndexAsync(
+                    normalizedRequest,
+                    profileRootPath,
+                    profile,
+                    progress,
+                    token),
             requireDatabase: true,
             cancellationToken);
 
@@ -30,7 +38,13 @@ internal sealed class CatalogService(
         CancellationToken cancellationToken = default) =>
         ExecuteLockedAsync(
             request,
-            (profile, token) => DiscoverDirectoriesAsync(request, profile, progress, token),
+            (normalizedRequest, profileRootPath, profile, token) =>
+                DiscoverDirectoriesAsync(
+                    normalizedRequest,
+                    profileRootPath,
+                    profile,
+                    progress,
+                    token),
             requireDatabase: false,
             cancellationToken);
 
@@ -40,13 +54,19 @@ internal sealed class CatalogService(
         CancellationToken cancellationToken = default) =>
         ExecuteLockedAsync(
             request,
-            (profile, token) => ScanAndLoadFromIndexAsync(request, profile, progress, token),
+            (normalizedRequest, profileRootPath, profile, token) =>
+                ScanAndLoadFromIndexAsync(
+                    normalizedRequest,
+                    profileRootPath,
+                    profile,
+                    progress,
+                    token),
             requireDatabase: true,
             cancellationToken);
 
     private async Task<CatalogResult> ExecuteLockedAsync(
         CatalogRequest request,
-        Func<ILoadedProfile, CancellationToken, Task<CatalogResult>> operation,
+        Func<CatalogRequest, string, ILoadedProfile, CancellationToken, Task<CatalogResult>> operation,
         bool requireDatabase,
         CancellationToken cancellationToken)
     {
@@ -54,10 +74,22 @@ internal sealed class CatalogService(
         await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
             if (!profileResolver.TryResolve(request.ProfileId, out var profile))
                 throw new InvalidOperationException($"Profile '{request.ProfileId}' is not loaded.");
 
-            return await operation(profile, cancellationToken).ConfigureAwait(false);
+            var scanRootPath = absolutePathCanonicalizer.Canonicalize(request.RootPath);
+            var profileRootPath = pathCanonicalizer.Canonicalize(scanRootPath);
+            var normalizedRequest = request with
+            {
+                RootPath = scanRootPath,
+            };
+            return await operation(
+                    normalizedRequest,
+                    profileRootPath,
+                    profile,
+                    cancellationToken)
+                .ConfigureAwait(false);
         }
         finally
         {
@@ -67,11 +99,15 @@ internal sealed class CatalogService(
 
     private async Task<CatalogResult> DiscoverDirectoriesAsync(
         CatalogRequest request,
+        string profileRootPath,
         ILoadedProfile profile,
         IProgress<CatalogOperationProgress>? progress,
         CancellationToken cancellationToken)
     {
-        var trace = new ScanTraceWriter(scanTraceSink, request, profile.Descriptor);
+        var trace = new ScanTraceWriter(
+            scanTraceSink,
+            request,
+            profile.Descriptor);
         trace.Report(
             CatalogScanTraceKind.Started,
             message: "프로필 기반 빠른 스캔을 시작했습니다.");
@@ -82,7 +118,13 @@ internal sealed class CatalogService(
                 CatalogOperationPhase.Preparing,
                 "프로필 기반 빠른 스캔을 준비하고 있습니다."));
 
-            var accumulator = new MappingAccumulator(profile, request.RootPath, progress, trace);
+            var accumulator = new MappingAccumulator(
+                profile,
+                request.RootPath,
+                profileRootPath,
+                pathCanonicalizer,
+                progress,
+                trace);
             var operationSettings = indexingSettings.Current;
             var discoveryProgress = progress is null
                 ? null
@@ -137,6 +179,7 @@ internal sealed class CatalogService(
 
     private async Task<CatalogResult> LoadFromIndexAsync(
         CatalogRequest request,
+        string profileRootPath,
         ILoadedProfile profile,
         IProgress<CatalogOperationProgress>? progress,
         CancellationToken cancellationToken)
@@ -149,6 +192,7 @@ internal sealed class CatalogService(
         await using var session = sessionFactory.Create(request.DatabasePath);
         return await LoadFromIndexSessionAsync(
             request,
+            profileRootPath,
             profile,
             session,
             operationSettings,
@@ -159,6 +203,7 @@ internal sealed class CatalogService(
 
     private async Task<CatalogResult> ScanAndLoadFromIndexAsync(
         CatalogRequest request,
+        string profileRootPath,
         ILoadedProfile profile,
         IProgress<CatalogOperationProgress>? progress,
         CancellationToken cancellationToken)
@@ -194,6 +239,7 @@ internal sealed class CatalogService(
 
         return await LoadFromIndexSessionAsync(
             request,
+            profileRootPath,
             profile,
             session,
             operationSettings,
@@ -202,8 +248,9 @@ internal sealed class CatalogService(
             cancellationToken).ConfigureAwait(false);
     }
 
-    private static async Task<CatalogResult> LoadFromIndexSessionAsync(
+    private async Task<CatalogResult> LoadFromIndexSessionAsync(
         CatalogRequest request,
+        string profileRootPath,
         ILoadedProfile profile,
         IIndexSession session,
         IndexingOptions operationSettings,
@@ -219,7 +266,12 @@ internal sealed class CatalogService(
             },
             cancellationToken).ConfigureAwait(false);
 
-        var accumulator = new MappingAccumulator(profile, request.RootPath, progress);
+        var accumulator = new MappingAccumulator(
+            profile,
+            request.RootPath,
+            profileRootPath,
+            pathCanonicalizer,
+            progress);
         foreach (var directory in searchResult.Directories)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -267,6 +319,8 @@ internal sealed class CatalogService(
     private sealed class MappingAccumulator(
         ILoadedProfile profile,
         string rootPath,
+        string profileRootPath,
+        IProfilePathCanonicalizer pathCanonicalizer,
         IProgress<CatalogOperationProgress>? progress,
         ScanTraceWriter? trace = null)
     {
@@ -283,14 +337,15 @@ internal sealed class CatalogService(
             bool coveragePending)
         {
             var relativePath = Path.GetRelativePath(rootPath, directory.FullPath);
-            var mapping = profile.Map(new ProfilePathCandidate(directory.FullPath, relativePath));
+            var absolutePath = ResolveProfileInputPath(directory.FullPath, relativePath);
+            var mapping = profile.Map(new ProfilePathCandidate(absolutePath));
             _candidateCount++;
             switch (mapping.Status)
             {
                 case ProfileMapStatus.Success when mapping.Item is not null:
                     _items.Add(new CatalogItem(
                         mapping.Item.FullPath,
-                        mapping.Item.RelativePath,
+                        relativePath,
                         mapping.Item.MatchedRuleId,
                         mapping.Item.Model,
                         mapping.Item.Values,
@@ -298,7 +353,7 @@ internal sealed class CatalogService(
                     break;
                 case ProfileMapStatus.Invalid:
                     _invalidItems.Add(new CatalogInvalidItem(
-                        directory.FullPath,
+                        absolutePath,
                         relativePath,
                         mapping.Issues));
                     break;
@@ -319,11 +374,34 @@ internal sealed class CatalogService(
                 ? DirectoryTraversalDecision.SkipDescendants
                 : DirectoryTraversalDecision.Continue;
             trace?.ReportDirectoryVisited(
-                directory,
+                directory.FullPath,
+                absolutePath,
                 relativePath,
                 mapping,
                 traversalDecision);
             return traversalDecision;
+        }
+
+        private string ResolveProfileInputPath(string discoveredPath, string relativePath)
+        {
+            if (relativePath == ".")
+            {
+                return profileRootPath;
+            }
+
+            if (!Path.IsPathFullyQualified(relativePath)
+                && !relativePath.Equals("..", StringComparison.Ordinal)
+                && !relativePath.StartsWith(
+                    ".." + Path.DirectorySeparatorChar,
+                    StringComparison.Ordinal)
+                && !relativePath.StartsWith(
+                    ".." + Path.AltDirectorySeparatorChar,
+                    StringComparison.Ordinal))
+            {
+                return Path.GetFullPath(Path.Combine(profileRootPath, relativePath));
+            }
+
+            return pathCanonicalizer.Canonicalize(discoveredPath);
         }
 
         public CatalogResult BuildResult(bool hasPendingScopes, IndexScanReport? scanReport) =>
@@ -350,16 +428,14 @@ internal sealed class CatalogService(
         private long _sequence;
 
         public void ReportDirectoryVisited(
-            DiscoveredDirectory directory,
+            string discoveredPath,
+            string absolutePath,
             string relativePath,
             ProfileMapResult mapping,
             DirectoryTraversalDecision traversalDecision)
         {
             try
             {
-                var matchInput = profile.PathInput == ProfilePathInput.Full
-                    ? directory.FullPath
-                    : relativePath;
                 var values = mapping.Item is null
                     ? EmptyValues
                     : new ReadOnlyDictionary<string, object?>(
@@ -376,10 +452,9 @@ internal sealed class CatalogService(
                     profile.Id,
                     profile.DisplayName,
                     request.RootPath,
-                    profile.PathInput,
-                    directory.FullPath,
+                    discoveredPath,
                     relativePath,
-                    matchInput,
+                    absolutePath,
                     mapping.Status,
                     mapping.MatchedRuleId,
                     values,
@@ -429,7 +504,6 @@ internal sealed class CatalogService(
                 profile.Id,
                 profile.DisplayName,
                 request.RootPath,
-                profile.PathInput,
                 fullPath,
                 relativePath,
                 null,

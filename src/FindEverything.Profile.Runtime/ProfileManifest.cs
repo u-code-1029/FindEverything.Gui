@@ -33,9 +33,6 @@ public sealed class ProfileManifest
     [JsonConverter(typeof(JsonStringEnumConverter<ProfileCandidateKind>))]
     public ProfileCandidateKind CandidateKind { get; set; } = ProfileCandidateKind.Directory;
 
-    [JsonConverter(typeof(JsonStringEnumConverter<ProfilePathInput>))]
-    public ProfilePathInput PathInput { get; set; } = ProfilePathInput.Relative;
-
     public List<ProfileRegexRuleManifest>? Rules { get; set; }
 }
 
@@ -89,12 +86,6 @@ public enum ProfileKind
 public enum ProfileCandidateKind
 {
     Directory = 0,
-}
-
-public enum ProfilePathInput
-{
-    Relative = 0,
-    Full = 1,
 }
 
 public enum ProfileRegexMatchMode

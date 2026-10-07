@@ -1,10 +1,12 @@
 using FindEverything.Application;
 using FindEverything.Application.Catalog;
 using FindEverything.Infrastructure.FindEverything;
+using FindEverything.Profile.Abstractions;
 using FindEverything.Profile.Runtime;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using System.Text.RegularExpressions;
 using Xunit;
 
 namespace FindEverything.Infrastructure.FindEverything.Tests;
@@ -36,7 +38,7 @@ public sealed class DirectDirectoryDiscoveryIntegrationTests
         });
         var review = provider
             .GetRequiredService<IProfileDefinitionCompiler>()
-            .Validate(CreateManifest());
+            .Validate(CreateManifest(workspace.SourcePath));
         Assert.True(
             review.IsValid,
             string.Join(
@@ -74,16 +76,15 @@ public sealed class DirectDirectoryDiscoveryIntegrationTests
         Assert.False(Directory.Exists(Path.GetDirectoryName(workspace.DatabasePath)));
     }
 
-    private static ProfileManifest CreateManifest() =>
+    private static ProfileManifest CreateManifest(string rootPath) =>
         new()
         {
-            ContractVersion = 1,
+            ContractVersion = ProfileContract.CurrentMajor,
             Kind = ProfileKind.Declarative,
             Id = "direct-discovery",
             Version = "1.0.0",
             DisplayName = "Direct discovery",
             CandidateKind = ProfileCandidateKind.Directory,
-            PathInput = ProfilePathInput.Relative,
             Fields =
             [
                 new ProfileFieldManifest
@@ -112,7 +113,11 @@ public sealed class DirectDirectoryDiscoveryIntegrationTests
                 new ProfileRegexRuleManifest
                 {
                     Id = "default",
-                    Pattern = @"(?<year>\d{4})[\\/](?<monthDay>\d{4})_(?<name>[^\\/]+)",
+                    Pattern = string.Concat(
+                        Regex.Escape(Path.GetFullPath(rootPath) + Path.DirectorySeparatorChar),
+                        @"(?<year>\d{4})",
+                        Regex.Escape(Path.DirectorySeparatorChar.ToString()),
+                        @"(?<monthDay>\d{4})_(?<name>[^\\/]+)"),
                     MatchMode = ProfileRegexMatchMode.Full,
                     TimeoutMilliseconds = 100,
                     StopTraversalWhenCapturedGroups = ["year", "monthDay"],

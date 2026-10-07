@@ -10,6 +10,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FindEverything.Application.Catalog;
 using FindEverything.Application.Indexing;
+using FindEverything.Desktop.Services;
 using FindEverything.Profile.Runtime;
 
 namespace FindEverything.Desktop.ViewModels;
@@ -32,7 +33,7 @@ public sealed record ScanConsoleLineViewModel(
     string Text,
     string SessionSummary);
 
-public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceSink
+public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceSink, IScanConsolePanelController
 {
     private const int DrainBatchSize = 500;
     private static readonly TimeSpan DrainInterval = TimeSpan.FromMilliseconds(75);
@@ -59,6 +60,10 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
 
     [ObservableProperty]
     private bool _autoScroll = true;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(PanelToggleToolTip))]
+    private bool _isPanelOpen;
 
     [ObservableProperty]
     private string _statusText = "대기 중";
@@ -100,6 +105,30 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
 
     public ObservableCollection<ScanConsoleLineViewModel> Lines { get; } =
         new ScanConsoleLineCollection();
+
+    public string PanelToggleToolTip => IsPanelOpen
+        ? "하단 탐색 로그 닫기"
+        : "하단 탐색 로그 열기";
+
+    public void Show()
+    {
+        if (_dispatcher.CheckAccess())
+        {
+            IsPanelOpen = true;
+            return;
+        }
+
+        if (!_dispatcher.HasShutdownStarted && !_dispatcher.HasShutdownFinished)
+        {
+            _ = _dispatcher.BeginInvoke(() => IsPanelOpen = true);
+        }
+    }
+
+    [RelayCommand]
+    private void TogglePanel() => IsPanelOpen = !IsPanelOpen;
+
+    [RelayCommand]
+    private void ClosePanel() => IsPanelOpen = false;
 
     public void Report(CatalogScanTraceEvent value)
     {
@@ -349,7 +378,6 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
                 builder.Append("[START] ")
                     .Append("profile=\"").Append(Escape(value.ProfileDisplayName)).Append("\"")
                     .Append(" | id=").Append(value.ProfileId)
-                    .Append(" | input=").Append(value.PathInput)
                     .Append(" | root=\"").Append(Escape(value.RootPath)).Append('"');
                 break;
             case CatalogScanTraceKind.DirectoryVisited:
@@ -467,7 +495,7 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
 
     private static string CreateLifecycleSummary(CatalogScanTraceEvent value) =>
         value.Kind == CatalogScanTraceKind.Started
-            ? $"{value.ProfileDisplayName} · {(value.PathInput == ProfilePathInput.Relative ? "상대 경로" : "전체 경로")} · {value.RootPath}"
+            ? $"{value.ProfileDisplayName} · 절대 경로 · {value.RootPath}"
             : string.Empty;
 
     private static string FormatValue(object? value) =>

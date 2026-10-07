@@ -3,12 +3,14 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows10.0.17763.0</TargetFramework>
     <UseWPF>true</UseWPF>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
     <AssemblyName>FindEverything.Gui</AssemblyName>
     <RootNamespace>FindEverything.Desktop</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="FindEverything.Desktop.Tests" />
     <ProjectReference Include="../FindEverything.Application/FindEverything.Application.csproj" />
     <ProjectReference Include="../FindEverything.Infrastructure.FindEverything/FindEverything.Infrastructure.FindEverything.csproj" />
     <ProjectReference Include="../FindEverything.Profile.Runtime/FindEverything.Profile.Runtime.csproj" />

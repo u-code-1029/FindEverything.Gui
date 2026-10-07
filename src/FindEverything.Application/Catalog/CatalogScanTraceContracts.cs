@@ -25,7 +25,6 @@ public sealed record CatalogScanTraceEvent(
     string ProfileId,
     string ProfileDisplayName,
     string RootPath,
-    ProfilePathInput PathInput,
     string? FullPath,
     string? RelativePath,
     string? MatchInput,

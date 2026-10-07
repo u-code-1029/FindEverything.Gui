@@ -4,14 +4,14 @@
 
 ## 초보자 모드에서 프로필 만들기
 
-예를 들어 다음 상대 경로에서 고객, 프로젝트 번호와 기준일을 추출한다고 가정합니다.
+예를 들어 다음 실제 전체 경로에서 고객, 프로젝트 번호와 기준일을 추출한다고 가정합니다.
 
 ```text
-Clients\Acme\Projects\PRJ-042\2026\0521_Release
+C:\Archive\Clients\Acme\Projects\PRJ-042\2026\0521_Release
 ```
 
 1. `새로 만들기`를 누르고 표시 이름과 프로필 ID를 입력합니다.
-2. 경로 입력은 보통 `검색 루트 기준 상대 경로`를 선택합니다.
+2. 경로 입력은 항상 절대 경로입니다. 로컬 경로는 드라이브 문자를 포함하고, 매핑된 네트워크 드라이브는 규칙 적용 전에 실제 UNC 경로로 바뀝니다. `Z:`가 `\\192.168.10.20\share`에 연결되어 있다면 `\\192.168.10.20\share\...`가 입력되므로 템플릿에 `Z:`를 고정하지 마세요. 검색 위치는 방문 범위만 정하며 규칙 입력을 상대 경로로 바꾸지 않습니다.
 3. 먼저 `고객`, `프로젝트 번호`, `기준일` 결과 값 카드를 만듭니다. 고객은 텍스트, 프로젝트 번호는 정수, 기준일은 날짜/시간으로 지정합니다.
 4. 기준일 카드의 `날짜가 나뉘어 있는 방식`에서 `연도 + 월일`(`yyyy` + `MMdd`)을 고릅니다. 한 날짜가 `20260521`처럼 한 조각이면 `한 조각에서 날짜 읽기`, 연도·월·일이 각각 나뉘면 `연도 + 월 + 일`을 선택합니다.
 5. 실제 경로를 붙여 넣고 `경로 분석`을 누릅니다. `/`와 `\`를 기준으로 폴더명 전체 버튼을 만들고, `PRJ-042`나 `0521_Release`처럼 `_`, `-`, 공백이 있는 폴더명은 `PRJ`·`042`, `0521`·`Release` 같은 세부 조각 버튼도 만듭니다.
@@ -19,7 +19,7 @@ Clients\Acme\Projects\PRJ-042\2026\0521_Release
 7. 연결하지 않은 `Clients`, `Projects`, `PRJ-`, `_Release`는 고정 텍스트로 남고, 읽기 전용 경로 규칙은 다음과 같은 형태가 됩니다.
 
    ```text
-   Clients/{customer@customer}/Projects/PRJ-{project-number@projectNumber}/{captured-on@capturedOnYear}/{captured-on@capturedOnMonthDay}_Release
+   C:/Archive/Clients/{customer@customer}/Projects/PRJ-{project-number@projectNumber}/{captured-on@capturedOnYear}/{captured-on@capturedOnMonthDay}_Release
    ```
 
    실제 Field ID와 그룹 이름은 카드의 내부 키에 따라 달라질 수 있습니다. 토큰을 직접 입력할 필요는 없습니다.
@@ -53,7 +53,7 @@ Clients\Acme\Projects\PRJ-042\2026\0521_Release
 선택 구간이 여러 개면 앞에서부터 차례로 채워집니다.
 
 ```text
-Clients/{customer@customer}/Projects/{project@project}/{year@year}/{revision@revision?}/{approved@approved?}
+C:/Archive/Clients/{customer@customer}/Projects/{project@project}/{year@year}/{revision@revision?}/{approved@approved?}
 ```
 
 이 템플릿은 연도에서 끝나거나 리비전까지, 또는 리비전과 승인까지 있는 경로와 일치합니다. 리비전 없이 승인만 있는 경로와는 일치하지 않습니다. 중간 구간을 선택 사항으로 만들거나 한 선택 구간에서 둘 이상의 값을 추출해야 하면 전문가 모드의 정규식을 사용하세요.
@@ -88,13 +88,15 @@ Clients/{customer@customer}/Projects/{project@project}/{year@year}/{revision@rev
 위 예제 경로를 직접 표현하는 전체 일치 pattern은 다음과 같습니다. `전체 일치`를 선택하면 `^`와 `$`를 따로 붙이지 않아도 됩니다.
 
 ```regex
-Clients[\\/](?<customer>[^\\/]+)[\\/]Projects[\\/]PRJ-(?<projectNumber>\d+)[\\/](?<year>\d{4})[\\/](?<monthDay>\d{4})_Release
+C:[\\/]Archive[\\/]Clients[\\/](?<customer>[^\\/]+)[\\/]Projects[\\/]PRJ-(?<projectNumber>\d+)[\\/](?<year>\d{4})[\\/](?<monthDay>\d{4})_Release
 ```
 
 1. 고객에는 `customer`, 프로젝트 번호에는 `projectNumber`를 `단일 그룹`에 입력합니다. 기준일에는 `year, monthDay`를 실제 결합 순서대로 `조합 그룹 (쉼표 순서)`에 입력하고 입력 형식을 `yyyyMMdd`로 지정합니다.
 2. 경로 규칙에 pattern과 매칭 방식, 대소문자 처리, 제한 시간을 입력합니다. 빠른 스캔에서 리프 폴더 아래를 생략하려면 해당 규칙의 `탐색 중단 그룹 (쉼표 순서)`도 입력합니다.
 3. 실제 예제 경로로 `경로 시험`을 실행합니다.
 4. `검증`을 통과한 뒤 `검증 후 저장`을 누릅니다.
+
+드라이브나 앞쪽 폴더가 달라도 같은 `Clients` 이하 구조를 인식하려면 `부분 일치`를 선택하고 `(?:^|[\\/])Clients[\\/]...$`처럼 경로 구분자 뒤에서 시작해 끝에서 끝나는 규칙을 사용하세요. 정규식 시험에도 검색 루트 기준 상대 경로가 아닌 실제 전체 경로를 입력합니다.
 
 전문가 편집기의 단일 정규식 그룹과 복합 그룹 목록은 서로 대체 관계이므로 한 필드에 둘 다 입력할 수 없습니다. 복합 그룹은 왼쪽부터 이어 붙여 하나의 필드 값으로 변환하며, 복합 날짜에는 그 결과를 해석할 `parseFormat`이 필요합니다. 하위 탐색 중단 그룹은 필드 목록이 아니라 현재 규칙의 named group 목록이며, 아래의 빠른 스캔에서만 사용됩니다.
 
@@ -108,9 +110,9 @@ Clients[\\/](?<customer>[^\\/]+)[\\/]Projects[\\/]PRJ-(?<projectNumber>\d+)[\\/]
 | --- | --- |
 | 표시 이름 | 공백이 아닌 문자열이어야 합니다. |
 | 프로필 ID | 정규식 `[a-z0-9][a-z0-9.-]{0,63}`을 만족해야 합니다. 소문자 영숫자로 시작하고 소문자 영숫자, 점, 하이픈만 쓸 수 있으며 최대 64자입니다. 대소문자를 무시해 다른 프로필과 중복될 수 없습니다. |
-| 경로 입력 | `Relative`는 사용자가 선택한 검색 루트 기준 상대 경로, `Full`은 드라이브나 UNC 루트를 포함한 전체 경로를 규칙에 전달합니다. GUI에는 각각 `검색 루트 기준 상대 경로`, `드라이브를 포함한 전체 경로`로 표시됩니다. |
+| 경로 입력 | 별도 manifest 옵션 없이 절대 경로만 규칙에 전달합니다. 로컬 드라이브는 `C:\...`, 네트워크 공유는 `\\server\share\...` 형태입니다. 매핑된 네트워크 드라이브는 실제 UNC로 확장하며, 원격 호스트가 IP 주소로 매핑되어 있으면 그 IP를 그대로 보존합니다. |
 | 후보 종류 | 현재는 폴더를 뜻하는 `Directory`만 지원하며 GUI가 자동으로 지정합니다. |
-| 계약·종류·버전 | GUI가 `contractVersion: 1`, `kind: Declarative`, `version: 1.0.0`을 자동으로 지정합니다. 런타임은 버전 문자열이 비어 있는지만 검사하며 SemVer 형식까지 강제하지는 않습니다. |
+| 계약·종류·버전 | GUI가 `contractVersion: 2`, `kind: Declarative`, `version: 1.0.0`을 자동으로 지정합니다. 런타임은 버전 문자열이 비어 있는지만 검사하며 SemVer 형식까지 강제하지는 않습니다. 계약 버전 2부터 규칙 입력은 절대 경로만 사용합니다. |
 
 ### 결과 컬럼
 
@@ -154,6 +156,8 @@ Windows 폴더 구분자 `\` 하나를 정규식으로 일치시키려면 GUI pa
 
 `구조화 보기`의 기본 동작인 `프로필로 빠르게 불러오기`는 선택한 루트를 직접 걷는 프로필 기반 빠른 스캔입니다. 폴더를 발견하는 즉시 프로필을 적용하므로 공유 SQLite 인덱스를 만들거나, 열거나, 갱신하지 않습니다. 이미 `파일 찾기`에서 만든 DB를 재사용해야 할 때만 `고급: 기존 인덱스에서 불러오기`를 선택합니다. 기존 인덱스 불러오기는 저장된 내용을 읽을 뿐이며 공유 인덱스를 갱신하는 화면은 `파일 찾기`뿐입니다.
 
+선택한 검색 루트는 탐색 범위만 제한합니다. 직접 빠른 스캔과 기존 인덱스 불러오기 모두 프로필에는 후보의 실제 절대 경로를 전달하므로, 어느 상위 폴더를 검색 루트로 골랐는지에 따라 정규식 입력이 달라지지 않습니다. 매핑된 네트워크 드라이브를 골라도 엔진은 선택한 드라이브로 탐색하되 프로필 입력과 구조화 결과는 UNC로 표시됩니다. 빠른 스캔 중에는 제목 표시줄 오른쪽 버튼으로 하단 `탐색 로그` 패널을 열고 닫을 수 있으며, `full`에는 실제 방문 경로, `input`에는 규칙에 전달된 절대/UNC 경로가 표시됩니다.
+
 `stopTraversalWhenCapturedGroups`는 빠른 스캔에서 업무 객체의 마지막 폴더를 알려 주는 규칙별 조건입니다.
 
 - 규칙이 일치하고 목록의 모든 그룹이 공백이 아닌 값을 실제로 캡처하면, 일치한 현재 폴더의 매핑 결과는 그대로 유지하고 그 자식과 더 아래 폴더만 방문하지 않습니다.
@@ -182,7 +186,7 @@ GUI가 저장하는 선언형 프로필은 다음 구조입니다. 보통 직접
 
 ```json
 {
-  "contractVersion": 1,
+  "contractVersion": 2,
   "kind": "Declarative",
   "id": "project-folders",
   "version": "1.0.0",
@@ -223,12 +227,11 @@ GUI가 저장하는 선언형 프로필은 다음 구조입니다. 보통 직접
     }
   ],
   "candidateKind": "Directory",
-  "pathInput": "Relative",
   "rules": [
     {
       "id": "default",
-      "pathTemplate": "Clients/{customer@customer}/Projects/PRJ-{project-number@projectNumber}/{captured-on@year}/{captured-on@monthDay}_Release",
-      "pattern": "Clients[\\\\/](?<customer>[^\\\\/]+)[\\\\/]Projects[\\\\/]PRJ-(?<projectNumber>[+-]?\\d+)[\\\\/](?<year>[^\\\\/]+)[\\\\/](?<monthDay>[^\\\\/]+)_Release",
+      "pathTemplate": "C:/Archive/Clients/{customer@customer}/Projects/PRJ-{project-number@projectNumber}/{captured-on@year}/{captured-on@monthDay}_Release",
+      "pattern": "C:[\\\\/]Archive[\\\\/]Clients[\\\\/](?<customer>[^\\\\/]+)[\\\\/]Projects[\\\\/]PRJ-(?<projectNumber>[+-]?\\d+)[\\\\/](?<year>[^\\\\/]+)[\\\\/](?<monthDay>[^\\\\/]+)_Release",
       "matchMode": "Full",
       "ignoreCase": true,
       "timeoutMilliseconds": 100,
@@ -270,7 +273,7 @@ GUI가 저장하는 선언형 프로필은 다음 구조입니다. 보통 직접
 
 ```json
 {
-  "contractVersion": 1,
+  "contractVersion": 2,
   "kind": "Assembly",
   "id": "sample-projects",
   "version": "1.0.0",
@@ -278,12 +281,11 @@ GUI가 저장하는 선언형 프로필은 다음 구조입니다. 보통 직접
   "entryAssembly": "FindEverything.Profiles.SampleProjects.dll",
   "modelType": "FindEverything.Profiles.SampleProjects.SampleProject",
   "candidateKind": "Directory",
-  "pathInput": "Relative",
   "rules": [
     {
       "id": "default",
-      "pattern": "(?<year>\\d{4})[\\\\/](?<projectCode>PRJ-\\d+)(?:[\\\\/]Rev(?<revision>\\d+))?(?:[\\\\/](?<dateYear>\\d{4})[\\\\/](?<monthDay>\\d{4}))?",
-      "matchMode": "Full",
+      "pattern": "(?:^|[\\\\/])(?<year>\\d{4})[\\\\/](?<projectCode>PRJ-\\d+)(?:[\\\\/]Rev(?<revision>\\d+))?(?:[\\\\/](?<dateYear>\\d{4})[\\\\/](?<monthDay>\\d{4}))?$",
+      "matchMode": "Partial",
       "ignoreCase": true,
       "timeoutMilliseconds": 100
     }

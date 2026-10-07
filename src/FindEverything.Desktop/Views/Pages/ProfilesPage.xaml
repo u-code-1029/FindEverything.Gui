@@ -215,14 +215,14 @@
                                         PlaceholderText="예: my-projects"
                                         Text="{Binding DraftId, UpdateSourceTrigger=PropertyChanged}" />
 
-                                    <TextBlock Style="{StaticResource FieldLabelStyle}" Text="규칙에 넣을 경로" />
-                                    <TextBlock Style="{StaticResource CaptionTextStyle}" Text="상대 경로는 선택한 검색 위치를 제외하고, 전체 경로는 드라이브부터 규칙에 전달합니다." />
-                                    <ComboBox
+                                    <ui:InfoBar
                                         Margin="0,4,0,0"
-                                        AutomationProperties.Name="규칙 경로 방식"
-                                        DisplayMemberPath="DisplayName"
-                                        ItemsSource="{Binding PathInputChoices}"
-                                        SelectedItem="{Binding SelectedPathInput}" />
+                                        AutomationProperties.Name="절대 경로 입력 안내"
+                                        IsClosable="False"
+                                        IsOpen="True"
+                                        Message="규칙과 테스트에는 절대 경로만 전달됩니다. 매핑된 네트워크 드라이브는 실제 UNC 경로로 자동 변환됩니다."
+                                        Severity="Informational"
+                                        Title="항상 절대 경로 사용" />
                                 </StackPanel>
                             </Border>
 
@@ -238,13 +238,13 @@
                                     <TextBlock Style="{StaticResource FieldLabelStyle}" Text="① 실제 경로 붙여넣기" />
                                     <TextBlock
                                         Style="{StaticResource CaptionTextStyle}"
-                                        Text="위에서 선택한 경로 방식과 같은 형태의 폴더 경로를 사용하세요."
+                                        Text="드라이브 또는 UNC를 포함한 실제 전체 폴더 경로를 사용하세요."
                                         TextWrapping="Wrap" />
                                     <ui:TextBox
                                         Margin="0,4,0,8"
                                         AutomationProperties.Name="규칙을 만들 실제 경로"
                                         ClearButtonEnabled="True"
-                                        PlaceholderText="예: 고객사\프로젝트\2026\Rev-3"
+                                        PlaceholderText="예: C:\Archive\고객사\프로젝트\2026\Rev-3"
                                         Text="{Binding SamplePath, UpdateSourceTrigger=PropertyChanged}" />
                                     <ui:Button
                                         Margin="0,0,0,20"
@@ -778,7 +778,7 @@
                                     <ui:TextBox
                                         AutomationProperties.Name="시험할 예제 경로"
                                         ClearButtonEnabled="True"
-                                        PlaceholderText="실제 폴더 경로 또는 상대 경로"
+                                        PlaceholderText="예: C:\Archive\고객사\프로젝트\2026\Rev-3"
                                         Text="{Binding SamplePath, UpdateSourceTrigger=PropertyChanged}" />
                                     <ui:Button
                                         Margin="0,8,0,0"
@@ -934,10 +934,6 @@
                                             <StackPanel MinWidth="120" Margin="0,0,16,8">
                                                 <TextBlock Style="{StaticResource FieldLabelStyle}" Text="검색 대상" />
                                                 <TextBlock Text="{Binding SelectedProfile.CandidateKind}" />
-                                            </StackPanel>
-                                            <StackPanel MinWidth="120" Margin="0,0,16,8">
-                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="규칙 경로" />
-                                                <TextBlock Text="{Binding SelectedProfile.PathInput}" />
                                             </StackPanel>
                                             <StackPanel MinWidth="100" Margin="0,0,0,8">
                                                 <TextBlock Style="{StaticResource FieldLabelStyle}" Text="컬럼 수" />

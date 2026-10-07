@@ -55,11 +55,13 @@ public static class DependencyInjection
         services.AddSingleton<IContentDialogService, ContentDialogService>();
 
         services.AddSingleton<IApplicationOperationCoordinator, ApplicationOperationCoordinator>();
-        services.AddSingleton<IScanConsoleWindowService, ScanConsoleWindowService>();
         services.AddSingleton<IWorkspaceContext, WorkspaceContext>();
         services.AddSingleton<IDesktopPickerService, DesktopPickerService>();
         services.AddSingleton<IPathLauncher, ExplorerPathLauncher>();
         services.AddSingleton<IProfileAuthoringService, ProfileAuthoringService>();
+        services.TryAddSingleton<IWindowsMappedDrivePathResolver, WindowsMappedDrivePathResolver>();
+        services.Replace(ServiceDescriptor.Singleton<IProfilePathCanonicalizer,
+            WindowsProfilePathCanonicalizer>());
         services.AddSingleton<IAppearanceService, AppearanceService>();
         services.AddSingleton<IUserSettingsWriter, AtomicUserSettingsWriter>();
         services.AddSingleton<IGridLayoutStore, GridLayoutStore>();
@@ -71,8 +73,9 @@ public static class DependencyInjection
 
         services.AddSingleton<MainWindow>();
         services.AddSingleton<MainWindowViewModel>();
-        services.AddTransient<ScanConsoleWindow>();
         services.AddSingleton<ScanConsoleViewModel>();
+        services.AddSingleton<IScanConsolePanelController>(
+            static provider => provider.GetRequiredService<ScanConsoleViewModel>());
         services.Replace(ServiceDescriptor.Singleton<ICatalogScanTraceSink>(
             static provider => provider.GetRequiredService<ScanConsoleViewModel>()));
         services.AddSingleton<FilesPage>();

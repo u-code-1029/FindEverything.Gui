@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using FindEverything.Application.Profiles;
+using FindEverything.Profile.Abstractions;
 using FindEverything.Profile.Runtime;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -79,6 +80,20 @@ public sealed class ProfilePathTemplateCompilerTests
 
         Assert.True(result.IsValid);
         Assert.Equal(@"Clients[\\/](?<name>[^\\/]+)", result.Pattern);
+    }
+
+    [Fact]
+    public void Compile_preserves_an_ip_based_unc_root()
+    {
+        var result = _compiler.Compile(
+            "//192.168.10.20/archive/Projects/{name}",
+            [Field("name", "name", ProfileFieldValueKind.String)]);
+
+        Assert.True(result.IsValid);
+        var regex = FullMatch(result.Pattern!);
+        Assert.Matches(regex, @"\\192.168.10.20\archive\Projects\Alpha");
+        Assert.Matches(regex, "//192.168.10.20/archive/Projects/Alpha");
+        Assert.DoesNotMatch(regex, @"Z:\Projects\Alpha");
     }
 
     [Fact]
@@ -227,19 +242,23 @@ public sealed class ProfilePathTemplateCompilerTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void Path_template_metadata_round_trips_without_changing_runtime_validation(
+    public void Path_template_metadata_round_trips_with_the_absolute_path_contract(
         bool includePathTemplate)
     {
         var pathTemplate = includePathTemplate ? "{name}" : null;
+        var root = Path.GetFullPath(Path.Combine(
+            Path.GetTempPath(),
+            "FindEverything.Application.Tests",
+            "template-profile"));
+        var absolutePath = Path.Combine(root, "Alpha");
         var manifest = new ProfileManifest
         {
-            ContractVersion = 1,
+            ContractVersion = ProfileContract.CurrentMajor,
             Kind = ProfileKind.Declarative,
-            Id = "template-compatibility",
+            Id = "template-round-trip",
             Version = "1.0.0",
-            DisplayName = "Template compatibility",
+            DisplayName = "Template round trip",
             CandidateKind = ProfileCandidateKind.Directory,
-            PathInput = ProfilePathInput.Relative,
             Fields =
             [
                 Field("name", "name", ProfileFieldValueKind.String),
@@ -250,7 +269,8 @@ public sealed class ProfilePathTemplateCompilerTests
                 {
                     Id = "default",
                     PathTemplate = pathTemplate,
-                    Pattern = @"(?<name>[^\\/]+)",
+                    Pattern = Regex.Escape(root + Path.DirectorySeparatorChar)
+                        + @"(?<name>[^\\/]+)",
                     MatchMode = ProfileRegexMatchMode.Full,
                     TimeoutMilliseconds = 100,
                 },
@@ -287,8 +307,9 @@ public sealed class ProfilePathTemplateCompilerTests
         Assert.True(
             review.IsValid,
             string.Join(Environment.NewLine, review.Diagnostics.Select(static item => item.Message)));
+        var profile = Assert.IsAssignableFrom<ILoadedProfile>(review.Profile);
 
-        var mapping = review.Profile!.Map(new ProfilePathCandidate("Alpha", "Alpha"));
+        var mapping = profile.Map(new ProfilePathCandidate(absolutePath));
         Assert.Equal(ProfileMapStatus.Success, mapping.Status);
         Assert.Equal("Alpha", mapping.Item!.Values["name"]);
     }

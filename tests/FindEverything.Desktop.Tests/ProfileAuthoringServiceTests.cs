@@ -43,6 +43,8 @@ public sealed class ProfileAuthoringServiceTests
             "gui-sample",
             "profile.json");
         Assert.True(File.Exists(expectedManifestPath));
+        var savedJson = await File.ReadAllTextAsync(expectedManifestPath);
+        Assert.DoesNotContain("pathInput", savedJson, StringComparison.OrdinalIgnoreCase);
 
         var profile = Assert.Single(snapshot.Profiles);
         Assert.Equal("gui-sample", profile.Descriptor.Id);
@@ -50,8 +52,7 @@ public sealed class ProfileAuthoringServiceTests
         Assert.Equal(ProfileKind.Declarative, profile.Descriptor.Kind);
 
         var mapping = profile.Map(new ProfilePathCandidate(
-            @"C:\Archive\Acme\2026",
-            "Acme/2026"));
+            @"C:\Archive\Acme\2026"));
         Assert.Equal(ProfileMapStatus.Success, mapping.Status);
         Assert.NotNull(mapping.Item);
         Assert.Equal("Acme", mapping.Item.Values["client"]);
@@ -64,7 +65,8 @@ public sealed class ProfileAuthoringServiceTests
         Assert.Equal(ProfileKind.Declarative, savedManifest.Kind);
         Assert.Equal("GUI Sample", savedManifest.DisplayName);
 
-        var sample = service.Test(savedManifest, "Beta/2025");
+        var samplePath = Path.GetFullPath(Path.Combine(directory.Path, "Beta", "2025"));
+        var sample = service.Test(savedManifest, samplePath);
         Assert.True(sample.Review.IsValid);
         Assert.Equal(ProfileMapStatus.Success, sample.Mapping?.Status);
         Assert.Equal("Beta", sample.Mapping?.Item?.Values["client"]);
@@ -255,7 +257,6 @@ public sealed class ProfileAuthoringServiceTests
             Version = "1.0.0",
             DisplayName = "GUI Sample",
             CandidateKind = ProfileCandidateKind.Directory,
-            PathInput = ProfilePathInput.Relative,
             Fields =
             [
                 new ProfileFieldManifest
@@ -283,8 +284,8 @@ public sealed class ProfileAuthoringServiceTests
                 new ProfileRegexRuleManifest
                 {
                     Id = "client-year",
-                    Pattern = @"^(?<client>[^/]+)/(?<year>\d{4})$",
-                    MatchMode = ProfileRegexMatchMode.Full,
+                    Pattern = @"(?:^|[\\/])(?<client>[^\\/]+)[\\/](?<year>\d{4})$",
+                    MatchMode = ProfileRegexMatchMode.Partial,
                     IgnoreCase = false,
                     TimeoutMilliseconds = 100,
                 },
@@ -330,7 +331,6 @@ public sealed class ProfileAuthoringServiceTests
             "1.0.0",
             "Bundled Profile",
             ProfileCandidateKind.Directory,
-            ProfilePathInput.Relative,
             [],
             []);
 

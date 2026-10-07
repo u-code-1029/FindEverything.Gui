@@ -46,19 +46,33 @@ public sealed record ProfileDescriptor(
     string Version,
     string DisplayName,
     ProfileCandidateKind CandidateKind,
-    ProfilePathInput PathInput,
     IReadOnlyList<ProfileFieldDescriptor> Fields,
     IReadOnlyList<ProfileRegexRuleDescriptor> Rules)
 {
     public ProfileKind Kind { get; init; } = ProfileKind.Assembly;
 }
 
-public sealed record ProfilePathCandidate(string FullPath, string RelativePath);
+public sealed record ProfilePathCandidate
+{
+    public ProfilePathCandidate(string absolutePath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(absolutePath);
+        if (!Path.IsPathFullyQualified(absolutePath))
+        {
+            throw new ArgumentException(
+                "프로필 입력은 드라이브 또는 UNC 루트를 포함한 절대 경로여야 합니다.",
+                nameof(absolutePath));
+        }
+
+        AbsolutePath = absolutePath;
+    }
+
+    public string AbsolutePath { get; }
+}
 
 public sealed record MappedProfileItem(
     string ProfileId,
     string FullPath,
-    string RelativePath,
     string MatchedRuleId,
     object Model,
     IReadOnlyDictionary<string, object?> Values);

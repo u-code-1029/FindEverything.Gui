@@ -1,5 +1,7 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using FindEverything.Profile.Abstractions;
+using FindEverything.Profiles.SampleProjects;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Xunit;
@@ -8,8 +10,62 @@ namespace FindEverything.Profile.Runtime.Tests;
 
 public sealed class ProfilePluginLoaderTests
 {
-    private const string ValidPattern =
-        "^(?<name>[^/]+)/(?<year>\\d{4})(?:/r(?<revision>\\d+))?(?:/(?<capturedOn>\\d{8}))?(?:/(?<approved>true|false))?(?:/(?<amount>-?\\d+(?:\\.\\d+)?))?$";
+    private static readonly string ScanRoot = Path.GetFullPath(Path.Combine(
+        Path.GetTempPath(),
+        "FindEverything.Profile.Runtime.Tests",
+        "scan-root"));
+
+    private static readonly string ValidPattern = ScanPattern(
+        @"(?<name>[^\\/]+)[\\/](?<year>\d{4})(?:[\\/]r(?<revision>\d+))?(?:[\\/](?<capturedOn>\d{8}))?(?:[\\/](?<approved>true|false))?(?:[\\/](?<amount>-?\d+(?:\.\d+)?))?");
+
+    [Fact]
+    public async Task Bundled_sample_profile_maps_the_same_suffix_under_different_full_roots()
+    {
+        using var packages = new TestProfilePackages();
+        var packageDirectory = Path.Combine(packages.RootPath, "sample-projects");
+        Directory.CreateDirectory(packageDirectory);
+        File.Copy(
+            Path.Combine(AppContext.BaseDirectory, "Fixtures", "sample-projects", "profile.json"),
+            Path.Combine(packageDirectory, "profile.json"));
+        CopyAssemblyPackage(typeof(SampleProjectItem).Assembly.Location, packageDirectory);
+        using var host = BuildHost(packages.RootPath);
+
+        var snapshot = await LoadAsync(host);
+
+        var profile = Assert.Single(snapshot.Profiles);
+        Assert.Equal("sample-projects", profile.Descriptor.Id);
+        var suffix = Path.Combine(
+            "Clients",
+            "Acme",
+            "Projects",
+            "Project-X",
+            "2026",
+            "20260521",
+            "Rev-7",
+            "Approved-true",
+            "Amount-1234.50");
+        var roots = new[]
+        {
+            Path.Combine(Path.GetTempPath(), "sample-root-a"),
+            Path.Combine(Path.GetTempPath(), "different", "nested", "sample-root-b"),
+        };
+
+        foreach (var root in roots)
+        {
+            var fullPath = Path.GetFullPath(Path.Combine(root, suffix));
+            var mapping = profile.Map(new ProfilePathCandidate(fullPath));
+
+            Assert.Equal(ProfileMapStatus.Success, mapping.Status);
+            Assert.Equal(fullPath, mapping.Item!.FullPath);
+            Assert.Equal("Acme", mapping.Item.Values["customer"]);
+            Assert.Equal("Project-X", mapping.Item.Values["project"]);
+            Assert.Equal(2026, mapping.Item.Values["year"]);
+            Assert.Equal(new DateTime(2026, 5, 21), mapping.Item.Values["captured-on"]);
+            Assert.Equal(7, mapping.Item.Values["revision"]);
+            Assert.Equal(true, mapping.Item.Values["approved"]);
+            Assert.Equal(1234.50m, mapping.Item.Values["amount"]);
+        }
+    }
 
     [Fact]
     public async Task LoadAsync_MapsAllSupportedTypesAndNullableValues()
@@ -28,8 +84,7 @@ public sealed class ProfilePluginLoaderTests
             profile.Descriptor.Fields.Select(static field => field.FieldId));
 
         var complete = profile.Map(new ProfilePathCandidate(
-            @"C:\root\alpha\2026",
-            "alpha/2026/r7/20261007/true/1234.50"));
+            ScanPath("alpha", "2026", "r7", "20261007", "true", "1234.50")));
 
         Assert.Equal(ProfileMapStatus.Success, complete.Status);
         Assert.NotNull(complete.Item);
@@ -41,8 +96,7 @@ public sealed class ProfilePluginLoaderTests
         Assert.Equal(1234.50m, complete.Item.Values["amount"]);
 
         var minimal = profile.Map(new ProfilePathCandidate(
-            @"C:\root\beta\2025",
-            "beta/2025"));
+            ScanPath("beta", "2025")));
 
         Assert.Equal(ProfileMapStatus.Success, minimal.Status);
         Assert.NotNull(minimal.Item);
@@ -59,7 +113,7 @@ public sealed class ProfilePluginLoaderTests
         packages.Add(
             "composite-date",
             "composite-date-profile",
-            "^(?<year>\\d{4})/(?<monthDay>\\d{4})$",
+            ScanPattern(@"(?<year>\d{4})[\\/](?<monthDay>\d{4})"),
             modelType: typeof(CompositeCaptureProfileModel));
         using var host = BuildHost(packages.RootPath);
 
@@ -70,8 +124,7 @@ public sealed class ProfilePluginLoaderTests
         Assert.Equal(["year", "monthDay"], field.EffectiveGroupNames);
 
         var result = profile.Map(new ProfilePathCandidate(
-            @"C:\root\2026\0521",
-            "2026/0521"));
+            ScanPath("2026", "0521")));
 
         Assert.Equal(ProfileMapStatus.Success, result.Status);
         Assert.Equal(new DateTime(2026, 5, 21), result.Item!.Values["captured-on"]);
@@ -93,8 +146,7 @@ public sealed class ProfilePluginLoaderTests
             profile.Descriptor.Fields.Select(static field => field.FieldId));
 
         var result = profile.Map(new ProfilePathCandidate(
-            @"C:\root\alpha\2026",
-            "alpha/2026/r7/20261007/true/1234.50"));
+            ScanPath("alpha", "2026", "r7", "20261007", "true", "1234.50")));
 
         Assert.Equal(ProfileMapStatus.Success, result.Status);
         Assert.NotNull(result.Item);
@@ -108,8 +160,7 @@ public sealed class ProfilePluginLoaderTests
         Assert.IsAssignableFrom<IReadOnlyDictionary<string, object?>>(result.Item.Model);
 
         var minimal = profile.Map(new ProfilePathCandidate(
-            @"C:\root\beta\2025",
-            "beta/2025"));
+            ScanPath("beta", "2025")));
 
         Assert.Equal(ProfileMapStatus.Success, minimal.Status);
         Assert.NotNull(minimal.Item);
@@ -223,15 +274,14 @@ public sealed class ProfilePluginLoaderTests
         packages.Add(
             "priority",
             "priority-profile",
-            "^(?<name>[^/]+)/(?<year>Y\\d+)$",
-            "^(?<name>[^/]+)/Y(?<year>\\d+)$");
+            ScanPattern(@"(?<name>[^\\/]+)[\\/](?<year>Y\d+)"),
+            ScanPattern(@"(?<name>[^\\/]+)[\\/]Y(?<year>\d+)"));
         using var host = BuildHost(packages.RootPath);
         var snapshot = await LoadAsync(host);
         var profile = Assert.Single(snapshot.Profiles);
 
         var result = profile.Map(new ProfilePathCandidate(
-            @"C:\root\alpha\Y2026",
-            "alpha/Y2026"));
+            ScanPath("alpha", "Y2026")));
 
         Assert.Equal(ProfileMapStatus.Invalid, result.Status);
         Assert.Contains(
@@ -283,6 +333,25 @@ public sealed class ProfilePluginLoaderTests
     }
 
     [Fact]
+    public async Task LoadAsync_RejectsTheLegacyRelativePathContract()
+    {
+        using var packages = new TestProfilePackages();
+        packages.Add(
+            "legacy",
+            "legacy-profile",
+            ValidPattern,
+            contractVersion: ProfileContract.CurrentMajor - 1);
+        using var host = BuildHost(packages.RootPath);
+
+        var snapshot = await LoadAsync(host);
+
+        Assert.Empty(snapshot.Profiles);
+        var report = Assert.Single(snapshot.Reports);
+        Assert.Equal(ProfilePluginStatus.Disabled, report.Status);
+        Assert.Contains(report.Diagnostics, static item => item.Code == "contract_unsupported");
+    }
+
+    [Fact]
     public async Task LoadAsync_DisablesValidAndInvalidManifestsThatShareAnId()
     {
         using var packages = new TestProfilePackages();
@@ -313,14 +382,15 @@ public sealed class ProfilePluginLoaderTests
         packages.Add(
             "timeout",
             "timeout-profile",
-            "^(?<name>(a+)+)(?<year>\\d+)$",
+            ScanPattern(@"(?<name>(a+)+)(?<year>\d+)"),
             timeoutMilliseconds: 1);
         using var host = BuildHost(packages.RootPath);
         var snapshot = await LoadAsync(host);
         var profile = Assert.Single(snapshot.Profiles);
 
-        var input = new string('a', 100_000) + "!";
-        var result = profile.Map(new ProfilePathCandidate(@"C:\root\timeout", input));
+        var input = new string('a', 10_000) + "!";
+        var result = profile.Map(new ProfilePathCandidate(
+            ScanPath(input)));
 
         Assert.Equal(ProfileMapStatus.Invalid, result.Status);
         Assert.Contains(result.Issues, static issue => issue.Code == "regex_timeout");
@@ -343,6 +413,26 @@ public sealed class ProfilePluginLoaderTests
 
     private static Task<ProfileCatalogSnapshot> LoadAsync(IHost host) =>
         host.Services.GetRequiredService<IProfilePluginLoader>().LoadAsync();
+
+    private static string ScanPath(params string[] segments) =>
+        Path.GetFullPath(Path.Combine([ScanRoot, .. segments]));
+
+    private static string ScanPattern(string suffixPattern) =>
+        $"^{Regex.Escape(ScanRoot)}[\\\\/]{suffixPattern}$";
+
+    private static void CopyAssemblyPackage(string assemblyPath, string destinationDirectory)
+    {
+        File.Copy(
+            assemblyPath,
+            Path.Combine(destinationDirectory, Path.GetFileName(assemblyPath)));
+        var dependencyFile = Path.ChangeExtension(assemblyPath, ".deps.json");
+        if (File.Exists(dependencyFile))
+        {
+            File.Copy(
+                dependencyFile,
+                Path.Combine(destinationDirectory, Path.GetFileName(dependencyFile)));
+        }
+    }
 
     private sealed class TestProfilePackages : IDisposable
     {
@@ -400,7 +490,6 @@ public sealed class ProfilePluginLoaderTests
                 entryAssembly = assemblyFileName,
                 modelType = modelType.FullName,
                 candidateKind = "Directory",
-                pathInput = "Relative",
                 rules,
             };
 
@@ -427,7 +516,6 @@ public sealed class ProfilePluginLoaderTests
                 version = "1.0.0",
                 displayName = profileId,
                 candidateKind = "Directory",
-                pathInput = "Relative",
                 fields = includeFields
                     ? fields ?? CreateDeclarativeFields()
                     : null,

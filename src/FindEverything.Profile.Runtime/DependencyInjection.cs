@@ -23,6 +23,9 @@ public static class DependencyInjection
 
         services.TryAddSingleton<ProfileManifestReader>();
         services.TryAddSingleton<ProfileModelCompiler>();
+        services.TryAddSingleton<AbsoluteProfilePathCanonicalizer>();
+        services.TryAddSingleton<IProfilePathCanonicalizer>(
+            static provider => provider.GetRequiredService<AbsoluteProfilePathCanonicalizer>());
         services.TryAddSingleton<IProfileDefinitionCompiler, ProfileDefinitionCompiler>();
         services.TryAddSingleton<ProfileCatalog>();
         services.TryAddSingleton<IProfileCatalog>(

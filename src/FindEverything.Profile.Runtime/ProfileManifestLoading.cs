@@ -32,7 +32,6 @@ internal sealed record ValidatedProfileManifest(
     string? EntryAssemblyPath,
     string? ModelType,
     ProfileCandidateKind CandidateKind,
-    ProfilePathInput PathInput,
     IReadOnlyList<ValidatedProfileField> Fields,
     IReadOnlyList<ValidatedRegexRule> Rules);
 
@@ -201,11 +200,6 @@ internal sealed class ProfileManifestValidator
             diagnostics.Add(Error("candidate_kind_invalid", "지원되지 않는 candidateKind입니다."));
         }
 
-        if (!Enum.IsDefined(manifest.PathInput))
-        {
-            diagnostics.Add(Error("path_input_invalid", "지원되지 않는 pathInput입니다."));
-        }
-
         string? entryAssemblyPath = null;
         var validatedFields = new List<ValidatedProfileField>();
         if (manifest.Kind == ProfileKind.Assembly)
@@ -268,7 +262,6 @@ internal sealed class ProfileManifestValidator
                 entryAssemblyPath,
                 modelType,
                 manifest.CandidateKind,
-                manifest.PathInput,
                 Array.AsReadOnly(validatedFields.ToArray()),
                 Array.AsReadOnly(validatedRules.ToArray())),
             id,

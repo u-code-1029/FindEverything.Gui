@@ -16,6 +16,7 @@ using FindEverything.Desktop.Configuration;
 using FindEverything.Desktop.Services;
 using FindEverything.Desktop.ViewModels;
 using FindEverything.Desktop.Views;
+using FindEverything.Desktop.Views.Controls;
 using FindEverything.Desktop.Views.Pages;
 using FindEverything.Infrastructure.FindEverything;
 using FindEverything.Profile.Runtime;
@@ -63,6 +64,7 @@ public sealed class DesktopCompositionSmokeTests
                 ["Appearance:Backdrop"] = "Auto",
             });
             var services = new ServiceCollection();
+            var blockingCatalogService = new BlockingCatalogService();
             services.AddLogging();
             services.AddSingleton<IConfiguration>(configuration);
             services
@@ -72,6 +74,9 @@ public sealed class DesktopCompositionSmokeTests
                 .AddDesktopPresentation(
                     configuration,
                     new AppPaths(Path.GetTempPath(), Path.Combine(Path.GetTempPath(), "findeverything-smoke.json")));
+            services.AddSingleton(blockingCatalogService);
+            services.AddSingleton<ICatalogService>(
+                static provider => provider.GetRequiredService<BlockingCatalogService>());
 
             using var provider = services.BuildServiceProvider(new ServiceProviderOptions
             {
@@ -146,22 +151,26 @@ public sealed class DesktopCompositionSmokeTests
 
     private static void VerifyScanConsole(IServiceProvider provider, MainWindow mainWindow)
     {
-        var windowService = provider.GetRequiredService<IScanConsoleWindowService>();
+        var panelController = provider.GetRequiredService<IScanConsolePanelController>();
         var sink = provider.GetRequiredService<ICatalogScanTraceSink>();
         var viewModel = provider.GetRequiredService<ScanConsoleViewModel>();
         Assert.Same(viewModel, sink);
+        Assert.Same(viewModel, panelController);
 
-        windowService.Show();
+        var panel = Assert.IsType<ScanConsolePanel>(
+            mainWindow.FindName("ScanConsolePanel"));
+        var toggleButton = Assert.IsType<Wpf.Ui.Controls.Button>(
+            mainWindow.FindName("ScanConsoleToggleButton"));
+        Assert.Equal(Visibility.Collapsed, panel.Visibility);
+
+        panelController.Show();
         mainWindow.Dispatcher.Invoke(static () => { }, DispatcherPriority.Loaded);
-        var firstWindow = Assert.Single(
-            System.Windows.Application.Current.Windows.OfType<ScanConsoleWindow>());
-        Assert.Same(mainWindow, firstWindow.Owner);
-        var traceList = Assert.IsType<ListBox>(firstWindow.FindName("TraceList"));
+        Assert.True(viewModel.IsPanelOpen);
+        Assert.Equal(Visibility.Visible, panel.Visibility);
+        var traceList = Assert.IsType<ListBox>(panel.FindName("TraceList"));
         Assert.True(VirtualizingPanel.GetIsVirtualizing(traceList));
         Assert.Equal(VirtualizationMode.Recycling, VirtualizingPanel.GetVirtualizationMode(traceList));
-
-        windowService.Show();
-        Assert.Single(System.Windows.Application.Current.Windows.OfType<ScanConsoleWindow>());
+        Assert.Single(System.Windows.Application.Current.Windows.OfType<MainWindow>());
 
         var operationId = Guid.NewGuid();
         sink.Report(new CatalogScanTraceEvent(
@@ -172,7 +181,6 @@ public sealed class DesktopCompositionSmokeTests
             "test-profile",
             "테스트 프로필",
             @"C:\Root",
-            ProfilePathInput.Relative,
             null,
             null,
             null,
@@ -190,10 +198,9 @@ public sealed class DesktopCompositionSmokeTests
             "test-profile",
             "테스트 프로필",
             @"C:\Root",
-            ProfilePathInput.Relative,
             @"C:\Root\2026\0521_Project",
             @"2026\0521_Project",
-            @"2026\0521_Project",
+            @"C:\Root\2026\0521_Project",
             ProfileMapStatus.Success,
             "project-rule",
             new Dictionary<string, object?> { ["date"] = new DateTime(2026, 5, 21) },
@@ -204,19 +211,62 @@ public sealed class DesktopCompositionSmokeTests
 
         Assert.Equal(2, viewModel.Lines.Count);
         Assert.Contains("[MATCH] [PRUNE]", viewModel.Lines[1].Text, StringComparison.Ordinal);
-        Assert.Contains("input=\"2026\\0521_Project\"", viewModel.Lines[1].Text, StringComparison.Ordinal);
+        Assert.Contains("input=\"C:\\Root\\2026\\0521_Project\"", viewModel.Lines[1].Text, StringComparison.Ordinal);
         Assert.Equal(1, viewModel.VisitedCount);
         Assert.Equal(1, viewModel.MatchedCount);
         Assert.Equal(1, viewModel.PrunedCount);
 
-        firstWindow.Close();
-        windowService.Show();
+        toggleButton.Command.Execute(null);
         mainWindow.Dispatcher.Invoke(static () => { }, DispatcherPriority.Loaded);
-        var reopenedWindow = Assert.Single(
-            System.Windows.Application.Current.Windows.OfType<ScanConsoleWindow>());
-        Assert.NotSame(firstWindow, reopenedWindow);
-        Assert.Same(viewModel, reopenedWindow.DataContext);
-        reopenedWindow.Close();
+        Assert.False(viewModel.IsPanelOpen);
+        Assert.Equal(Visibility.Collapsed, panel.Visibility);
+        Assert.Equal(2, viewModel.Lines.Count);
+
+        toggleButton.Command.Execute(null);
+        mainWindow.Dispatcher.Invoke(static () => { }, DispatcherPriority.Loaded);
+        Assert.True(viewModel.IsPanelOpen);
+        Assert.Equal(Visibility.Visible, panel.Visibility);
+
+        var catalog = provider.GetRequiredService<CatalogViewModel>();
+        var badge = Assert.IsType<InfoBadge>(mainWindow.FindName("CatalogScanBadge"));
+        var navigationItem = Assert.IsType<NavigationViewItem>(
+            mainWindow.FindName("CatalogNavigationItem"));
+        Assert.Equal(typeof(CatalogPage), navigationItem.TargetPageType);
+        Assert.Equal(Visibility.Collapsed, badge.Visibility);
+        catalog.IsScanning = true;
+        mainWindow.Dispatcher.Invoke(static () => { }, DispatcherPriority.DataBind);
+        Assert.Equal(Visibility.Visible, badge.Visibility);
+        badge.ApplyTemplate();
+        Assert.Contains(FindVisualChildren<ProgressRing>(badge), static ring => ring.IsIndeterminate);
+        catalog.IsScanning = false;
+        mainWindow.Dispatcher.Invoke(static () => { }, DispatcherPriority.DataBind);
+        Assert.Equal(Visibility.Collapsed, badge.Visibility);
+
+        viewModel.ClosePanelCommand.Execute(null);
+        var profile = new StubLoadedProfile();
+        provider.GetRequiredService<IProfileCatalogPublisher>().Publish(
+            new ProfileCatalogSnapshot([profile], [], DateTimeOffset.UtcNow));
+        catalog.RootPath = Path.GetTempPath();
+        var scanTask = catalog.ScanCommand.ExecuteAsync(null);
+
+        Assert.True(catalog.IsScanning);
+        Assert.True(viewModel.IsPanelOpen);
+        Assert.Equal(Visibility.Visible, panel.Visibility);
+        mainWindow.Dispatcher.Invoke(static () => { }, DispatcherPriority.DataBind);
+        Assert.Equal(Visibility.Visible, badge.Visibility);
+        PumpDispatcherUntil(
+            mainWindow.Dispatcher,
+            () => provider.GetRequiredService<BlockingCatalogService>().HasStarted,
+            TimeSpan.FromSeconds(3));
+
+        provider.GetRequiredService<BlockingCatalogService>().Complete(profile.Descriptor);
+        PumpDispatcherUntil(
+            mainWindow.Dispatcher,
+            () => scanTask.IsCompleted,
+            TimeSpan.FromSeconds(3));
+        scanTask.GetAwaiter().GetResult();
+        Assert.False(catalog.IsScanning);
+        Assert.Equal(Visibility.Collapsed, badge.Visibility);
     }
 
     private static void PumpDispatcherFor(Dispatcher dispatcher, TimeSpan duration)
@@ -236,6 +286,20 @@ public sealed class DesktopCompositionSmokeTests
             timer.Tick -= OnTick;
             frame.Continue = false;
         }
+    }
+
+    private static void PumpDispatcherUntil(
+        Dispatcher dispatcher,
+        Func<bool> condition,
+        TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (!condition() && DateTime.UtcNow < deadline)
+        {
+            PumpDispatcherFor(dispatcher, TimeSpan.FromMilliseconds(20));
+        }
+
+        Assert.True(condition(), $"조건이 {timeout.TotalSeconds:0.#}초 안에 충족되지 않았습니다.");
     }
 
     private static void VerifyProfilesScrolling(Window window, ProfilesPage page)
@@ -300,12 +364,12 @@ public sealed class DesktopCompositionSmokeTests
     {
         var nameField = Assert.Single(viewModel.DraftFields);
         viewModel.ClearFieldAssignmentsCommand.Execute(nameField);
-        viewModel.SamplePath = @"Archive\2026\0521_Project-A";
+        viewModel.SamplePath = @"C:\Archive\2026\0521_Project-A";
         viewModel.BuildTemplateFromSampleCommand.ExecuteAsync(null).GetAwaiter().GetResult();
-        Assert.Equal(3, viewModel.GuidedPathSegments.Count);
+        Assert.Equal(4, viewModel.GuidedPathSegments.Count);
 
         viewModel.BeginAssignValueCommand.Execute(nameField);
-        viewModel.AssignPathChoiceCommand.Execute(viewModel.GuidedPathSegments[0].WholeChoice);
+        viewModel.AssignPathChoiceCommand.Execute(viewModel.GuidedPathSegments[1].WholeChoice);
 
         viewModel.AddFieldCommand.Execute(null);
         var dateField = viewModel.DraftFields[1];
@@ -313,14 +377,14 @@ public sealed class DesktopCompositionSmokeTests
         dateField.Kind = ProfileFieldValueKind.DateTime;
         dateField.DateSourcePreset = GuidedDateSourcePreset.YearAndMonthDay;
         viewModel.BeginAssignYearCommand.Execute(dateField);
-        viewModel.AssignPathChoiceCommand.Execute(viewModel.GuidedPathSegments[1].WholeChoice);
+        viewModel.AssignPathChoiceCommand.Execute(viewModel.GuidedPathSegments[2].WholeChoice);
         var monthDay = Assert.Single(
-            viewModel.GuidedPathSegments[2].PartChoices,
+            viewModel.GuidedPathSegments[3].PartChoices,
             static choice => choice.Value == "0521");
         viewModel.AssignPathChoiceCommand.Execute(monthDay);
 
         Assert.Equal(
-            "{name@name}/{field-1@field_1Year}/{field-1@field_1MonthDay}_Project-A",
+            "C:/{name@name}/{field-1@field_1Year}/{field-1@field_1MonthDay}_Project-A",
             viewModel.DraftPathTemplate);
         Assert.NotEmpty(viewModel.GeneratedPatternPreview);
         Assert.Contains("Project-A", viewModel.DraftPathTemplate);
@@ -511,6 +575,61 @@ public sealed class DesktopCompositionSmokeTests
                 yield return descendant;
             }
         }
+    }
+
+    private sealed class BlockingCatalogService : ICatalogService
+    {
+        private readonly TaskCompletionSource _started = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource<CatalogResult> _completion = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public bool HasStarted => _started.Task.IsCompleted;
+
+        public async Task<CatalogResult> DiscoverAsync(
+            CatalogRequest request,
+            IProgress<CatalogOperationProgress>? progress = null,
+            CancellationToken cancellationToken = default)
+        {
+            _started.TrySetResult();
+            return await _completion.Task.WaitAsync(cancellationToken);
+        }
+
+        public Task<CatalogResult> LoadExistingAsync(
+            CatalogRequest request,
+            IProgress<CatalogOperationProgress>? progress = null,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<CatalogResult> ScanAndLoadAsync(
+            CatalogRequest request,
+            IProgress<CatalogOperationProgress>? progress = null,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public void Complete(ProfileDescriptor descriptor) =>
+            _completion.TrySetResult(new CatalogResult(
+                descriptor,
+                [],
+                [],
+                0,
+                0,
+                false,
+                null));
+    }
+
+    private sealed class StubLoadedProfile : ILoadedProfile
+    {
+        public ProfileDescriptor Descriptor { get; } = new(
+            "scan-smoke-profile",
+            "1.0.0",
+            "스캔 스모크 프로필",
+            ProfileCandidateKind.Directory,
+            [],
+            []);
+
+        public ProfileMapResult Map(ProfilePathCandidate candidate) =>
+            ProfileMapResult.NoMatch();
     }
 
     private sealed record FilterContext(string FilterText);

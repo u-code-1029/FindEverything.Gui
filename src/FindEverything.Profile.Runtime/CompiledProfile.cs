@@ -27,12 +27,7 @@ internal sealed class CompiledProfile : ILoadedProfile
     public ProfileMapResult Map(ProfilePathCandidate candidate)
     {
         ArgumentNullException.ThrowIfNull(candidate);
-        ArgumentException.ThrowIfNullOrWhiteSpace(candidate.FullPath);
-        ArgumentException.ThrowIfNullOrWhiteSpace(candidate.RelativePath);
-
-        var input = Descriptor.PathInput == ProfilePathInput.Full
-            ? candidate.FullPath
-            : candidate.RelativePath;
+        var input = candidate.AbsolutePath;
 
         foreach (var rule in _rules)
         {
@@ -166,8 +161,7 @@ internal sealed class CompiledProfile : ILoadedProfile
             return ProfileMapResult.Success(
                 new MappedProfileItem(
                     Descriptor.Id,
-                    candidate.FullPath,
-                    candidate.RelativePath,
+                    candidate.AbsolutePath,
                     rule.Id,
                     model,
                     readOnlyValues),

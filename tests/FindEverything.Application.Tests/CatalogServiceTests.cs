@@ -62,8 +62,7 @@ public sealed class CatalogServiceTests
             .ToArray();
         Assert.Equal([root, terminalPath, siblingPath], visits.Select(static entry => entry.FullPath));
         Assert.Equal([".", "terminal", "sibling"], visits.Select(static entry => entry.RelativePath));
-        Assert.Equal([".", "terminal", "sibling"], visits.Select(static entry => entry.MatchInput));
-        Assert.All(visits, static entry => Assert.Equal(ProfilePathInput.Relative, entry.PathInput));
+        Assert.Equal([root, terminalPath, siblingPath], visits.Select(static entry => entry.MatchInput));
         Assert.Equal(
             [ProfileMapStatus.NoMatch, ProfileMapStatus.Invalid, ProfileMapStatus.Success],
             visits.Select(static entry => entry.MappingStatus));
@@ -76,6 +75,57 @@ public sealed class CatalogServiceTests
         Assert.Equal("conversion", Assert.Single(visits[1].Issues).Code);
         Assert.Equal(DirectoryTraversalDecision.SkipDescendants, visits[1].TraversalDecision);
         Assert.Equal(DirectoryTraversalDecision.Continue, visits[2].TraversalDecision);
+    }
+
+    [Fact]
+    public async Task Discover_keeps_the_scan_root_identity_but_maps_profiles_with_the_canonical_root()
+    {
+        var root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "catalog-mapped-root"));
+        var terminalPath = Path.Combine(root, "terminal");
+        var hiddenPath = Path.Combine(terminalPath, "hidden");
+        var siblingPath = Path.Combine(root, "sibling");
+        var canonicalRoot = Path.GetFullPath(Path.Combine(
+            Path.GetTempPath(),
+            "unc",
+            "192.168.10.20",
+            "share"));
+        var discovery = new FakeDiscoveryService(root, terminalPath, hiddenPath, siblingPath);
+        var trace = new RecordingTraceSink();
+        var services = new ServiceCollection();
+        services.AddFindEverythingApplication(new ConfigurationBuilder().Build());
+        services.AddSingleton<IProfilePathCanonicalizer>(
+            new PrefixCanonicalizer(root, canonicalRoot));
+        services.AddSingleton<IIndexSessionFactory, ThrowingSessionFactory>();
+        services.AddSingleton<IDirectoryDiscoveryService>(discovery);
+        services.AddSingleton<IProfileResolver>(new FakeProfileResolver(new PruningProfile()));
+        services.AddSingleton<ICatalogScanTraceSink>(trace);
+
+        await using var provider = services.BuildServiceProvider();
+        var service = provider.GetRequiredService<ICatalogService>();
+
+        var result = await service.DiscoverAsync(new CatalogRequest("test", root, "unused.db"));
+
+        Assert.Equal([root, terminalPath, siblingPath], discovery.VisitedPaths);
+        Assert.Equal(
+            Path.Combine(canonicalRoot, "sibling"),
+            Assert.Single(result.Items).FullPath);
+        Assert.Equal(
+            Path.Combine(canonicalRoot, "terminal"),
+            Assert.Single(result.InvalidItems).FullPath);
+        var visits = trace.Events
+            .Where(static entry => entry.Kind == CatalogScanTraceKind.DirectoryVisited)
+            .ToArray();
+        Assert.All(visits, entry => Assert.Equal(root, entry.RootPath));
+        Assert.Equal(
+            [root, terminalPath, siblingPath],
+            visits.Select(static entry => entry.FullPath));
+        Assert.Equal(
+            [
+                canonicalRoot,
+                Path.Combine(canonicalRoot, "terminal"),
+                Path.Combine(canonicalRoot, "sibling"),
+            ],
+            visits.Select(static entry => entry.MatchInput));
     }
 
     [Fact]
@@ -216,6 +266,43 @@ public sealed class CatalogServiceTests
     }
 
     [Fact]
+    public async Task LoadExisting_queries_the_raw_index_root_and_maps_results_with_the_canonical_root()
+    {
+        var root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "catalog-index-mapped-root"));
+        var canonicalRoot = Path.GetFullPath(Path.Combine(
+            Path.GetTempPath(),
+            "unc",
+            "192.168.10.20",
+            "indexed-share"));
+        var directoryPath = Path.Combine(root, "good");
+        var sessionFactory = new FakeSessionFactory([
+            new IndexedDirectory(
+                directoryPath,
+                "good",
+                root,
+                DateTimeOffset.MinValue,
+                DateTimeOffset.MinValue,
+                false),
+        ]);
+        var services = new ServiceCollection();
+        services.AddFindEverythingApplication(new ConfigurationBuilder().Build());
+        services.AddSingleton<IProfilePathCanonicalizer>(
+            new PrefixCanonicalizer(root, canonicalRoot));
+        services.AddSingleton<IIndexSessionFactory>(sessionFactory);
+        services.AddSingleton<IDirectoryDiscoveryService, UnsupportedDiscoveryService>();
+        services.AddSingleton<IProfileResolver>(new FakeProfileResolver(new FakeProfile()));
+
+        await using var provider = services.BuildServiceProvider();
+        var result = await provider.GetRequiredService<ICatalogService>().LoadExistingAsync(
+            new CatalogRequest("test", root, "index.db"));
+
+        Assert.Equal(root, sessionFactory.LastSearchRoot);
+        Assert.Equal(
+            Path.Combine(canonicalRoot, "good"),
+            Assert.Single(result.Items).FullPath);
+    }
+
+    [Fact]
     public async Task ScanAndLoad_keeps_the_legacy_index_refresh_contract()
     {
         var root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "catalog-scan-root"));
@@ -252,11 +339,14 @@ public sealed class CatalogServiceTests
     {
         public int ScanCalls { get; private set; }
 
+        public string? LastSearchRoot { get; private set; }
+
         public IIndexSession Create(string databasePath) =>
             new FakeSession(
                 databasePath,
                 directories,
-                allowScan ? () => ScanCalls++ : null);
+                allowScan ? () => ScanCalls++ : null,
+                rootPath => LastSearchRoot = rootPath);
     }
 
     private sealed class ThrowingSessionFactory : IIndexSessionFactory
@@ -391,7 +481,8 @@ public sealed class CatalogServiceTests
     private sealed class FakeSession(
         string databasePath,
         IReadOnlyList<IndexedDirectory> directories,
-        Action? onScan) : IIndexSession
+        Action? onScan,
+        Action<string> onSearch) : IIndexSession
     {
         public string DatabasePath { get; } = databasePath;
 
@@ -418,8 +509,13 @@ public sealed class CatalogServiceTests
 
         public Task<DirectorySearchResult> SearchDirectoriesAsync(
             DirectorySearchRequest request,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult(new DirectorySearchResult(directories, HasPendingScopes: false));
+            CancellationToken cancellationToken = default)
+        {
+            onSearch(request.RootPath);
+            return Task.FromResult(new DirectorySearchResult(
+                directories,
+                HasPendingScopes: false));
+        }
 
         public Task<EntrySearchResult> SearchEntriesAsync(
             EntrySearchRequest request,
@@ -445,6 +541,24 @@ public sealed class CatalogServiceTests
         }
     }
 
+    private sealed class PrefixCanonicalizer(string sourceRoot, string canonicalRoot)
+        : IProfilePathCanonicalizer
+    {
+        public string Canonicalize(string path)
+        {
+            var absolutePath = Path.GetFullPath(path);
+            if (absolutePath.Equals(sourceRoot, StringComparison.Ordinal))
+            {
+                return canonicalRoot;
+            }
+
+            var prefix = sourceRoot + Path.DirectorySeparatorChar;
+            return absolutePath.StartsWith(prefix, StringComparison.Ordinal)
+                ? Path.Combine(canonicalRoot, absolutePath[prefix.Length..])
+                : absolutePath;
+        }
+    }
+
     private sealed class FakeProfile : ILoadedProfile
     {
         private static readonly ProfileFieldDescriptor NameField = new(
@@ -463,24 +577,23 @@ public sealed class CatalogServiceTests
             "1.0.0",
             "Test",
             ProfileCandidateKind.Directory,
-            ProfilePathInput.Relative,
             [NameField],
             []);
 
         public ProfileMapResult Map(ProfilePathCandidate candidate)
         {
-            if (candidate.RelativePath == "bad")
+            var name = Path.GetFileName(candidate.AbsolutePath);
+            if (name == "bad")
             {
                 return ProfileMapResult.Invalid([
                     new ProfileMappingIssue("bad_path", "name", "Bad test path."),
                 ]);
             }
 
-            var values = new Dictionary<string, object?> { ["name"] = candidate.RelativePath };
+            var values = new Dictionary<string, object?> { ["name"] = name };
             return ProfileMapResult.Success(new MappedProfileItem(
                 "test",
-                candidate.FullPath,
-                candidate.RelativePath,
+                candidate.AbsolutePath,
                 "test-rule",
                 new object(),
                 values));
@@ -505,18 +618,14 @@ public sealed class CatalogServiceTests
             "1.0.0",
             "Test",
             ProfileCandidateKind.Directory,
-            ProfilePathInput.Relative,
             [NameField],
             []);
 
         public ProfileMapResult Map(ProfilePathCandidate candidate)
         {
-            if (candidate.RelativePath == ".")
-            {
-                return ProfileMapResult.NoMatch();
-            }
+            var name = Path.GetFileName(candidate.AbsolutePath);
 
-            if (candidate.RelativePath == "terminal")
+            if (name == "terminal")
             {
                 return ProfileMapResult.Invalid(
                     [new ProfileMappingIssue("conversion", "name", "Invalid terminal value.")],
@@ -524,11 +633,15 @@ public sealed class CatalogServiceTests
                     shouldPruneDescendants: true);
             }
 
-            var values = new Dictionary<string, object?> { ["name"] = candidate.RelativePath };
+            if (name != "sibling")
+            {
+                return ProfileMapResult.NoMatch();
+            }
+
+            var values = new Dictionary<string, object?> { ["name"] = name };
             return ProfileMapResult.Success(new MappedProfileItem(
                 "test",
-                candidate.FullPath,
-                candidate.RelativePath,
+                candidate.AbsolutePath,
                 "test-rule",
                 new object(),
                 values));

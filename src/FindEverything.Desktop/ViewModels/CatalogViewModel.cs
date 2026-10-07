@@ -20,7 +20,7 @@ public partial class CatalogViewModel : ObservableObject
     private readonly IDesktopPickerService _pickerService;
     private readonly IPathLauncher _pathLauncher;
     private readonly IApplicationOperationCoordinator _operationCoordinator;
-    private readonly IScanConsoleWindowService _scanConsoleWindowService;
+    private readonly IScanConsolePanelController _scanConsolePanelController;
     private readonly ISnackbarService _snackbarService;
     private readonly ILogger<CatalogViewModel> _logger;
     private CatalogItemViewModel[] _loadedItems = [];
@@ -59,6 +59,9 @@ public partial class CatalogViewModel : ObservableObject
     private bool _isBusy;
 
     [ObservableProperty]
+    private bool _isScanning;
+
+    [ObservableProperty]
     private string _progressMessage = "프로필과 검색 위치를 선택하세요.";
 
     [ObservableProperty]
@@ -80,7 +83,7 @@ public partial class CatalogViewModel : ObservableObject
         IDesktopPickerService pickerService,
         IPathLauncher pathLauncher,
         IApplicationOperationCoordinator operationCoordinator,
-        IScanConsoleWindowService scanConsoleWindowService,
+        IScanConsolePanelController scanConsolePanelController,
         ISnackbarService snackbarService,
         ILogger<CatalogViewModel> logger)
     {
@@ -90,7 +93,7 @@ public partial class CatalogViewModel : ObservableObject
         _pickerService = pickerService;
         _pathLauncher = pathLauncher;
         _operationCoordinator = operationCoordinator;
-        _scanConsoleWindowService = scanConsoleWindowService;
+        _scanConsolePanelController = scanConsolePanelController;
         _snackbarService = snackbarService;
         _logger = logger;
 
@@ -243,20 +246,6 @@ public partial class CatalogViewModel : ObservableObject
         _operationCoordinator.Cancel();
     }
 
-    [RelayCommand]
-    private void OpenScanConsole()
-    {
-        try
-        {
-            _scanConsoleWindowService.Show();
-        }
-        catch (Exception exception)
-        {
-            _logger.LogWarning(exception, "Could not open the scan diagnostics window.");
-            ShowSnackbar("탐색 로그 열기 실패", exception.Message, ControlAppearance.Danger);
-        }
-    }
-
     [RelayCommand(CanExecute = nameof(CanOpenSelected))]
     private void OpenSelected()
     {
@@ -308,6 +297,7 @@ public partial class CatalogViewModel : ObservableObject
         }
 
         IsBusy = true;
+        IsScanning = discoverDirectly;
         SetStatus(operationName, $"{operationName} 작업을 시작했습니다.", InfoBarSeverity.Informational);
         var progress = CreateProgress();
         CatalogResult? result = null;
@@ -319,7 +309,7 @@ public partial class CatalogViewModel : ObservableObject
             var request = CreateRequest(workspace);
             if (discoverDirectly)
             {
-                OpenScanConsole();
+                _scanConsolePanelController.Show();
             }
 
             await _operationCoordinator.RunAsync(async cancellationToken =>
@@ -360,6 +350,7 @@ public partial class CatalogViewModel : ObservableObject
         }
         finally
         {
+            IsScanning = false;
             IsBusy = false;
         }
     }

@@ -24,7 +24,8 @@ public interface IProfileDefinitionCompiler
 
 internal sealed class ProfileDefinitionCompiler(
     IOptions<PluginDiscoveryOptions> options,
-    ProfileModelCompiler modelCompiler) : IProfileDefinitionCompiler
+    ProfileModelCompiler modelCompiler,
+    IProfilePathCanonicalizer pathCanonicalizer) : IProfileDefinitionCompiler
 {
     private readonly ProfileManifestValidator _manifestValidator = new();
 
@@ -61,13 +62,22 @@ internal sealed class ProfileDefinitionCompiler(
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(samplePath);
 
+        if (!Path.IsPathFullyQualified(samplePath))
+        {
+            throw new ArgumentException(
+                "드라이브 또는 UNC 루트를 포함한 전체 폴더 경로를 입력하세요.",
+                nameof(samplePath));
+        }
+
+        var absolutePath = pathCanonicalizer.Canonicalize(samplePath);
+
         var review = Validate(manifest);
         if (!review.IsValid || review.Profile is null)
         {
             return new ProfileDefinitionTestResult(review, null);
         }
 
-        var mapping = review.Profile.Map(new ProfilePathCandidate(samplePath, samplePath));
+        var mapping = review.Profile.Map(new ProfilePathCandidate(absolutePath));
         return new ProfileDefinitionTestResult(review, mapping);
     }
 }

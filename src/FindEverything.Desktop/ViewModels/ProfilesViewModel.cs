@@ -21,6 +21,7 @@ public partial class ProfilesViewModel : ObservableObject
     private readonly IProfileCatalog _profileCatalog;
     private readonly IProfileAuthoringService _authoringService;
     private readonly IProfilePathTemplateCompiler _pathTemplateCompiler;
+    private readonly IProfilePathCanonicalizer _pathCanonicalizer;
     private readonly IPathLauncher _pathLauncher;
     private readonly IApplicationOperationCoordinator _operationCoordinator;
     private readonly ISnackbarService _snackbarService;
@@ -58,9 +59,6 @@ public partial class ProfilesViewModel : ObservableObject
 
     [ObservableProperty]
     private string _draftId = string.Empty;
-
-    [ObservableProperty]
-    private SettingChoice<ProfilePathInput> _selectedPathInput = null!;
 
     [ObservableProperty]
     private bool _canEditDraftId = true;
@@ -122,6 +120,7 @@ public partial class ProfilesViewModel : ObservableObject
         IProfileCatalog profileCatalog,
         IProfileAuthoringService authoringService,
         IProfilePathTemplateCompiler pathTemplateCompiler,
+        IProfilePathCanonicalizer pathCanonicalizer,
         IPathLauncher pathLauncher,
         IApplicationOperationCoordinator operationCoordinator,
         ISnackbarService snackbarService,
@@ -131,17 +130,13 @@ public partial class ProfilesViewModel : ObservableObject
         _profileCatalog = profileCatalog;
         _authoringService = authoringService;
         _pathTemplateCompiler = pathTemplateCompiler;
+        _pathCanonicalizer = pathCanonicalizer;
         _pathLauncher = pathLauncher;
         _operationCoordinator = operationCoordinator;
         _snackbarService = snackbarService;
         _contentDialogService = contentDialogService;
         _logger = logger;
 
-        PathInputChoices =
-        [
-            new(ProfilePathInput.Relative, "검색 루트 기준 상대 경로 (권장)"),
-            new(ProfilePathInput.Full, "드라이브를 포함한 전체 경로"),
-        ];
         FieldKindChoices =
         [
             new(ProfileFieldValueKind.String, "텍스트"),
@@ -161,15 +156,11 @@ public partial class ProfilesViewModel : ObservableObject
             new(GuidedDateSourcePreset.YearAndMonthDay, "연도 + 월일"),
             new(GuidedDateSourcePreset.YearMonthAndDay, "연도 + 월 + 일"),
         ];
-        SelectedPathInput = PathInputChoices[0];
-
         ApplySnapshot(profileCatalog.Current, preferredProfileId: null);
         _profileCatalog.Changed += OnProfileCatalogChanged;
         NewDraft();
         _ = RefreshEditableProfilesAsync();
     }
-
-    public IReadOnlyList<SettingChoice<ProfilePathInput>> PathInputChoices { get; }
 
     public IReadOnlyList<SettingChoice<ProfileFieldValueKind>> FieldKindChoices { get; }
 
@@ -204,9 +195,6 @@ public partial class ProfilesViewModel : ObservableObject
     partial void OnDraftDisplayNameChanged(string value) => MarkDraftChanged();
 
     partial void OnDraftIdChanged(string value) => MarkDraftChanged();
-
-    partial void OnSelectedPathInputChanged(SettingChoice<ProfilePathInput> value) =>
-        MarkDraftChanged();
 
     partial void OnSamplePathChanged(string value)
     {
@@ -264,7 +252,6 @@ public partial class ProfilesViewModel : ObservableObject
             CanEditDraftId = true;
             DraftDisplayName = "새 프로필";
             DraftId = $"profile-{DateTime.Now:yyyyMMddHHmmss}";
-            SelectedPathInput = PathInputChoices[0];
             EditorMode = ProfileEditorMode.Guided;
             CanUseGuidedMode = true;
             _activeAssignmentField = null;
@@ -289,11 +276,14 @@ public partial class ProfilesViewModel : ObservableObject
                 Pattern = @"(?<name>[^\\/]+)",
                 PathTemplate = "{name@name}",
             });
-            SamplePath = "Example";
+            SamplePath = @"C:\Example";
             AnalyzeSamplePathCore(SamplePath);
-            DraftFields[0].SetGuidedAssignment(
-                GuidedSourcePart.Value,
-                GuidedPathSegments[0].WholeChoice);
+            if (GuidedPathSegments.Count > 0)
+            {
+                DraftFields[0].SetGuidedAssignment(
+                    GuidedSourcePart.Value,
+                    GuidedPathSegments[^1].WholeChoice);
+            }
             RebuildGuidedTemplate();
             TestRows = [];
             TestSummary = "기본 예제를 바로 시험하거나 실제 경로에 맞게 수정하세요.";
@@ -343,7 +333,21 @@ public partial class ProfilesViewModel : ObservableObject
             return;
         }
 
-        var normalizedSamplePath = SamplePath.Trim().Replace('\\', '/');
+        var samplePath = SamplePath.Trim();
+        try
+        {
+            samplePath = _pathCanonicalizer.Canonicalize(samplePath);
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException or IOException or NotSupportedException)
+        {
+            TemplateStatusMessage = exception.Message;
+            TemplateStatusSeverity = InfoBarSeverity.Error;
+            return;
+        }
+
+        SamplePath = samplePath;
+        var normalizedSamplePath = samplePath.Replace('\\', '/');
         if (DraftFields.Any(static field => field.HasGuidedAssignments)
             && !string.Equals(
                 normalizedSamplePath,
@@ -374,7 +378,7 @@ public partial class ProfilesViewModel : ObservableObject
                 field.ClearGuidedAssignments();
             }
 
-            AnalyzeSamplePathCore(SamplePath);
+            AnalyzeSamplePathCore(samplePath);
         }
         finally
         {
@@ -679,7 +683,7 @@ public partial class ProfilesViewModel : ObservableObject
         {
             case ProfileMapStatus.NoMatch:
                 TestRows = [];
-                TestSummary = "어떤 규칙에도 일치하지 않습니다. 경로 입력 기준과 정규식을 확인하세요.";
+                TestSummary = "어떤 규칙에도 일치하지 않습니다. 입력한 절대 경로와 정규식을 확인하세요.";
                 SetEditorStatus(TestSummary, InfoBarSeverity.Warning);
                 break;
             case ProfileMapStatus.Invalid:
@@ -863,7 +867,6 @@ public partial class ProfilesViewModel : ObservableObject
             Version = _draftVersion,
             DisplayName = DraftDisplayName.Trim(),
             CandidateKind = ProfileCandidateKind.Directory,
-            PathInput = SelectedPathInput.Value,
             Fields = fields,
             Rules = rules,
         };
@@ -882,9 +885,6 @@ public partial class ProfilesViewModel : ObservableObject
             CanEditDraftId = false;
             DraftDisplayName = manifest.DisplayName ?? string.Empty;
             DraftId = manifest.Id ?? string.Empty;
-            SelectedPathInput = PathInputChoices.FirstOrDefault(choice =>
-                    choice.Value == manifest.PathInput)
-                ?? PathInputChoices[0];
             DraftFields.Clear();
             DraftRules.Clear();
             GuidedPathSegments = [];
@@ -1573,10 +1573,6 @@ public sealed class ProfileSummaryViewModel(ProfileDescriptor descriptor)
     public string CandidateKind => Descriptor.CandidateKind == ProfileCandidateKind.Directory
         ? "폴더"
         : Descriptor.CandidateKind.ToString();
-
-    public string PathInput => Descriptor.PathInput == ProfilePathInput.Relative
-        ? "상대 경로"
-        : "전체 경로";
 
     public int FieldCount => Descriptor.Fields.Count;
 }

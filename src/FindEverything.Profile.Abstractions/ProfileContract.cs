@@ -5,5 +5,5 @@ namespace FindEverything.Profile.Abstractions;
 /// </summary>
 public static class ProfileContract
 {
-    public const int CurrentMajor = 1;
+    public const int CurrentMajor = 2;
 }

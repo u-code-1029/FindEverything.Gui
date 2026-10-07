@@ -2,6 +2,7 @@ using FindEverything.Application.Catalog;
 using FindEverything.Application.FileSearch;
 using FindEverything.Application.Options;
 using FindEverything.Application.Profiles;
+using FindEverything.Profile.Runtime;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -48,6 +49,9 @@ public static class DependencyInjection
             static provider => provider.GetRequiredService<ValidatedSettingsState<AppearanceOptions>>());
         services.AddSingleton<IValidatedSettingsUpdater<AppearanceOptions>>(
             static provider => provider.GetRequiredService<ValidatedSettingsState<AppearanceOptions>>());
+        services.TryAddSingleton<AbsoluteProfilePathCanonicalizer>();
+        services.TryAddSingleton<IProfilePathCanonicalizer>(
+            static provider => provider.GetRequiredService<AbsoluteProfilePathCanonicalizer>());
         services.AddSingleton<ICatalogService, CatalogService>();
         services.TryAddSingleton<ICatalogScanTraceSink, NullCatalogScanTraceSink>();
         services.AddSingleton<IFileSearchService, FileSearchService>();

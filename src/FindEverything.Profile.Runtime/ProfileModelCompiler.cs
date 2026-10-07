@@ -150,7 +150,6 @@ internal sealed class ProfileModelCompiler
             manifest.Version,
             manifest.DisplayName,
             manifest.CandidateKind,
-            manifest.PathInput,
             Array.AsReadOnly(descriptors),
             Array.AsReadOnly(manifest.Rules
                 .Select(static (rule, index) => new ProfileRegexRuleDescriptor(
