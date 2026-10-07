@@ -99,6 +99,13 @@ public partial class ProfilesViewModel : ObservableObject
     private string _regexDebugInputPath = string.Empty;
 
     [ObservableProperty]
+    private ProfileDirectoryExclusionTestResultViewModel? _directoryExclusionTestResult;
+
+    [ObservableProperty]
+    private IReadOnlyList<ProfileRegexDebugRuleViewModel>
+        _directoryExclusionRegexDebugRules = [];
+
+    [ObservableProperty]
     private string _testSummary = "예제 경로를 입력하면 실제 변환 결과를 미리 볼 수 있습니다.";
 
     [ObservableProperty]
@@ -186,6 +193,11 @@ public partial class ProfilesViewModel : ObservableObject
 
     public bool HasRegexDebugRules => RegexDebugRules.Count > 0;
 
+    public bool HasDirectoryExclusionTestResult => DirectoryExclusionTestResult is not null;
+
+    public bool HasDirectoryExclusionRegexDebugRules =>
+        DirectoryExclusionRegexDebugRules.Count > 0;
+
     public ObservableCollection<ProfileFieldDraftViewModel> DraftFields { get; } = [];
 
     public ObservableCollection<ProfileRuleDraftViewModel> DraftRules { get; } = [];
@@ -235,6 +247,14 @@ public partial class ProfilesViewModel : ObservableObject
     partial void OnRegexDebugRulesChanged(
         IReadOnlyList<ProfileRegexDebugRuleViewModel> value) =>
         OnPropertyChanged(nameof(HasRegexDebugRules));
+
+    partial void OnDirectoryExclusionTestResultChanged(
+        ProfileDirectoryExclusionTestResultViewModel? value) =>
+        OnPropertyChanged(nameof(HasDirectoryExclusionTestResult));
+
+    partial void OnDirectoryExclusionRegexDebugRulesChanged(
+        IReadOnlyList<ProfileRegexDebugRuleViewModel> value) =>
+        OnPropertyChanged(nameof(HasDirectoryExclusionRegexDebugRules));
 
     partial void OnEditorModeChanged(ProfileEditorMode value)
     {
@@ -755,14 +775,34 @@ public partial class ProfilesViewModel : ObservableObject
                     var debugRules = ProfileRegexDebugBuilder.Build(
                         canonicalSamplePath,
                         manifest.Rules ?? []);
+                    var directoryName = GetDirectoryLeafName(canonicalSamplePath);
+                    var directoryExclusionRules = manifest.ExcludedDirectoryNameRules ?? [];
+                    var directoryExclusionDebugRules = string.IsNullOrEmpty(directoryName)
+                        ? Array.Empty<ProfileRegexDebugRuleViewModel>()
+                        : ProfileRegexDebugBuilder.BuildDirectoryName(
+                            directoryName,
+                            directoryExclusionRules);
                     var definitionResult = _authoringService.Test(
                         manifest,
                         canonicalSamplePath);
-                    return (canonicalSamplePath, debugRules, definitionResult);
+                    var directoryExclusionResult = BuildDirectoryExclusionTestResult(
+                        directoryName,
+                        directoryExclusionRules.Count,
+                        definitionResult.Review.Profile);
+                    return (
+                        canonicalSamplePath,
+                        debugRules,
+                        directoryExclusionDebugRules,
+                        directoryExclusionResult,
+                        definitionResult);
                 }).ConfigureAwait(true);
 
                 RegexDebugInputPath = evaluation.canonicalSamplePath;
                 RegexDebugRules = evaluation.debugRules;
+                DirectoryExclusionTestResult =
+                    evaluation.directoryExclusionResult;
+                DirectoryExclusionRegexDebugRules =
+                    evaluation.directoryExclusionDebugRules;
                 result = evaluation.definitionResult;
             }
             catch
@@ -1290,6 +1330,94 @@ public partial class ProfilesViewModel : ObservableObject
     {
         RegexDebugRules = [];
         RegexDebugInputPath = string.Empty;
+        DirectoryExclusionRegexDebugRules = [];
+        DirectoryExclusionTestResult = null;
+    }
+
+    internal static string GetDirectoryLeafName(string canonicalPath)
+    {
+        var root = Path.GetPathRoot(canonicalPath);
+        if (!string.IsNullOrEmpty(root)
+            && string.Equals(
+                Path.TrimEndingDirectorySeparator(canonicalPath),
+                Path.TrimEndingDirectorySeparator(root),
+                OperatingSystem.IsWindows()
+                    ? StringComparison.OrdinalIgnoreCase
+                    : StringComparison.Ordinal))
+        {
+            return string.Empty;
+        }
+
+        return Path.GetFileName(Path.TrimEndingDirectorySeparator(canonicalPath));
+    }
+
+    internal static ProfileDirectoryExclusionTestResultViewModel
+        BuildDirectoryExclusionTestResult(
+            string directoryName,
+            int ruleCount,
+            ILoadedProfile? profile)
+    {
+        const string directScanScope =
+            "이 판정은 구조화 보기의 ‘프로필로 빠르게 불러오기’에서 검색 루트 아래 폴더에만 적용됩니다. "
+            + "입력 경로 자체를 검색 루트로 선택한 경우에는 명시적 루트 예외로 제외하지 않으며, "
+            + "파일 인덱싱과 기존 인덱스 불러오기에도 적용하지 않습니다.";
+
+        if (string.IsNullOrEmpty(directoryName))
+        {
+            return new ProfileDirectoryExclusionTestResultViewModel(
+                "(드라이브 또는 공유 루트)",
+                "leaf 폴더 이름이 없어 제외 판정을 생략했습니다.",
+                directScanScope,
+                InfoBarSeverity.Informational);
+        }
+
+        if (ruleCount == 0)
+        {
+            return new ProfileDirectoryExclusionTestResultViewModel(
+                directoryName,
+                "제외 규칙이 없어 이 폴더를 계속 탐색합니다.",
+                directScanScope,
+                InfoBarSeverity.Informational);
+        }
+
+        if (profile is null)
+        {
+            return new ProfileDirectoryExclusionTestResultViewModel(
+                directoryName,
+                "프로필 정의 오류로 제외 여부를 판정할 수 없습니다.",
+                "아래 색상 디버깅과 검증 메시지에서 잘못된 정규식을 확인하세요. "
+                + directScanScope,
+                InfoBarSeverity.Error);
+        }
+
+        var evaluation = profile.EvaluateDirectoryName(directoryName);
+        if (evaluation.IsExcluded)
+        {
+            return new ProfileDirectoryExclusionTestResultViewModel(
+                directoryName,
+                $"규칙 ‘{evaluation.MatchedRuleId}’과 일치해 현재 폴더와 하위를 건너뜁니다.",
+                "같은 부모의 다음 폴더 탐색은 계속합니다. " + directScanScope,
+                InfoBarSeverity.Success);
+        }
+
+        if (evaluation.Issues.Count > 0)
+        {
+            return new ProfileDirectoryExclusionTestResultViewModel(
+                directoryName,
+                "제외 규칙을 안전하게 판정하지 못해 이 폴더를 계속 탐색합니다.",
+                string.Join(
+                    Environment.NewLine,
+                    evaluation.Issues.Select(static issue => $"• {issue.Message}"))
+                + Environment.NewLine
+                + directScanScope,
+                InfoBarSeverity.Warning);
+        }
+
+        return new ProfileDirectoryExclusionTestResultViewModel(
+            directoryName,
+            "어떤 제외 규칙에도 일치하지 않아 이 폴더를 계속 탐색합니다.",
+            directScanScope,
+            InfoBarSeverity.Informational);
     }
 
     private List<ProfileFieldManifest> BuildFieldManifests() =>
@@ -1720,6 +1848,21 @@ public partial class ProfilesViewModel : ObservableObject
 
     private static string? NormalizeOptional(string value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+}
+
+public sealed class ProfileDirectoryExclusionTestResultViewModel(
+    string leafName,
+    string title,
+    string message,
+    InfoBarSeverity severity)
+{
+    public string LeafName { get; } = leafName;
+
+    public string Title { get; } = title;
+
+    public string Message { get; } = message;
+
+    public InfoBarSeverity Severity { get; } = severity;
 }
 
 public sealed class ProfileSummaryViewModel(ProfileDescriptor descriptor)

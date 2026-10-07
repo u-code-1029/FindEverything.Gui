@@ -252,6 +252,10 @@ internal sealed class ProfileManifestValidator
             manifest.ExcludedDirectoryNameRules,
             diagnostics);
         var validatedRules = ValidateRules(manifest.Rules, diagnostics);
+        ValidateAggregateRegexTimeoutBudget(
+            manifest.Rules,
+            manifest.ExcludedDirectoryNameRules,
+            diagnostics);
 
         if (diagnostics.Any(static diagnostic =>
                 diagnostic.Severity == ProfileDiagnosticSeverity.Error))
@@ -586,19 +590,6 @@ internal sealed class ProfileManifestValidator
                 $"정규식 규칙은 최대 {ProfileManifestLimits.MaximumRegexRuleCount}개까지 사용할 수 있습니다."));
         }
 
-        var aggregateTimeoutMilliseconds = rules.Aggregate(
-            0L,
-            static (total, rule) => total + Math.Max(0L, rule.TimeoutMilliseconds));
-        if (aggregateTimeoutMilliseconds
-            > ProfileManifestLimits.MaximumAggregateRegexTimeoutMilliseconds)
-        {
-            diagnostics.Add(Error(
-                "regex_timeout_budget_exceeded",
-                $"정규식 규칙의 시간 제한 합계는 최대 "
-                + $"{ProfileManifestLimits.MaximumAggregateRegexTimeoutMilliseconds:N0}ms여야 합니다. "
-                + $"현재 합계: {aggregateTimeoutMilliseconds:N0}ms."));
-        }
-
         var ruleIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (var index = 0; index < rules.Count; index++)
         {
@@ -755,6 +746,35 @@ internal sealed class ProfileManifestValidator
         }
 
         return validated;
+    }
+
+    private static void ValidateAggregateRegexTimeoutBudget(
+        IReadOnlyList<ProfileRegexRuleManifest>? pathRules,
+        IReadOnlyList<ProfileDirectoryNameExclusionRuleManifest>? exclusionRules,
+        ICollection<ProfileDiagnostic> diagnostics)
+    {
+        var pathTimeoutMilliseconds = pathRules?.Aggregate(
+            0L,
+            static (total, rule) => total + Math.Max(0L, rule.TimeoutMilliseconds)) ?? 0L;
+        var exclusionTimeoutMilliseconds = exclusionRules?.Aggregate(
+            0L,
+            static (total, rule) => total + Math.Max(0L, rule.TimeoutMilliseconds)) ?? 0L;
+        var aggregateTimeoutMilliseconds =
+            pathTimeoutMilliseconds + exclusionTimeoutMilliseconds;
+
+        if (aggregateTimeoutMilliseconds
+            <= ProfileManifestLimits.MaximumAggregateRegexTimeoutMilliseconds)
+        {
+            return;
+        }
+
+        diagnostics.Add(Error(
+            "regex_timeout_budget_exceeded",
+            "한 프로필의 정규식 제한 시간 합계(경로 규칙 + 폴더 이름 제외 규칙)는 최대 "
+            + $"{ProfileManifestLimits.MaximumAggregateRegexTimeoutMilliseconds:N0}ms여야 합니다. "
+            + $"현재 합계: {aggregateTimeoutMilliseconds:N0}ms "
+            + $"(경로: {pathTimeoutMilliseconds:N0}ms, "
+            + $"폴더 이름 제외: {exclusionTimeoutMilliseconds:N0}ms)."));
     }
 
     private static List<string> ValidateStopTraversalGroups(

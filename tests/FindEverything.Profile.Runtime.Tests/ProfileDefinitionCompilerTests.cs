@@ -411,6 +411,104 @@ public sealed class ProfileDefinitionCompilerTests
     }
 
     [Fact]
+    public void Validation_rejects_combined_path_and_exclusion_timeout_budget()
+    {
+        using var provider = BuildProvider();
+        var manifest = CompositeDateManifest();
+        var pathTimeout = ProfileManifestLimits.MaximumAggregateRegexTimeoutMilliseconds / 2;
+        var exclusionTimeout =
+            ProfileManifestLimits.MaximumAggregateRegexTimeoutMilliseconds - pathTimeout + 1;
+        manifest.Rules![0].TimeoutMilliseconds = pathTimeout;
+        manifest.ExcludedDirectoryNameRules =
+        [
+            new ProfileDirectoryNameExclusionRuleManifest
+            {
+                Id = "slow-exclusion",
+                Pattern = "slow",
+                MatchMode = ProfileRegexMatchMode.Partial,
+                TimeoutMilliseconds = exclusionTimeout,
+            },
+        ];
+
+        var review = provider
+            .GetRequiredService<IProfileDefinitionCompiler>()
+            .Validate(manifest);
+
+        Assert.False(review.IsValid);
+        var diagnostic = Assert.Single(
+            review.Diagnostics,
+            static diagnostic => diagnostic.Code == "regex_timeout_budget_exceeded");
+        Assert.Contains(
+            $"경로: {pathTimeout:N0}ms",
+            diagnostic.Message,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            $"폴더 이름 제외: {exclusionTimeout:N0}ms",
+            diagnostic.Message,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Validation_accepts_combined_timeout_at_the_aggregate_budget_boundary()
+    {
+        using var provider = BuildProvider();
+        var manifest = CompositeDateManifest();
+        const int pathTimeout = 100;
+        manifest.Rules![0].TimeoutMilliseconds = pathTimeout;
+        manifest.ExcludedDirectoryNameRules =
+        [
+            new ProfileDirectoryNameExclusionRuleManifest
+            {
+                Id = "bounded-exclusion",
+                Pattern = "bounded",
+                MatchMode = ProfileRegexMatchMode.Partial,
+                TimeoutMilliseconds =
+                    ProfileManifestLimits.MaximumAggregateRegexTimeoutMilliseconds - pathTimeout,
+            },
+        ];
+
+        var review = provider
+            .GetRequiredService<IProfileDefinitionCompiler>()
+            .Validate(manifest);
+
+        Assert.True(review.IsValid);
+    }
+
+    [Fact]
+    public void Validation_rejects_exclusion_rules_that_exhaust_the_shared_timeout_budget()
+    {
+        using var provider = BuildProvider();
+        var manifest = CompositeDateManifest();
+        manifest.Rules![0].TimeoutMilliseconds = 1;
+        manifest.ExcludedDirectoryNameRules =
+        [
+            new ProfileDirectoryNameExclusionRuleManifest
+            {
+                Id = "first-exclusion",
+                Pattern = "first",
+                TimeoutMilliseconds = 5_000,
+            },
+            new ProfileDirectoryNameExclusionRuleManifest
+            {
+                Id = "second-exclusion",
+                Pattern = "second",
+                TimeoutMilliseconds = 5_000,
+            },
+        ];
+
+        var review = provider
+            .GetRequiredService<IProfileDefinitionCompiler>()
+            .Validate(manifest);
+
+        Assert.False(review.IsValid);
+        var diagnostic = Assert.Single(
+            review.Diagnostics,
+            static diagnostic => diagnostic.Code == "regex_timeout_budget_exceeded");
+        Assert.Contains("폴더 이름 제외: 10,000ms", diagnostic.Message, StringComparison.Ordinal);
+        Assert.Contains("현재 합계: 10,001ms", diagnostic.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Validation_rejects_excessive_path_pattern_length()
     {
         using var provider = BuildProvider();

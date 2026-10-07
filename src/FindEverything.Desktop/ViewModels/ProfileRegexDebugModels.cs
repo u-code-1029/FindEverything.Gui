@@ -113,13 +113,72 @@ internal static class ProfileRegexDebugBuilder
     public static IReadOnlyList<ProfileRegexDebugRuleViewModel> Build(
         string input,
         IReadOnlyList<ProfileRegexRuleManifest> rules) =>
-        Build(input, rules, MaximumPreviewDuration, MaximumDisplayedRuleCount);
+        Build(
+            input,
+            rules,
+            MaximumPreviewDuration,
+            MaximumDisplayedRuleCount,
+            RegexDebugSubject.AbsolutePath);
+
+    /// <summary>
+    /// Builds the same raw-pattern and named-group visualization for directory
+    /// exclusion rules. The input must be one canonical path's leaf name, which
+    /// is the exact value supplied to the runtime exclusion evaluator.
+    /// </summary>
+    public static IReadOnlyList<ProfileRegexDebugRuleViewModel> BuildDirectoryName(
+        string directoryName,
+        IReadOnlyList<ProfileDirectoryNameExclusionRuleManifest> rules) =>
+        Build(
+            directoryName,
+            rules.Select(static rule => new ProfileRegexRuleManifest
+            {
+                Id = rule.Id,
+                Pattern = rule.Pattern,
+                MatchMode = rule.MatchMode,
+                IgnoreCase = rule.IgnoreCase,
+                TimeoutMilliseconds = rule.TimeoutMilliseconds,
+            }).ToArray(),
+            MaximumPreviewDuration,
+            MaximumDisplayedRuleCount,
+            RegexDebugSubject.DirectoryName);
 
     internal static IReadOnlyList<ProfileRegexDebugRuleViewModel> Build(
         string input,
         IReadOnlyList<ProfileRegexRuleManifest> rules,
         TimeSpan previewDuration,
         int maximumDisplayedRuleCount)
+        => Build(
+            input,
+            rules,
+            previewDuration,
+            maximumDisplayedRuleCount,
+            RegexDebugSubject.AbsolutePath);
+
+    internal static IReadOnlyList<ProfileRegexDebugRuleViewModel> BuildDirectoryName(
+        string directoryName,
+        IReadOnlyList<ProfileDirectoryNameExclusionRuleManifest> rules,
+        TimeSpan previewDuration,
+        int maximumDisplayedRuleCount) =>
+        Build(
+            directoryName,
+            rules.Select(static rule => new ProfileRegexRuleManifest
+            {
+                Id = rule.Id,
+                Pattern = rule.Pattern,
+                MatchMode = rule.MatchMode,
+                IgnoreCase = rule.IgnoreCase,
+                TimeoutMilliseconds = rule.TimeoutMilliseconds,
+            }).ToArray(),
+            previewDuration,
+            maximumDisplayedRuleCount,
+            RegexDebugSubject.DirectoryName);
+
+    private static IReadOnlyList<ProfileRegexDebugRuleViewModel> Build(
+        string input,
+        IReadOnlyList<ProfileRegexRuleManifest> rules,
+        TimeSpan previewDuration,
+        int maximumDisplayedRuleCount,
+        RegexDebugSubject subject)
     {
         ArgumentNullException.ThrowIfNull(input);
         ArgumentNullException.ThrowIfNull(rules);
@@ -154,7 +213,13 @@ internal static class ProfileRegexDebugBuilder
                 return result;
             }
 
-            var rule = BuildRule(input, rules[ruleIndex], ruleIndex, budget, out var budgetReached);
+            var rule = BuildRule(
+                input,
+                rules[ruleIndex],
+                ruleIndex,
+                subject,
+                budget,
+                out var budgetReached);
             result.Add(rule);
             if (budgetReached && ruleIndex + 1 < rules.Count)
             {
@@ -180,6 +245,7 @@ internal static class ProfileRegexDebugBuilder
         string input,
         ProfileRegexRuleManifest rule,
         int ruleIndex,
+        RegexDebugSubject subject,
         PreviewBudget budget,
         out bool budgetReached)
     {
@@ -191,8 +257,13 @@ internal static class ProfileRegexDebugBuilder
         var accent = Palette[ruleIndex % Palette.Length];
         var accentBrush = Freeze(accent, byte.MaxValue);
         var matchMode = rule.MatchMode == ProfileRegexMatchMode.Full
-            ? "전체 경로 일치 규칙"
+            ? subject == RegexDebugSubject.DirectoryName
+                ? "폴더 이름 전체 일치"
+                : "전체 경로 일치 규칙"
             : "부분 일치 규칙";
+        var maximumPatternLength = subject == RegexDebugSubject.DirectoryName
+            ? ProfileManifestLimits.MaximumExcludedDirectoryNamePatternLength
+            : ProfileManifestLimits.MaximumRegexPatternLength;
 
         if (string.IsNullOrWhiteSpace(pattern))
         {
@@ -206,14 +277,14 @@ internal static class ProfileRegexDebugBuilder
                 accent);
         }
 
-        if (pattern.Length > ProfileManifestLimits.MaximumRegexPatternLength)
+        if (pattern.Length > maximumPatternLength)
         {
             return ErrorRule(
                 input,
                 ruleId,
                 pattern,
                 matchMode,
-                $"패턴은 최대 {ProfileManifestLimits.MaximumRegexPatternLength:N0}자까지 사용할 수 있습니다.",
+                $"패턴은 최대 {maximumPatternLength:N0}자까지 사용할 수 있습니다.",
                 accentBrush,
                 accent);
         }
@@ -374,6 +445,7 @@ internal static class ProfileRegexDebugBuilder
                 pattern,
                 matchMode,
                 BuildStatus(
+                    subject,
                     rule.MatchMode,
                     actualRuleMatches,
                     matches,
@@ -474,6 +546,7 @@ internal static class ProfileRegexDebugBuilder
     }
 
     private static string BuildStatus(
+        RegexDebugSubject subject,
         ProfileRegexMatchMode matchMode,
         bool actualRuleMatches,
         IReadOnlyCollection<Match> matches,
@@ -523,11 +596,17 @@ internal static class ProfileRegexDebugBuilder
 
         if (matchMode == ProfileRegexMatchMode.Full)
         {
+            var fullMatchDescription = subject == RegexDebugSubject.DirectoryName
+                ? "실제 폴더 이름 전체 일치"
+                : "실제 전체 경로 일치";
+            var requirementDescription = subject == RegexDebugSubject.DirectoryName
+                ? "실제 빠른 불러오기에서는 폴더 이름 전체가 일치해야 합니다."
+                : "실제 스캔에서는 전체 경로가 일치해야 합니다.";
             return actualRuleMatches
-                ? $"실제 전체 경로 일치 · 원본 패턴 후보 {positiveMatches.Count:N0}개{notice}"
+                ? $"{fullMatchDescription} · 원본 패턴 후보 {positiveMatches.Count:N0}개{notice}"
                 : fullEvaluationTimedOut || fullEvaluationSkippedByBudget
                     ? $"부분 후보 {positiveMatches.Count:N0}개{notice}"
-                    : $"부분 후보 {positiveMatches.Count:N0}개 · 실제 스캔에서는 전체 경로가 일치해야 합니다.{notice}";
+                    : $"부분 후보 {positiveMatches.Count:N0}개 · {requirementDescription}{notice}";
         }
 
         return $"부분 일치 {positiveMatches.Count:N0}개{notice}";
@@ -662,6 +741,12 @@ internal static class ProfileRegexDebugBuilder
             effectiveTimeout = limitedByBudget ? remaining : configuredTimeout;
             return true;
         }
+    }
+
+    private enum RegexDebugSubject
+    {
+        AbsolutePath,
+        DirectoryName,
     }
 
     private readonly record struct HighlightRange(int Start, int Length)

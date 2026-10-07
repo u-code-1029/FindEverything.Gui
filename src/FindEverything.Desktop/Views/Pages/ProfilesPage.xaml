@@ -59,6 +59,103 @@
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="CornerRadius" Value="8" />
         </Style>
+        <Style x:Key="RegexDebugItemsControlStyle" TargetType="ItemsControl">
+            <Setter Property="ItemTemplate">
+                <Setter.Value>
+                    <DataTemplate>
+                        <Border
+                            Margin="0,0,0,12"
+                            Padding="14"
+                            Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{Binding AccentBrush}"
+                            BorderThickness="3,1,1,1"
+                            CornerRadius="7">
+                            <StackPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock FontWeight="SemiBold" Text="{Binding RuleId}" />
+                                    <TextBlock
+                                        Grid.Column="1"
+                                        Margin="12,0,0,0"
+                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                        Text="{Binding MatchMode}" />
+                                </Grid>
+                                <TextBlock
+                                    Margin="0,5,0,0"
+                                    FontFamily="Consolas"
+                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                    Text="{Binding Pattern}"
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    Margin="0,5,0,10"
+                                    FontWeight="SemiBold"
+                                    Text="{Binding Status}"
+                                    TextWrapping="Wrap" />
+                                <ItemsControl ItemsSource="{Binding Lanes}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="0,0,0,8">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="150" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel Margin="0,1,12,0">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <Border
+                                                            Width="10"
+                                                            Height="10"
+                                                            Margin="0,0,7,0"
+                                                            VerticalAlignment="Center"
+                                                            Background="{Binding MarkerBrush}"
+                                                            CornerRadius="2" />
+                                                        <TextBlock
+                                                            FontWeight="SemiBold"
+                                                            Text="{Binding Label}"
+                                                            TextTrimming="CharacterEllipsis"
+                                                            ToolTip="{Binding Label}" />
+                                                    </StackPanel>
+                                                    <TextBlock
+                                                        Margin="17,2,0,0"
+                                                        FontSize="11"
+                                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                        Text="{Binding Detail}" />
+                                                </StackPanel>
+                                                <ScrollViewer
+                                                    Grid.Column="1"
+                                                    HorizontalScrollBarVisibility="Auto"
+                                                    VerticalScrollBarVisibility="Disabled">
+                                                    <ItemsControl ItemsSource="{Binding Segments}">
+                                                        <ItemsControl.ItemsPanel>
+                                                            <ItemsPanelTemplate>
+                                                                <StackPanel Orientation="Horizontal" />
+                                                            </ItemsPanelTemplate>
+                                                        </ItemsControl.ItemsPanel>
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate>
+                                                                <Border Background="{Binding BackgroundBrush}">
+                                                                    <TextBlock
+                                                                        Padding="1,3"
+                                                                        FontFamily="Consolas"
+                                                                        Text="{Binding Text}"
+                                                                        ToolTip="{Binding ToolTip}" />
+                                                                </Border>
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                    </ItemsControl>
+                                                </ScrollViewer>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Page.Resources>
 
     <Grid Margin="24,0,24,24">
@@ -333,7 +430,7 @@
                                     </ItemsControl>
                                     <TextBlock
                                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                        Text="규칙이 없으면 모든 폴더를 방문합니다. 최대 64개까지 추가할 수 있으며, 검증 버튼으로 정규식 오류를 확인할 수 있습니다."
+                                        Text="규칙이 없으면 모든 폴더를 방문합니다. 최대 64개이며, 경로 규칙과 폴더 제외 규칙의 시간 제한 합계는 프로필당 10,000ms 이하여야 합니다. 검증 버튼으로 오류를 확인하세요."
                                         TextWrapping="Wrap" />
                                 </StackPanel>
                             </Border>
@@ -733,7 +830,7 @@
                                     <TextBlock
                                         Margin="0,4,0,16"
                                         Style="{StaticResource CaptionTextStyle}"
-                                        Text="결과 컬럼과 정규식을 직접 연결합니다. 경로 규칙은 최대 64개, pattern은 규칙당 최대 4,096자이며 제한 시간 합계는 10,000ms 이하여야 합니다."
+                                        Text="결과 컬럼과 정규식을 직접 연결합니다. 경로 규칙은 최대 64개, pattern은 규칙당 최대 4,096자이며 폴더 제외 규칙까지 합친 제한 시간은 프로필당 10,000ms 이하여야 합니다."
                                         TextWrapping="Wrap" />
 
                                     <TextBlock Style="{StaticResource FieldLabelStyle}" Text="결과 컬럼" />
@@ -916,6 +1013,72 @@
                                         Text="{Binding TestSummary}"
                                         TextWrapping="Wrap" />
                                     <Border
+                                        x:Name="DirectoryExclusionResultPanel"
+                                        Margin="0,4,0,12"
+                                        Padding="16"
+                                        AutomationProperties.Name="폴더 이름 제외 판정 결과"
+                                        Background="{DynamicResource ControlFillColorSecondaryBrush}"
+                                        CornerRadius="8"
+                                        Visibility="{Binding HasDirectoryExclusionTestResult, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                        <StackPanel>
+                                            <TextBlock FontSize="15" FontWeight="SemiBold" Text="폴더 이름 제외 판정" />
+                                            <TextBlock
+                                                Margin="0,4,0,10"
+                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                Text="전체 경로가 아니라 canonical 경로의 마지막 폴더 이름 하나만 실제 컴파일된 프로필에 전달합니다."
+                                                TextWrapping="Wrap" />
+                                            <Grid Margin="0,0,0,10">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock FontWeight="SemiBold" Text="입력 leaf" />
+                                                <TextBlock
+                                                    Grid.Column="1"
+                                                    Margin="12,0,0,0"
+                                                    FontFamily="Consolas"
+                                                    Text="{Binding DirectoryExclusionTestResult.LeafName}"
+                                                    TextTrimming="CharacterEllipsis"
+                                                    ToolTip="{Binding DirectoryExclusionTestResult.LeafName}" />
+                                            </Grid>
+                                            <ui:InfoBar
+                                                AutomationProperties.LiveSetting="Polite"
+                                                IsClosable="False"
+                                                IsOpen="True"
+                                                Message="{Binding DirectoryExclusionTestResult.Message}"
+                                                Severity="{Binding DirectoryExclusionTestResult.Severity}"
+                                                Title="{Binding DirectoryExclusionTestResult.Title}" />
+                                        </StackPanel>
+                                    </Border>
+                                    <Border
+                                        x:Name="DirectoryExclusionRegexDebugPanel"
+                                        Margin="0,4,0,12"
+                                        Padding="16"
+                                        AutomationProperties.Name="폴더 제외 정규식 색상 디버깅"
+                                        Background="{DynamicResource ControlFillColorSecondaryBrush}"
+                                        CornerRadius="8"
+                                        Visibility="{Binding HasDirectoryExclusionRegexDebugRules, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                        <StackPanel>
+                                            <TextBlock FontSize="15" FontWeight="SemiBold" Text="폴더 제외 정규식 색상 디버깅" />
+                                            <TextBlock
+                                                Margin="0,4,0,4"
+                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                Text="각 제외 pattern의 원본 부분 후보와 named group을 색상별 행으로 표시합니다. Full 규칙은 폴더 이름 전체 일치 여부를 별도로 확인합니다."
+                                                TextWrapping="Wrap" />
+                                            <TextBlock
+                                                Margin="0,0,0,12"
+                                                FontFamily="Consolas"
+                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                Text="{Binding DirectoryExclusionTestResult.LeafName}"
+                                                TextTrimming="CharacterEllipsis"
+                                                ToolTip="{Binding DirectoryExclusionTestResult.LeafName}" />
+                                            <ItemsControl
+                                                ItemsSource="{Binding DirectoryExclusionRegexDebugRules}"
+                                                Style="{StaticResource RegexDebugItemsControlStyle}" />
+                                        </StackPanel>
+                                    </Border>
+                                    <Border
+                                        x:Name="PathRegexDebugPanel"
                                         Margin="0,4,0,12"
                                         Padding="16"
                                         AutomationProperties.Name="정규식 색상 디버깅"

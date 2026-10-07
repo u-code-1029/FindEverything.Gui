@@ -110,7 +110,7 @@
                     Padding="0"
                     AutomationProperties.ItemStatus="{Binding ScanConsole.PanelToggleToolTip}"
                     AutomationProperties.Name="{Binding ScanConsole.PanelToggleToolTip}"
-                    Command="{Binding ScanConsole.TogglePanelCommand}"
+                    Command="{Binding ToggleScanConsoleCommand}"
                     Icon="{ui:SymbolIcon Symbol=PanelBottom20}"
                     ToolTip="{Binding ScanConsole.PanelToggleToolTip}">
                     <ui:Button.Style>

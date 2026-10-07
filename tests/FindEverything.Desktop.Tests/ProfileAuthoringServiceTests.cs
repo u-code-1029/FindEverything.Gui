@@ -78,6 +78,9 @@ public sealed class ProfileAuthoringServiceTests
         Assert.Equal(ProfileMapStatus.Success, sample.Mapping?.Status);
         Assert.Equal("Beta", sample.Mapping?.Item?.Values["client"]);
         Assert.Equal(2025, sample.Mapping?.Item?.Values["year"]);
+        var loadedExclusion = sample.Review.Profile!.EvaluateDirectoryName("node_modules");
+        Assert.True(loadedExclusion.IsExcluded);
+        Assert.Equal("skip-node-modules", loadedExclusion.MatchedRuleId);
 
         savedManifest.DisplayName = "Updated GUI Sample";
         var updated = await service.SaveAndApplyAsync(savedManifest, "gui-sample");

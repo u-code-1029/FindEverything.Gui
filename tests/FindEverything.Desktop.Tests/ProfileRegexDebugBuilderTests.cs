@@ -1,3 +1,4 @@
+using System.IO;
 using System.Windows.Media;
 using FindEverything.Desktop.ViewModels;
 using FindEverything.Profile.Runtime;
@@ -208,7 +209,75 @@ public sealed class ProfileRegexDebugBuilderTests
             static segment => segment.IsHighlighted);
     }
 
+    [Fact]
+    public void Directory_exclusion_full_rule_uses_leaf_semantics_and_keeps_named_group_highlights()
+    {
+        var partial = Assert.Single(ProfileRegexDebugBuilder.BuildDirectoryName(
+            "project-name-backup",
+            [ExclusionRule("skip-name", "(?<folder>name)", ProfileRegexMatchMode.Full)]));
+        var full = Assert.Single(ProfileRegexDebugBuilder.BuildDirectoryName(
+            "name",
+            [ExclusionRule("skip-name", "(?<folder>name)", ProfileRegexMatchMode.Full)]));
+
+        Assert.Equal("폴더 이름 전체 일치", partial.MatchMode);
+        Assert.Contains("부분 후보", partial.Status, StringComparison.Ordinal);
+        Assert.Contains("폴더 이름 전체가 일치", partial.Status, StringComparison.Ordinal);
+        Assert.Equal(["패턴", "folder"], partial.Lanes.Select(static lane => lane.Label));
+        Assert.Equal("name", HighlightedText(partial.Lanes[0]));
+        Assert.Equal("name", HighlightedText(partial.Lanes[1]));
+        Assert.Contains("실제 폴더 이름 전체 일치", full.Status, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Directory_exclusion_test_result_reports_leaf_match_and_direct_scan_scope()
+    {
+        var result = ProfilesViewModel.BuildDirectoryExclusionTestResult(
+            "name",
+            ruleCount: 1,
+            new ExcludingProfile());
+
+        Assert.Equal("name", result.LeafName);
+        Assert.Contains("skip-name", result.Title, StringComparison.Ordinal);
+        Assert.Contains("현재 폴더와 하위", result.Title, StringComparison.Ordinal);
+        Assert.Contains("다음 폴더", result.Message, StringComparison.Ordinal);
+        Assert.Contains("빠르게 불러오기", result.Message, StringComparison.Ordinal);
+        Assert.Contains("검색 루트", result.Message, StringComparison.Ordinal);
+        Assert.Contains("기존 인덱스", result.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Directory_leaf_name_is_taken_from_the_canonical_path()
+    {
+        var canonicalPath = Path.GetFullPath(Path.Combine(
+            Path.GetTempPath(),
+            "parent",
+            "name"));
+
+        Assert.Equal("name", ProfilesViewModel.GetDirectoryLeafName(canonicalPath));
+        Assert.Equal(
+            "name",
+            ProfilesViewModel.GetDirectoryLeafName(@"\\server\share\parent\name\"));
+        Assert.Equal(
+            string.Empty,
+            ProfilesViewModel.GetDirectoryLeafName(@"\\server\share\"));
+    }
+
     private static ProfileRegexRuleManifest Rule(
+        string id,
+        string pattern,
+        ProfileRegexMatchMode matchMode,
+        bool ignoreCase = true,
+        int timeoutMilliseconds = 100) =>
+        new()
+        {
+            Id = id,
+            Pattern = pattern,
+            MatchMode = matchMode,
+            IgnoreCase = ignoreCase,
+            TimeoutMilliseconds = timeoutMilliseconds,
+        };
+
+    private static ProfileDirectoryNameExclusionRuleManifest ExclusionRule(
         string id,
         string pattern,
         ProfileRegexMatchMode matchMode,
@@ -231,4 +300,24 @@ public sealed class ProfileRegexDebugBuilderTests
 
     private static Color BrushColor(Brush brush) =>
         Assert.IsType<SolidColorBrush>(brush).Color;
+
+    private sealed class ExcludingProfile : ILoadedProfile
+    {
+        public ProfileDescriptor Descriptor { get; } = new(
+            "test",
+            "1.0.0",
+            "Test",
+            ProfileCandidateKind.Directory,
+            [],
+            []);
+
+        public ProfileMapResult Map(ProfilePathCandidate candidate) =>
+            ProfileMapResult.NoMatch();
+
+        public ProfileDirectoryNameExclusionResult EvaluateDirectoryName(
+            string directoryName) =>
+            directoryName == "name"
+                ? ProfileDirectoryNameExclusionResult.Excluded("skip-name")
+                : ProfileDirectoryNameExclusionResult.NotExcluded();
+    }
 }

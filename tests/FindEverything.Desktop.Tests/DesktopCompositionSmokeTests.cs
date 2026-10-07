@@ -66,6 +66,9 @@ public sealed class DesktopCompositionSmokeTests
         App? application = null;
         MainWindow? window = null;
         Exception? failure = null;
+        var previousSynchronizationContext = SynchronizationContext.Current;
+        SynchronizationContext.SetSynchronizationContext(
+            new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
         try
         {
             application = new App();
@@ -162,6 +165,7 @@ public sealed class DesktopCompositionSmokeTests
                 failure ??= exception;
             }
 
+            SynchronizationContext.SetSynchronizationContext(previousSynchronizationContext);
             completion.TrySetResult(failure);
         }
     }
@@ -177,10 +181,6 @@ public sealed class DesktopCompositionSmokeTests
         Assert.Same(viewModel, sink);
         Assert.Same(viewModel, panelController);
 
-        Assert.True(provider.GetRequiredService<INavigationService>().Navigate(typeof(CatalogPage)));
-        mainWindow.Dispatcher.Invoke(static () => { }, DispatcherPriority.Loaded);
-        mainWindow.UpdateLayout();
-
         var panel = Assert.IsType<ScanConsolePanel>(
             catalogPage.FindName("ScanConsolePanel"));
         Assert.Null(mainWindow.FindName("ScanConsolePanel"));
@@ -191,6 +191,29 @@ public sealed class DesktopCompositionSmokeTests
         var navigation = Assert.IsType<NavigationView>(mainWindow.FindName("RootNavigation"));
         var snackbarPresenter = Assert.IsType<SnackbarPresenter>(
             mainWindow.FindName("SnackbarPresenter"));
+        var navigationService = provider.GetRequiredService<INavigationService>();
+
+        // The panel is page-local, but the title-bar button is global. A click from
+        // another page must navigate to the owning CatalogPage and reveal it instead
+        // of toggling invisible state.
+        Assert.True(navigationService.Navigate(typeof(FilesPage)));
+        mainWindow.Dispatcher.Invoke(static () => { }, DispatcherPriority.Loaded);
+        Assert.Equal(Visibility.Collapsed, panel.Visibility);
+        Assert.False(viewModel.IsPanelOpen);
+        Assert.NotNull(toggleButton.Command);
+        toggleButton.Command.Execute(null);
+        mainWindow.Dispatcher.Invoke(static () => { }, DispatcherPriority.Loaded);
+        mainWindow.UpdateLayout();
+        Assert.Equal(
+            typeof(CatalogPage),
+            Assert.IsType<NavigationViewItem>(navigation.SelectedItem).TargetPageType);
+        Assert.True(viewModel.IsPanelOpen);
+        Assert.Equal(Visibility.Visible, panel.Visibility);
+
+        toggleButton.Command.Execute(null);
+        mainWindow.Dispatcher.Invoke(static () => { }, DispatcherPriority.Loaded);
+        mainWindow.UpdateLayout();
+        Assert.False(viewModel.IsPanelOpen);
         Assert.Equal(Visibility.Collapsed, panel.Visibility);
         Assert.Equal(0, snackbarPresenter.Margin.Bottom);
         mainWindow.UpdateLayout();
@@ -198,7 +221,7 @@ public sealed class DesktopCompositionSmokeTests
         var pageLayoutHeight = pageLayout.ActualHeight;
         var pageContentHeight = pageContent.ActualHeight;
 
-        panelController.Show();
+        toggleButton.Command.Execute(null);
         mainWindow.Dispatcher.Invoke(static () => { }, DispatcherPriority.Loaded);
         mainWindow.UpdateLayout();
         Assert.True(viewModel.IsPanelOpen);
@@ -212,8 +235,10 @@ public sealed class DesktopCompositionSmokeTests
         var traceList = Assert.IsType<ListBox>(panel.FindName("TraceList"));
         Assert.True(VirtualizingPanel.GetIsVirtualizing(traceList));
         Assert.Equal(VirtualizationMode.Recycling, VirtualizingPanel.GetVirtualizationMode(traceList));
+        var contextMenu = Assert.IsType<System.Windows.Controls.ContextMenu>(
+            traceList.ContextMenu);
         Assert.Collection(
-            Assert.IsType<System.Windows.Controls.ContextMenu>(traceList.ContextMenu).Items.Cast<object>(),
+            contextMenu.Items.Cast<object>(),
             item => Assert.Equal(
                 "메시지 전체 복사",
                 Assert.IsType<System.Windows.Controls.MenuItem>(item).Header),
@@ -266,6 +291,21 @@ public sealed class DesktopCompositionSmokeTests
         Assert.Equal(1, viewModel.VisitedCount);
         Assert.Equal(1, viewModel.MatchedCount);
         Assert.Equal(1, viewModel.PrunedCount);
+
+        // Opening the real detached WPF ContextMenu must inherit the ListBox view
+        // model through PlacementTarget and bind both copy commands.
+        traceList.SelectedItem = viewModel.Lines[1];
+        contextMenu.PlacementTarget = traceList;
+        contextMenu.IsOpen = true;
+        mainWindow.Dispatcher.Invoke(static () => { }, DispatcherPriority.Loaded);
+        var menuItems = contextMenu.Items
+            .Cast<System.Windows.Controls.MenuItem>()
+            .ToArray();
+        Assert.Same(viewModel.CopySelectedMessageCommand, menuItems[0].Command);
+        Assert.Same(viewModel.CopySelectedPathCommand, menuItems[1].Command);
+        Assert.True(menuItems[0].IsEnabled);
+        Assert.True(menuItems[1].IsEnabled);
+        contextMenu.IsOpen = false;
 
         toggleButton.Command.Execute(null);
         mainWindow.Dispatcher.Invoke(static () => { }, DispatcherPriority.Loaded);
@@ -330,6 +370,7 @@ public sealed class DesktopCompositionSmokeTests
             () => scanTask.IsCompleted,
             TimeSpan.FromSeconds(3));
         scanTask.GetAwaiter().GetResult();
+        PumpDispatcherFor(mainWindow.Dispatcher, TimeSpan.FromMilliseconds(20));
         Assert.False(catalog.IsScanning);
         Assert.Equal(Visibility.Collapsed, badge.Visibility);
         var notification = Assert.Single(
@@ -385,7 +426,7 @@ public sealed class DesktopCompositionSmokeTests
         Assert.True(templateBox.IsReadOnly);
         Assert.IsType<Border>(page.FindName("AssignmentPickerPanel"));
         Assert.NotEmpty(viewModel.GuidedPathSegments);
-        VerifyGuidedPathButtonAuthoring(window, viewModel);
+        VerifyGuidedPathButtonAuthoring(window, page, viewModel);
 
         PumpLayout(window, page);
         VerifyProfilesFluentControls(page);
@@ -433,6 +474,7 @@ public sealed class DesktopCompositionSmokeTests
 
     private static void VerifyGuidedPathButtonAuthoring(
         Window window,
+        ProfilesPage page,
         ProfilesViewModel viewModel)
     {
         var nameField = Assert.Single(viewModel.DraftFields);
@@ -504,7 +546,7 @@ public sealed class DesktopCompositionSmokeTests
 
         viewModel.AddDirectoryExclusionRuleCommand.Execute(null);
         var exclusion = Assert.Single(viewModel.DraftExcludedDirectoryNameRules);
-        exclusion.Pattern = "cache";
+        exclusion.Pattern = @"(?<excludedLeaf>0521_Project-A)";
         Assert.Equal(ProfileRegexMatchMode.Full, exclusion.MatchMode);
 
         var testTask = viewModel.TestDraftCommand.ExecuteAsync(null);
@@ -513,15 +555,41 @@ public sealed class DesktopCompositionSmokeTests
             () => testTask.IsCompleted,
             TimeSpan.FromSeconds(5));
         testTask.GetAwaiter().GetResult();
+        PumpDispatcherFor(window.Dispatcher, TimeSpan.FromMilliseconds(20));
 
         Assert.Equal(2, viewModel.TestRows.Count);
         Assert.True(viewModel.HasRegexDebugRules);
         Assert.Single(viewModel.RegexDebugRules);
         Assert.Equal(Path.GetFullPath(viewModel.SamplePath), viewModel.RegexDebugInputPath);
+        Assert.True(viewModel.HasDirectoryExclusionTestResult);
+        Assert.Equal(
+            "0521_Project-A",
+            Assert.IsType<ProfileDirectoryExclusionTestResultViewModel>(
+                viewModel.DirectoryExclusionTestResult).LeafName);
+        Assert.Contains(
+            "exclude-1",
+            viewModel.DirectoryExclusionTestResult.Title,
+            StringComparison.Ordinal);
+        Assert.True(viewModel.HasDirectoryExclusionRegexDebugRules);
+        var exclusionDebug = Assert.Single(viewModel.DirectoryExclusionRegexDebugRules);
+        Assert.Equal(["패턴", "excludedLeaf"], exclusionDebug.Lanes.Select(static lane => lane.Label));
+
+        window.UpdateLayout();
+        Assert.Equal(
+            Visibility.Visible,
+            Assert.IsType<Border>(page.FindName("PathRegexDebugPanel")).Visibility);
+        Assert.Equal(
+            Visibility.Visible,
+            Assert.IsType<Border>(page.FindName("DirectoryExclusionResultPanel")).Visibility);
+        Assert.Equal(
+            Visibility.Visible,
+            Assert.IsType<Border>(page.FindName("DirectoryExclusionRegexDebugPanel")).Visibility);
 
         viewModel.SamplePath += "-changed";
         Assert.Empty(viewModel.TestRows);
         Assert.False(viewModel.HasRegexDebugRules);
+        Assert.False(viewModel.HasDirectoryExclusionTestResult);
+        Assert.False(viewModel.HasDirectoryExclusionRegexDebugRules);
         Assert.Contains("다시 시험", viewModel.EditorStatusMessage, StringComparison.Ordinal);
     }
 

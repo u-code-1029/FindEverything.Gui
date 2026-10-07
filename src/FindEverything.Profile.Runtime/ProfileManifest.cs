@@ -14,6 +14,10 @@ public static class ProfileManifestLimits
 
     public const int MaximumRegexPatternLength = 4096;
 
+    /// <summary>
+    /// Maximum sum of every path-rule and directory-name-exclusion-rule timeout
+    /// configured by a single profile.
+    /// </summary>
     public const int MaximumAggregateRegexTimeoutMilliseconds = 10_000;
 
     public const int MaximumExcludedDirectoryNameRuleCount = 64;
