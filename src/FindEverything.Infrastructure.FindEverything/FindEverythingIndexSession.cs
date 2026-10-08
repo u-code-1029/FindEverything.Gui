@@ -209,11 +209,16 @@ internal sealed class FindEverythingIndexSession : IIndexSession
         var deferral = options.Deferral;
         ArgumentNullException.ThrowIfNull(deferral.DirectoryNames);
         ArgumentNullException.ThrowIfNull(deferral.Paths);
+        var inspectDirectory = request.InspectDirectory;
 
         return new Engine.ScanRequest(request.RootPath)
         {
             ScopePath = request.ScopePath,
             OnDemand = request.OnDemand,
+            InspectDirectory = inspectDirectory is null
+                ? null
+                : candidate => ToEngineTraversalDecision(
+                    inspectDirectory(ToApplicationCandidate(candidate))),
             Options = new Engine.ScanOptions
             {
                 ExcludedDirectoryNames = options.ExcludedDirectoryNames.ToArray(),
@@ -244,6 +249,33 @@ internal sealed class FindEverythingIndexSession : IIndexSession
         };
     }
 
+    private static DiscoveredDirectory ToApplicationCandidate(Engine.DirectoryCandidate candidate) =>
+        new(
+            candidate.FullPath,
+            candidate.Name,
+            candidate.ParentPath
+                ?? Path.GetDirectoryName(candidate.FullPath)
+                ?? candidate.FullPath,
+            candidate.CreatedUtc,
+            candidate.ModifiedUtc)
+        {
+            CoveragePending = candidate.CoveragePending,
+        };
+
+    private static Engine.DirectoryTraversalDecision ToEngineTraversalDecision(
+        DirectoryTraversalDecision decision) => decision switch
+        {
+            DirectoryTraversalDecision.Continue => Engine.DirectoryTraversalDecision.Continue,
+            DirectoryTraversalDecision.SkipDescendants =>
+                Engine.DirectoryTraversalDecision.SkipDescendants,
+            DirectoryTraversalDecision.ExcludeSubtree =>
+                Engine.DirectoryTraversalDecision.ExcludeSubtree,
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(decision),
+                decision,
+                "Unknown directory traversal decision."),
+        };
+
     private static Engine.DirectoryNameRegex ToEngineRegex(IndexDirectoryNameRegex rule)
     {
         ArgumentNullException.ThrowIfNull(rule);
@@ -256,7 +288,8 @@ internal sealed class FindEverythingIndexSession : IIndexSession
                 IndexRegexMatchMode.Partial => Engine.RegexMatchMode.Partial,
                 _ => throw new ArgumentOutOfRangeException(nameof(rule), rule.MatchMode, "Unknown regex match mode.")
             },
-            IgnoreCase = rule.IgnoreCase
+            IgnoreCase = rule.IgnoreCase,
+            TimeoutMilliseconds = rule.TimeoutMilliseconds,
         };
     }
 

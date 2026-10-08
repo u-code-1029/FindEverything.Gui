@@ -116,10 +116,10 @@
     <sys:String x:Key="Loc.Catalog.Column.Status">Status</sys:String>
     <sys:String x:Key="Loc.Catalog.Error.DatabaseInsideRoot">Store the index database outside the search root.</sys:String>
     <sys:String x:Key="Loc.Catalog.Error.DatabaseParentMissing">The database parent folder could not be determined.</sys:String>
-    <sys:String x:Key="Loc.Catalog.Error.IndexDatabaseMissing">Index database '{0}' does not exist. Run 'Index and load' or choose the correct database.</sys:String>
+    <sys:String x:Key="Loc.Catalog.Error.IndexDatabaseMissing">Index database '{0}' does not exist. Run 'Start scan' or choose the correct database.</sys:String>
     <sys:String x:Key="Loc.Catalog.Error.NoResult">No catalog result was returned.</sys:String>
     <sys:String x:Key="Loc.Catalog.Error.ResultSessionChanged">The structured-result session changed during the operation.</sys:String>
-    <sys:String x:Key="Loc.Catalog.Error.RootNotIndexed">Database '{1}' has no index registered for the exact search root '{0}'. Run 'Index and load' with the same search location.</sys:String>
+    <sys:String x:Key="Loc.Catalog.Error.RootNotIndexed">Database '{1}' has no index registered for the exact search root '{0}'. Run 'Start scan' with the same search location.</sys:String>
     <sys:String x:Key="Loc.Catalog.Error.RootNotFound">Root folder not found: {0}</sys:String>
     <sys:String x:Key="Loc.Catalog.Error.SelectDatabase">Choose an index database path.</sys:String>
     <sys:String x:Key="Loc.Catalog.Error.SelectProfile">Choose a search profile.</sys:String>
@@ -136,6 +136,7 @@
     <sys:String x:Key="Loc.Catalog.Operation.Failed">{0} failed</sys:String>
     <sys:String x:Key="Loc.Catalog.Operation.DirectScan">Scan now without saving to the DB</sys:String>
     <sys:String x:Key="Loc.Catalog.Operation.IndexAndLoad">Index and load</sys:String>
+    <sys:String x:Key="Loc.Catalog.Operation.Scan">Scan</sys:String>
     <sys:String x:Key="Loc.Catalog.Operation.LoadExisting">Load from existing index</sys:String>
     <sys:String x:Key="Loc.Catalog.Operation.Started">Started {0}.</sys:String>
     <sys:String x:Key="Loc.Catalog.Progress.AutoLoadDeferred">The existing index will load automatically when the current operation finishes.</sys:String>
@@ -152,6 +153,7 @@
     <sys:String x:Key="Loc.Catalog.Progress.PreparingDirectScan">Preparing a direct scan that does not save to the DB…</sys:String>
     <sys:String x:Key="Loc.Catalog.Progress.PreparingExistingIndex">Preparing the profile and existing index…</sys:String>
     <sys:String x:Key="Loc.Catalog.Progress.PreparingIndexAndLoad">Preparing to rebuild the index and load structured results…</sys:String>
+    <sys:String x:Key="Loc.Catalog.Progress.PreparingScan">Preparing to save scanned metadata to the DB and load structured results…</sys:String>
     <sys:String x:Key="Loc.Catalog.Progress.IndexScanning">Checked {0:N0} folders and {1:N0} items.</sys:String>
     <sys:String x:Key="Loc.Catalog.Progress.DirectoryScanning">Checked {0:N0} folders.</sys:String>
     <sys:String x:Key="Loc.Catalog.Progress.SearchingIndex">Searching folders in the index…</sys:String>
@@ -168,6 +170,7 @@
     <sys:String x:Key="Loc.Catalog.Result.ExistingLoadCompleted">Existing index loaded</sys:String>
     <sys:String x:Key="Loc.Catalog.Result.DirectScanCompleted">Direct scan completed without saving to the DB</sys:String>
     <sys:String x:Key="Loc.Catalog.Result.IndexAndLoadCompleted">Indexing and loading completed</sys:String>
+    <sys:String x:Key="Loc.Catalog.Result.ScanCompleted">Scan and DB save completed</sys:String>
     <sys:String x:Key="Loc.Catalog.Result.IncompleteSuffix"> Some paths need attention.</sys:String>
     <sys:String x:Key="Loc.Catalog.Result.Partial">Partial results</sys:String>
     <sys:String x:Key="Loc.Catalog.Result.PartialRetained"> The {0:N0} partial results found remain in the list.</sys:String>
@@ -184,7 +187,7 @@
     <sys:String x:Key="Loc.Catalog.Status.ProfileApplied">The new profile was applied. Choose a search location.</sys:String>
     <sys:String x:Key="Loc.Catalog.Status.ProfileChanged">Profile changed</sys:String>
     <sys:String x:Key="Loc.Catalog.Status.ProfileChanged.Message">The profile changed during the operation, so results from the previous rules were cleared. Load again.</sys:String>
-    <sys:String x:Key="Loc.Catalog.Status.Ready.Message">Scan directly without saving to the DB, or index the location and then load structured results.</sys:String>
+    <sys:String x:Key="Loc.Catalog.Status.Ready.Message">Scanning shows structured results as they are mapped and saves file and folder metadata to the DB.</sys:String>
     <sys:String x:Key="Loc.Catalog.Status.WaitForProfileSave">Try again after the profile save finishes.</sys:String>
     <sys:String x:Key="Loc.Catalog.Status.WorkspaceSaveFailed">Couldn’t save workspace location</sys:String>
 
@@ -256,7 +259,7 @@
     <sys:String x:Key="Loc.Clipboard.Empty">There is nothing to copy.</sys:String>
     <sys:String x:Key="Loc.Clipboard.Busy">Another application is using the clipboard. Try again shortly.</sys:String>
     <sys:String x:Key="Loc.Scan.Status.Idle">Idle</sys:String>
-    <sys:String x:Key="Loc.Scan.Status.Instruction">Visited paths appear here when you start a direct scan.</sys:String>
+    <sys:String x:Key="Loc.Scan.Status.Instruction">Visited paths appear here when you start a scan.</sys:String>
     <sys:String x:Key="Loc.Scan.Status.Running">Scanning</sys:String>
     <sys:String x:Key="Loc.Scan.Status.Failed">Failed</sys:String>
     <sys:String x:Key="Loc.Scan.Panel.Close">Close bottom scan log</sys:String>
@@ -269,9 +272,9 @@
     <sys:String x:Key="Loc.Scan.Retention.Dropped">Latest {0:N0} lines · {1:N0} earlier lines omitted</sys:String>
     <sys:String x:Key="Loc.Scan.Retention.Visible">{0:N0} shown / {1:N0} maximum</sys:String>
     <sys:String x:Key="Loc.Scan.Session.Summary">{0} · absolute path · {1}</sys:String>
-    <sys:String x:Key="Loc.Scan.Trace.Completed">Direct scan completed.</sys:String>
-    <sys:String x:Key="Loc.Scan.Trace.Cancelled">The direct scan was cancelled.</sys:String>
-    <sys:String x:Key="Loc.Scan.Trace.Failed">The direct scan failed. Check the status message for details.</sys:String>
+    <sys:String x:Key="Loc.Scan.Trace.Completed">Scan completed.</sys:String>
+    <sys:String x:Key="Loc.Scan.Trace.Cancelled">The scan was cancelled.</sys:String>
+    <sys:String x:Key="Loc.Scan.Trace.Failed">The scan failed. Check the status message for details.</sys:String>
     <sys:String x:Key="Loc.Profile.Rule">Rule</sys:String>
     <sys:String x:Key="Loc.Profile.Source.TextFile">Text file</sys:String>
     <sys:String x:Key="Loc.Profile.Source.RequiredPath">Required path value</sys:String>
@@ -281,7 +284,7 @@
     <sys:String x:Key="Loc.Playground.Result.Invalid">The path matched, but some values could not be converted or read.</sys:String>
     <sys:String x:Key="Loc.Playground.Result.Success">Matched rule '{0}' and loaded {1:N0} values.</sys:String>
     <sys:String x:Key="Loc.Playground.Result.Empty">The profile did not return a result.</sys:String>
-    <sys:String x:Key="Loc.Playground.Exclusion.Scope">This decision applies only to folders below the search root during “Scan now without saving to DB” in Structured view. A path selected as the search root itself is not excluded because of the explicit-root exception. It also does not apply to file indexing or loading an existing index.</sys:String>
+    <sys:String x:Key="Loc.Playground.Exclusion.Scope">This decision applies to the last folder name (leaf) below the structured scan root. A matching folder and all of its descendants are not indexed. The search root itself is never excluded by this rule. Loading an existing database uses its saved index, so scan again after changing a rule.</sys:String>
     <sys:String x:Key="Loc.Playground.Exclusion.Root">(drive or share root)</sys:String>
     <sys:String x:Key="Loc.Playground.Exclusion.NoLeaf">Exclusion was skipped because the path has no leaf folder name.</sys:String>
     <sys:String x:Key="Loc.Playground.Exclusion.NoRules">No exclusion rules are defined, so this folder will be scanned.</sys:String>
@@ -462,7 +465,7 @@
     <sys:String x:Key="Loc.RegexDebug.Status.NoPartial">No section partially matches the original pattern.{0}</sys:String>
     <sys:String x:Key="Loc.RegexDebug.Status.ActualFolderFull">Actual full folder-name match</sys:String>
     <sys:String x:Key="Loc.RegexDebug.Status.ActualPathFull">Actual full-path match</sys:String>
-    <sys:String x:Key="Loc.RegexDebug.Status.FolderRequirement">A direct scan requires the entire folder name to match.</sys:String>
+    <sys:String x:Key="Loc.RegexDebug.Status.FolderRequirement">A structured scan requires the entire folder name to match.</sys:String>
     <sys:String x:Key="Loc.RegexDebug.Status.PathRequirement">An actual scan requires the entire path to match.</sys:String>
     <sys:String x:Key="Loc.RegexDebug.Status.FullMatched">{0} · {1:N0} original-pattern candidates{2}</sys:String>
     <sys:String x:Key="Loc.RegexDebug.Status.PartialCandidates">{0:N0} partial candidates{1}</sys:String>
@@ -503,6 +506,9 @@
     <sys:String x:Key="Loc.Source.인덱스 데이터베이스 위치 변경">Change index database location</sys:String>
     <sys:String x:Key="Loc.Source.인덱스 위치">Index location</sys:String>
     <sys:String x:Key="Loc.Source.검색 범위 밖의 로컬 디스크에 인덱스 DB를 저장합니다.">Store the index database on a local disk outside the search scope.</sys:String>
+    <sys:String x:Key="Loc.Source.사용자 지정 인덱스 DB 경로를 선택합니다.">Choose a custom index database path.</sys:String>
+    <sys:String x:Key="Loc.Source.기본 인덱스 데이터베이스 위치 사용">Use the default index database location</sys:String>
+    <sys:String x:Key="Loc.Source.기본 경로 사용">Use default path</sys:String>
     <sys:String x:Key="Loc.Source.인덱스 새로 고침">Refresh index</sys:String>
     <sys:String x:Key="Loc.Source.파일명 또는 경로 검색">Search by file name or path</sys:String>
     <sys:String x:Key="Loc.Source.파일명 또는 경로 검색  (Ctrl+F)">Search file name or path  (Ctrl+F)</sys:String>
@@ -544,6 +550,8 @@
 
     <!-- Structured view -->
     <sys:String x:Key="Loc.Source.폴더 경로의 정보를 프로필 규칙으로 추출하고, 일치 항목을 찾는 즉시 목록에 표시합니다.">Extract structured data from folder paths with profile rules and show matches as soon as they are found.</sys:String>
+    <sys:String x:Key="Loc.Source.검색 조건">Search scope</sys:String>
+    <sys:String x:Key="Loc.Source.프로필과 검색 위치를 선택한 뒤 스캔하세요.">Choose a profile and search location, then start a scan.</sys:String>
     <sys:String x:Key="Loc.Source.구조화 프로필">Structured-data profile</sys:String>
     <sys:String x:Key="Loc.Source.검색 루트">Search root</sys:String>
     <sys:String x:Key="Loc.Source.구조화할 폴더를 선택하세요">Choose a folder to structure</sys:String>
@@ -557,6 +565,9 @@
     <sys:String x:Key="Loc.Source.고급: 인덱스 DB 선택 및 기존 데이터 불러오기">Advanced: Choose an index DB and load existing data</sys:String>
     <sys:String x:Key="Loc.Source.인덱스 데이터베이스 경로">Index database path</sys:String>
     <sys:String x:Key="Loc.Source.기존 인덱스에서 불러오기">Load from existing index</sys:String>
+    <sys:String x:Key="Loc.Source.별도 경로를 지정하지 않으면 프로필별 기본 DB를 사용합니다.">If you do not choose a separate path, the default database for this profile is used.</sys:String>
+    <sys:String x:Key="Loc.Source.스캔 시작">Start scan</sys:String>
+    <sys:String x:Key="Loc.Source.검색 결과를 표시하고 프로필별 인덱스 DB에 저장합니다.">Show the results and save them to the profile-specific index database.</sys:String>
     <sys:String x:Key="Loc.Source.DB에는 프로필 해석 결과가 아니라 파일·폴더 메타데이터가 저장되며 파일 찾기와 공유됩니다. 기존 인덱스는 인덱싱할 때 사용한 검색 위치와 현재 검색 위치가 정확히 같을 때만 불러옵니다.">The database stores file and folder metadata, not profile-mapped results, and is shared with Find files. Existing index data loads only when the current search location exactly matches the root used for indexing.</sys:String>
     <sys:String x:Key="Loc.Source.구조화 결과">Structured results</sys:String>
     <sys:String x:Key="Loc.Source.모든 결과 컬럼 필터">Filter all result columns</sys:String>
@@ -567,6 +578,7 @@
     <sys:String x:Key="Loc.Source.현재 필터에 표시된 항목의 선택을 반전합니다.">Invert the selection of items shown by the current filter.</sys:String>
     <sys:String x:Key="Loc.Source.아직 불러온 구조화 결과가 없습니다">No structured results loaded yet</sys:String>
     <sys:String x:Key="Loc.Source.파일·폴더 메타데이터를 DB에 저장하려면 '인덱싱 후 불러오기'를, 한 번만 확인하려면 'DB에 저장하지 않고 바로 스캔'을 선택하세요.">Choose 'Index and load' to store file and folder metadata in the DB, or 'Scan now without saving to the DB' for a one-time check.</sys:String>
+    <sys:String x:Key="Loc.Source.프로필과 검색 위치를 선택한 뒤 '스캔 시작'을 눌러 보세요. 결과는 화면에 표시되고 프로필별 DB에도 저장됩니다.">Choose a profile and search location, then select 'Start scan.' Results appear on screen and are also saved to the profile-specific database.</sys:String>
 
     <!-- Profile Playground -->
     <sys:String x:Key="Loc.Source.저장되어 현재 앱에 적용된 프로필을 실제 절대 경로에 실행해 보고, 값과 정규식 판정을 함께 확인합니다.">Run a saved profile against a real absolute path and inspect both extracted values and regex decisions.</sys:String>
@@ -753,7 +765,7 @@
     <sys:String x:Key="Loc.Source.정규식 Pattern">Regular-expression pattern</sys:String>
     <sys:String x:Key="Loc.Source.하위 탐색 중단 그룹">Descendant traversal-stop groups</sys:String>
     <sys:String x:Key="Loc.Source.탐색 제외 폴더 이름 규칙">Excluded folder-name rules</sys:String>
-    <sys:String x:Key="Loc.Source.바로 스캔에서 현재 폴더의 마지막 이름에만 적용됩니다.">Applied only to the current folder's final name during a direct scan.</sys:String>
+    <sys:String x:Key="Loc.Source.구조화 스캔에서 현재 폴더의 마지막 이름에만 적용됩니다.">Applied only to the current folder's final name during a structured scan.</sys:String>
     <sys:String x:Key="Loc.Source.폴더 이름 매칭">Folder-name matching</sys:String>
     <sys:String x:Key="Loc.Source.고급: 플러그인 및 선언형 프로필 진단">Advanced: Plug-in and declarative-profile diagnostics</sys:String>
     <sys:String x:Key="Loc.Source.검증 및 진단 메시지">Validation and diagnostic messages</sys:String>

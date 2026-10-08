@@ -25,12 +25,21 @@ public sealed record DiscoveredDirectory(
     string Name,
     string ParentPath,
     DateTimeOffset CreatedUtc,
-    DateTimeOffset ModifiedUtc);
+    DateTimeOffset ModifiedUtc)
+{
+    public bool CoveragePending { get; init; }
+}
 
 public enum DirectoryTraversalDecision
 {
+    /// <summary>Keep the directory and inspect its descendants.</summary>
     Continue = 0,
+
+    /// <summary>Keep the directory but do not inspect its descendants.</summary>
     SkipDescendants = 1,
+
+    /// <summary>Omit the directory and do not inspect its descendants.</summary>
+    ExcludeSubtree = 2,
 }
 
 public enum DirectoryDiscoveryStatus

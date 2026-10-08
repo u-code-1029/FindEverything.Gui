@@ -23,7 +23,7 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <StackPanel Grid.Row="0" Margin="0,20,0,20">
+        <StackPanel Grid.Row="0" Margin="0,12,0,12">
             <TextBlock
                 AutomationProperties.HeadingLevel="Level1"
                 Style="{StaticResource PageTitleTextStyle}"
@@ -36,53 +36,83 @@
 
         <Border Grid.Row="1" Margin="{StaticResource SectionMargin}" Style="{StaticResource FluentToolbarSurfaceStyle}">
             <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
 
-                <ui:SymbolIcon
-                    Width="24"
-                    Height="24"
-                    Margin="4,0,12,0"
-                    VerticalAlignment="Center"
-                    Symbol="FolderOpen24" />
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
 
-                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                    <ui:SymbolIcon
+                        Width="24"
+                        Height="24"
+                        Margin="4,0,12,0"
+                        VerticalAlignment="Center"
+                        Symbol="FolderOpen24" />
+
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock
+                            FontWeight="SemiBold"
+                            Text="{Binding IndexStatusTitle}"
+                            TextTrimming="CharacterEllipsis" />
+                        <TextBlock
+                            Margin="0,2,0,0"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                            Text="{Binding RootPath, TargetNullValue={StaticResource Loc.Files.Root.None}}"
+                            TextTrimming="CharacterEllipsis"
+                            ToolTip="{Binding RootPath}" />
+                    </StackPanel>
+
+                    <WrapPanel Grid.Column="2" Margin="8,0,0,0" VerticalAlignment="Center">
+                        <ui:Button
+                            MinWidth="84"
+                            Margin="0,0,8,0"
+                            AutomationProperties.Name="검색과 인덱스 상세 설정 전환"
+                            Command="{Binding ToggleDetailsCommand}"
+                            Content="{Binding DetailsButtonText}"
+                            Icon="{ui:SymbolIcon Symbol=Settings20}" />
+                        <ui:Button
+                            MinWidth="132"
+                            Appearance="Primary"
+                            AutomationProperties.Name="인덱스 새로 고침"
+                            Command="{Binding RefreshIndexCommand}"
+                            Content="인덱스 새로 고침"
+                            Icon="{ui:SymbolIcon Symbol=ArrowSync20}" />
+                        <ui:Button
+                            MinWidth="72"
+                            Margin="8,0,0,0"
+                            Appearance="Caution"
+                            Command="{Binding CancelCommand}"
+                            Content="취소"
+                            Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    </WrapPanel>
+                </Grid>
+
+                <Grid
+                    Grid.Row="1"
+                    Margin="40,12,0,0"
+                    Visibility="{Binding IsDetailsOpen, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
                     <TextBlock
-                        FontWeight="SemiBold"
-                        Text="{Binding IndexStatusTitle}"
-                        TextTrimming="CharacterEllipsis" />
-                    <TextBlock
-                        Margin="0,2,0,0"
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                        Text="{Binding RootPath, TargetNullValue={StaticResource Loc.Files.Root.None}}"
-                        TextTrimming="CharacterEllipsis"
-                        ToolTip="{Binding RootPath}" />
-                    <TextBlock
-                        Margin="0,2,0,0"
-                        Style="{StaticResource CaptionTextStyle}"
                         Text="{Binding IndexStatusDetail}"
-                        Visibility="{Binding IsDetailsOpen, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                </StackPanel>
-
-                <StackPanel Grid.Column="2" VerticalAlignment="Center" Orientation="Horizontal">
-                    <ui:Button
-                        MinWidth="84"
-                        Margin="0,0,8,0"
-                        AutomationProperties.Name="검색과 인덱스 상세 설정 전환"
-                        Command="{Binding ToggleDetailsCommand}"
-                        Content="{Binding DetailsButtonText}"
-                        Icon="{ui:SymbolIcon Symbol=Settings20}" />
+                        TextWrapping="Wrap" />
+                    <WrapPanel Grid.Row="1" Margin="0,8,0,0">
                     <ui:Button
                         MinWidth="104"
                         Margin="0,0,8,0"
                         AutomationProperties.Name="검색 위치 변경"
                         Command="{Binding BrowseRootCommand}"
                         Content="위치 변경"
-                        Icon="{ui:SymbolIcon Symbol=FolderOpen20}"
-                        Visibility="{Binding IsDetailsOpen, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                        Icon="{ui:SymbolIcon Symbol=FolderOpen20}" />
                     <ui:Button
                         MinWidth="112"
                         Margin="0,0,8,0"
@@ -90,22 +120,16 @@
                         Command="{Binding BrowseDatabaseCommand}"
                         Content="인덱스 위치"
                         Icon="{ui:SymbolIcon Symbol=DatabaseSearch20}"
-                        ToolTip="검색 범위 밖의 로컬 디스크에 인덱스 DB를 저장합니다."
-                        Visibility="{Binding IsDetailsOpen, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                        ToolTip="사용자 지정 인덱스 DB 경로를 선택합니다." />
                     <ui:Button
-                        MinWidth="144"
-                        Appearance="Secondary"
-                        AutomationProperties.Name="인덱스 새로 고침"
-                        Command="{Binding RefreshIndexCommand}"
-                        Content="인덱스 새로 고침"
-                        Icon="{ui:SymbolIcon Symbol=ArrowSync20}" />
-                    <ui:Button
-                        MinWidth="72"
-                        Margin="8,0,0,0"
-                        Appearance="Caution"
-                        Command="{Binding CancelCommand}"
-                        Content="취소" />
-                </StackPanel>
+                        MinWidth="112"
+                        AutomationProperties.Name="기본 인덱스 데이터베이스 위치 사용"
+                        Command="{Binding UseDefaultDatabasePathCommand}"
+                        Content="기본 경로 사용"
+                        Icon="{ui:SymbolIcon Symbol=ArrowReset20}"
+                        ToolTip="{Binding DefaultDatabasePath}" />
+                    </WrapPanel>
+                </Grid>
             </Grid>
         </Border>
 
@@ -118,14 +142,16 @@
             Severity="{Binding StatusSeverity}"
             Title="{Binding StatusTitle}" />
 
-        <Grid Grid.Row="3" Margin="0,0,0,12" IsEnabled="{Binding CanSearch}">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
+        <Border
+            Grid.Row="3"
+            Margin="0,0,0,12"
+            Style="{StaticResource FluentToolbarSurfaceStyle}"
+            IsEnabled="{Binding CanSearch}">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
 
             <ui:TextBox
                 x:Name="SearchBox"
@@ -136,45 +162,41 @@
                 PlaceholderText="파일명 또는 경로 검색  (Ctrl+F)"
                 Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" />
 
-            <ComboBox
-                Grid.Column="1"
-                MinWidth="92"
-                Margin="8,0,0,0"
-                AutomationProperties.Name="항목 종류"
-                DisplayMemberPath="DisplayName"
-                ItemsSource="{Binding KindChoices}"
-                SelectedItem="{Binding SelectedKind}"
-                Visibility="{Binding IsDetailsOpen, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                <WrapPanel
+                    Grid.Row="1"
+                    Margin="0,8,0,0"
+                    Visibility="{Binding IsDetailsOpen, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <ComboBox
+                        MinWidth="112"
+                        Margin="0,0,8,0"
+                        AutomationProperties.Name="항목 종류"
+                        DisplayMemberPath="DisplayName"
+                        ItemsSource="{Binding KindChoices}"
+                        SelectedItem="{Binding SelectedKind}" />
 
-            <ToggleButton
-                x:Name="FilterButton"
-                Grid.Column="2"
-                MinWidth="88"
-                Margin="8,0,0,0"
-                AutomationProperties.Name="검색 필터"
-                Content="필터"
-                IsChecked="{Binding IsFilterOpen, Mode=TwoWay}"
-                Visibility="{Binding IsDetailsOpen, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <ToggleButton
+                        x:Name="FilterButton"
+                        MinWidth="96"
+                        Margin="0,0,8,0"
+                        AutomationProperties.Name="검색 필터"
+                        Content="필터"
+                        IsChecked="{Binding IsFilterOpen, Mode=TwoWay}" />
 
-            <ComboBox
-                Grid.Column="3"
-                MinWidth="112"
-                Margin="8,0,0,0"
-                AutomationProperties.Name="정렬 기준"
-                DisplayMemberPath="DisplayName"
-                ItemsSource="{Binding SortChoices}"
-                SelectedItem="{Binding SelectedSort}"
-                Visibility="{Binding IsDetailsOpen, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <ComboBox
+                        MinWidth="144"
+                        Margin="0,0,8,0"
+                        AutomationProperties.Name="정렬 기준"
+                        DisplayMemberPath="DisplayName"
+                        ItemsSource="{Binding SortChoices}"
+                        SelectedItem="{Binding SelectedSort}" />
 
-            <ui:Button
-                Grid.Column="4"
-                MinWidth="96"
-                Margin="8,0,0,0"
-                AutomationProperties.Name="정렬 방향 전환"
-                Command="{Binding ToggleSortDirectionCommand}"
-                Content="{Binding SortDirectionText}"
-                Icon="{ui:SymbolIcon Symbol=ArrowSort20}"
-                Visibility="{Binding IsDetailsOpen, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <ui:Button
+                        MinWidth="104"
+                        AutomationProperties.Name="정렬 방향 전환"
+                        Command="{Binding ToggleSortDirectionCommand}"
+                        Content="{Binding SortDirectionText}"
+                        Icon="{ui:SymbolIcon Symbol=ArrowSort20}" />
+                </WrapPanel>
 
             <Popup
                 x:Name="FilterPopup"
@@ -279,7 +301,8 @@
                     </ScrollViewer>
                 </Border>
             </Popup>
-        </Grid>
+            </Grid>
+        </Border>
 
         <Grid Grid.Row="4">
             <Grid.RowDefinitions>
@@ -323,6 +346,9 @@
                 SelectionChanged="OnResultsGridSelectionChanged"
                 SelectionMode="Extended"
                 SelectionUnit="FullRow"
+                ScrollViewer.HorizontalScrollBarVisibility="Visible"
+                ScrollViewer.PanningMode="Both"
+                ScrollViewer.VerticalScrollBarVisibility="Auto"
                 Sorting="OnResultsGridSorting"
                 Visibility="{Binding HasIndex, Converter={StaticResource BooleanToVisibilityConverter}}">
                 <DataGrid.ContextMenu>
@@ -373,46 +399,49 @@
             <Border
                 x:Name="SelectionToolbar"
                 Grid.Row="1"
-                Margin="0,0,16,16"
+                Margin="8,0,8,28"
                 Padding="10,8"
-                HorizontalAlignment="Right"
+                HorizontalAlignment="Stretch"
                 VerticalAlignment="Bottom"
                 Panel.ZIndex="5"
                 Style="{StaticResource FluentToolbarSurfaceStyle}"
                 Visibility="{Binding HasSelection, Converter={StaticResource BooleanToVisibilityConverter}}">
-                <StackPanel Orientation="Horizontal">
-                    <TextBlock
-                        Margin="4,0,12,0"
-                        VerticalAlignment="Center"
-                        FontWeight="SemiBold"
-                        Text="{Binding SelectedCount, StringFormat={StaticResource Loc.Common.SelectedCountFormat}}" />
-                    <ComboBox
-                        Width="220"
-                        Margin="0,0,8,0"
-                        AutomationProperties.Name="선택 항목 출력 형식"
-                        DisplayMemberPath="DisplayName"
-                        ItemsSource="{Binding OutputFormats}"
-                        SelectedItem="{Binding SelectedOutputFormat}" />
+                <WrapPanel HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <StackPanel Margin="0,4,0,4" Orientation="Horizontal">
+                        <TextBlock
+                            Margin="4,0,12,0"
+                            VerticalAlignment="Center"
+                            FontWeight="SemiBold"
+                            Text="{Binding SelectedCount, StringFormat={StaticResource Loc.Common.SelectedCountFormat}}" />
+                        <ComboBox
+                            Width="180"
+                            Margin="0,0,8,0"
+                            AutomationProperties.Name="선택 항목 출력 형식"
+                            DisplayMemberPath="DisplayName"
+                            ItemsSource="{Binding OutputFormats}"
+                            SelectedItem="{Binding SelectedOutputFormat}" />
+                    </StackPanel>
                     <ui:Button
-                        Margin="0,0,12,0"
+                        Margin="0,4,12,4"
                         Appearance="Primary"
                         Command="{Binding CopySelectionCommand}"
                         Content="복사"
                         Icon="{ui:SymbolIcon Symbol=Copy20}" />
                     <ui:Button
-                        Margin="0,0,6,0"
+                        Margin="0,4,6,4"
                         Click="OnSelectAllClick"
                         Content="전체 선택"
                         ToolTip="현재 화면에 불러온 항목을 모두 선택합니다." />
                     <ui:Button
-                        Margin="0,0,6,0"
+                        Margin="0,4,6,4"
                         Click="OnClearSelectionClick"
                         Content="선택 해제" />
                     <ui:Button
+                        Margin="0,4,0,4"
                         Click="OnInvertSelectionClick"
                         Content="선택 반전"
                         ToolTip="현재 화면에 불러온 항목의 선택을 반전합니다." />
-                </StackPanel>
+                </WrapPanel>
             </Border>
 
             <Border

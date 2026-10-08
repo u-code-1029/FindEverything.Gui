@@ -679,7 +679,7 @@ internal static class ProfileRegexDebugBuilder
             var requirementDescription = subject == RegexDebugSubject.DirectoryName
                 ? ProfileEditorText.Get(
                     "Loc.RegexDebug.Status.FolderRequirement",
-                    "실제 바로 스캔에서는 폴더 이름 전체가 일치해야 합니다.")
+                    "실제 구조화 스캔에서는 폴더 이름 전체가 일치해야 합니다.")
                 : ProfileEditorText.Get(
                     "Loc.RegexDebug.Status.PathRequirement",
                     "실제 스캔에서는 전체 경로가 일치해야 합니다.");

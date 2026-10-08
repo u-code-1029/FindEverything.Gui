@@ -77,13 +77,18 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(PanelToggleToolTip))]
+    [NotifyPropertyChangedFor(nameof(IsActivityAttentionRequested))]
     private bool _isPanelOpen;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsActivityAttentionRequested))]
+    private bool _hasUnseenActivity;
 
     [ObservableProperty]
     private string _statusText = "대기 중";
 
     [ObservableProperty]
-    private string _sessionSummary = "바로 스캔을 시작하면 방문 경로가 여기에 표시됩니다.";
+    private string _sessionSummary = "스캔을 시작하면 방문 경로가 여기에 표시됩니다.";
 
     [ObservableProperty]
     private Brush _statusBrush = IdleBrush;
@@ -175,7 +180,7 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
         StatusText = L("Loc.Scan.Status.Idle", "대기 중");
         SessionSummary = L(
             "Loc.Scan.Status.Instruction",
-            "바로 스캔을 시작하면 방문 경로가 여기에 표시됩니다.");
+            "스캔을 시작하면 방문 경로가 여기에 표시됩니다.");
         RetentionSummary = F(
             "Loc.Scan.Retention.Empty",
             "표시 0 / 최대 {0:N0}줄",
@@ -188,6 +193,20 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
     public string PanelToggleToolTip => IsPanelOpen
         ? L("Loc.Scan.Panel.Close", "하단 탐색 로그 닫기")
         : L("Loc.Scan.Panel.Open", "하단 탐색 로그 열기");
+
+    /// <summary>
+    /// Lets the title-bar affordance draw attention without forcing the console
+    /// open and taking space away from the result list.
+    /// </summary>
+    public bool IsActivityAttentionRequested => HasUnseenActivity && !IsPanelOpen;
+
+    partial void OnIsPanelOpenChanged(bool value)
+    {
+        if (value)
+        {
+            HasUnseenActivity = false;
+        }
+    }
 
     public void Show()
     {
@@ -482,6 +501,11 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
 
     private void ApplyLine(ScanConsoleLineViewModel line)
     {
+        if (!IsPanelOpen)
+        {
+            HasUnseenActivity = true;
+        }
+
         if (line.Kind == CatalogScanTraceKind.Started)
         {
             Lines.Clear();
@@ -577,7 +601,7 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
                 builder.Append("[DONE] ").Append(Escape(
                     localizer?.Get(
                         "Loc.Scan.Trace.Completed",
-                        "바로 스캔을 완료했습니다.")
+                        "스캔을 완료했습니다.")
                     ?? value.Message));
                 break;
             case CatalogScanTraceKind.Cancelled:
@@ -585,7 +609,7 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
                 builder.Append("[CANCELLED] ").Append(Escape(
                     localizer?.Get(
                         "Loc.Scan.Trace.Cancelled",
-                        "바로 스캔이 취소되었습니다.")
+                        "스캔이 취소되었습니다.")
                     ?? value.Message));
                 break;
             case CatalogScanTraceKind.Failed:
@@ -593,7 +617,7 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
                 builder.Append("[FAILED] ").Append(Escape(
                     localizer?.Get(
                         "Loc.Scan.Trace.Failed",
-                        "바로 스캔에 실패했습니다. 상태 메시지에서 자세한 내용을 확인하세요.")
+                        "스캔에 실패했습니다. 상태 메시지에서 자세한 내용을 확인하세요.")
                     ?? value.Message));
                 break;
             default:

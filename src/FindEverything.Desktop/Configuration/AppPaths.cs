@@ -11,7 +11,18 @@ public sealed record AppPaths(
 
     public string UserProfilesDirectory => Path.Combine(LocalDataDirectory, "Profiles");
 
-    public string IndexDatabaseFile => Path.Combine(LocalDataDirectory, "Indexes", "metadata.db");
+    public string IndexesDirectory => Path.Combine(LocalDataDirectory, "Indexes");
+
+    /// <summary>
+    /// The file-search database keeps the original location so an upgrade can use
+    /// an existing index without copying a potentially large SQLite file.
+    /// </summary>
+    public string FileSearchIndexDatabaseFile => Path.Combine(IndexesDirectory, "metadata.db");
+
+    public string ProfileIndexesDirectory => Path.Combine(IndexesDirectory, "Profiles");
+
+    // Kept as a source-compatible alias for older callers.
+    public string IndexDatabaseFile => FileSearchIndexDatabaseFile;
 
     public static AppPaths Create()
     {

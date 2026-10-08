@@ -73,6 +73,7 @@ public static class DependencyInjection
             static provider => provider.GetRequiredService<ApplicationRestartCoordinator>());
         services.AddSingleton<IAppLocalizer, AppLocalizer>();
         services.AddSingleton<ILanguageSelectionService, LanguageSelectionService>();
+        services.AddSingleton<IIndexDatabasePathResolver, IndexDatabasePathResolver>();
         services.AddSingleton<IWorkspaceContext, WorkspaceContext>();
         services.AddSingleton<IDesktopPickerService, DesktopPickerService>();
         services.AddSingleton<IScanConsoleLogWriter, ScanConsoleLogWriter>();

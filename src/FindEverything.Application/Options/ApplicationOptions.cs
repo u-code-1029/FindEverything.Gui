@@ -2,7 +2,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace FindEverything.Application.Options;
 
-public sealed class WorkspaceOptions
+public sealed class WorkspaceOptions : IValidatableObject
 {
     public const string SectionName = "Workspace";
 
@@ -10,7 +10,58 @@ public sealed class WorkspaceOptions
 
     public string? RootPath { get; set; }
 
+    /// <summary>
+    /// Legacy shared index path. New settings write file-search and profile paths
+    /// separately, but this property remains readable so existing installations do
+    /// not lose their file-search index after upgrading.
+    /// </summary>
     public string? DatabasePath { get; set; }
+
+    /// <summary>
+    /// Optional user-selected database for the unstructured file-search page.
+    /// Null uses the application-local default.
+    /// </summary>
+    public string? FileSearchDatabasePath { get; set; }
+
+    /// <summary>
+    /// Optional user-selected database paths keyed by profile id. Profiles without
+    /// an entry use their isolated application-local database.
+    /// </summary>
+    public Dictionary<string, string>? ProfileDatabasePaths { get; set; }
+
+    public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+    {
+        if (ProfileDatabasePaths is null)
+        {
+            yield break;
+        }
+
+        var profileIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (profileId, databasePath) in ProfileDatabasePaths)
+        {
+            if (string.IsNullOrWhiteSpace(profileId))
+            {
+                yield return new ValidationResult(
+                    "Profile database path keys must contain a profile id.",
+                    [nameof(ProfileDatabasePaths)]);
+                continue;
+            }
+
+            if (!profileIds.Add(profileId.Trim()))
+            {
+                yield return new ValidationResult(
+                    $"Profile database path keys must be unique ignoring case: {profileId}",
+                    [nameof(ProfileDatabasePaths)]);
+            }
+
+            if (string.IsNullOrWhiteSpace(databasePath))
+            {
+                yield return new ValidationResult(
+                    $"The database path for profile '{profileId}' cannot be empty.",
+                    [nameof(ProfileDatabasePaths)]);
+            }
+        }
+    }
 }
 
 public sealed class IndexingOptions

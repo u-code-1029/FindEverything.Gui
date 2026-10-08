@@ -513,24 +513,39 @@ public sealed class CatalogServiceTests
     }
 
     [Fact]
-    public async Task ScanAndLoad_keeps_the_legacy_index_refresh_contract()
+    public async Task ScanAndLoad_preserves_profile_leaf_exclusion_semantics_and_mapping_trace()
     {
-        var root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "catalog-scan-root"));
+        // The selected root intentionally has the excluded leaf name. Direct discovery treats
+        // it as the explicit boundary while still excluding matching descendants.
+        var root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "catalog-scan-root", "cache"));
         var directoryPath = Path.Combine(root, "good");
+        var excludedPath = Path.Combine(root, "cache");
         var sessionFactory = new FakeSessionFactory(
-            [new IndexedDirectory(
-                directoryPath,
-                "good",
-                root,
-                DateTimeOffset.MinValue,
-                DateTimeOffset.MinValue,
-                false)],
+            [
+                new IndexedDirectory(
+                    directoryPath,
+                    "good",
+                    root,
+                    DateTimeOffset.MinValue,
+                    DateTimeOffset.MinValue,
+                    false),
+                new IndexedDirectory(
+                    excludedPath,
+                    "cache",
+                    root,
+                    DateTimeOffset.MinValue,
+                    DateTimeOffset.MinValue,
+                    true),
+            ],
             allowScan: true);
+        var trace = new RecordingTraceSink();
         var services = new ServiceCollection();
         services.AddFindEverythingApplication(new ConfigurationBuilder().Build());
         services.AddSingleton<IIndexSessionFactory>(sessionFactory);
         services.AddSingleton<IDirectoryDiscoveryService, UnsupportedDiscoveryService>();
-        services.AddSingleton<IProfileResolver>(new FakeProfileResolver(new FakeProfile()));
+        services.AddSingleton<IProfileResolver>(new FakeProfileResolver(
+            new DirectoryExclusionProfile(excludedName: "cache")));
+        services.AddSingleton<ICatalogScanTraceSink>(trace);
 
         await using var provider = services.BuildServiceProvider();
         var service = provider.GetRequiredService<ICatalogService>();
@@ -538,9 +553,267 @@ public sealed class CatalogServiceTests
         var result = await service.ScanAndLoadAsync(new CatalogRequest("test", root, "index.db"));
 
         Assert.Equal(1, sessionFactory.ScanCalls);
+        Assert.Empty(Assert.IsType<IndexScanRequest>(sessionFactory.LastScanRequest)
+            .Options.ExcludedDirectoryNameRegexes);
         Assert.Equal(IndexScanStatus.Completed, Assert.IsType<IndexScanReport>(result.ScanReport).Status);
         Assert.Equal(directoryPath, Assert.Single(result.Items).FullPath);
+        Assert.Equal(2, result.CandidateCount);
+        Assert.Equal(1, result.ExcludedDirectoryCount);
+        Assert.False(result.HasPendingScopes);
+        Assert.Null(sessionFactory.LastSearchRoot);
         Assert.Null(result.DiscoveryReport);
+        Assert.Equal(
+            [
+                CatalogScanTraceKind.Started,
+                CatalogScanTraceKind.DirectoryVisited,
+                CatalogScanTraceKind.DirectoryVisited,
+                CatalogScanTraceKind.DirectoryExcluded,
+                CatalogScanTraceKind.Completed,
+            ],
+            trace.Events.Select(static entry => entry.Kind));
+        Assert.Equal(
+            [root, directoryPath],
+            trace.Events
+                .Where(static entry => entry.Kind == CatalogScanTraceKind.DirectoryVisited)
+                .Select(static entry => entry.FullPath));
+        var excludedTrace = Assert.Single(
+            trace.Events,
+            static entry => entry.Kind == CatalogScanTraceKind.DirectoryExcluded);
+        Assert.Equal(excludedPath, excludedTrace.FullPath);
+        Assert.Equal("test-exclusion", excludedTrace.MatchedRuleId);
+        Assert.Equal(
+            DirectoryTraversalDecision.ExcludeSubtree,
+            excludedTrace.TraversalDecision);
+        Assert.Contains("DB 저장", trace.Events[^1].Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ScanAndLoad_publishes_leaf_exclusion_issues_and_fails_open()
+    {
+        var root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "catalog-index-exclusion-issue"));
+        var childPath = Path.Combine(root, "slow-name");
+        var sessionFactory = new FakeSessionFactory(
+            [new IndexedDirectory(
+                childPath,
+                "slow-name",
+                root,
+                DateTimeOffset.MinValue,
+                DateTimeOffset.MinValue,
+                false)],
+            allowScan: true);
+        var trace = new RecordingTraceSink();
+        var services = new ServiceCollection();
+        services.AddFindEverythingApplication(new ConfigurationBuilder().Build());
+        services.AddSingleton<IIndexSessionFactory>(sessionFactory);
+        services.AddSingleton<IDirectoryDiscoveryService, UnsupportedDiscoveryService>();
+        services.AddSingleton<IProfileResolver>(new FakeProfileResolver(
+            new DirectoryExclusionProfile(reportIssue: true)));
+        services.AddSingleton<ICatalogScanTraceSink>(trace);
+
+        await using var provider = services.BuildServiceProvider();
+        var result = await provider.GetRequiredService<ICatalogService>().ScanAndLoadAsync(
+            new CatalogRequest("test", root, "index.db"));
+
+        Assert.Equal(2, result.CandidateCount);
+        Assert.Equal(0, result.ExcludedDirectoryCount);
+        var exclusionIssue = Assert.Single(result.DirectoryExclusionIssues);
+        Assert.Equal(childPath, exclusionIssue.FullPath);
+        Assert.Equal(
+            "directory_exclusion_regex_timeout",
+            Assert.Single(exclusionIssue.Issues).Code);
+        var issueTrace = Assert.Single(
+            trace.Events,
+            static entry => entry.Kind == CatalogScanTraceKind.DirectoryExclusionIssue);
+        Assert.Equal(childPath, issueTrace.FullPath);
+        Assert.Contains(
+            trace.Events,
+            entry => entry.Kind == CatalogScanTraceKind.DirectoryVisited
+                && entry.FullPath == childPath);
+    }
+
+    [Fact]
+    public async Task ScanAndLoadReportsLiveMatchesAndUsesProfilePruningWithoutReadingTheIndex()
+    {
+        var root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "catalog-live-index-root"));
+        var terminalPath = Path.Combine(root, "terminal");
+        var hiddenPath = Path.Combine(terminalPath, "hidden");
+        var siblingPath = Path.Combine(root, "sibling");
+        var sessionFactory = new GatedInspectionSessionFactory(
+            root,
+            terminalPath,
+            hiddenPath,
+            siblingPath);
+        var trace = new RecordingTraceSink();
+        var matched = new TaskCompletionSource<CatalogItem>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var services = new ServiceCollection();
+        services.AddFindEverythingApplication(new ConfigurationBuilder().Build());
+        services.AddSingleton<IIndexSessionFactory>(sessionFactory);
+        services.AddSingleton<IDirectoryDiscoveryService, UnsupportedDiscoveryService>();
+        services.AddSingleton<IProfileResolver>(new FakeProfileResolver(new PruningProfile()));
+        services.AddSingleton<ICatalogScanTraceSink>(trace);
+
+        await using var provider = services.BuildServiceProvider();
+        var service = provider.GetRequiredService<ICatalogService>();
+        var operation = service.ScanAndLoadAsync(
+            new CatalogRequest("test", root, "index.db"),
+            new InlineProgress<CatalogOperationProgress>(value =>
+            {
+                if (value.MatchedItem is { } item)
+                    matched.TrySetResult(item);
+            }));
+
+        CatalogItem liveItem;
+        try
+        {
+            liveItem = await matched.Task.WaitAsync(TimeSpan.FromSeconds(3));
+            Assert.False(operation.IsCompleted);
+            Assert.Equal(siblingPath, liveItem.FullPath);
+            Assert.True(liveItem.CoveragePending);
+        }
+        finally
+        {
+            sessionFactory.Complete();
+        }
+
+        var result = await operation;
+        var finalItem = Assert.Single(result.Items);
+        Assert.Equal(liveItem.FullPath, finalItem.FullPath);
+        Assert.True(finalItem.CoveragePending);
+        Assert.True(result.HasPendingScopes);
+        Assert.Equal(3, result.CandidateCount);
+        Assert.Equal(1, result.NoMatchCount);
+        Assert.Equal(terminalPath, Assert.Single(result.InvalidItems).FullPath);
+        Assert.DoesNotContain(hiddenPath, sessionFactory.VisitedPaths);
+        Assert.Equal(
+            DirectoryTraversalDecision.SkipDescendants,
+            sessionFactory.Decisions[terminalPath]);
+        Assert.Equal(0, sessionFactory.SearchCalls);
+        Assert.Equal(
+            [
+                CatalogScanTraceKind.Started,
+                CatalogScanTraceKind.DirectoryVisited,
+                CatalogScanTraceKind.DirectoryVisited,
+                CatalogScanTraceKind.DirectoryVisited,
+                CatalogScanTraceKind.DiscoveryError,
+                CatalogScanTraceKind.Completed,
+            ],
+            trace.Events.Select(static entry => entry.Kind));
+        var error = trace.Events[^2];
+        Assert.Equal(Path.Combine(root, "denied"), error.FullPath);
+        Assert.Equal("Access denied.", error.Message);
+    }
+
+    private sealed class GatedInspectionSessionFactory(
+        string root,
+        string terminalPath,
+        string hiddenPath,
+        string siblingPath) : IIndexSessionFactory
+    {
+        private readonly TaskCompletionSource _release = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly string _root = root;
+        private readonly string _terminalPath = terminalPath;
+        private readonly string _hiddenPath = hiddenPath;
+        private readonly string _siblingPath = siblingPath;
+
+        public List<string> VisitedPaths { get; } = [];
+
+        public Dictionary<string, DirectoryTraversalDecision> Decisions { get; } =
+            new(StringComparer.OrdinalIgnoreCase);
+
+        public int SearchCalls { get; private set; }
+
+        public IIndexSession Create(string databasePath) => new Session(this, databasePath);
+
+        public void Complete() => _release.TrySetResult();
+
+        private sealed class Session(
+            GatedInspectionSessionFactory owner,
+            string databasePath) : IIndexSession
+        {
+            public string DatabasePath { get; } = databasePath;
+
+            public async Task<IndexScanReport> ScanAsync(
+                IndexScanRequest request,
+                IProgress<IndexScanProgress>? progress = null,
+                CancellationToken cancellationToken = default)
+            {
+                var inspectDirectory = request.InspectDirectory
+                    ?? throw new InvalidOperationException("The catalog scan must inspect directories inline.");
+                Visit(owner._root, owner._root, coveragePending: false);
+                var terminalDecision = Visit(
+                    owner._terminalPath,
+                    owner._root,
+                    coveragePending: false);
+                if (terminalDecision == DirectoryTraversalDecision.Continue)
+                    Visit(owner._hiddenPath, owner._terminalPath, coveragePending: false);
+                Visit(owner._siblingPath, owner._root, coveragePending: true);
+
+                await owner._release.Task.WaitAsync(cancellationToken);
+                var scanProgress = new IndexScanProgress(
+                    Entries: owner.VisitedPaths.Count,
+                    Directories: owner.VisitedPaths.Count,
+                    ExcludedEntries: 0,
+                    SkippedLinks: 0,
+                    ErrorCount: 1,
+                    Elapsed: TimeSpan.Zero,
+                    PendingDirectories: 1);
+                progress?.Report(scanProgress);
+                return new IndexScanReport(
+                    Guid.NewGuid(),
+                    request.RootPath,
+                    request.ScopePath ?? request.RootPath,
+                    IndexScanStatus.Partial,
+                    scanProgress,
+                    [new IndexScanError(Path.Combine(owner._root, "denied"), "Access denied.")],
+                    [new IndexPendingScope(
+                        request.RootPath,
+                        owner._siblingPath,
+                        IndexDeferralReason.ExplicitRule,
+                        null,
+                        null,
+                        DateTimeOffset.UtcNow)]);
+
+                DirectoryTraversalDecision Visit(
+                    string path,
+                    string parentPath,
+                    bool coveragePending)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    owner.VisitedPaths.Add(path);
+                    var decision = inspectDirectory(new DiscoveredDirectory(
+                        path,
+                        Path.GetFileName(path),
+                        parentPath,
+                        DateTimeOffset.MinValue,
+                        DateTimeOffset.MinValue)
+                    {
+                        CoveragePending = coveragePending,
+                    });
+                    owner.Decisions[path] = decision;
+                    return decision;
+                }
+            }
+
+            public Task<DirectorySearchResult> SearchDirectoriesAsync(
+                DirectorySearchRequest request,
+                CancellationToken cancellationToken = default)
+            {
+                owner.SearchCalls++;
+                throw new InvalidOperationException("A single-pass catalog scan must not reread the index.");
+            }
+
+            public Task<EntrySearchResult> SearchEntriesAsync(
+                EntrySearchRequest request,
+                CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+            public Task<IndexRootStatus> GetRootStatusAsync(
+                string rootPath,
+                CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+            public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        }
     }
 
     private sealed class FakeSessionFactory(
@@ -554,11 +827,19 @@ public sealed class CatalogServiceTests
 
         public string? LastStatusRoot { get; private set; }
 
+        public IndexScanRequest? LastScanRequest { get; private set; }
+
         public IIndexSession Create(string databasePath) =>
             new FakeSession(
                 databasePath,
                 directories,
-                allowScan ? () => ScanCalls++ : null,
+                allowScan
+                    ? request =>
+                    {
+                        ScanCalls++;
+                        LastScanRequest = request;
+                    }
+                    : null,
                 rootPath => LastSearchRoot = rootPath,
                 rootPath => LastStatusRoot = rootPath,
                 rootAvailability);
@@ -600,7 +881,7 @@ public sealed class CatalogServiceTests
                 Entries: VisitedPaths.Count,
                 Directories: VisitedPaths.Count,
                 PrunedDirectories: Decisions.Values.Count(static decision =>
-                    decision == DirectoryTraversalDecision.SkipDescendants),
+                    decision != DirectoryTraversalDecision.Continue),
                 SkippedLinks: 0,
                 ErrorCount: 0,
                 Elapsed: TimeSpan.Zero);
@@ -706,7 +987,7 @@ public sealed class CatalogServiceTests
             var reportProgress = new DirectoryDiscoveryProgress(
                 Entries: 1,
                 Directories: 1,
-                PrunedDirectories: decision == DirectoryTraversalDecision.SkipDescendants ? 1 : 0,
+                PrunedDirectories: decision == DirectoryTraversalDecision.Continue ? 0 : 1,
                 SkippedLinks: 0,
                 ErrorCount: errors.Count,
                 Elapsed: TimeSpan.Zero);
@@ -782,7 +1063,7 @@ public sealed class CatalogServiceTests
     private sealed class FakeSession(
         string databasePath,
         IReadOnlyList<IndexedDirectory> directories,
-        Action? onScan,
+        Action<IndexScanRequest>? onScan,
         Action<string> onSearch,
         Action<string> onStatus,
         IndexRootAvailability rootAvailability) : IIndexSession
@@ -799,7 +1080,30 @@ public sealed class CatalogServiceTests
                 throw new NotSupportedException();
             }
 
-            onScan();
+            onScan(request);
+            if (request.InspectDirectory is { } inspectDirectory)
+            {
+                var trimmedRoot = Path.TrimEndingDirectorySeparator(request.RootPath);
+                _ = inspectDirectory(new DiscoveredDirectory(
+                    request.RootPath,
+                    Path.GetFileName(trimmedRoot),
+                    Path.GetDirectoryName(trimmedRoot) ?? request.RootPath,
+                    DateTimeOffset.MinValue,
+                    DateTimeOffset.MinValue));
+                foreach (var directory in directories)
+                {
+                    _ = inspectDirectory(new DiscoveredDirectory(
+                        directory.FullPath,
+                        directory.Name,
+                        directory.ParentPath,
+                        directory.CreatedUtc,
+                        directory.ModifiedUtc)
+                    {
+                        CoveragePending = directory.CoveragePending,
+                    });
+                }
+            }
+
             return Task.FromResult(new IndexScanReport(
                 Guid.NewGuid(),
                 request.RootPath,

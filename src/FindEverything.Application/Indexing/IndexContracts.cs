@@ -44,6 +44,8 @@ public sealed record IndexDirectoryNameRegex(string Pattern)
     public IndexRegexMatchMode MatchMode { get; init; } = IndexRegexMatchMode.Full;
 
     public bool? IgnoreCase { get; init; }
+
+    public int TimeoutMilliseconds { get; init; } = 100;
 }
 
 public sealed record IndexDeferralPolicy
@@ -99,6 +101,14 @@ public sealed record IndexScanRequest(string RootPath)
     public IndexScanOptions Options { get; init; } = new();
 
     public bool OnDemand { get; init; }
+
+    /// <summary>
+    /// Optionally inspects each directory before traversal enters it.
+    /// <see cref="DirectoryTraversalDecision.SkipDescendants"/> keeps the directory in the
+    /// index; <see cref="DirectoryTraversalDecision.ExcludeSubtree"/> omits the directory and
+    /// its descendants.
+    /// </summary>
+    public Func<DiscoveredDirectory, DirectoryTraversalDecision>? InspectDirectory { get; init; }
 }
 
 public enum IndexScanStatus

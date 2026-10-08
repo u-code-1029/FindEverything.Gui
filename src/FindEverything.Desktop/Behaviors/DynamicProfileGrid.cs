@@ -112,6 +112,8 @@ public static class DynamicProfileGrid
             Binding = new Binding(nameof(ViewModels.CatalogItemViewModel.CoverageText)),
             IsReadOnly = true,
             Width = DataGridLength.Auto,
+            MinWidth = 84,
+            MaxWidth = 140,
         });
 
         if (GetFields(dataGrid) is IEnumerable fields)
@@ -124,6 +126,8 @@ public static class DynamicProfileGrid
                     IsReadOnly = true,
                     SortMemberPath = $"DisplayValues[{field.FieldId}]",
                     Width = DataGridLength.Auto,
+                    MinWidth = 120,
+                    MaxWidth = 320,
                 };
                 column.SetValue(FieldIdProperty, field.FieldId);
                 dataGrid.Columns.Add(column);
@@ -136,6 +140,7 @@ public static class DynamicProfileGrid
             Binding = new Binding(nameof(ViewModels.CatalogItemViewModel.FullPath)),
             IsReadOnly = true,
             Width = new DataGridLength(1, DataGridLengthUnitType.Star),
+            MinWidth = 240,
         });
 
         ApplyLayout(dataGrid);
@@ -291,9 +296,12 @@ public static class DynamicProfileGrid
                 "Loc.Catalog.Selection.Item",
                 "항목 선택");
             Header = string.Empty;
-            Width = new DataGridLength(44, DataGridLengthUnitType.Pixel);
-            MinWidth = 44;
-            MaxWidth = 44;
+            // This column stays frozen at the leading edge. The extra width is
+            // intentional: WPF's focus chrome and the vertical grid line must
+            // not crop the Fluent checkbox at the minimum window width.
+            Width = new DataGridLength(52, DataGridLengthUnitType.Pixel);
+            MinWidth = 52;
+            MaxWidth = 52;
             CanUserReorder = false;
             CanUserResize = false;
             CanUserSort = false;

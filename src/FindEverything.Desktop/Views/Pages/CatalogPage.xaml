@@ -59,7 +59,7 @@
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-        <StackPanel Grid.Row="0" Margin="0,20,0,16">
+        <StackPanel Grid.Row="0" Margin="0,12,0,12">
             <TextBlock AutomationProperties.HeadingLevel="Level1" Style="{StaticResource PageTitleTextStyle}" Text="구조화 보기" />
             <TextBlock
                 Margin="0,4,0,0"
@@ -67,16 +67,38 @@
                 Text="폴더 경로의 정보를 프로필 규칙으로 추출하고, 일치 항목을 찾는 즉시 목록에 표시합니다." />
         </StackPanel>
 
-        <Border Grid.Row="1" Margin="0,0,0,16" Style="{StaticResource FluentSurfaceStyle}">
+        <Border Grid.Row="1" Margin="0,0,0,12" Style="{StaticResource FluentSurfaceStyle}">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <Grid IsEnabled="{Binding CanEditWorkspace}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock FontWeight="SemiBold" Text="검색 조건" />
+                        <TextBlock
+                            Margin="0,2,0,0"
+                            Style="{StaticResource CaptionTextStyle}"
+                            Text="프로필과 검색 위치를 선택한 뒤 스캔하세요." />
+                    </StackPanel>
+                    <ui:Button
+                        Grid.Column="1"
+                        MinWidth="84"
+                        Margin="12,0,0,0"
+                        Command="{Binding ToggleDetailsCommand}"
+                        Content="{Binding DetailsButtonText}"
+                        Icon="{ui:SymbolIcon Symbol=Settings20}" />
+                </Grid>
+
+                <Grid Grid.Row="1" Margin="0,12,0,0" IsEnabled="{Binding CanEditWorkspace}">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="220" />
                         <ColumnDefinition Width="*" />
@@ -93,117 +115,25 @@
                             SelectedItem="{Binding SelectedProfile}" />
                     </StackPanel>
 
-                    <StackPanel
-                        Grid.Column="1"
-                        Margin="0,0,16,0"
-                        Visibility="{Binding IsDetailsOpen, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <StackPanel Grid.Column="1" Margin="0,0,12,0">
                         <TextBlock Style="{StaticResource FieldLabelStyle}" Text="검색 위치" />
-                        <ui:TextBox
-                            AutomationProperties.Name="검색 루트"
-                            ClearButtonEnabled="True"
-                            LostKeyboardFocus="OnWorkspacePathLostKeyboardFocus"
-                            PlaceholderText="구조화할 폴더를 선택하세요"
-                            Text="{Binding RootPath, UpdateSourceTrigger=PropertyChanged}" />
+                        <TextBlock
+                            Height="32"
+                            VerticalAlignment="Center"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                            Text="{Binding RootPath, TargetNullValue={StaticResource Loc.Catalog.Root.None}}"
+                            TextTrimming="CharacterEllipsis"
+                            ToolTip="{Binding RootPath}" />
                     </StackPanel>
-
-                    <TextBlock
-                        Grid.Column="1"
-                        Margin="0,22,16,0"
-                        VerticalAlignment="Center"
-                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                        Text="{Binding RootPath, TargetNullValue={StaticResource Loc.Catalog.Root.None}}"
-                        TextTrimming="CharacterEllipsis"
-                        ToolTip="{Binding RootPath}">
-                        <TextBlock.Style>
-                            <Style TargetType="TextBlock">
-                                <Setter Property="Visibility" Value="Visible" />
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding IsDetailsOpen}" Value="True">
-                                        <Setter Property="Visibility" Value="Collapsed" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </TextBlock.Style>
-                    </TextBlock>
 
                     <ui:Button
                         Grid.Column="2"
-                        MinWidth="96"
+                        MinWidth="104"
                         Margin="0,20,0,0"
                         VerticalAlignment="Top"
                         Command="{Binding BrowseRootCommand}"
                         Content="위치 변경"
-                        Icon="{ui:SymbolIcon Symbol=FolderOpen20}"
-                        Visibility="{Binding IsDetailsOpen, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                </Grid>
-
-                <Grid Grid.Row="1" Margin="0,12,0,0">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
-
-                    <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
-                        <ui:ProgressRing
-                            Width="20"
-                            Height="20"
-                            Margin="0,0,8,0"
-                            IsIndeterminate="True"
-                            Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                        <TextBlock
-                            VerticalAlignment="Center"
-                            AutomationProperties.LiveSetting="Polite"
-                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="{Binding ProgressMessage}"
-                            TextTrimming="CharacterEllipsis" />
-                    </StackPanel>
-
-                    <WrapPanel
-                        Grid.Row="1"
-                        Margin="0,4,0,0"
-                        HorizontalAlignment="Right">
-                        <ui:Button
-                            MinWidth="212"
-                            Margin="8,8,0,0"
-                            Appearance="Primary"
-                            Command="{Binding ScanCommand}"
-                            Content="DB에 저장하지 않고 바로 스캔"
-                            Icon="{ui:SymbolIcon Symbol=Search20}"
-                            ToolTip="인덱스 DB를 만들거나 변경하지 않고 폴더를 직접 탐색합니다." />
-                        <ui:Button
-                            MinWidth="164"
-                            Margin="8,8,0,0"
-                            Command="{Binding IndexAndLoadCommand}"
-                            Content="인덱싱 후 불러오기"
-                            Icon="{ui:SymbolIcon Symbol=DatabaseSearch20}"
-                            ToolTip="선택한 위치를 DB에 새로 인덱싱한 뒤 구조화 결과를 불러옵니다." />
-                        <ui:Button
-                            MinWidth="84"
-                            Margin="8,8,0,0"
-                            Command="{Binding ToggleDetailsCommand}"
-                            Content="{Binding DetailsButtonText}"
-                            Icon="{ui:SymbolIcon Symbol=Settings20}" />
-                        <ui:Button
-                            MinWidth="72"
-                            Margin="8,8,0,0"
-                            Appearance="Caution"
-                            Command="{Binding CancelCommand}"
-                            Content="취소" />
-                        <ui:Button
-                            MinWidth="112"
-                            Margin="8,8,0,0"
-                            Command="{Binding OpenSelectedCommand}"
-                            Content="선택 폴더 열기"
-                            Icon="{ui:SymbolIcon Symbol=FolderOpen20}" />
-                    </WrapPanel>
-
-                    <TextBlock
-                        Grid.Row="2"
-                        Margin="0,8,0,0"
-                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                        Text="'바로 스캔'은 결과를 현재 화면에만 표시하며 인덱스 DB를 만들거나 변경하지 않습니다."
-                        TextWrapping="Wrap" />
+                        Icon="{ui:SymbolIcon Symbol=FolderOpen20}" />
                 </Grid>
 
                 <Expander
@@ -248,13 +178,50 @@
                             Grid.ColumnSpan="2"
                             Margin="0,8,0,0"
                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="DB에는 프로필 해석 결과가 아니라 파일·폴더 메타데이터가 저장되며 파일 찾기와 공유됩니다. 기존 인덱스는 인덱싱할 때 사용한 검색 위치와 현재 검색 위치가 정확히 같을 때만 불러옵니다."
+                            Text="별도 경로를 지정하지 않으면 프로필별 기본 DB를 사용합니다."
                             TextWrapping="Wrap" />
                     </Grid>
                 </Expander>
 
+                <Grid Grid.Row="3" Margin="0,12,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
+                        <ui:ProgressRing
+                            Width="20"
+                            Height="20"
+                            Margin="0,0,8,0"
+                            IsIndeterminate="True"
+                            Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                        <TextBlock
+                            VerticalAlignment="Center"
+                            AutomationProperties.LiveSetting="Polite"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                            Text="{Binding ProgressMessage}"
+                            TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                    <WrapPanel Grid.Column="1" Margin="12,0,0,0">
+                        <ui:Button
+                            MinWidth="120"
+                            Appearance="Primary"
+                            Command="{Binding ScanCommand}"
+                            Content="스캔 시작"
+                            Icon="{ui:SymbolIcon Symbol=Search20}"
+                            ToolTip="검색 결과를 표시하고 프로필별 인덱스 DB에 저장합니다." />
+                        <ui:Button
+                            MinWidth="72"
+                            Margin="8,0,0,0"
+                            Appearance="Caution"
+                            Command="{Binding CancelCommand}"
+                            Content="취소"
+                            Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    </WrapPanel>
+                </Grid>
+
                 <Border
-                    Grid.Row="3"
+                    Grid.Row="4"
                     Margin="0,12,0,0"
                     Padding="12,8"
                     Background="{DynamicResource ControlFillColorSecondaryBrush}"
@@ -381,6 +348,9 @@
                 SelectionChanged="OnResultsGridSelectionChanged"
                 SelectionMode="Extended"
                 SelectionUnit="FullRow"
+                ScrollViewer.HorizontalScrollBarVisibility="Visible"
+                ScrollViewer.PanningMode="Both"
+                ScrollViewer.VerticalScrollBarVisibility="Auto"
                 Style="{StaticResource FluentDataGridStyle}"
                 Visibility="{Binding HasLoadedItems, Converter={StaticResource BooleanToVisibilityConverter}}">
                 <DataGrid.ContextMenu>
@@ -396,9 +366,9 @@
             <Border
                 x:Name="SelectionToolbar"
                 Grid.Row="2"
-                Margin="0,0,16,16"
+                Margin="8,0,8,28"
                 Padding="10,8"
-                HorizontalAlignment="Right"
+                HorizontalAlignment="Stretch"
                 VerticalAlignment="Bottom"
                 Panel.ZIndex="5"
                 Style="{StaticResource FluentToolbarSurfaceStyle}"
@@ -411,7 +381,7 @@
                             FontWeight="SemiBold"
                             Text="{Binding SelectedCount, StringFormat={StaticResource Loc.Common.SelectedCountFormat}}" />
                         <ComboBox
-                            Width="220"
+                            Width="180"
                             Margin="0,0,8,0"
                             AutomationProperties.Name="선택 항목 출력 형식"
                             DisplayMemberPath="DisplayName"
@@ -431,6 +401,11 @@
                         Content="내보내기"
                         Icon="{ui:SymbolIcon Symbol=ArrowExportUp20}"
                         ToolTip="선택한 구조화 결과를 Excel 또는 CSV 파일로 저장합니다." />
+                    <ui:Button
+                        Margin="0,4,12,4"
+                        Command="{Binding OpenSelectedCommand}"
+                        Content="선택 폴더 열기"
+                        Icon="{ui:SymbolIcon Symbol=FolderOpen20}" />
                     <ui:Button
                         Margin="0,4,6,4"
                         Click="OnSelectAllClick"
@@ -475,7 +450,7 @@
                         Margin="0,8,0,0"
                         HorizontalAlignment="Center"
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                        Text="파일·폴더 메타데이터를 DB에 저장하려면 '인덱싱 후 불러오기'를, 한 번만 확인하려면 'DB에 저장하지 않고 바로 스캔'을 선택하세요."
+                        Text="프로필과 검색 위치를 선택한 뒤 '스캔 시작'을 눌러 보세요. 결과는 화면에 표시되고 프로필별 DB에도 저장됩니다."
                         TextAlignment="Center"
                         TextWrapping="Wrap" />
                 </StackPanel>

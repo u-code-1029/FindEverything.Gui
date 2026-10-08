@@ -21,6 +21,7 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
     private readonly IFileSearchService _fileSearchService;
     private readonly IValidatedSettingsState<IndexingOptions> _indexingSettings;
     private readonly IWorkspaceContext _workspaceContext;
+    private readonly IIndexDatabasePathResolver _databasePathResolver;
     private readonly IDesktopPickerService _pickerService;
     private readonly IPathLauncher _pathLauncher;
     private readonly IApplicationOperationCoordinator _operationCoordinator;
@@ -45,6 +46,7 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
         IFileSearchService fileSearchService,
         IValidatedSettingsState<IndexingOptions> indexingSettings,
         IWorkspaceContext workspaceContext,
+        IIndexDatabasePathResolver databasePathResolver,
         IDesktopPickerService pickerService,
         IPathLauncher pathLauncher,
         IApplicationOperationCoordinator operationCoordinator,
@@ -61,6 +63,7 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
         _fileSearchService = fileSearchService;
         _indexingSettings = indexingSettings;
         _workspaceContext = workspaceContext;
+        _databasePathResolver = databasePathResolver;
         _pickerService = pickerService;
         _pathLauncher = pathLauncher;
         _operationCoordinator = operationCoordinator;
@@ -102,8 +105,10 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
         SelectedSort = SortChoices[0];
         SelectedCreatedDateFilter = DateFilterChoices[0];
         SelectedModifiedDateFilter = DateFilterChoices[0];
-        RootPath = workspaceContext.Current.RootPath;
-        DatabasePath = workspaceContext.Current.DatabasePath;
+        var workspace = workspaceContext.Current;
+        RootPath = workspace.RootPath;
+        DatabasePath = databasePathResolver.ResolveFileSearchDatabasePath(workspace);
+        IsUsingDefaultDatabasePath = string.IsNullOrWhiteSpace(workspace.DatabasePath);
         IndexStatusTitle = L("Loc.Files.Status.ChooseRoot", "검색 위치를 선택하세요");
         IndexStatusDetail = L(
             "Loc.Files.Status.ChooseRoot.Detail",
@@ -132,6 +137,13 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private string _databasePath = string.Empty;
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(UseDefaultDatabasePathCommand))]
+    private bool _isUsingDefaultDatabasePath;
+
+    public string DefaultDatabasePath => _databasePathResolver.ResolveFileSearchDatabasePath(
+        new WorkspaceSnapshot(null, null, null));
 
     [ObservableProperty]
     private string _searchText = string.Empty;
@@ -350,6 +362,7 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
         BrowseRootCommand.NotifyCanExecuteChanged();
         BrowseDatabaseCommand.NotifyCanExecuteChanged();
         RefreshIndexCommand.NotifyCanExecuteChanged();
+        UseDefaultDatabasePathCommand.NotifyCanExecuteChanged();
         CancelCommand.NotifyCanExecuteChanged();
         LoadMoreCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(CanSearch));
@@ -424,11 +437,6 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
         try
         {
             var normalized = Path.GetFullPath(selected);
-            if (HasRoot && IsWithin(normalized, RootPath!))
-            {
-                throw DatabaseInsideRootException();
-            }
-
             await _workspaceContext.UpdateAsync(
                 current => current with { DatabasePath = normalized },
                 CancellationToken.None).ConfigureAwait(true);
@@ -442,6 +450,33 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
         catch (Exception exception)
         {
             _logger.LogWarning(exception, "Could not change the file-search database.");
+            ShowStatus(
+                L("Loc.Files.Status.ChangeDatabaseFailed", "인덱스 위치 변경 실패"),
+                exception.Message,
+                InfoBarSeverity.Error);
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanUseDefaultDatabasePath))]
+    private async Task UseDefaultDatabasePathAsync()
+    {
+        try
+        {
+            await _workspaceContext.UpdateAsync(
+                current => current with { DatabasePath = null },
+                CancellationToken.None).ConfigureAwait(true);
+            InvalidateScope();
+            var workspace = _workspaceContext.Current;
+            DatabasePath = _databasePathResolver.ResolveFileSearchDatabasePath(workspace);
+            IsUsingDefaultDatabasePath = true;
+            Items.Clear();
+            TotalCount = 0;
+            HasSearched = false;
+            await StartLoadAsync(refreshStatus: true, debounce: false).ConfigureAwait(true);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "Could not restore the default file-search database.");
             ShowStatus(
                 L("Loc.Files.Status.ChangeDatabaseFailed", "인덱스 위치 변경 실패"),
                 exception.Message,
@@ -486,7 +521,6 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
                     current => current with
                     {
                         RootPath = scope.RootPath,
-                        DatabasePath = scope.DatabasePath,
                     },
                     CancellationToken.None).ConfigureAwait(true);
             }
@@ -834,6 +868,8 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
 
     private bool CanChangeWorkspace() => !IsBusy;
 
+    private bool CanUseDefaultDatabasePath() => !IsBusy && !IsUsingDefaultDatabasePath;
+
     private bool CanCancel() => IsBusy;
 
     private bool CanLoadMore() => HasMore && !IsSearching && !IsBusy;
@@ -911,7 +947,7 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
         }
 
         var generation = Volatile.Read(ref _scopeVersion);
-        var scope = ValidateScope(validateDatabaseOutsideRoot: false);
+        var scope = ValidateScope();
         var status = await _fileSearchService.GetStatusAsync(scope, cancellationToken)
             .ConfigureAwait(true);
         if (generation != Volatile.Read(ref _scopeVersion)
@@ -1091,7 +1127,7 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
         IsSearching = true;
         try
         {
-            var scope = ValidateScope(validateDatabaseOutsideRoot: false);
+            var scope = ValidateScope();
             if (reset)
             {
                 Items.Clear();
@@ -1205,7 +1241,7 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
         };
     }
 
-    private FileSearchScope ValidateScope(bool validateDatabaseOutsideRoot = true)
+    private FileSearchScope ValidateScope()
     {
         if (string.IsNullOrWhiteSpace(RootPath))
         {
@@ -1230,25 +1266,7 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
                 "인덱스 저장 위치를 확인할 수 없습니다."));
         }
 
-        var database = Path.GetFullPath(DatabasePath);
-        if (validateDatabaseOutsideRoot && IsWithin(database, root))
-        {
-            throw DatabaseInsideRootException();
-        }
-
-        return new FileSearchScope(root, database);
-    }
-
-    private static bool IsWithin(string path, string root)
-    {
-        var comparison = OperatingSystem.IsWindows()
-            ? StringComparison.OrdinalIgnoreCase
-            : StringComparison.Ordinal;
-        var normalizedRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root));
-        var prefix = normalizedRoot + Path.DirectorySeparatorChar;
-        var normalizedPath = Path.GetFullPath(path);
-        return string.Equals(normalizedPath, normalizedRoot, comparison)
-            || normalizedPath.StartsWith(prefix, comparison);
+        return new FileSearchScope(root, Path.GetFullPath(DatabasePath));
     }
 
     private bool ScopeStillCurrent(FileSearchScope scope)
@@ -1271,11 +1289,6 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
             Path.TrimEndingDirectorySeparator(Path.GetFullPath(second)),
             comparison);
     }
-
-    private InvalidOperationException DatabaseInsideRootException() =>
-        new(L(
-            "Loc.Files.Error.DatabaseInsideRoot",
-            "선택한 검색 위치 안에 인덱스 DB가 있습니다. 더 좁은 위치를 선택하거나 '인덱스 위치'에서 DB를 검색 범위 밖의 로컬 디스크로 옮기세요."));
 
     private void EnsureDatabaseDirectory(string databasePath)
     {
@@ -1349,15 +1362,19 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
     {
         void Apply()
         {
+            var databasePath = _databasePathResolver.ResolveFileSearchDatabasePath(
+                eventArgs.Current);
             var rootChanged = !string.Equals(RootPath, eventArgs.Current.RootPath, StringComparison.OrdinalIgnoreCase)
-                || !string.Equals(DatabasePath, eventArgs.Current.DatabasePath, StringComparison.OrdinalIgnoreCase);
+                || !string.Equals(DatabasePath, databasePath, StringComparison.OrdinalIgnoreCase);
             if (rootChanged)
             {
                 InvalidateScope();
             }
 
             RootPath = eventArgs.Current.RootPath;
-            DatabasePath = eventArgs.Current.DatabasePath;
+            DatabasePath = databasePath;
+            IsUsingDefaultDatabasePath = string.IsNullOrWhiteSpace(
+                eventArgs.Current.DatabasePath);
             if (rootChanged)
             {
                 Items.Clear();

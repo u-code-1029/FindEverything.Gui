@@ -16,8 +16,10 @@ public enum CatalogScanTraceKind
 }
 
 /// <summary>
-/// Describes one ordered diagnostic event from a direct profile-aware directory scan.
-/// Persistent-index operations do not publish these events.
+/// Describes one ordered diagnostic event from a profile-aware structured scan.
+/// A persistent scan reports its lifecycle and each directory as it is evaluated
+/// during the index traversal; raw file enumeration exposes aggregate progress through
+/// <see cref="CatalogOperationProgress"/> instead of per-path events.
 /// </summary>
 public sealed record CatalogScanTraceEvent(
     Guid OperationId,

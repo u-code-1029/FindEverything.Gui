@@ -11,6 +11,24 @@ namespace FindEverything.Desktop.Tests;
 public sealed class ScanConsoleViewModelTests
 {
     [Fact]
+    public void Closed_panel_requests_attention_until_the_user_opens_it()
+    {
+        var viewModel = new ScanConsoleViewModel(static _ => { })
+        {
+            HasUnseenActivity = true,
+        };
+
+        Assert.False(viewModel.IsPanelOpen);
+        Assert.True(viewModel.IsActivityAttentionRequested);
+
+        viewModel.TogglePanelCommand.Execute(null);
+
+        Assert.True(viewModel.IsPanelOpen);
+        Assert.False(viewModel.HasUnseenActivity);
+        Assert.False(viewModel.IsActivityAttentionRequested);
+    }
+
+    [Fact]
     public void Trace_lines_keep_the_path_that_the_user_can_copy()
     {
         var started = ScanConsoleViewModel.CreateLine(CreateEvent(

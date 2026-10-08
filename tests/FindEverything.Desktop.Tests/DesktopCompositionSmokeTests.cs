@@ -432,8 +432,8 @@ public sealed class DesktopCompositionSmokeTests
 
         Assert.True(catalog.IsScanning);
         Assert.False(catalog.CanEditWorkspace);
-        Assert.True(viewModel.IsPanelOpen);
-        Assert.Equal(Visibility.Visible, panel.Visibility);
+        Assert.False(viewModel.IsPanelOpen);
+        Assert.Equal(Visibility.Collapsed, panel.Visibility);
         mainWindow.Dispatcher.Invoke(static () => { }, DispatcherPriority.DataBind);
         Assert.Equal(Visibility.Visible, badge.Visibility);
         PumpDispatcherUntil(
@@ -532,13 +532,14 @@ public sealed class DesktopCompositionSmokeTests
         Assert.Equal("Apollo Final", reconciledViewModel.DisplayValues["client"]);
         Assert.Equal(Visibility.Collapsed, badge.Visibility);
         Assert.Contains("소요 1분 05.43초", catalog.StatusMessage, StringComparison.Ordinal);
+        Assert.Contains("이름 규칙 제외 2", catalog.StatusMessage, StringComparison.Ordinal);
         var notification = Assert.Single(
             provider.GetRequiredService<RecordingScanCompletionNotifier>().Notices);
-        Assert.Equal("DB에 저장하지 않는 스캔 완료", notification.Title);
+        Assert.Equal("스캔 및 DB 저장 완료", notification.Title);
         Assert.Contains("소요 1분 05.43초", notification.Message, StringComparison.Ordinal);
 
-        // The persistent workflow is deliberately separate from direct discovery:
-        // it writes through ScanAndLoadAsync and must not open the direct-scan log.
+        // The default scan is also the persistent workflow. It must keep the log
+        // collapsed and may replace an automatic existing-index load atomically.
         viewModel.ClosePanelCommand.Execute(null);
         var persistentRoot = Path.Combine(
             Path.GetTempPath(),
@@ -566,14 +567,14 @@ public sealed class DesktopCompositionSmokeTests
         {
             File.WriteAllText(blockedDatabaseParent, "block directory creation");
             catalog.DatabasePath = Path.Combine(blockedDatabaseParent, "index.db");
-            var rejectedIndexAndLoad = catalog.IndexAndLoadCommand.ExecuteAsync(null);
+            var failedDatabaseScan = catalog.ScanCommand.ExecuteAsync(null);
             PumpDispatcherUntil(
                 mainWindow.Dispatcher,
-                () => rejectedIndexAndLoad.IsCompleted,
+                () => failedDatabaseScan.IsCompleted,
                 TimeSpan.FromSeconds(3));
-            rejectedIndexAndLoad.GetAwaiter().GetResult();
+            failedDatabaseScan.GetAwaiter().GetResult();
             Assert.Equal(workspaceBeforeRejectedIndex, workspaceContext.Current);
-            Assert.Equal(0, blockingService.ScanAndLoadCallCount);
+            Assert.Equal(1, blockingService.ScanAndLoadCallCount);
         }
         finally
         {
@@ -593,28 +594,30 @@ public sealed class DesktopCompositionSmokeTests
                 await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
             });
         Assert.True(loadStarted.Wait(TimeSpan.FromSeconds(3)));
-        var indexAndLoadTask = catalog.IndexAndLoadCommand.ExecuteAsync(null);
+        var replacementScanTask = catalog.ScanCommand.ExecuteAsync(null);
         PumpDispatcherUntil(
             mainWindow.Dispatcher,
-            () => indexAndLoadTask.IsCompleted,
+            () => replacementScanTask.IsCompleted,
             TimeSpan.FromSeconds(3));
-        indexAndLoadTask.GetAwaiter().GetResult();
+        replacementScanTask.GetAwaiter().GetResult();
         PumpDispatcherFor(mainWindow.Dispatcher, TimeSpan.FromMilliseconds(20));
 
-        Assert.Equal(1, blockingService.ScanAndLoadCallCount);
+        Assert.Equal(2, blockingService.ScanAndLoadCallCount);
         Assert.True(replacedLoad.IsCanceled);
         Assert.Equal(catalog.DatabasePath, blockingService.LastScanAndLoadRequest?.DatabasePath);
-        Assert.Equal("인덱싱 후 불러오기 완료", catalog.StatusTitle);
+        Assert.Equal("스캔 및 DB 저장 완료", catalog.StatusTitle);
         Assert.False(viewModel.IsPanelOpen);
         Assert.Equal(
-            "인덱싱 후 불러오기 완료",
+            "스캔 및 DB 저장 완료",
             provider.GetRequiredService<RecordingScanCompletionNotifier>().Notices[^1].Title);
         var savedWorkspace = workspaceContext.Current;
         Assert.Equal(catalog.RootPath, savedWorkspace.RootPath);
-        Assert.Equal(catalog.DatabasePath, savedWorkspace.DatabasePath);
+        Assert.Equal(
+            catalog.DatabasePath,
+            savedWorkspace.ProfileDatabasePaths![profile.Descriptor.Id]);
 
-        // A local root draft and an external database edit merge field-by-field.
-        // The delayed root save must not overwrite the newer shared database path.
+        // A local root draft and an external file-search database edit merge
+        // field-by-field. Catalog keeps its profile-specific database path.
         var editedRootPath = Path.Combine(
             Path.GetTempPath(),
             $"findeverything-catalog-edited-root-{Guid.NewGuid():N}");
@@ -633,19 +636,27 @@ public sealed class DesktopCompositionSmokeTests
                 && PathsEqual(workspaceContext.Current.DatabasePath, editedDatabasePath),
             TimeSpan.FromSeconds(3));
         Assert.Equal(editedRootPath, catalog.RootPath);
-        Assert.Equal(editedDatabasePath, catalog.DatabasePath);
+        Assert.Equal(
+            savedWorkspace.ProfileDatabasePaths![profile.Descriptor.Id],
+            catalog.DatabasePath);
 
-        // Clearing the required DB field is a validation failure, not a request to
-        // silently keep the old shared value while the editor remains blank.
+        // Clearing the profile override restores its LocalAppData default without
+        // changing the independent file-search database path.
         catalog.DatabasePath = string.Empty;
-        var rejectedWorkspaceCommit = catalog.CommitWorkspaceCommand.ExecuteAsync(null);
+        var defaultDatabaseCommit = catalog.CommitWorkspaceCommand.ExecuteAsync(null);
         PumpDispatcherUntil(
             mainWindow.Dispatcher,
-            () => rejectedWorkspaceCommit.IsCompleted,
+            () => defaultDatabaseCommit.IsCompleted,
             TimeSpan.FromSeconds(3));
-        rejectedWorkspaceCommit.GetAwaiter().GetResult();
+        defaultDatabaseCommit.GetAwaiter().GetResult();
+        PumpDispatcherFor(mainWindow.Dispatcher, TimeSpan.FromMilliseconds(20));
         Assert.Equal(editedDatabasePath, workspaceContext.Current.DatabasePath);
-        Assert.Equal("작업 위치 저장 실패", catalog.StatusTitle);
+        Assert.False(workspaceContext.Current.ProfileDatabasePaths?.ContainsKey(
+            profile.Descriptor.Id) ?? false);
+        Assert.Equal(
+            provider.GetRequiredService<IIndexDatabasePathResolver>()
+                .ResolveProfileDatabasePath(profile.Descriptor.Id, workspaceContext.Current),
+            catalog.DatabasePath);
 
         // Validation fails before a new live-result session starts. The previous
         // completed rows stay visible, but must not be described as partial rows
@@ -1046,6 +1057,7 @@ public sealed class DesktopCompositionSmokeTests
             Assert.False(selectionColumn.CanUserReorder);
             Assert.False(selectionColumn.CanUserResize);
             Assert.False(selectionColumn.CanUserSort);
+            Assert.Equal(52, selectionColumn.Width.Value);
             Assert.Equal(1, grid.FrozenColumnCount);
             Assert.Contains(grid.Columns, column => Equals(column.Header, "Status"));
             Assert.Contains(grid.Columns, column => Equals(column.Header, "Folder path"));
@@ -1057,6 +1069,7 @@ public sealed class DesktopCompositionSmokeTests
             var selector = Assert.Single(
                 FindVisualChildren<System.Windows.Controls.CheckBox>(row));
             Assert.Equal("Select item", selector.ToolTip);
+            Assert.True(selector.IsVisible);
             Assert.False(selector.IsChecked);
             row.IsSelected = true;
             host.Dispatcher.Invoke(static () => { }, DispatcherPriority.DataBind);
@@ -1115,9 +1128,7 @@ public sealed class DesktopCompositionSmokeTests
         private readonly TaskCompletionSource<CatalogResult> _completion = new(
             TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly List<CatalogItem> _reportedItems = [];
-        private CatalogItem[] _finalItems = [];
         private IProgress<CatalogOperationProgress>? _progress;
-        private ProfileDescriptor? _descriptor;
 
         public bool HasStarted => _started.Task.IsCompleted;
 
@@ -1128,16 +1139,9 @@ public sealed class DesktopCompositionSmokeTests
         public async Task<CatalogResult> DiscoverAsync(
             CatalogRequest request,
             IProgress<CatalogOperationProgress>? progress = null,
-            CancellationToken cancellationToken = default)
-        {
-            lock (_gate)
-            {
-                _progress = progress;
-            }
-
-            _started.TrySetResult();
-            return await _completion.Task.WaitAsync(cancellationToken);
-        }
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException(
+                "The desktop default scan must use the persistent index workflow.");
 
         public Task<CatalogResult> LoadExistingAsync(
             CatalogRequest request,
@@ -1145,7 +1149,7 @@ public sealed class DesktopCompositionSmokeTests
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
-        public Task<CatalogResult> ScanAndLoadAsync(
+        public async Task<CatalogResult> ScanAndLoadAsync(
             CatalogRequest request,
             IProgress<CatalogOperationProgress>? progress = null,
             CancellationToken cancellationToken = default)
@@ -1153,14 +1157,13 @@ public sealed class DesktopCompositionSmokeTests
             cancellationToken.ThrowIfCancellationRequested();
             ScanAndLoadCallCount++;
             LastScanAndLoadRequest = request;
-            return Task.FromResult(new CatalogResult(
-                _descriptor ?? throw new InvalidOperationException("No profile descriptor."),
-                _finalItems,
-                [],
-                _finalItems.Length,
-                0,
-                false,
-                null));
+            lock (_gate)
+            {
+                _progress = progress;
+            }
+
+            _started.TrySetResult();
+            return await _completion.Task.WaitAsync(cancellationToken);
         }
 
         public void ReportMatches(params CatalogItem[] items)
@@ -1189,14 +1192,12 @@ public sealed class DesktopCompositionSmokeTests
             ProfileDescriptor descriptor,
             params CatalogItem[] finalItems)
         {
-            _descriptor = descriptor;
             CatalogItem[] items;
             lock (_gate)
             {
                 items = finalItems.Length == 0
                     ? _reportedItems.ToArray()
                     : finalItems.ToArray();
-                _finalItems = items;
             }
 
             _completion.TrySetResult(new CatalogResult(
@@ -1206,19 +1207,23 @@ public sealed class DesktopCompositionSmokeTests
                 items.Length,
                 0,
                 false,
-                null)
-            {
-                DiscoveryReport = new DirectoryDiscoveryReport(
+                new IndexScanReport(
+                    Guid.NewGuid(),
                     Path.GetTempPath(),
-                    DirectoryDiscoveryStatus.Completed,
-                    new DirectoryDiscoveryProgress(
+                    Path.GetTempPath(),
+                    IndexScanStatus.Completed,
+                    new IndexScanProgress(
                         Entries: items.Length,
                         Directories: items.Length,
-                        PrunedDirectories: 0,
+                        ExcludedEntries: 0,
                         SkippedLinks: 0,
                         ErrorCount: 0,
-                        Elapsed: TimeSpan.FromSeconds(65.43)),
-                    []),
+                        Elapsed: TimeSpan.FromSeconds(65.43),
+                        PendingDirectories: 0),
+                    [],
+                    []))
+            {
+                ExcludedDirectoryCount = 2,
             });
         }
     }

@@ -32,14 +32,14 @@ internal static class UserFacingExceptionLocalizer
                 Availability: IndexRootAvailability.DatabaseMissing,
             } unavailable => localizer.Format(
                 "Loc.Catalog.Error.IndexDatabaseMissing",
-                "인덱스 DB '{0}'가 없습니다. '인덱싱 후 불러오기'를 실행하거나 올바른 DB를 선택하세요.",
+                "인덱스 DB '{0}'가 없습니다. '스캔 시작'을 실행하거나 올바른 DB를 선택하세요.",
                 unavailable.DatabasePath),
             CatalogIndexUnavailableException
             {
                 Availability: IndexRootAvailability.RootNotIndexed,
             } unavailable => localizer.Format(
                 "Loc.Catalog.Error.RootNotIndexed",
-                "DB '{1}'에는 검색 위치 '{0}'를 정확한 루트로 만든 인덱스가 없습니다. 같은 검색 위치로 '인덱싱 후 불러오기'를 실행하세요.",
+                "DB '{1}'에는 검색 위치 '{0}'를 정확한 루트로 만든 인덱스가 없습니다. 같은 검색 위치로 '스캔 시작'을 실행하세요.",
                 unavailable.RootPath,
                 unavailable.DatabasePath),
             MappedDrivePathResolutionException mappedDrive => localizer.Format(

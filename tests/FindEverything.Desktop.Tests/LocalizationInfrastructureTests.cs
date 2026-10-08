@@ -111,9 +111,9 @@ public sealed class LocalizationInfrastructureTests
                 ["Loc.Language.ChangeFailed.Message"] =
                     "The language setting could not be saved. Check the user settings file and try again.",
                 ["Loc.Catalog.Error.IndexDatabaseMissing"] =
-                    "Index database '{0}' does not exist. Run 'Index and load' or choose the correct database.",
+                    "Index database '{0}' does not exist. Run 'Start scan' or choose the correct database.",
                 ["Loc.Catalog.Error.RootNotIndexed"] =
-                    "Database '{1}' has no index registered for the exact search root '{0}'. Run 'Index and load' with the same search location.",
+                    "Database '{1}' has no index registered for the exact search root '{0}'. Run 'Start scan' with the same search location.",
             });
         var mappedDriveException = new MappedDrivePathResolutionException(
             @"Z:\Projects",

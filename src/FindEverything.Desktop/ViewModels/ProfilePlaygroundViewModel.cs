@@ -183,12 +183,12 @@ public sealed class ProfilePlaygroundEvaluator(
             ILoadedProfile? profile,
             IAppLocalizer? localizer = null)
     {
-        var directScanScope = Get(
+        var scanScope = Get(
             localizer,
             "Loc.Playground.Exclusion.Scope",
-            "이 판정은 구조화 보기의 ‘DB에 저장하지 않고 바로 스캔’에서 검색 루트 아래 폴더에만 적용됩니다. "
-            + "입력 경로 자체를 검색 루트로 선택한 경우에는 명시적 루트 예외로 제외하지 않으며, "
-            + "파일 인덱싱과 기존 인덱스 불러오기에도 적용하지 않습니다.");
+            "이 판정은 구조화 보기의 스캔에서 검색 루트 아래 폴더의 마지막 이름(leaf)에 적용됩니다. "
+            + "일치한 폴더와 그 하위 폴더는 인덱싱하지 않습니다. 검색 루트 자체는 예외 규칙으로 제외하지 않습니다. "
+            + "기존 DB 불러오기는 저장된 인덱스를 사용하므로 새 규칙을 반영하려면 다시 스캔하세요.");
 
         if (string.IsNullOrEmpty(directoryName))
         {
@@ -198,7 +198,7 @@ public sealed class ProfilePlaygroundEvaluator(
                     localizer,
                     "Loc.Playground.Exclusion.NoLeaf",
                     "leaf 폴더 이름이 없어 제외 판정을 생략했습니다."),
-                directScanScope,
+                scanScope,
                 InfoBarSeverity.Informational);
         }
 
@@ -210,7 +210,7 @@ public sealed class ProfilePlaygroundEvaluator(
                     localizer,
                     "Loc.Playground.Exclusion.NoRules",
                     "제외 규칙이 없어 이 폴더를 계속 탐색합니다."),
-                directScanScope,
+                scanScope,
                 InfoBarSeverity.Informational);
         }
 
@@ -226,7 +226,7 @@ public sealed class ProfilePlaygroundEvaluator(
                     localizer,
                     "Loc.Playground.Exclusion.CheckRegex",
                     "아래 색상 디버깅과 검증 메시지에서 잘못된 정규식을 확인하세요. ")
-                + directScanScope,
+                + scanScope,
                 InfoBarSeverity.Error);
         }
 
@@ -243,7 +243,7 @@ public sealed class ProfilePlaygroundEvaluator(
                 Get(
                     localizer,
                     "Loc.Playground.Exclusion.SiblingsContinue",
-                    "같은 부모의 다음 폴더 탐색은 계속합니다. ") + directScanScope,
+                    "같은 부모의 다음 폴더 탐색은 계속합니다. ") + scanScope,
                 InfoBarSeverity.Success);
         }
 
@@ -260,7 +260,7 @@ public sealed class ProfilePlaygroundEvaluator(
                     evaluation.Issues.Select(issue =>
                         $"• {ProfileDiagnosticLocalizer.Translate(localizer, issue)}"))
                 + Environment.NewLine
-                + directScanScope,
+                + scanScope,
                 InfoBarSeverity.Warning);
         }
 
@@ -270,7 +270,7 @@ public sealed class ProfilePlaygroundEvaluator(
                 localizer,
                 "Loc.Playground.Exclusion.NoMatch",
                 "어떤 제외 규칙에도 일치하지 않아 이 폴더를 계속 탐색합니다."),
-            directScanScope,
+            scanScope,
             InfoBarSeverity.Informational);
     }
 

@@ -28,6 +28,7 @@ public sealed class FileSearchServiceTests
         Assert.Equal(scope.RootPath, request.RootPath);
         Assert.Equal(3456, request.Options.MaxEntriesPerSecond);
         Assert.Equal(TimeSpan.FromMilliseconds(27), request.Options.DirectoryDelay);
+        Assert.Null(request.InspectDirectory);
         Assert.Equal(scope.DatabasePath, factory.LastDatabasePath);
     }
 

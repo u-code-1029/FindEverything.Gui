@@ -64,6 +64,119 @@ public sealed class IndexSessionIntegrationTests
             reportedPages.SelectMany(static page => page).Select(static directory => directory.FullPath));
     }
 
+    [Fact]
+    public async Task ScanMapsDirectoryInspectionDecisionsAndPendingCoverageThroughTheAdapter()
+    {
+        using var workspace = new TestWorkspace();
+        var terminalPath = Path.Combine(workspace.SourcePath, "terminal");
+        var hiddenPath = Path.Combine(terminalPath, "deep");
+        var deferredPath = Path.Combine(workspace.SourcePath, "deferred");
+        var excludedPath = Path.Combine(workspace.SourcePath, "deferred-excluded");
+        var excludedDescendantPath = Path.Combine(excludedPath, "deep");
+        Directory.CreateDirectory(hiddenPath);
+        Directory.CreateDirectory(Path.Combine(deferredPath, "deep"));
+        Directory.CreateDirectory(excludedDescendantPath);
+        Directory.CreateDirectory(Path.Combine(workspace.SourcePath, "sibling"));
+        var candidates = new List<DiscoveredDirectory>();
+        var factory = new FindEverythingIndexSessionFactory();
+        var request = FastScan(workspace.SourcePath) with
+        {
+            Options = FastScan(workspace.SourcePath).Options with
+            {
+                Deferral = new IndexDeferralPolicy
+                {
+                    DirectoryNames = ["deferred", "deferred-excluded"],
+                },
+            },
+            InspectDirectory = candidate =>
+            {
+                candidates.Add(candidate);
+                if (PathComparer.Equals(candidate.FullPath, terminalPath))
+                    return DirectoryTraversalDecision.SkipDescendants;
+                return PathComparer.Equals(candidate.FullPath, excludedPath)
+                    ? DirectoryTraversalDecision.ExcludeSubtree
+                    : DirectoryTraversalDecision.Continue;
+            },
+        };
+
+        await using var session = factory.Create(workspace.DatabasePath);
+        var report = await session.ScanAsync(request, cancellationToken: CancellationToken.None);
+        var indexed = await session.SearchDirectoriesAsync(
+            new DirectorySearchRequest(workspace.SourcePath),
+            CancellationToken.None);
+
+        Assert.Equal(IndexScanStatus.Deferred, report.Status);
+        Assert.Contains(candidates, candidate =>
+            PathComparer.Equals(candidate.FullPath, workspace.SourcePath)
+            && !candidate.CoveragePending);
+        Assert.Contains(candidates, candidate =>
+            PathComparer.Equals(candidate.FullPath, terminalPath)
+            && !candidate.CoveragePending);
+        Assert.Contains(candidates, candidate =>
+            PathComparer.Equals(candidate.FullPath, deferredPath)
+            && candidate.CoveragePending);
+        Assert.Contains(candidates, candidate =>
+            PathComparer.Equals(candidate.FullPath, excludedPath)
+            && candidate.CoveragePending);
+        Assert.DoesNotContain(candidates, candidate =>
+            PathComparer.Equals(candidate.FullPath, hiddenPath)
+            || PathComparer.Equals(candidate.FullPath, excludedDescendantPath));
+        Assert.Contains(indexed.Directories, directory =>
+            PathComparer.Equals(directory.FullPath, terminalPath));
+        Assert.Contains(indexed.Directories, directory =>
+            PathComparer.Equals(directory.FullPath, deferredPath)
+            && directory.CoveragePending);
+        Assert.DoesNotContain(indexed.Directories, directory =>
+            PathComparer.Equals(directory.FullPath, hiddenPath)
+            || PathComparer.Equals(directory.FullPath, excludedPath)
+            || PathComparer.Equals(directory.FullPath, excludedDescendantPath));
+        Assert.DoesNotContain(report.PendingScopes, scope =>
+            PathComparer.Equals(scope.ScopePath, excludedPath));
+        Assert.True(indexed.HasPendingScopes);
+    }
+
+    [Fact]
+    public async Task ScanUsesTheConfiguredDirectoryRegexTimeoutAndContinuesTraversal()
+    {
+        using var workspace = new TestWorkspace();
+        var pathologicalPath = Path.Combine(
+            workspace.SourcePath,
+            new string('a', 96) + "!");
+        var retainedPath = Path.Combine(workspace.SourcePath, "retained");
+        Directory.CreateDirectory(pathologicalPath);
+        Directory.CreateDirectory(retainedPath);
+        var baseRequest = FastScan(workspace.SourcePath);
+        var request = baseRequest with
+        {
+            Options = baseRequest.Options with
+            {
+                ExcludedDirectoryNameRegexes =
+                [
+                    new IndexDirectoryNameRegex("(a+)+$")
+                    {
+                        TimeoutMilliseconds = 1,
+                    },
+                ],
+            },
+        };
+
+        var factory = new FindEverythingIndexSessionFactory();
+        await using var session = factory.Create(workspace.DatabasePath);
+        var report = await session.ScanAsync(request, cancellationToken: CancellationToken.None);
+        var indexed = await session.SearchDirectoriesAsync(
+            new DirectorySearchRequest(workspace.SourcePath),
+            CancellationToken.None);
+
+        Assert.Equal(IndexScanStatus.Partial, report.Status);
+        var error = Assert.Single(report.Errors);
+        Assert.Equal(pathologicalPath, error.Path);
+        Assert.Contains("1 ms timeout", error.Message, StringComparison.Ordinal);
+        Assert.Contains(indexed.Directories, directory =>
+            PathComparer.Equals(directory.FullPath, pathologicalPath));
+        Assert.Contains(indexed.Directories, directory =>
+            PathComparer.Equals(directory.FullPath, retainedPath));
+    }
+
     private sealed class InlineProgress<T>(Action<T> report) : IProgress<T>
     {
         public void Report(T value) => report(value);

@@ -184,6 +184,23 @@
                                     <DataTrigger Binding="{Binding ScanConsole.IsPanelOpen}" Value="True">
                                         <Setter Property="Appearance" Value="Secondary" />
                                     </DataTrigger>
+                                    <DataTrigger Binding="{Binding ScanConsole.IsActivityAttentionRequested}" Value="True">
+                                        <Setter Property="Appearance" Value="Primary" />
+                                        <DataTrigger.EnterActions>
+                                            <BeginStoryboard x:Name="ScanConsoleAttentionStoryboard">
+                                                <Storyboard AutoReverse="True" RepeatBehavior="Forever">
+                                                    <DoubleAnimation
+                                                        Storyboard.TargetProperty="Opacity"
+                                                        From="1"
+                                                        To="0.55"
+                                                        Duration="0:0:0.55" />
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </DataTrigger.EnterActions>
+                                        <DataTrigger.ExitActions>
+                                            <StopStoryboard BeginStoryboardName="ScanConsoleAttentionStoryboard" />
+                                        </DataTrigger.ExitActions>
+                                    </DataTrigger>
                                 </Style.Triggers>
                             </Style>
                         </ui:Button.Style>

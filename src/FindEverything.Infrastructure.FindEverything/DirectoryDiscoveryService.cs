@@ -41,6 +41,8 @@ internal sealed class DirectoryDiscoveryService : IDirectoryDiscoveryService
                     Engine.DirectoryTraversalDecision.Continue,
                 DirectoryTraversalDecision.SkipDescendants =>
                     Engine.DirectoryTraversalDecision.SkipDescendants,
+                DirectoryTraversalDecision.ExcludeSubtree =>
+                    Engine.DirectoryTraversalDecision.ExcludeSubtree,
                 var decision => throw new ArgumentOutOfRangeException(
                     nameof(visitDirectory),
                     decision,
