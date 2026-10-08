@@ -4,6 +4,7 @@ using System.Windows.Data;
 using System.Windows.Threading;
 using FindEverything.Application.Catalog;
 using FindEverything.Application.Indexing;
+using FindEverything.Desktop.Configuration;
 using FindEverything.Desktop.Filtering;
 using FindEverything.Desktop.Services;
 using FindEverything.Profile.Runtime;
@@ -24,12 +25,19 @@ public partial class CatalogViewModel : ObservableObject
     private readonly IScanConsolePanelController _scanConsolePanelController;
     private readonly IScanCompletionNotifier _scanCompletionNotifier;
     private readonly ISnackbarService _snackbarService;
+    private readonly ISelectionOutputFormatStore _outputFormatStore;
+    private readonly ISelectionOutputFormatter _outputFormatter;
+    private readonly IClipboardService _clipboardService;
     private readonly ILogger<CatalogViewModel> _logger;
     private readonly Dispatcher _dispatcher;
     private List<CatalogItemViewModel> _loadedItems = [];
     private CatalogResultSession? _activeResultSession;
     private ProfileCatalogSnapshot? _pendingProfileSnapshot;
     private long _resultSessionVersion;
+    private string? _lastAutomaticLoadKey;
+    private IReadOnlyList<CatalogItemViewModel> _selectedItems = [];
+    private bool _isActive;
+    private bool _isAutomaticIndexLoad;
 
     [ObservableProperty]
     private IReadOnlyList<ProfileChoiceViewModel> _profiles = [];
@@ -53,6 +61,16 @@ public partial class CatalogViewModel : ObservableObject
     private CatalogItemViewModel? _selectedItem;
 
     [ObservableProperty]
+    private IReadOnlyList<SelectionOutputFormatDefinition> _outputFormats = [];
+
+    [ObservableProperty]
+    private SelectionOutputFormatDefinition? _selectedOutputFormat;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasSelection))]
+    private int _selectedCount;
+
+    [ObservableProperty]
     private string _filterText = string.Empty;
 
     [ObservableProperty]
@@ -67,6 +85,13 @@ public partial class CatalogViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _isScanning;
+
+    [ObservableProperty]
+    private bool _isLoadingExistingIndex;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DetailsButtonText))]
+    private bool _isDetailsOpen;
 
     [ObservableProperty]
     private string _progressMessage = "프로필과 검색 위치를 선택하세요.";
@@ -85,6 +110,10 @@ public partial class CatalogViewModel : ObservableObject
 
     public bool CanEditWorkspace => !IsBusy;
 
+    public string DetailsButtonText => IsDetailsOpen ? "간단히" : "자세히";
+
+    public bool HasSelection => SelectedCount > 0;
+
     public CatalogViewModel(
         ICatalogService catalogService,
         IProfileCatalog profileCatalog,
@@ -95,6 +124,9 @@ public partial class CatalogViewModel : ObservableObject
         IScanConsolePanelController scanConsolePanelController,
         IScanCompletionNotifier scanCompletionNotifier,
         ISnackbarService snackbarService,
+        ISelectionOutputFormatStore outputFormatStore,
+        ISelectionOutputFormatter outputFormatter,
+        IClipboardService clipboardService,
         ILogger<CatalogViewModel> logger)
     {
         _catalogService = catalogService;
@@ -106,6 +138,9 @@ public partial class CatalogViewModel : ObservableObject
         _scanConsolePanelController = scanConsolePanelController;
         _scanCompletionNotifier = scanCompletionNotifier;
         _snackbarService = snackbarService;
+        _outputFormatStore = outputFormatStore;
+        _outputFormatter = outputFormatter;
+        _clipboardService = clipboardService;
         _logger = logger;
         _dispatcher = System.Windows.Application.Current?.Dispatcher
             ?? Dispatcher.CurrentDispatcher;
@@ -117,6 +152,9 @@ public partial class CatalogViewModel : ObservableObject
         ApplyProfileSnapshot(profileCatalog.Current, workspace.SelectedProfileId);
         _profileCatalog.Changed += OnProfileCatalogChanged;
         _workspaceContext.Changed += OnWorkspaceChanged;
+        _outputFormatStore.Changed += OnOutputFormatsChanged;
+        _operationCoordinator.StateChanged += OnOperationCoordinatorStateChanged;
+        RefreshOutputFormats();
 
         if (Profiles.Count == 0)
         {
@@ -127,8 +165,30 @@ public partial class CatalogViewModel : ObservableObject
         }
     }
 
+    public void Activate()
+    {
+        _isActive = true;
+        ScheduleAutomaticLoad();
+    }
+
+    public void Deactivate()
+    {
+        _isActive = false;
+        if (!_isAutomaticIndexLoad
+            || !IsLoadingExistingIndex
+            || _operationCoordinator.CurrentKind != ApplicationOperationKind.IndexLoad)
+        {
+            return;
+        }
+
+        _lastAutomaticLoadKey = null;
+        ProgressMessage = "페이지를 닫아 자동 불러오기를 취소하는 중…";
+        _operationCoordinator.Cancel();
+    }
+
     partial void OnSelectedProfileChanged(ProfileChoiceViewModel? value)
     {
+        _lastAutomaticLoadKey = null;
         EndResultSession(_activeResultSession);
         Fields = value?.Profile.Descriptor.Fields
             .OrderBy(static field => field.Order)
@@ -139,8 +199,11 @@ public partial class CatalogViewModel : ObservableObject
         FilterText = string.Empty;
         HasLoadedItems = false;
         FilterSummary = "0개 항목";
+        SetSelection([]);
+        RefreshOutputFormats();
         ScanCommand.NotifyCanExecuteChanged();
         LoadCommand.NotifyCanExecuteChanged();
+        ScheduleAutomaticLoad();
     }
 
     partial void OnIsBusyChanged(bool value)
@@ -150,8 +213,15 @@ public partial class CatalogViewModel : ObservableObject
         CancelCommand.NotifyCanExecuteChanged();
     }
 
-    partial void OnSelectedItemChanged(CatalogItemViewModel? value) =>
+    partial void OnIsLoadingExistingIndexChanged(bool value) =>
+        ScanCommand.NotifyCanExecuteChanged();
+
+    partial void OnSelectedItemChanged(CatalogItemViewModel? value)
+    {
         OpenSelectedCommand.NotifyCanExecuteChanged();
+        OpenSelectedFolderCommand.NotifyCanExecuteChanged();
+        CopySelectedFolderPathCommand.NotifyCanExecuteChanged();
+    }
 
     partial void OnFilterTextChanged(string value) => ApplyFilter();
 
@@ -188,6 +258,7 @@ public partial class CatalogViewModel : ObservableObject
         {
             RootPath = eventArgs.Current.RootPath;
             DatabasePath = eventArgs.Current.DatabasePath;
+            ScheduleAutomaticLoad();
         }
 
         if (dispatcher is null || dispatcher.CheckAccess())
@@ -210,6 +281,7 @@ public partial class CatalogViewModel : ObservableObject
                 "준비",
                 "새 프로필이 적용되었습니다. 검색 위치를 선택하세요.",
                 InfoBarSeverity.Informational);
+            ScheduleAutomaticLoad();
         }
         else if (hadProfiles && Profiles.Count == 0)
         {
@@ -245,6 +317,7 @@ public partial class CatalogViewModel : ObservableObject
         if (selected is not null)
         {
             RootPath = selected;
+            ScheduleAutomaticLoad();
         }
     }
 
@@ -255,11 +328,28 @@ public partial class CatalogViewModel : ObservableObject
         if (selected is not null)
         {
             DatabasePath = selected;
+            ScheduleAutomaticLoad();
         }
     }
 
-    [RelayCommand(CanExecute = nameof(CanStart))]
-    private Task ScanAsync() => RunOperationAsync("프로필로 빠르게 불러오기", discoverDirectly: true);
+    [RelayCommand]
+    private void ToggleDetails() => IsDetailsOpen = !IsDetailsOpen;
+
+    [RelayCommand(CanExecute = nameof(CanScan))]
+    private async Task ScanAsync()
+    {
+        if (IsLoadingExistingIndex
+            && _operationCoordinator.CurrentKind == ApplicationOperationKind.IndexLoad)
+        {
+            ProgressMessage = "기존 인덱스 불러오기를 취소하는 중…";
+            await _operationCoordinator.CancelAndWaitAsync(TimeSpan.FromSeconds(30))
+                .ConfigureAwait(true);
+            await Dispatcher.Yield(DispatcherPriority.Background);
+        }
+
+        await RunOperationAsync("프로필로 빠르게 불러오기", discoverDirectly: true)
+            .ConfigureAwait(true);
+    }
 
     [RelayCommand(CanExecute = nameof(CanStart))]
     private Task LoadAsync() => RunOperationAsync("기존 인덱스에서 불러오기", discoverDirectly: false);
@@ -299,13 +389,143 @@ public partial class CatalogViewModel : ObservableObject
         }
     }
 
+    [RelayCommand(CanExecute = nameof(CanOpenSelected))]
+    private void OpenSelectedFolder()
+    {
+        if (SelectedItem is not null)
+        {
+            OpenItem(SelectedItem);
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanOpenSelected))]
+    private void CopySelectedFolderPath()
+    {
+        if (SelectedItem is null)
+        {
+            return;
+        }
+
+        if (_clipboardService.TrySetText(SelectedItem.FullPath, out var errorMessage))
+        {
+            ShowSnackbar("폴더 경로 복사 완료", SelectedItem.FullPath, ControlAppearance.Secondary);
+        }
+        else
+        {
+            SetStatus(
+                "폴더 경로 복사 실패",
+                errorMessage ?? "클립보드에 복사하지 못했습니다.",
+                InfoBarSeverity.Error);
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanCopySelection))]
+    private void CopySelection()
+    {
+        var format = SelectedOutputFormat ?? SelectionOutputFormatDefaults.FullPathLines;
+        try
+        {
+            var outputItems = _selectedItems.Select(item => new SelectionOutputItem(
+                item.FullPath,
+                item.FullPath,
+                Path.GetFileName(Path.TrimEndingDirectorySeparator(item.FullPath)),
+                item.Values));
+            var text = _outputFormatter.Format(format, outputItems);
+            if (!_clipboardService.TrySetText(text, out var errorMessage))
+            {
+                throw new InvalidOperationException(errorMessage ?? "클립보드에 복사하지 못했습니다.");
+            }
+
+            ShowSnackbar(
+                "선택 항목 복사 완료",
+                $"{SelectedCount:N0}개 항목을 '{format.DisplayName}' 형식으로 복사했습니다.",
+                ControlAppearance.Success);
+        }
+        catch (Exception exception) when (
+            exception is InvalidOperationException or FormatException or ArgumentException)
+        {
+            _logger.LogWarning(exception, "Could not format selected catalog items.");
+            SetStatus("선택 항목 복사 실패", exception.Message, InfoBarSeverity.Error);
+        }
+    }
+
+    public void SetSelection(IEnumerable<CatalogItemViewModel> items)
+    {
+        ArgumentNullException.ThrowIfNull(items);
+        _selectedItems = items.Distinct().ToArray();
+        SelectedCount = _selectedItems.Count;
+        CopySelectionCommand.NotifyCanExecuteChanged();
+    }
+
     private bool CanStart() => !IsBusy && SelectedProfile is not null;
+
+    private bool CanScan() => SelectedProfile is not null && (!IsBusy || IsLoadingExistingIndex);
 
     private bool CanCancel() => IsBusy;
 
     private bool CanOpenSelected() => SelectedItem is not null;
 
-    private async Task RunOperationAsync(string operationName, bool discoverDirectly)
+    private bool CanCopySelection() => SelectedCount > 0;
+
+    private void RefreshOutputFormats()
+    {
+        var selectedId = SelectedOutputFormat?.Id;
+        OutputFormats = _outputFormatStore.GetApplicable(SelectedProfile?.Id);
+        SelectedOutputFormat = OutputFormats.FirstOrDefault(format =>
+                string.Equals(format.Id, selectedId, StringComparison.OrdinalIgnoreCase))
+            ?? OutputFormats.FirstOrDefault(format => format.IsBuiltIn)
+            ?? OutputFormats.FirstOrDefault();
+    }
+
+    private void OnOutputFormatsChanged(object? sender, EventArgs eventArgs)
+    {
+        if (_dispatcher.CheckAccess())
+        {
+            RefreshOutputFormats();
+        }
+        else if (!_dispatcher.HasShutdownStarted && !_dispatcher.HasShutdownFinished)
+        {
+            _ = _dispatcher.BeginInvoke(RefreshOutputFormats);
+        }
+    }
+
+    private void OnOperationCoordinatorStateChanged(
+        object? sender,
+        ApplicationOperationStateChangedEventArgs eventArgs)
+    {
+        if (eventArgs.CurrentKind is not null)
+        {
+            return;
+        }
+
+        void Apply()
+        {
+            if (eventArgs.PreviousKind == ApplicationOperationKind.IndexWrite)
+            {
+                // The same DB path can now represent a newly published generation.
+                _lastAutomaticLoadKey = null;
+            }
+
+            if (_isActive && !IsBusy)
+            {
+                ScheduleAutomaticLoad();
+            }
+        }
+
+        if (_dispatcher.CheckAccess())
+        {
+            Apply();
+        }
+        else if (!_dispatcher.HasShutdownStarted && !_dispatcher.HasShutdownFinished)
+        {
+            _ = _dispatcher.BeginInvoke(Apply);
+        }
+    }
+
+    private async Task RunOperationAsync(
+        string operationName,
+        bool discoverDirectly,
+        bool isAutomatic = false)
     {
         if (IsBusy)
         {
@@ -314,6 +534,13 @@ public partial class CatalogViewModel : ObservableObject
 
         if (_operationCoordinator.IsRunning)
         {
+            if (isAutomatic)
+            {
+                _lastAutomaticLoadKey = null;
+                ProgressMessage = "현재 작업이 끝나면 기존 인덱스를 자동으로 불러옵니다.";
+                return;
+            }
+
             SetStatus(
                 "다른 작업 진행 중",
                 "프로필 저장이 끝난 뒤 다시 시도하세요.",
@@ -321,6 +548,8 @@ public partial class CatalogViewModel : ObservableObject
             return;
         }
 
+        IsLoadingExistingIndex = !discoverDirectly;
+        _isAutomaticIndexLoad = isAutomatic && !discoverDirectly;
         IsBusy = true;
         IsScanning = discoverDirectly;
         SetStatus(operationName, $"{operationName} 작업을 시작했습니다.", InfoBarSeverity.Informational);
@@ -341,7 +570,10 @@ public partial class CatalogViewModel : ObservableObject
                 _scanConsolePanelController.Show();
             }
 
-            await _operationCoordinator.RunAsync(async cancellationToken =>
+            var operationKind = discoverDirectly
+                ? ApplicationOperationKind.ProfileDiscovery
+                : ApplicationOperationKind.IndexLoad;
+            await _operationCoordinator.RunAsync(operationKind, async cancellationToken =>
             {
                 await PersistWorkspaceAsync(workspace, cancellationToken).ConfigureAwait(false);
                 if (!discoverDirectly)
@@ -383,6 +615,12 @@ public partial class CatalogViewModel : ObservableObject
                 $"{operationName} 작업을 취소했습니다.{partialResultMessage}",
                 ControlAppearance.Caution);
         }
+        catch (ApplicationOperationBusyException) when (isAutomatic)
+        {
+            progress?.FlushAndClose();
+            _lastAutomaticLoadKey = null;
+            ProgressMessage = "현재 작업이 끝나면 기존 인덱스를 자동으로 불러옵니다.";
+        }
         catch (Exception exception)
         {
             progress?.FlushAndClose();
@@ -406,10 +644,19 @@ public partial class CatalogViewModel : ObservableObject
             progress?.FlushAndClose();
             EndResultSession(resultSession);
             IsScanning = false;
+            IsLoadingExistingIndex = false;
+            _isAutomaticIndexLoad = false;
             IsBusy = false;
             if (ApplyPendingProfileSnapshot())
             {
                 completionNotice = null;
+            }
+
+            if (isAutomatic && _isActive)
+            {
+                // If the page was briefly unloaded and activated again while the
+                // cancellation was still completing, resume the automatic load.
+                ScheduleAutomaticLoad();
             }
         }
 
@@ -426,6 +673,76 @@ public partial class CatalogViewModel : ObservableObject
                 _scanCompletionNotifier.Notify(completionNotice);
             }
         }
+    }
+
+    private void ScheduleAutomaticLoad()
+    {
+        if (!_isActive
+            || IsBusy
+            || SelectedProfile is null
+            || string.IsNullOrWhiteSpace(RootPath)
+            || string.IsNullOrWhiteSpace(DatabasePath))
+        {
+            return;
+        }
+
+        string rootPath;
+        string databasePath;
+        try
+        {
+            rootPath = Path.GetFullPath(RootPath);
+            databasePath = Path.GetFullPath(DatabasePath);
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return;
+        }
+
+        if (!Directory.Exists(rootPath) || !File.Exists(databasePath))
+        {
+            return;
+        }
+
+        var key = string.Join("|", SelectedProfile.Id, rootPath, databasePath);
+        if (string.Equals(_lastAutomaticLoadKey, key, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        _lastAutomaticLoadKey = key;
+        _ = RunAutomaticLoadAsync(key);
+    }
+
+    private async Task RunAutomaticLoadAsync(string key)
+    {
+        await Dispatcher.Yield(DispatcherPriority.ContextIdle);
+        if (!_isActive
+            || !string.Equals(_lastAutomaticLoadKey, key, StringComparison.OrdinalIgnoreCase))
+        {
+            if (string.Equals(_lastAutomaticLoadKey, key, StringComparison.OrdinalIgnoreCase))
+            {
+                _lastAutomaticLoadKey = null;
+            }
+
+            return;
+        }
+
+        if (IsBusy || _operationCoordinator.IsRunning)
+        {
+            // A later profile/workspace change can schedule this scope again.
+            if (string.Equals(_lastAutomaticLoadKey, key, StringComparison.OrdinalIgnoreCase))
+            {
+                _lastAutomaticLoadKey = null;
+            }
+            return;
+        }
+
+        await RunOperationAsync(
+                "기존 인덱스 자동 불러오기",
+                discoverDirectly: false,
+                isAutomatic: true)
+            .ConfigureAwait(true);
     }
 
     private static CatalogRequest CreateRequest(WorkspaceSelection workspace) =>
@@ -650,10 +967,6 @@ public partial class CatalogViewModel : ObservableObject
             ? null
             : Items.Cast<CatalogItemViewModel>().FirstOrDefault(item =>
                 string.Equals(item.FullPath, selectedPath, StringComparison.OrdinalIgnoreCase));
-        SelectedItem ??= Items.Count > 0
-            ? (CatalogItemViewModel)Items.GetItemAt(0)
-            : null;
-
         FilterSummary = TextFilter.Normalize(FilterText).Length == 0
             ? $"{_loadedItems.Count:N0}개 항목"
             : $"{Items.Count:N0} / {_loadedItems.Count:N0}개 항목";

@@ -111,6 +111,8 @@ public sealed class DesktopCompositionSmokeTests
             Assert.NotNull(catalogPage);
             var profilesPage = provider.GetRequiredService<ProfilesPage>();
             Assert.NotNull(profilesPage);
+            var outputFormatsPage = provider.GetRequiredService<OutputFormatsPage>();
+            Assert.NotNull(outputFormatsPage);
             var settingsPage = provider.GetRequiredService<SettingsPage>();
             Assert.NotNull(settingsPage);
 
@@ -139,9 +141,12 @@ public sealed class DesktopCompositionSmokeTests
             var navigation = provider.GetRequiredService<INavigationService>();
             Assert.True(navigation.Navigate(typeof(FilesPage)));
             VerifyPageScrollContracts(filesPage, catalogPage);
+            VerifyCompactSelectionPages(filesPage, catalogPage);
             Assert.True(navigation.Navigate(typeof(CatalogPage)));
             Assert.True(navigation.Navigate(typeof(ProfilesPage)));
             VerifyProfilesScrolling(window, profilesPage);
+            Assert.True(navigation.Navigate(typeof(OutputFormatsPage)));
+            Assert.NotNull(outputFormatsPage.FindName("OutputFormatsScrollViewer"));
             Assert.True(navigation.Navigate(typeof(SettingsPage)));
             VerifySettingsLayout(window, settingsPage);
             VerifyScanConsole(provider, window, catalogPage);
@@ -193,6 +198,30 @@ public sealed class DesktopCompositionSmokeTests
         application.Resources["BooleanToVisibilityConverter"] =
             new BooleanToVisibilityConverter();
         return application;
+    }
+
+    private static void VerifyCompactSelectionPages(
+        FilesPage filesPage,
+        CatalogPage catalogPage)
+    {
+        var filesViewModel = Assert.IsType<FileSearchViewModel>(filesPage.DataContext);
+        var catalogViewModel = Assert.IsType<CatalogViewModel>(catalogPage.DataContext);
+        Assert.False(filesViewModel.IsDetailsOpen);
+        Assert.False(catalogViewModel.IsDetailsOpen);
+
+        var filesGrid = Assert.IsType<System.Windows.Controls.DataGrid>(
+            filesPage.FindName("ResultsGrid"));
+        var catalogGrid = Assert.IsType<System.Windows.Controls.DataGrid>(
+            catalogPage.FindName("ResultsGrid"));
+        Assert.Equal(DataGridSelectionMode.Extended, filesGrid.SelectionMode);
+        Assert.Equal(DataGridSelectionMode.Extended, catalogGrid.SelectionMode);
+        Assert.NotNull(filesGrid.ContextMenu);
+        Assert.NotNull(catalogGrid.ContextMenu);
+
+        var filesToolbar = Assert.IsType<Border>(filesPage.FindName("SelectionToolbar"));
+        var catalogToolbar = Assert.IsType<Border>(catalogPage.FindName("SelectionToolbar"));
+        Assert.Equal(Visibility.Collapsed, filesToolbar.Visibility);
+        Assert.Equal(Visibility.Collapsed, catalogToolbar.Visibility);
     }
 
     private static void VerifyScanConsole(

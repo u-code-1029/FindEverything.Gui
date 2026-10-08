@@ -808,6 +808,69 @@ public partial class ProfileDirectoryNameExclusionRuleDraftViewModel : Observabl
 }
 
 /// <summary>
+/// A string field populated from the first matching text file directly inside a
+/// matched directory. The regular expression receives only the file name.
+/// </summary>
+public partial class ProfileTextFileFieldDraftViewModel : ObservableObject
+{
+    [ObservableProperty]
+    private string _header = string.Empty;
+
+    [ObservableProperty]
+    private string _fieldId = string.Empty;
+
+    [ObservableProperty]
+    private int _order;
+
+    [ObservableProperty]
+    private bool _required;
+
+    [ObservableProperty]
+    private string _fileNamePattern = string.Empty;
+
+    [ObservableProperty]
+    private ProfileRegexMatchMode _matchMode = ProfileRegexMatchMode.Full;
+
+    [ObservableProperty]
+    private bool _ignoreCase = true;
+
+    [ObservableProperty]
+    private int _timeoutMilliseconds = 100;
+
+    [ObservableProperty]
+    private long _maxBytes = ProfileManifestLimits.DefaultTextFileMaximumBytes;
+
+    public string MatchModeDisplayName => MatchMode switch
+    {
+        ProfileRegexMatchMode.Full => "파일 이름 전체 일치",
+        ProfileRegexMatchMode.Partial => "파일 이름 일부 일치",
+        _ => MatchMode.ToString(),
+    };
+
+    public ProfileTextFileFieldDraftViewModel()
+    {
+    }
+
+    public ProfileTextFileFieldDraftViewModel(ProfileTextFileFieldManifest field)
+    {
+        ArgumentNullException.ThrowIfNull(field);
+
+        Header = field.Header ?? string.Empty;
+        FieldId = field.FieldId ?? string.Empty;
+        Order = field.Order;
+        Required = field.Required;
+        FileNamePattern = field.FileNamePattern ?? string.Empty;
+        MatchMode = field.MatchMode;
+        IgnoreCase = field.IgnoreCase;
+        TimeoutMilliseconds = field.TimeoutMilliseconds;
+        MaxBytes = field.MaxBytes;
+    }
+
+    partial void OnMatchModeChanged(ProfileRegexMatchMode value) =>
+        OnPropertyChanged(nameof(MatchModeDisplayName));
+}
+
+/// <summary>
 /// A single value produced by testing an example path in the profile editor.
 /// </summary>
 public sealed class ProfileTestResultViewModel

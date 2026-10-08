@@ -6,6 +6,9 @@ public sealed record AppPaths(
 {
     public string GridLayoutFile => Path.Combine(LocalDataDirectory, "grid-layout.json");
 
+    public string SelectionOutputFormatsFile =>
+        Path.Combine(LocalDataDirectory, "selection-output-formats.json");
+
     public string UserProfilesDirectory => Path.Combine(LocalDataDirectory, "Profiles");
 
     public string IndexDatabaseFile => Path.Combine(LocalDataDirectory, "Indexes", "metadata.db");

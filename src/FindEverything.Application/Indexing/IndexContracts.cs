@@ -150,6 +150,13 @@ public sealed record IndexScanReport(
 public sealed record DirectorySearchRequest(string RootPath)
 {
     public int PageSize { get; init; } = 1000;
+
+    /// <summary>
+    /// Receives each completed database page before the complete result is returned.
+    /// Implementations report pages synchronously and in index order so callers can
+    /// render large indexes progressively without issuing a second query.
+    /// </summary>
+    public IProgress<IReadOnlyList<IndexedDirectory>>? PageProgress { get; init; }
 }
 
 public sealed record IndexedDirectory(

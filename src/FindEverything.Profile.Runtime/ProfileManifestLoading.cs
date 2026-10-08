@@ -30,6 +30,17 @@ internal sealed record ValidatedProfileField(
     string? ParseFormat,
     string? DisplayFormat);
 
+internal sealed record ValidatedTextFileField(
+    string FieldId,
+    string Header,
+    int Order,
+    bool Required,
+    string FileNamePattern,
+    ProfileRegexMatchMode MatchMode,
+    bool IgnoreCase,
+    int TimeoutMilliseconds,
+    long MaxBytes);
+
 internal sealed record ValidatedProfileManifest(
     string SourceDirectory,
     string Id,
@@ -40,6 +51,7 @@ internal sealed record ValidatedProfileManifest(
     string? ModelType,
     ProfileCandidateKind CandidateKind,
     IReadOnlyList<ValidatedProfileField> Fields,
+    IReadOnlyList<ValidatedTextFileField> TextFileFields,
     IReadOnlyList<ValidatedDirectoryNameExclusionRule> ExcludedDirectoryNameRules,
     IReadOnlyList<ValidatedRegexRule> Rules);
 
@@ -210,6 +222,7 @@ internal sealed class ProfileManifestValidator
 
         string? entryAssemblyPath = null;
         var validatedFields = new List<ValidatedProfileField>();
+        var validatedTextFileFields = new List<ValidatedTextFileField>();
         if (manifest.Kind == ProfileKind.Assembly)
         {
             if (modelType is null)
@@ -228,6 +241,13 @@ internal sealed class ProfileManifestValidator
                     "assembly_fields_not_allowed",
                     "Assembly 프로필의 필드는 모델의 CaptureFieldAttribute에서 정의되므로 fields를 사용할 수 없습니다."));
             }
+
+            if (manifest.TextFileFields is { Count: > 0 })
+            {
+                diagnostics.Add(Error(
+                    "assembly_text_file_fields_not_allowed",
+                    "textFileFields는 Declarative 프로필에서만 사용할 수 있습니다."));
+            }
         }
         else if (manifest.Kind == ProfileKind.Declarative)
         {
@@ -245,7 +265,22 @@ internal sealed class ProfileManifestValidator
                     "Declarative 프로필에는 modelType을 사용할 수 없습니다."));
             }
 
-            validatedFields = ValidateFields(manifest.Fields, diagnostics);
+            var fieldIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            validatedFields = ValidateFields(
+                manifest.Fields,
+                fieldIds,
+                diagnostics);
+            validatedTextFileFields = ValidateTextFileFields(
+                manifest.TextFileFields,
+                fieldIds,
+                diagnostics);
+            if (manifest.Fields is not { Count: > 0 }
+                && manifest.TextFileFields is not { Count: > 0 })
+            {
+                diagnostics.Add(Error(
+                    "capture_fields_missing",
+                    "Declarative 프로필에는 fields 또는 textFileFields 항목이 하나 이상 필요합니다."));
+            }
         }
 
         var validatedExcludedDirectoryNameRules = ValidateExcludedDirectoryNameRules(
@@ -255,6 +290,7 @@ internal sealed class ProfileManifestValidator
         ValidateAggregateRegexTimeoutBudget(
             manifest.Rules,
             manifest.ExcludedDirectoryNameRules,
+            manifest.TextFileFields,
             diagnostics);
 
         if (diagnostics.Any(static diagnostic =>
@@ -278,6 +314,7 @@ internal sealed class ProfileManifestValidator
                 modelType,
                 manifest.CandidateKind,
                 Array.AsReadOnly(validatedFields.ToArray()),
+                Array.AsReadOnly(validatedTextFileFields.ToArray()),
                 Array.AsReadOnly(validatedExcludedDirectoryNameRules.ToArray()),
                 Array.AsReadOnly(validatedRules.ToArray())),
             id,
@@ -338,18 +375,15 @@ internal sealed class ProfileManifestValidator
 
     private static List<ValidatedProfileField> ValidateFields(
         IReadOnlyList<ProfileFieldManifest>? fields,
+        ISet<string> fieldIds,
         ICollection<ProfileDiagnostic> diagnostics)
     {
         var validated = new List<ValidatedProfileField>();
         if (fields is null || fields.Count == 0)
         {
-            diagnostics.Add(Error(
-                "capture_fields_missing",
-                "Declarative 프로필에는 하나 이상의 fields 항목이 필요합니다."));
             return validated;
         }
 
-        var fieldIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (var index = 0; index < fields.Count; index++)
         {
             var source = fields[index];
@@ -452,6 +486,113 @@ internal sealed class ProfileManifestValidator
                 : StringComparer.Ordinal.Compare(left.FieldId, right.FieldId);
         });
 
+        return validated;
+    }
+
+    private static List<ValidatedTextFileField> ValidateTextFileFields(
+        IReadOnlyList<ProfileTextFileFieldManifest>? fields,
+        ISet<string> fieldIds,
+        ICollection<ProfileDiagnostic> diagnostics)
+    {
+        var validated = new List<ValidatedTextFileField>();
+        if (fields is null)
+        {
+            return validated;
+        }
+
+        if (fields.Count > ProfileManifestLimits.MaximumTextFileFieldCount)
+        {
+            diagnostics.Add(Error(
+                "text_file_field_limit_exceeded",
+                $"텍스트 파일 필드는 최대 {ProfileManifestLimits.MaximumTextFileFieldCount}개까지 사용할 수 있습니다."));
+        }
+
+        for (var index = 0; index < fields.Count; index++)
+        {
+            var source = fields[index];
+            var fieldId = NormalizeRequired(source.FieldId);
+            var displayId = fieldId ?? $"#{index + 1}";
+            var pattern = source.FileNamePattern;
+            var valid = true;
+
+            if (fieldId is null || !FieldIdPattern.IsMatch(fieldId))
+            {
+                diagnostics.Add(Error(
+                    "text_file_field_id_invalid",
+                    $"텍스트 파일 필드 #{index + 1}의 fieldId는 소문자 영숫자로 시작하고 소문자 영숫자, 점, 밑줄, 하이픈만 포함해야 합니다."));
+                valid = false;
+            }
+            else if (!fieldIds.Add(fieldId))
+            {
+                diagnostics.Add(Error(
+                    "text_file_field_id_duplicate",
+                    $"경로 값과 텍스트 파일 값을 포함해 fieldId가 중복되었습니다: {fieldId}"));
+                valid = false;
+            }
+
+            if (string.IsNullOrWhiteSpace(pattern))
+            {
+                diagnostics.Add(Error(
+                    "text_file_name_pattern_missing",
+                    $"텍스트 파일 필드 '{displayId}'에 fileNamePattern이 필요합니다."));
+                valid = false;
+            }
+            else if (pattern.Length > ProfileManifestLimits.MaximumTextFileNamePatternLength)
+            {
+                diagnostics.Add(Error(
+                    "text_file_name_pattern_too_long",
+                    $"텍스트 파일 필드 '{displayId}'의 fileNamePattern은 최대 {ProfileManifestLimits.MaximumTextFileNamePatternLength:N0}자까지 사용할 수 있습니다."));
+                valid = false;
+            }
+
+            if (!Enum.IsDefined(source.MatchMode))
+            {
+                diagnostics.Add(Error(
+                    "text_file_name_match_mode_invalid",
+                    $"텍스트 파일 필드 '{displayId}'의 matchMode가 올바르지 않습니다."));
+                valid = false;
+            }
+
+            if (source.TimeoutMilliseconds is < 1 or > 10_000)
+            {
+                diagnostics.Add(Error(
+                    "text_file_name_timeout_invalid",
+                    $"텍스트 파일 필드 '{displayId}'의 timeoutMilliseconds는 1~10000이어야 합니다."));
+                valid = false;
+            }
+
+            if (source.MaxBytes is < 1 or > ProfileManifestLimits.MaximumTextFileMaximumBytes)
+            {
+                diagnostics.Add(Error(
+                    "text_file_max_bytes_invalid",
+                    $"텍스트 파일 필드 '{displayId}'의 maxBytes는 1~{ProfileManifestLimits.MaximumTextFileMaximumBytes:N0}바이트여야 합니다."));
+                valid = false;
+            }
+
+            if (!valid)
+            {
+                continue;
+            }
+
+            validated.Add(new ValidatedTextFileField(
+                fieldId!,
+                NormalizeRequired(source.Header) ?? fieldId!,
+                source.Order,
+                source.Required,
+                pattern!,
+                source.MatchMode,
+                source.IgnoreCase,
+                source.TimeoutMilliseconds,
+                source.MaxBytes));
+        }
+
+        validated.Sort(static (left, right) =>
+        {
+            var orderComparison = left.Order.CompareTo(right.Order);
+            return orderComparison != 0
+                ? orderComparison
+                : StringComparer.Ordinal.Compare(left.FieldId, right.FieldId);
+        });
         return validated;
     }
 
@@ -751,6 +892,7 @@ internal sealed class ProfileManifestValidator
     private static void ValidateAggregateRegexTimeoutBudget(
         IReadOnlyList<ProfileRegexRuleManifest>? pathRules,
         IReadOnlyList<ProfileDirectoryNameExclusionRuleManifest>? exclusionRules,
+        IReadOnlyList<ProfileTextFileFieldManifest>? textFileFields,
         ICollection<ProfileDiagnostic> diagnostics)
     {
         var pathTimeoutMilliseconds = pathRules?.Aggregate(
@@ -759,8 +901,11 @@ internal sealed class ProfileManifestValidator
         var exclusionTimeoutMilliseconds = exclusionRules?.Aggregate(
             0L,
             static (total, rule) => total + Math.Max(0L, rule.TimeoutMilliseconds)) ?? 0L;
+        var textFileTimeoutMilliseconds = textFileFields?.Aggregate(
+            0L,
+            static (total, field) => total + Math.Max(0L, field.TimeoutMilliseconds)) ?? 0L;
         var aggregateTimeoutMilliseconds =
-            pathTimeoutMilliseconds + exclusionTimeoutMilliseconds;
+            pathTimeoutMilliseconds + exclusionTimeoutMilliseconds + textFileTimeoutMilliseconds;
 
         if (aggregateTimeoutMilliseconds
             <= ProfileManifestLimits.MaximumAggregateRegexTimeoutMilliseconds)
@@ -770,11 +915,12 @@ internal sealed class ProfileManifestValidator
 
         diagnostics.Add(Error(
             "regex_timeout_budget_exceeded",
-            "한 프로필의 정규식 제한 시간 합계(경로 규칙 + 폴더 이름 제외 규칙)는 최대 "
+            "한 프로필의 정규식 제한 시간 합계(경로 규칙 + 폴더 이름 제외 규칙 + 텍스트 파일 이름 규칙)는 최대 "
             + $"{ProfileManifestLimits.MaximumAggregateRegexTimeoutMilliseconds:N0}ms여야 합니다. "
             + $"현재 합계: {aggregateTimeoutMilliseconds:N0}ms "
             + $"(경로: {pathTimeoutMilliseconds:N0}ms, "
-            + $"폴더 이름 제외: {exclusionTimeoutMilliseconds:N0}ms)."));
+            + $"폴더 이름 제외: {exclusionTimeoutMilliseconds:N0}ms, "
+            + $"텍스트 파일: {textFileTimeoutMilliseconds:N0}ms)."));
     }
 
     private static List<string> ValidateStopTraversalGroups(

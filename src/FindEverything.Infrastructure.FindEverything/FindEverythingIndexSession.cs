@@ -67,16 +67,17 @@ internal sealed class FindEverythingIndexSession : IIndexSession
                 }, cancellationToken).ConfigureAwait(false);
 
                 hasPendingScopes |= page.HasPendingScopes;
-                foreach (var entry in page.Entries)
-                {
-                    directories.Add(new IndexedDirectory(
+                var mappedPage = page.Entries.Select(entry =>
+                    new IndexedDirectory(
                         entry.FullPath,
                         entry.Name,
                         entry.ParentPath,
                         entry.CreatedUtc,
                         entry.ModifiedUtc,
-                        entry.CoveragePending));
-                }
+                        entry.CoveragePending))
+                    .ToArray();
+                directories.AddRange(mappedPage);
+                request.PageProgress?.Report(mappedPage);
 
                 if (!page.HasMore)
                     break;

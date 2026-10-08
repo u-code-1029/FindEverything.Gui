@@ -41,16 +41,32 @@ public sealed class IndexSessionIntegrationTests
         Assert.Equal(report.Progress.PendingDirectories, lastProgress.PendingDirectories);
 
         DirectorySearchResult result;
+        var reportedPages = new List<IReadOnlyList<IndexedDirectory>>();
         await using (var searchSession = factory.Create(workspace.DatabasePath))
         {
             result = await searchSession.SearchDirectoriesAsync(
-                new DirectorySearchRequest(workspace.SourcePath) { PageSize = 128 },
+                new DirectorySearchRequest(workspace.SourcePath)
+                {
+                    PageSize = 128,
+                    PageProgress = new InlineProgress<IReadOnlyList<IndexedDirectory>>(
+                        page => reportedPages.Add(page)),
+                },
                 CancellationToken.None);
         }
 
         Assert.False(result.HasPendingScopes);
         Assert.Equal(expectedPaths.Count, result.Directories.Count);
         Assert.True(expectedPaths.SetEquals(result.Directories.Select(directory => directory.FullPath)));
+        Assert.True(reportedPages.Count > 1);
+        Assert.All(reportedPages, page => Assert.InRange(page.Count, 1, 128));
+        Assert.Equal(
+            result.Directories.Select(static directory => directory.FullPath),
+            reportedPages.SelectMany(static page => page).Select(static directory => directory.FullPath));
+    }
+
+    private sealed class InlineProgress<T>(Action<T> report) : IProgress<T>
+    {
+        public void Report(T value) => report(value);
     }
 
     [Fact]

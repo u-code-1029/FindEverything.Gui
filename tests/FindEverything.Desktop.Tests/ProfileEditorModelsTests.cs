@@ -28,6 +28,35 @@ public sealed class ProfileEditorModelsTests
     }
 
     [Fact]
+    public void Text_file_field_draft_preserves_file_matching_and_read_limits()
+    {
+        var draft = new ProfileTextFileFieldDraftViewModel(
+            new ProfileTextFileFieldManifest
+            {
+                FieldId = "description",
+                Header = "설명",
+                Order = 40,
+                Required = true,
+                FileNamePattern = @"^info-\d+\.txt$",
+                MatchMode = ProfileRegexMatchMode.Partial,
+                IgnoreCase = false,
+                TimeoutMilliseconds = 250,
+                MaxBytes = 4096,
+            });
+
+        Assert.Equal("description", draft.FieldId);
+        Assert.Equal("설명", draft.Header);
+        Assert.Equal(40, draft.Order);
+        Assert.True(draft.Required);
+        Assert.Equal(@"^info-\d+\.txt$", draft.FileNamePattern);
+        Assert.Equal(ProfileRegexMatchMode.Partial, draft.MatchMode);
+        Assert.False(draft.IgnoreCase);
+        Assert.Equal(250, draft.TimeoutMilliseconds);
+        Assert.Equal(4096, draft.MaxBytes);
+        Assert.Equal("파일 이름 일부 일치", draft.MatchModeDisplayName);
+    }
+
+    [Fact]
     public void Composite_date_manifest_round_trip_preserves_group_order_and_custom_formats()
     {
         var source = new ProfileFieldManifest

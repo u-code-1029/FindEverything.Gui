@@ -83,6 +83,12 @@
                     NavigationCacheMode="Required"
                     TargetPageTag="profiles"
                     TargetPageType="{x:Type pages:ProfilesPage}" />
+                <ui:NavigationViewItem
+                    Content="출력 포맷"
+                    Icon="{ui:SymbolIcon Symbol=ClipboardTask24}"
+                    NavigationCacheMode="Required"
+                    TargetPageTag="output-formats"
+                    TargetPageType="{x:Type pages:OutputFormatsPage}" />
             </ui:NavigationView.MenuItems>
             <ui:NavigationView.FooterMenuItems>
                 <ui:NavigationViewItem

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Text;
 using FindEverything.Profile.Abstractions;
 using FindEverything.Profiles.SampleProjects;
 using Microsoft.Extensions.DependencyInjection;
@@ -171,6 +172,95 @@ public sealed class ProfilePluginLoaderTests
     }
 
     [Fact]
+    public async Task LoadAsync_DeclarativeProfileReadsDeterministicImmediateTextFile()
+    {
+        using var packages = new TestProfilePackages();
+        var candidateDirectory = Path.Combine(Path.GetTempPath(), $"findeverything-text-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(candidateDirectory);
+        try
+        {
+            File.WriteAllText(
+                Path.Combine(candidateDirectory, "INFO-b.txt"),
+                "second",
+                new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+            File.WriteAllText(
+                Path.Combine(candidateDirectory, "info-A.txt"),
+                "first 한글",
+                new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+            var nestedDirectory = Directory.CreateDirectory(
+                Path.Combine(candidateDirectory, "nested"));
+            File.WriteAllText(Path.Combine(nestedDirectory.FullName, "info-0.txt"), "nested");
+
+            packages.AddDeclarative(
+                "text-file",
+                "text-file-profile",
+                Regex.Escape(candidateDirectory),
+                includeFields: false,
+                textFileFields:
+                [
+                    CreateTextFileField(
+                        "description",
+                        @"^info-.*\.txt$",
+                        required: true),
+                ]);
+            using var host = BuildHost(packages.RootPath);
+
+            var profile = Assert.Single((await LoadAsync(host)).Profiles);
+            var descriptor = Assert.Single(profile.Descriptor.Fields);
+            Assert.Equal(ProfileFieldSourceKind.TextFileContent, descriptor.SourceKind);
+            Assert.Empty(descriptor.EffectiveGroupNames);
+            Assert.Single(profile.Descriptor.TextFileFields);
+
+            var result = profile.Map(new ProfilePathCandidate(candidateDirectory));
+
+            Assert.Equal(ProfileMapStatus.Success, result.Status);
+            Assert.Equal("first 한글", result.Item!.Values["description"]);
+            Assert.Same(result.Item.Values, result.Item.Model);
+        }
+        finally
+        {
+            Directory.Delete(candidateDirectory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task LoadAsync_TextFileFieldHonorsOptionalRequiredAndMaximumBytes()
+    {
+        using var packages = new TestProfilePackages();
+        var candidateDirectory = Path.Combine(Path.GetTempPath(), $"findeverything-text-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(candidateDirectory);
+        try
+        {
+            File.WriteAllText(Path.Combine(candidateDirectory, "large.txt"), "12345");
+            packages.AddDeclarative(
+                "text-file",
+                "text-file-profile",
+                Regex.Escape(candidateDirectory),
+                includeFields: false,
+                textFileFields:
+                [
+                    CreateTextFileField("optional", @"^missing\.txt$", required: false),
+                    CreateTextFileField("required", @"^required\.txt$", required: true),
+                    CreateTextFileField("large", @"^large\.txt$", required: false, maxBytes: 4),
+                ]);
+            using var host = BuildHost(packages.RootPath);
+
+            var profile = Assert.Single((await LoadAsync(host)).Profiles);
+            var result = profile.Map(new ProfilePathCandidate(candidateDirectory));
+
+            Assert.Equal(ProfileMapStatus.Invalid, result.Status);
+            Assert.Contains(result.Issues, static issue =>
+                issue.Code == "required_text_file_missing" && issue.FieldId == "required");
+            Assert.Contains(result.Issues, static issue =>
+                issue.Code == "text_file_too_large" && issue.FieldId == "large");
+        }
+        finally
+        {
+            Directory.Delete(candidateDirectory, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task LoadAsync_LoadsBundledAndUserProfileRootsTogether()
     {
         using var bundledPackages = new TestProfilePackages();
@@ -232,6 +322,34 @@ public sealed class ProfilePluginLoaderTests
         var diagnostics = Assert.Single(snapshot.Reports).Diagnostics;
         Assert.Contains(diagnostics, static item => item.Code == "capture_field_id_duplicate");
         Assert.Contains(diagnostics, static item => item.Code == "capture_group_name_invalid");
+    }
+
+    [Fact]
+    public async Task LoadAsync_DisablesTextFileFieldWithDuplicateIdAndUnsafeReadLimit()
+    {
+        using var packages = new TestProfilePackages();
+        packages.AddDeclarative(
+            "invalid-text-field",
+            "invalid-text-field-profile",
+            ValidPattern,
+            textFileFields:
+            [
+                CreateTextFileField(
+                    "name",
+                    @"^info\.txt$",
+                    required: false,
+                    maxBytes: ProfileManifestLimits.MaximumTextFileMaximumBytes + 1),
+            ]);
+        using var host = BuildHost(packages.RootPath);
+
+        var snapshot = await LoadAsync(host);
+
+        Assert.Empty(snapshot.Profiles);
+        var diagnostics = Assert.Single(snapshot.Reports).Diagnostics;
+        Assert.Contains(diagnostics, static item =>
+            item.Code == "text_file_field_id_duplicate");
+        Assert.Contains(diagnostics, static item =>
+            item.Code == "text_file_max_bytes_invalid");
     }
 
     [Fact]
@@ -503,7 +621,8 @@ public sealed class ProfilePluginLoaderTests
             string profileId,
             string pattern,
             bool includeFields = true,
-            IReadOnlyList<object>? fields = null)
+            IReadOnlyList<object>? fields = null,
+            IReadOnlyList<object>? textFileFields = null)
         {
             var directory = Path.Combine(RootPath, directoryName);
             Directory.CreateDirectory(directory);
@@ -519,6 +638,7 @@ public sealed class ProfilePluginLoaderTests
                 fields = includeFields
                     ? fields ?? CreateDeclarativeFields()
                     : null,
+                textFileFields,
                 rules = new[]
                 {
                     CreateRule("first", pattern, 100),
@@ -599,5 +719,23 @@ public sealed class ProfilePluginLoaderTests
             kind,
             parseFormat,
             displayFormat,
+        };
+
+    private static object CreateTextFileField(
+        string fieldId,
+        string fileNamePattern,
+        bool required,
+        long maxBytes = ProfileManifestLimits.DefaultTextFileMaximumBytes) =>
+        new
+        {
+            fieldId,
+            header = fieldId,
+            order = 100,
+            required,
+            fileNamePattern,
+            matchMode = "Full",
+            ignoreCase = true,
+            timeoutMilliseconds = 100,
+            maxBytes,
         };
 }

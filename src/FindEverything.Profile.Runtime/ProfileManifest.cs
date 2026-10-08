@@ -15,14 +15,22 @@ public static class ProfileManifestLimits
     public const int MaximumRegexPatternLength = 4096;
 
     /// <summary>
-    /// Maximum sum of every path-rule and directory-name-exclusion-rule timeout
-    /// configured by a single profile.
+    /// Maximum sum of every path-rule, directory-name-exclusion-rule, and text-file
+    /// name-rule timeout configured by a single profile.
     /// </summary>
     public const int MaximumAggregateRegexTimeoutMilliseconds = 10_000;
 
     public const int MaximumExcludedDirectoryNameRuleCount = 64;
 
     public const int MaximumExcludedDirectoryNamePatternLength = 4096;
+
+    public const int MaximumTextFileFieldCount = 16;
+
+    public const int MaximumTextFileNamePatternLength = 4096;
+
+    public const long DefaultTextFileMaximumBytes = 256 * 1024;
+
+    public const long MaximumTextFileMaximumBytes = 4 * 1024 * 1024;
 }
 
 public sealed class ProfileManifest
@@ -44,6 +52,12 @@ public sealed class ProfileManifest
 
     public List<ProfileFieldManifest>? Fields { get; set; }
 
+    /// <summary>
+    /// Optional string fields populated from a text file directly inside a matched
+    /// directory. File-name expressions never receive a path, only the leaf file name.
+    /// </summary>
+    public List<ProfileTextFileFieldManifest>? TextFileFields { get; set; }
+
     [JsonConverter(typeof(JsonStringEnumConverter<ProfileCandidateKind>))]
     public ProfileCandidateKind CandidateKind { get; set; } = ProfileCandidateKind.Directory;
 
@@ -54,6 +68,28 @@ public sealed class ProfileManifest
     public List<ProfileDirectoryNameExclusionRuleManifest>? ExcludedDirectoryNameRules { get; set; }
 
     public List<ProfileRegexRuleManifest>? Rules { get; set; }
+}
+
+public sealed class ProfileTextFileFieldManifest
+{
+    public string? FieldId { get; set; }
+
+    public string? Header { get; set; }
+
+    public int Order { get; set; }
+
+    public bool Required { get; set; }
+
+    public string? FileNamePattern { get; set; }
+
+    [JsonConverter(typeof(JsonStringEnumConverter<ProfileRegexMatchMode>))]
+    public ProfileRegexMatchMode MatchMode { get; set; } = ProfileRegexMatchMode.Full;
+
+    public bool IgnoreCase { get; set; } = true;
+
+    public int TimeoutMilliseconds { get; set; } = 100;
+
+    public long MaxBytes { get; set; } = ProfileManifestLimits.DefaultTextFileMaximumBytes;
 }
 
 public sealed class ProfileDirectoryNameExclusionRuleManifest

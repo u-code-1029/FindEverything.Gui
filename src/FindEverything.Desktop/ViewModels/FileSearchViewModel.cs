@@ -5,7 +5,9 @@ using FindEverything.Application.Catalog;
 using FindEverything.Application.FileSearch;
 using FindEverything.Application.Indexing;
 using FindEverything.Application.Options;
+using FindEverything.Desktop.Configuration;
 using FindEverything.Desktop.Services;
+using FindEverything.Profile.Runtime;
 using Microsoft.Extensions.Logging;
 using Wpf.Ui;
 using Wpf.Ui.Controls;
@@ -23,12 +25,19 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
     private readonly IApplicationOperationCoordinator _operationCoordinator;
     private readonly IScanCompletionNotifier _scanCompletionNotifier;
     private readonly ISnackbarService _snackbarService;
+    private readonly ISelectionOutputFormatStore _outputFormatStore;
+    private readonly ISelectionOutputFormatter _outputFormatter;
+    private readonly IClipboardService _clipboardService;
+    private readonly IProfileCatalog _profileCatalog;
+    private readonly IProfilePathCanonicalizer _profilePathCanonicalizer;
     private readonly ILogger<FileSearchViewModel> _logger;
     private CancellationTokenSource? _queryCancellation;
+    private Task? _activeLoadTask;
     private long _queryVersion;
     private long _scopeVersion;
     private bool _coercingSizeRange;
     private bool _disposed;
+    private IReadOnlyList<FileSearchItemViewModel> _selectedItems = [];
 
     public FileSearchViewModel(
         IFileSearchService fileSearchService,
@@ -39,6 +48,11 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
         IApplicationOperationCoordinator operationCoordinator,
         IScanCompletionNotifier scanCompletionNotifier,
         ISnackbarService snackbarService,
+        ISelectionOutputFormatStore outputFormatStore,
+        ISelectionOutputFormatter outputFormatter,
+        IClipboardService clipboardService,
+        IProfileCatalog profileCatalog,
+        IProfilePathCanonicalizer profilePathCanonicalizer,
         ILogger<FileSearchViewModel> logger)
     {
         _fileSearchService = fileSearchService;
@@ -49,6 +63,11 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
         _operationCoordinator = operationCoordinator;
         _scanCompletionNotifier = scanCompletionNotifier;
         _snackbarService = snackbarService;
+        _outputFormatStore = outputFormatStore;
+        _outputFormatter = outputFormatter;
+        _clipboardService = clipboardService;
+        _profileCatalog = profileCatalog;
+        _profilePathCanonicalizer = profilePathCanonicalizer;
         _logger = logger;
 
         KindChoices =
@@ -82,6 +101,9 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
         RootPath = workspaceContext.Current.RootPath;
         DatabasePath = workspaceContext.Current.DatabasePath;
         _workspaceContext.Changed += OnWorkspaceChanged;
+        _outputFormatStore.Changed += OnOutputFormatsChanged;
+        _profileCatalog.Changed += OnProfilesChanged;
+        RefreshOutputFormats();
         _ = InitializeAsync();
     }
 
@@ -145,6 +167,16 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
     private FileSearchItemViewModel? _selectedItem;
 
     [ObservableProperty]
+    private IReadOnlyList<SelectionOutputFormatDefinition> _outputFormats = [];
+
+    [ObservableProperty]
+    private SelectionOutputFormatDefinition? _selectedOutputFormat;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasSelection))]
+    private int _selectedCount;
+
+    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsSetupStateVisible))]
     [NotifyPropertyChangedFor(nameof(IsNoResultsVisible))]
     [NotifyPropertyChangedFor(nameof(CanSearch))]
@@ -174,6 +206,10 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private bool _isFilterOpen;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DetailsButtonText))]
+    private bool _isDetailsOpen;
 
     [ObservableProperty]
     private string _indexStatusTitle = "검색 위치를 선택하세요";
@@ -206,6 +242,8 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
 
     public bool IsNoResultsVisible => HasIndex && HasSearched && !IsSearching && Items.Count == 0;
 
+    public bool HasSelection => SelectedCount > 0;
+
     public string MinimumSizeText => MinimumSizeStep <= 0
         ? "제한 없음"
         : FileSizeFormatter.Format(SizeStepToBytes(MinimumSizeStep) ?? 0);
@@ -221,6 +259,8 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
     public string SortDirectionText => SortDirection == EntrySortDirection.Ascending
         ? "오름차순"
         : "내림차순";
+
+    public string DetailsButtonText => IsDetailsOpen ? "간단히" : "자세히";
 
     public bool IsCreatedCustomRange => SelectedCreatedDateFilter.Value == DateFilterPreset.Custom;
 
@@ -291,6 +331,8 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
         OpenSelectedCommand.NotifyCanExecuteChanged();
         ShowSelectedInFolderCommand.NotifyCanExecuteChanged();
         CopySelectedPathCommand.NotifyCanExecuteChanged();
+        OpenSelectedFolderCommand.NotifyCanExecuteChanged();
+        CopySelectedFolderPathCommand.NotifyCanExecuteChanged();
     }
 
     partial void OnIsBusyChanged(bool value)
@@ -306,6 +348,9 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
     partial void OnIsSearchingChanged(bool value) => LoadMoreCommand.NotifyCanExecuteChanged();
 
     partial void OnHasMoreChanged(bool value) => LoadMoreCommand.NotifyCanExecuteChanged();
+
+    [RelayCommand]
+    private void ToggleDetails() => IsDetailsOpen = !IsDetailsOpen;
 
     [RelayCommand(CanExecute = nameof(CanChangeWorkspace))]
     private async Task BrowseRootAsync()
@@ -334,11 +379,7 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
             Items.Clear();
             TotalCount = 0;
             HasSearched = false;
-            var statusApplied = await RefreshStatusAsync().ConfigureAwait(true);
-            if (statusApplied && HasIndex)
-            {
-                await SearchAsync(reset: true, CancellationToken.None).ConfigureAwait(true);
-            }
+            await StartLoadAsync(refreshStatus: true, debounce: false).ConfigureAwait(true);
         }
         catch (Exception exception)
         {
@@ -379,11 +420,7 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
             Items.Clear();
             TotalCount = 0;
             HasSearched = false;
-            var statusApplied = await RefreshStatusAsync().ConfigureAwait(true);
-            if (statusApplied && HasIndex)
-            {
-                await SearchAsync(reset: true, CancellationToken.None).ConfigureAwait(true);
-            }
+            await StartLoadAsync(refreshStatus: true, debounce: false).ConfigureAwait(true);
         }
         catch (Exception exception)
         {
@@ -395,45 +432,62 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
     [RelayCommand(CanExecute = nameof(CanRefreshIndex))]
     private async Task RefreshIndexAsync()
     {
-        if (_operationCoordinator.IsRunning)
-        {
-            ShowStatus("다른 작업 진행 중", "현재 작업이 끝난 뒤 다시 시도하세요.", InfoBarSeverity.Warning);
-            return;
-        }
-
-        FileSearchScope scope;
-        try
-        {
-            scope = ValidateScope();
-            EnsureDatabaseDirectory(scope.DatabasePath);
-            var current = _workspaceContext.Current;
-            await _workspaceContext.SaveAsync(
-                current with { RootPath = scope.RootPath, DatabasePath = scope.DatabasePath },
-                CancellationToken.None).ConfigureAwait(true);
-        }
-        catch (Exception exception)
-        {
-            ShowStatus("검색 위치 확인 필요", exception.Message, InfoBarSeverity.Error);
-            return;
-        }
-
-        InvalidateSearch();
-        IsBusy = true;
-        ProgressMessage = "인덱스를 준비하고 있습니다…";
         var refreshResults = false;
         ScanCompletionNotice? completionNotice = null;
-        var progress = new Progress<IndexScanProgress>(value =>
-        {
-            ProgressMessage = $"{value.Entries:N0}개 항목 · {value.Directories:N0}개 폴더";
-        });
+        IsBusy = true;
         try
         {
-            IndexScanReport? report = null;
-            await _operationCoordinator.RunAsync(async cancellationToken =>
+            if (_operationCoordinator.IsRunning)
             {
-                report = await _fileSearchService.ScanAsync(scope, progress, cancellationToken)
-                    .ConfigureAwait(false);
-            }).ConfigureAwait(true);
+                if (_operationCoordinator.CurrentKind == ApplicationOperationKind.IndexLoad)
+                {
+                    ProgressMessage = "기존 인덱스 불러오기를 취소하는 중…";
+                    await _operationCoordinator.CancelAndWaitAsync(TimeSpan.FromSeconds(30))
+                        .ConfigureAwait(true);
+                }
+                else
+                {
+                    ShowStatus(
+                        "다른 작업 진행 중",
+                        "현재 작업이 끝난 뒤 다시 시도하세요.",
+                        InfoBarSeverity.Warning);
+                    return;
+                }
+            }
+
+            FileSearchScope scope;
+            try
+            {
+                scope = ValidateScope();
+                EnsureDatabaseDirectory(scope.DatabasePath);
+                var current = _workspaceContext.Current;
+                await _workspaceContext.SaveAsync(
+                    current with { RootPath = scope.RootPath, DatabasePath = scope.DatabasePath },
+                    CancellationToken.None).ConfigureAwait(true);
+            }
+            catch (Exception exception)
+            {
+                ShowStatus("검색 위치 확인 필요", exception.Message, InfoBarSeverity.Error);
+                return;
+            }
+
+            // IsBusy is already true, so filter changes cannot start another read
+            // between cancelling this session and atomically claiming IndexWrite.
+            await CancelActiveLoadAsync().ConfigureAwait(true);
+            ProgressMessage = "인덱스를 준비하고 있습니다…";
+            var progress = new Progress<IndexScanProgress>(value =>
+            {
+                ProgressMessage = $"{value.Entries:N0}개 항목 · {value.Directories:N0}개 폴더";
+            });
+            IndexScanReport? report = null;
+            await _operationCoordinator.ReplaceAsync(
+                ApplicationOperationKind.IndexLoad,
+                ApplicationOperationKind.IndexWrite,
+                async cancellationToken =>
+                {
+                    report = await _fileSearchService.ScanAsync(scope, progress, cancellationToken)
+                        .ConfigureAwait(false);
+                }).ConfigureAwait(true);
 
             if (report is null)
             {
@@ -451,7 +505,8 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
                 incomplete ? ControlAppearance.Caution : ControlAppearance.Success,
                 null,
                 TimeSpan.FromSeconds(4));
-            refreshResults = await RefreshStatusAsync().ConfigureAwait(true) && HasIndex;
+            refreshResults = await RefreshStatusAsync(CancellationToken.None).ConfigureAwait(true)
+                && HasIndex;
             completionNotice = new ScanCompletionNotice(
                 incomplete ? "일부 항목 색인 완료" : "인덱스 새로 고침 완료",
                 $"{report.Progress.Entries:N0}개 항목을 검색할 수 있습니다."
@@ -480,7 +535,7 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
 
         if (refreshResults)
         {
-            await SearchAsync(reset: true, CancellationToken.None).ConfigureAwait(true);
+            await StartLoadAsync(refreshStatus: false, debounce: false).ConfigureAwait(true);
         }
     }
 
@@ -521,10 +576,10 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand(CanExecute = nameof(CanLoadMore))]
-    private Task LoadMoreAsync() => SearchAsync(
-        reset: false,
-        CancellationToken.None,
-        Volatile.Read(ref _queryVersion));
+    private Task LoadMoreAsync() => StartLoadAsync(
+        refreshStatus: false,
+        debounce: false,
+        reset: false);
 
     [RelayCommand(CanExecute = nameof(CanUseSelected))]
     private void OpenSelected()
@@ -569,6 +624,96 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
         }
     }
 
+    [RelayCommand(CanExecute = nameof(CanUseSelected))]
+    private void OpenSelectedFolder()
+    {
+        if (SelectedItem is not null)
+        {
+            ExecutePathAction(
+                () => _pathLauncher.OpenDirectory(SelectedItem.FolderPath),
+                "폴더 경로 열기 실패");
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanUseSelected))]
+    private void CopySelectedFolderPath()
+    {
+        if (SelectedItem is null)
+        {
+            return;
+        }
+
+        CopyText(SelectedItem.FolderPath, "폴더 경로 복사 완료");
+    }
+
+    [RelayCommand(CanExecute = nameof(CanCopySelection))]
+    private void CopySelection()
+    {
+        var format = SelectedOutputFormat ?? SelectionOutputFormatDefaults.FullPathLines;
+        try
+        {
+            ILoadedProfile? profile = null;
+            if (!string.IsNullOrWhiteSpace(format.ProfileId)
+                && !_profileCatalog.Current.TryGetProfile(format.ProfileId, out profile))
+            {
+                throw new InvalidOperationException(
+                    $"출력 포맷에 연결된 프로필을 찾을 수 없습니다: {format.ProfileId}");
+            }
+
+            var outputItems = _selectedItems.Select(item =>
+            {
+                IReadOnlyDictionary<string, object?> fields =
+                    new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+                if (profile is not null)
+                {
+                    var profilePath = _profilePathCanonicalizer.Canonicalize(item.FolderPath);
+                    var mapping = profile.Map(new ProfilePathCandidate(profilePath));
+                    if (mapping.Status != ProfileMapStatus.Success || mapping.Item is null)
+                    {
+                        var reason = mapping.Issues.FirstOrDefault()?.Message
+                            ?? "프로필 규칙과 일치하지 않습니다.";
+                        throw new InvalidOperationException(
+                            $"'{item.FolderPath}'에서 구조화 값을 가져올 수 없습니다. {reason}");
+                    }
+
+                    fields = mapping.Item.Values;
+                }
+
+                return new SelectionOutputItem(
+                    item.FullPath,
+                    item.FolderPath,
+                    item.Name,
+                    fields);
+            }).ToArray();
+            var text = _outputFormatter.Format(format, outputItems);
+            if (!_clipboardService.TrySetText(text, out var errorMessage))
+            {
+                throw new InvalidOperationException(errorMessage ?? "클립보드에 복사하지 못했습니다.");
+            }
+
+            _snackbarService.Show(
+                "선택 항목 복사 완료",
+                $"{SelectedCount:N0}개 항목을 '{format.DisplayName}' 형식으로 복사했습니다.",
+                ControlAppearance.Success,
+                null,
+                TimeSpan.FromSeconds(3));
+        }
+        catch (Exception exception) when (
+            exception is InvalidOperationException or FormatException or ArgumentException)
+        {
+            _logger.LogWarning(exception, "Could not format selected file-search items.");
+            ShowStatus("선택 항목 복사 실패", exception.Message, InfoBarSeverity.Error);
+        }
+    }
+
+    public void SetSelection(IEnumerable<FileSearchItemViewModel> items)
+    {
+        ArgumentNullException.ThrowIfNull(items);
+        _selectedItems = items.Distinct().ToArray();
+        SelectedCount = _selectedItems.Count;
+        CopySelectionCommand.NotifyCanExecuteChanged();
+    }
+
     public void ApplySort(EntrySortField field, EntrySortDirection direction)
     {
         SelectedSort = SortChoices.First(choice => choice.Value == field);
@@ -585,24 +730,62 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
 
     private bool CanUseSelected() => SelectedItem is not null;
 
-    private async Task InitializeAsync()
+    private bool CanCopySelection() => SelectedCount > 0;
+
+    private void RefreshOutputFormats()
     {
-        try
+        var selectedId = SelectedOutputFormat?.Id;
+        var loadedProfiles = _profileCatalog.Current.Profiles
+            .Select(static profile => profile.Descriptor.Id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        OutputFormats = _outputFormatStore.GetAll()
+            .Where(format => string.IsNullOrWhiteSpace(format.ProfileId)
+                || loadedProfiles.Contains(format.ProfileId))
+            .ToArray();
+        SelectedOutputFormat = OutputFormats.FirstOrDefault(format =>
+                string.Equals(format.Id, selectedId, StringComparison.OrdinalIgnoreCase))
+            ?? OutputFormats.FirstOrDefault(format => format.IsBuiltIn)
+            ?? OutputFormats.FirstOrDefault();
+    }
+
+    private void OnOutputFormatsChanged(object? sender, EventArgs eventArgs) =>
+        Dispatch(RefreshOutputFormats);
+
+    private void OnProfilesChanged(object? sender, ProfileCatalogChangedEventArgs eventArgs) =>
+        Dispatch(RefreshOutputFormats);
+
+    private static void Dispatch(Action action)
+    {
+        var dispatcher = System.Windows.Application.Current?.Dispatcher;
+        if (dispatcher is null || dispatcher.CheckAccess())
         {
-            var statusApplied = await RefreshStatusAsync().ConfigureAwait(true);
-            if (statusApplied && HasIndex)
-            {
-                await SearchAsync(reset: true, CancellationToken.None).ConfigureAwait(true);
-            }
+            action();
         }
-        catch (Exception exception)
+        else if (!dispatcher.HasShutdownStarted && !dispatcher.HasShutdownFinished)
         {
-            _logger.LogWarning(exception, "Could not initialize the file search page.");
-            ShowStatus("인덱스 상태 확인 실패", exception.Message, InfoBarSeverity.Warning);
+            _ = dispatcher.BeginInvoke(action);
         }
     }
 
-    private async Task<bool> RefreshStatusAsync()
+    private void CopyText(string text, string title)
+    {
+        if (_clipboardService.TrySetText(text, out var errorMessage))
+        {
+            _snackbarService.Show(
+                title,
+                text,
+                ControlAppearance.Secondary,
+                null,
+                TimeSpan.FromSeconds(3));
+            return;
+        }
+
+        ShowStatus(title, errorMessage ?? "클립보드에 복사하지 못했습니다.", InfoBarSeverity.Error);
+    }
+
+    private Task InitializeAsync() => StartLoadAsync(refreshStatus: true, debounce: false);
+
+    private async Task<bool> RefreshStatusAsync(CancellationToken cancellationToken)
     {
         if (!HasRoot)
         {
@@ -614,7 +797,8 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
 
         var generation = Volatile.Read(ref _scopeVersion);
         var scope = ValidateScope(validateDatabaseOutsideRoot: false);
-        var status = await _fileSearchService.GetStatusAsync(scope).ConfigureAwait(true);
+        var status = await _fileSearchService.GetStatusAsync(scope, cancellationToken)
+            .ConfigureAwait(true);
         if (generation != Volatile.Read(ref _scopeVersion)
             || !ScopeStillCurrent(scope))
         {
@@ -649,17 +833,12 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
             return;
         }
 
-        InvalidateSearch();
-        _queryCancellation = new CancellationTokenSource();
-        var version = Volatile.Read(ref _queryVersion);
-        _ = DebounceAndSearchAsync(version, _queryCancellation.Token);
+        _ = StartLoadAsync(refreshStatus: false, debounce: true);
     }
 
     private void InvalidateSearch()
     {
         _queryCancellation?.Cancel();
-        _queryCancellation?.Dispose();
-        _queryCancellation = null;
         Interlocked.Increment(ref _queryVersion);
         IsSearching = false;
     }
@@ -675,64 +854,168 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
         IndexStatusDetail = "선택한 위치의 기존 인덱스를 확인하고 있습니다.";
     }
 
-    private async Task DebounceAndSearchAsync(long version, CancellationToken cancellationToken)
+    private Task StartLoadAsync(
+        bool refreshStatus,
+        bool debounce,
+        bool reset = true)
+    {
+        if (_disposed)
+        {
+            return Task.CompletedTask;
+        }
+
+        _queryCancellation?.Cancel();
+        var cancellation = new CancellationTokenSource();
+        _queryCancellation = cancellation;
+        var version = Interlocked.Increment(ref _queryVersion);
+        var task = RunLoadSessionAsync(
+            refreshStatus,
+            debounce,
+            reset,
+            version,
+            cancellation);
+        _activeLoadTask = task;
+        return task;
+    }
+
+    private async Task RunLoadSessionAsync(
+        bool refreshStatus,
+        bool debounce,
+        bool reset,
+        long version,
+        CancellationTokenSource cancellation)
     {
         try
         {
-            await Task.Delay(TimeSpan.FromMilliseconds(250), cancellationToken).ConfigureAwait(true);
-            await SearchAsync(reset: true, cancellationToken, version).ConfigureAwait(true);
+            // Keep ownership fields initialized even when there is no index to load.
+            await Task.Yield();
+            if (debounce)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(250), cancellation.Token)
+                    .ConfigureAwait(true);
+            }
+
+            var statusApplied = !refreshStatus
+                || await RefreshStatusAsync(cancellation.Token).ConfigureAwait(true);
+            if (statusApplied && HasIndex)
+            {
+                await SearchPagesAsync(reset, version, cancellation.Token).ConfigureAwait(true);
+            }
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {
-            // A newer query superseded this one.
+            // A newer query or an index refresh superseded this load session.
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "Could not load the file index.");
+            ShowStatus(
+                refreshStatus ? "인덱스 상태 확인 실패" : "검색 실패",
+                exception.Message,
+                refreshStatus ? InfoBarSeverity.Warning : InfoBarSeverity.Error);
+        }
+        finally
+        {
+            if (ReferenceEquals(_queryCancellation, cancellation))
+            {
+                _queryCancellation = null;
+                _activeLoadTask = null;
+                IsSearching = false;
+            }
+
+            cancellation.Dispose();
         }
     }
 
-    private async Task SearchAsync(
-        bool reset,
-        CancellationToken externalCancellation,
-        long? expectedVersion = null)
+    private async Task CancelActiveLoadAsync()
     {
-        var version = expectedVersion
-            ?? (reset ? Interlocked.Increment(ref _queryVersion) : Volatile.Read(ref _queryVersion));
-        if (version != Volatile.Read(ref _queryVersion))
+        var cancellation = _queryCancellation;
+        var task = _activeLoadTask;
+        InvalidateSearch();
+        if (cancellation is null || task is null)
         {
             return;
         }
 
-        if (!CanSearch || (!reset && (!HasMore || IsSearching)))
+        try
+        {
+            await task.ConfigureAwait(true);
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+        }
+    }
+
+    private async Task SearchPagesAsync(
+        bool reset,
+        long version,
+        CancellationToken cancellationToken)
+    {
+        if (version != Volatile.Read(ref _queryVersion)
+            || !CanSearch
+            || (!reset && (!HasMore || IsSearching)))
         {
             return;
         }
 
-        var cancellationToken = externalCancellation;
         IsSearching = true;
         try
         {
             var scope = ValidateScope(validateDatabaseOutsideRoot: false);
-            var request = BuildSearchRequest(scope.RootPath, reset ? 0 : Items.Count);
-            var result = await _fileSearchService.SearchAsync(scope, request, cancellationToken)
-                .ConfigureAwait(true);
-            cancellationToken.ThrowIfCancellationRequested();
-            if (version != Volatile.Read(ref _queryVersion))
-            {
-                return;
-            }
-
             if (reset)
             {
                 Items.Clear();
+                TotalCount = 0;
+                HasMore = false;
+                HasSearched = false;
             }
 
-            foreach (var entry in result.Entries)
+            var offset = reset ? 0 : Items.Count;
+            var loadNextPage = true;
+            while (loadNextPage)
             {
-                Items.Add(new FileSearchItemViewModel(entry));
+                cancellationToken.ThrowIfCancellationRequested();
+                var request = BuildSearchRequest(scope.RootPath, offset);
+                var result = await _fileSearchService.SearchAsync(scope, request, cancellationToken)
+                    .ConfigureAwait(true);
+                cancellationToken.ThrowIfCancellationRequested();
+                if (version != Volatile.Read(ref _queryVersion))
+                {
+                    return;
+                }
+
+                foreach (var entry in result.Entries)
+                {
+                    Items.Add(new FileSearchItemViewModel(entry));
+                }
+
+                TotalCount = result.TotalCount;
+                HasMore = result.HasMore;
+                HasPendingScopes = result.HasPendingScopes;
+                HasSearched = true;
+                offset = Items.Count;
+                ProgressMessage = HasMore
+                    ? $"인덱스에서 {Items.Count:N0}/{TotalCount:N0}개를 불러오는 중…"
+                    : $"{Items.Count:N0}개 항목을 불러왔습니다.";
+                OnPropertyChanged(nameof(ResultSummary));
+                OnPropertyChanged(nameof(IsNoResultsVisible));
+                LoadMoreCommand.NotifyCanExecuteChanged();
+
+                if (result.HasMore && result.Entries.Count == 0)
+                {
+                    throw new InvalidDataException(
+                        "인덱스가 다음 결과가 있다고 응답했지만 현재 페이지가 비어 있습니다.");
+                }
+
+                loadNextPage = result.HasMore;
+                if (loadNextPage)
+                {
+                    // Let WPF render every completed page before the next DB page is read.
+                    await System.Windows.Threading.Dispatcher.Yield(
+                        System.Windows.Threading.DispatcherPriority.Background);
+                }
             }
 
-            TotalCount = result.TotalCount;
-            HasMore = result.HasMore;
-            HasPendingScopes = result.HasPendingScopes;
-            HasSearched = true;
             if (IsStatusOpen
                 && StatusSeverity == InfoBarSeverity.Error
                 && string.Equals(StatusTitle, "검색 실패", StringComparison.Ordinal))
@@ -740,17 +1023,9 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
                 IsStatusOpen = false;
             }
 
-            OnPropertyChanged(nameof(ResultSummary));
-            OnPropertyChanged(nameof(IsNoResultsVisible));
-            LoadMoreCommand.NotifyCanExecuteChanged();
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-        }
-        catch (Exception exception)
-        {
-            _logger.LogWarning(exception, "File index search failed.");
-            ShowStatus("검색 실패", exception.Message, InfoBarSeverity.Error);
         }
         finally
         {
@@ -973,6 +1248,8 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
 
         _disposed = true;
         _workspaceContext.Changed -= OnWorkspaceChanged;
+        _outputFormatStore.Changed -= OnOutputFormatsChanged;
+        _profileCatalog.Changed -= OnProfilesChanged;
         InvalidateSearch();
     }
 }

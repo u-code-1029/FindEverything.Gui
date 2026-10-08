@@ -12,6 +12,12 @@ public enum ProfileFieldValueKind
     Boolean = 4,
 }
 
+public enum ProfileFieldSourceKind
+{
+    RegexCapture = 0,
+    TextFileContent = 1,
+}
+
 public sealed record ProfileFieldDescriptor(
     string FieldId,
     string GroupName,
@@ -25,9 +31,27 @@ public sealed record ProfileFieldDescriptor(
 {
     public IReadOnlyList<string> GroupNames { get; init; } = Array.Empty<string>();
 
+    public ProfileFieldSourceKind SourceKind { get; init; } =
+        ProfileFieldSourceKind.RegexCapture;
+
     public IReadOnlyList<string> EffectiveGroupNames =>
-        GroupNames.Count > 0 ? GroupNames : new[] { GroupName };
+        GroupNames.Count > 0
+            ? GroupNames
+            : string.IsNullOrWhiteSpace(GroupName)
+                ? Array.Empty<string>()
+                : new[] { GroupName };
 }
+
+public sealed record ProfileTextFileFieldDescriptor(
+    int Order,
+    string FieldId,
+    string Header,
+    string FileNamePattern,
+    ProfileRegexMatchMode MatchMode,
+    bool IgnoreCase,
+    int TimeoutMilliseconds,
+    bool Required,
+    long MaxBytes);
 
 public sealed record ProfileRegexRuleDescriptor(
     int Order,
@@ -62,6 +86,9 @@ public sealed record ProfileDescriptor(
     public IReadOnlyList<ProfileDirectoryNameExclusionRuleDescriptor>
         ExcludedDirectoryNameRules { get; init; } =
             Array.Empty<ProfileDirectoryNameExclusionRuleDescriptor>();
+
+    public IReadOnlyList<ProfileTextFileFieldDescriptor> TextFileFields { get; init; } =
+        Array.Empty<ProfileTextFileFieldDescriptor>();
 }
 
 public sealed record ProfilePathCandidate

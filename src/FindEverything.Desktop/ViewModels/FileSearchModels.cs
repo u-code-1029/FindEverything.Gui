@@ -13,6 +13,8 @@ public sealed class FileSearchItemViewModel(IndexedPathEntry entry)
 
     public string ParentPath => Entry.ParentPath;
 
+    public string FolderPath => Kind == IndexedPathKind.Directory ? FullPath : ParentPath;
+
     public IndexedPathKind Kind => Entry.Kind;
 
     public string KindText => Kind == IndexedPathKind.Directory

@@ -132,6 +132,9 @@ internal sealed class ProfileModelCompiler
         var excludedDirectoryNameRules = CompileExcludedDirectoryNameRules(
             manifest.ExcludedDirectoryNameRules,
             diagnostics);
+        var textFileFields = CompileTextFileFields(
+            manifest.TextFileFields,
+            diagnostics);
         if (diagnostics.Any(static diagnostic =>
                 diagnostic.Severity == ProfileDiagnosticSeverity.Error))
         {
@@ -147,7 +150,12 @@ internal sealed class ProfileModelCompiler
                 "프로필 모델 팩터리를 만들 수 없습니다.");
         }
 
-        var descriptors = fields.Select(static field => field.Descriptor).ToArray();
+        var descriptors = fields
+            .Select(static field => field.Descriptor)
+            .Concat(textFileFields.Select(static field => field.Descriptor))
+            .OrderBy(static field => field.Order)
+            .ThenBy(static field => field.FieldId, StringComparer.Ordinal)
+            .ToArray();
         var descriptor = new ProfileDescriptor(
             manifest.Id,
             manifest.Version,
@@ -169,6 +177,18 @@ internal sealed class ProfileModelCompiler
                 .ToArray()))
         {
             Kind = manifest.Kind,
+            TextFileFields = Array.AsReadOnly(manifest.TextFileFields
+                .Select(static field => new ProfileTextFileFieldDescriptor(
+                    field.Order,
+                    field.FieldId,
+                    field.Header,
+                    field.FileNamePattern,
+                    field.MatchMode,
+                    field.IgnoreCase,
+                    field.TimeoutMilliseconds,
+                    field.Required,
+                    field.MaxBytes))
+                .ToArray()),
             ExcludedDirectoryNameRules = Array.AsReadOnly(manifest.ExcludedDirectoryNameRules
                 .Select(static (rule, index) =>
                     new ProfileDirectoryNameExclusionRuleDescriptor(
@@ -186,7 +206,8 @@ internal sealed class ProfileModelCompiler
             createModel,
             fields.ToArray(),
             rules.ToArray(),
-            excludedDirectoryNameRules.ToArray());
+            excludedDirectoryNameRules.ToArray(),
+            textFileFields.ToArray());
 
         return new ProfileCompilationResult(
             profile,
@@ -469,6 +490,57 @@ internal sealed class ProfileModelCompiler
         return rules;
     }
 
+    private static List<CompiledTextFileField> CompileTextFileFields(
+        IReadOnlyList<ValidatedTextFileField> sourceFields,
+        ICollection<ProfileDiagnostic> diagnostics)
+    {
+        var fields = new List<CompiledTextFileField>(sourceFields.Count);
+        foreach (var sourceField in sourceFields)
+        {
+            try
+            {
+                var options = RegexOptions.Compiled | RegexOptions.CultureInvariant;
+                if (sourceField.IgnoreCase)
+                {
+                    options |= RegexOptions.IgnoreCase;
+                }
+
+                var effectivePattern = sourceField.MatchMode == ProfileRegexMatchMode.Full
+                    ? $"\\A(?:{sourceField.FileNamePattern})\\z"
+                    : sourceField.FileNamePattern;
+                var descriptor = new ProfileFieldDescriptor(
+                    sourceField.FieldId,
+                    string.Empty,
+                    sourceField.Header,
+                    sourceField.Order,
+                    sourceField.Required,
+                    ProfileFieldValueKind.String,
+                    IsNullable: !sourceField.Required,
+                    ParseFormat: null,
+                    DisplayFormat: null)
+                {
+                    SourceKind = ProfileFieldSourceKind.TextFileContent,
+                };
+                fields.Add(new CompiledTextFileField(
+                    descriptor,
+                    new Regex(
+                        effectivePattern,
+                        options,
+                        TimeSpan.FromMilliseconds(sourceField.TimeoutMilliseconds)),
+                    sourceField.MaxBytes));
+            }
+            catch (ArgumentException exception)
+            {
+                diagnostics.Add(Error(
+                    "text_file_name_regex_invalid",
+                    $"텍스트 파일 필드 '{sourceField.FieldId}'의 파일 이름 정규식을 컴파일할 수 없습니다.",
+                    exception.Message));
+            }
+        }
+
+        return fields;
+    }
+
     private static Func<object> CompileConstructor(ConstructorInfo constructor)
     {
         var body = Expression.Convert(Expression.New(constructor), typeof(object));
@@ -561,3 +633,8 @@ internal sealed record CompiledRegexRule(
 internal sealed record CompiledDirectoryNameExclusionRule(
     string Id,
     Regex Regex);
+
+internal sealed record CompiledTextFileField(
+    ProfileFieldDescriptor Descriptor,
+    Regex FileNameRegex,
+    long MaxBytes);

@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using FindEverything.Application.Indexing;
 using FindEverything.Desktop.ViewModels;
@@ -19,7 +20,16 @@ public partial class FilesPage
 
     private void OnPagePreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.F && Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
+        if (e.Key == Key.C
+            && Keyboard.Modifiers.HasFlag(ModifierKeys.Control)
+            && Keyboard.FocusedElement is not TextBoxBase
+            && Keyboard.FocusedElement is not PasswordBox
+            && _viewModel.CopySelectionCommand.CanExecute(null))
+        {
+            _viewModel.CopySelectionCommand.Execute(null);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.F && Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
         {
             SearchBox.Focus();
             SearchBox.SelectAll();
@@ -30,6 +40,65 @@ public partial class FilesPage
             _viewModel.RefreshIndexCommand.Execute(null);
             e.Handled = true;
         }
+    }
+
+    private void OnResultsGridSelectionChanged(object sender, SelectionChangedEventArgs e) =>
+        UpdateSelectionSnapshot();
+
+    private void OnResultsGridPreviewMouseRightButtonDown(
+        object sender,
+        MouseButtonEventArgs e)
+    {
+        if (e.OriginalSource is not System.Windows.DependencyObject source
+            || ItemsControl.ContainerFromElement(ResultsGrid, source) is not DataGridRow row)
+        {
+            return;
+        }
+
+        if (!row.IsSelected)
+        {
+            ResultsGrid.SelectedItems.Clear();
+            row.IsSelected = true;
+        }
+
+        ResultsGrid.SelectedItem = row.Item;
+        row.Focus();
+    }
+
+    private void OnSelectAllClick(object sender, System.Windows.RoutedEventArgs e) =>
+        ResultsGrid.SelectAll();
+
+    private void OnClearSelectionClick(object sender, System.Windows.RoutedEventArgs e) =>
+        ResultsGrid.UnselectAll();
+
+    private void OnInvertSelectionClick(object sender, System.Windows.RoutedEventArgs e)
+    {
+        var selected = ResultsGrid.SelectedItems.Cast<object>().ToHashSet();
+        ResultsGrid.SelectionChanged -= OnResultsGridSelectionChanged;
+        try
+        {
+            ResultsGrid.SelectedItems.Clear();
+            foreach (var item in ResultsGrid.Items.Cast<object>())
+            {
+                if (!selected.Contains(item))
+                {
+                    ResultsGrid.SelectedItems.Add(item);
+                }
+            }
+        }
+        finally
+        {
+            ResultsGrid.SelectionChanged += OnResultsGridSelectionChanged;
+            UpdateSelectionSnapshot();
+        }
+    }
+
+    private void UpdateSelectionSnapshot()
+    {
+        var selected = ResultsGrid.SelectedItems.Cast<object>().ToHashSet();
+        _viewModel.SetSelection(ResultsGrid.Items
+            .Cast<FileSearchItemViewModel>()
+            .Where(selected.Contains));
     }
 
     private void OnResultsGridMouseDoubleClick(object sender, MouseButtonEventArgs e)

@@ -260,14 +260,6 @@ internal sealed class CatalogService(
         IndexScanReport? scanReport,
         CancellationToken cancellationToken)
     {
-        progress?.Report(new(CatalogOperationPhase.Searching, "인덱스에서 폴더를 조회하고 있습니다."));
-        var searchResult = await session.SearchDirectoriesAsync(
-            new DirectorySearchRequest(request.RootPath)
-            {
-                PageSize = operationSettings.SearchPageSize,
-            },
-            cancellationToken).ConfigureAwait(false);
-
         var accumulator = new MappingAccumulator(
             profile,
             request.RootPath,
@@ -275,16 +267,46 @@ internal sealed class CatalogService(
             pathCanonicalizer,
             progress,
             applyDirectoryNameExclusions: false);
-        foreach (var directory in searchResult.Directories)
+        progress?.Report(new CatalogOperationProgress(
+            CatalogOperationPhase.Searching,
+            "인덱스에서 폴더를 조회하고 있습니다."));
+        var reportedDirectoryCount = 0;
+        var pageProgress = new InlineProgress<IReadOnlyList<IndexedDirectory>>(directories =>
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            accumulator.Visit(new DiscoveredDirectory(
+            foreach (var directory in directories)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                accumulator.Visit(new DiscoveredDirectory(
                     directory.FullPath,
                     directory.Name,
                     directory.ParentPath,
                     directory.CreatedUtc,
                     directory.ModifiedUtc),
-                directory.CoveragePending);
+                    directory.CoveragePending);
+                reportedDirectoryCount++;
+            }
+        });
+        var searchResult = await session.SearchDirectoriesAsync(
+            new DirectorySearchRequest(request.RootPath)
+            {
+                PageSize = operationSettings.SearchPageSize,
+                PageProgress = pageProgress,
+            },
+            cancellationToken).ConfigureAwait(false);
+        // Keep custom/test index providers that predate PageProgress compatible.
+        if (reportedDirectoryCount == 0)
+        {
+            foreach (var directory in searchResult.Directories)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                accumulator.Visit(new DiscoveredDirectory(
+                        directory.FullPath,
+                        directory.Name,
+                        directory.ParentPath,
+                        directory.CreatedUtc,
+                        directory.ModifiedUtc),
+                    directory.CoveragePending);
+            }
         }
 
         return accumulator.BuildResult(

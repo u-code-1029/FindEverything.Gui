@@ -437,7 +437,147 @@
                                     </ItemsControl>
                                     <TextBlock
                                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                        Text="규칙이 없으면 모든 폴더를 방문합니다. 최대 64개이며, 경로 규칙과 폴더 제외 규칙의 시간 제한 합계는 프로필당 10,000ms 이하여야 합니다. 검증 버튼으로 오류를 확인하세요."
+                                        Text="규칙이 없으면 모든 폴더를 방문합니다. 최대 64개이며, 경로·폴더 제외·텍스트 파일 이름 규칙의 시간 제한 합계는 프로필당 10,000ms 이하여야 합니다. 검증 버튼으로 오류를 확인하세요."
+                                        TextWrapping="Wrap" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border IsEnabled="{Binding IsEditorReady}" Style="{StaticResource EditorSectionStyle}">
+                                <StackPanel>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Margin="0,0,16,0">
+                                            <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="폴더 안 텍스트 파일에서 값 가져오기" />
+                                            <TextBlock
+                                                Margin="0,4,0,0"
+                                                Style="{StaticResource CaptionTextStyle}"
+                                                Text="경로 규칙과 일치한 각 폴더의 바로 아래 파일 중 이름 정규식과 일치하는 첫 번째 파일을 읽어 문자열 컬럼으로 만듭니다. 하위 폴더는 검색하지 않습니다."
+                                                TextWrapping="Wrap" />
+                                        </StackPanel>
+                                        <ui:Button
+                                            Grid.Column="1"
+                                            VerticalAlignment="Top"
+                                            AutomationProperties.Name="텍스트 파일 필드 추가"
+                                            Command="{Binding AddTextFileFieldCommand}"
+                                            Content="파일 값 추가"
+                                            Icon="{ui:SymbolIcon Symbol=DocumentText20}" />
+                                    </Grid>
+
+                                    <ui:InfoBar
+                                        Margin="0,12,0,12"
+                                        AutomationProperties.Name="텍스트 파일 값 읽기 안내"
+                                        IsClosable="False"
+                                        IsOpen="True"
+                                        Message="정규식에는 전체 경로가 아닌 파일 이름만 전달됩니다. 여러 파일이 맞으면 파일 이름을 대소문자 무시 오름차순으로 정렬해 첫 파일을 사용합니다. UTF-8을 기본으로 읽고 BOM이 있으면 해당 인코딩을 감지합니다."
+                                        Severity="Informational"
+                                        Title="바로 아래의 첫 일치 파일" />
+
+                                    <ItemsControl ItemsSource="{Binding DraftTextFileFields}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Style="{StaticResource FieldCardStyle}">
+                                                    <StackPanel>
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="16" />
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <StackPanel>
+                                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="표시 이름 *" />
+                                                                <ui:TextBox
+                                                                    AutomationProperties.Name="텍스트 파일 필드 표시 이름"
+                                                                    PlaceholderText="예: 설명"
+                                                                    Text="{Binding Header, UpdateSourceTrigger=PropertyChanged}" />
+                                                            </StackPanel>
+                                                            <StackPanel Grid.Column="2">
+                                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="Field ID *" />
+                                                                <ui:TextBox
+                                                                    AutomationProperties.Name="텍스트 파일 Field ID"
+                                                                    PlaceholderText="예: description"
+                                                                    Text="{Binding FieldId, UpdateSourceTrigger=PropertyChanged}" />
+                                                            </StackPanel>
+                                                            <ui:Button
+                                                                Grid.Column="3"
+                                                                Width="34"
+                                                                Height="32"
+                                                                Margin="10,22,0,0"
+                                                                VerticalAlignment="Top"
+                                                                Appearance="Caution"
+                                                                AutomationProperties.Name="텍스트 파일 필드 삭제"
+                                                                Command="{Binding DataContext.RemoveTextFileFieldCommand, RelativeSource={RelativeSource AncestorType={x:Type Page}}}"
+                                                                CommandParameter="{Binding}"
+                                                                Icon="{ui:SymbolIcon Symbol=Delete12}"
+                                                                Style="{StaticResource IconOnlyButtonStyle}"
+                                                                ToolTip="파일 값 삭제" />
+                                                        </Grid>
+
+                                                        <TextBlock Margin="0,12,0,0" Style="{StaticResource FieldLabelStyle}" Text="파일 이름 정규식 *" />
+                                                        <ui:TextBox
+                                                            AutomationProperties.Name="텍스트 파일 이름 정규식"
+                                                            PlaceholderText="예: ^metadata\.txt$ 또는 ^info-\d+\.txt$"
+                                                            Text="{Binding FileNamePattern, UpdateSourceTrigger=PropertyChanged}" />
+
+                                                        <Grid Margin="0,12,0,0">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="2*" />
+                                                                <ColumnDefinition Width="16" />
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="16" />
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="16" />
+                                                                <ColumnDefinition Width="*" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <StackPanel>
+                                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="파일 이름 비교" />
+                                                                <ComboBox
+                                                                    AutomationProperties.Name="텍스트 파일 이름 비교 방식"
+                                                                    DisplayMemberPath="DisplayName"
+                                                                    ItemsSource="{Binding DataContext.MatchModeChoices, RelativeSource={RelativeSource AncestorType={x:Type Page}}}"
+                                                                    SelectedValue="{Binding MatchMode, UpdateSourceTrigger=PropertyChanged}"
+                                                                    SelectedValuePath="Value" />
+                                                            </StackPanel>
+                                                            <StackPanel Grid.Column="2">
+                                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="읽기 제한 (bytes)" />
+                                                                <ui:TextBox
+                                                                    AutomationProperties.Name="텍스트 파일 읽기 바이트 제한"
+                                                                    Text="{Binding MaxBytes, UpdateSourceTrigger=PropertyChanged}" />
+                                                            </StackPanel>
+                                                            <StackPanel Grid.Column="4">
+                                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="시간 제한 (ms)" />
+                                                                <ui:TextBox
+                                                                    AutomationProperties.Name="텍스트 파일 정규식 시간 제한"
+                                                                    Text="{Binding TimeoutMilliseconds, UpdateSourceTrigger=PropertyChanged}" />
+                                                            </StackPanel>
+                                                            <StackPanel Grid.Column="6">
+                                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="컬럼 순서" />
+                                                                <ui:TextBox
+                                                                    AutomationProperties.Name="텍스트 파일 컬럼 순서"
+                                                                    Text="{Binding Order, UpdateSourceTrigger=PropertyChanged}" />
+                                                            </StackPanel>
+                                                        </Grid>
+                                                        <WrapPanel Margin="0,12,0,0">
+                                                            <CheckBox
+                                                                Margin="0,0,20,0"
+                                                                Content="필수 파일"
+                                                                IsChecked="{Binding Required, UpdateSourceTrigger=PropertyChanged}"
+                                                                ToolTip="일치하는 파일이 없으면 이 폴더를 유효하지 않은 항목으로 처리합니다." />
+                                                            <CheckBox
+                                                                Content="대소문자 무시"
+                                                                IsChecked="{Binding IgnoreCase, UpdateSourceTrigger=PropertyChanged}" />
+                                                        </WrapPanel>
+                                                    </StackPanel>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <TextBlock
+                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                        Text="최대 16개, 필드당 기본 262,144바이트(256 KiB), 최대 4,194,304바이트(4 MiB)입니다. 선택 파일이 제한을 넘거나 읽을 수 없으면 해당 항목의 검증 오류로 표시됩니다."
                                         TextWrapping="Wrap" />
                                 </StackPanel>
                             </Border>
@@ -837,7 +977,7 @@
                                     <TextBlock
                                         Margin="0,4,0,16"
                                         Style="{StaticResource CaptionTextStyle}"
-                                        Text="결과 컬럼과 정규식을 직접 연결합니다. 경로 규칙은 최대 64개, pattern은 규칙당 최대 4,096자이며 폴더 제외 규칙까지 합친 제한 시간은 프로필당 10,000ms 이하여야 합니다."
+                                        Text="결과 컬럼과 정규식을 직접 연결합니다. 경로 규칙은 최대 64개, pattern은 규칙당 최대 4,096자이며 폴더 제외·텍스트 파일 이름 규칙까지 합친 제한 시간은 프로필당 10,000ms 이하여야 합니다."
                                         TextWrapping="Wrap" />
 
                                     <TextBlock Style="{StaticResource FieldLabelStyle}" Text="결과 컬럼" />
@@ -1351,6 +1491,10 @@
                                                 <TextBlock Style="{StaticResource FieldLabelStyle}" Text="폴더 제외 규칙" />
                                                 <TextBlock Text="{Binding SelectedProfile.ExcludedDirectoryRuleCount}" />
                                             </StackPanel>
+                                            <StackPanel MinWidth="120" Margin="16,0,0,8">
+                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="텍스트 파일 값" />
+                                                <TextBlock Text="{Binding SelectedProfile.TextFileFieldCount}" />
+                                            </StackPanel>
                                         </WrapPanel>
                                     </StackPanel>
                                 </Border>
@@ -1377,12 +1521,53 @@
                                                 <DataGridTextColumn Width="50" Binding="{Binding Order}" Header="#" />
                                                 <DataGridTextColumn Width="1.4*" Binding="{Binding Header}" Header="표시 이름" MinWidth="110" />
                                                 <DataGridTextColumn Width="1.2*" Binding="{Binding FieldId}" Header="Field ID" MinWidth="100" />
+                                                <DataGridTextColumn Width="110" Binding="{Binding Source}" Header="값 출처" />
                                                 <DataGridTextColumn Width="1.8*" Binding="{Binding CaptureGroups}" Header="정규식 그룹 (결합 순서)" MinWidth="160" />
                                                 <DataGridTextColumn Width="90" Binding="{Binding Kind}" Header="값 타입" />
                                                 <DataGridCheckBoxColumn Width="60" Binding="{Binding Required}" Header="필수" />
                                                 <DataGridCheckBoxColumn Width="75" Binding="{Binding IsNullable}" Header="Nullable" />
                                                 <DataGridTextColumn Width="100" Binding="{Binding ParseFormat}" Header="입력 형식" />
                                                 <DataGridTextColumn Width="100" Binding="{Binding DisplayFormat}" Header="표시 형식" />
+                                            </DataGrid.Columns>
+                                        </DataGrid>
+                                    </Grid>
+                                </Border>
+
+                                <Border Style="{StaticResource EditorSectionStyle}">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <StackPanel>
+                                            <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="텍스트 파일 값" />
+                                            <TextBlock
+                                                Margin="0,4,0,0"
+                                                Style="{StaticResource CaptionTextStyle}"
+                                                Text="일치 폴더 바로 아래에서 파일 이름을 비교하고 내용을 읽는 컬럼입니다."
+                                                TextWrapping="Wrap" />
+                                        </StackPanel>
+                                        <DataGrid
+                                            Grid.Row="1"
+                                            Margin="0,12,0,0"
+                                            MinHeight="120"
+                                            AutoGenerateColumns="False"
+                                            CanUserAddRows="False"
+                                            IsReadOnly="True"
+                                            ItemsSource="{Binding TextFileFields}"
+                                            PreviewMouseWheel="OnNestedDataGridPreviewMouseWheel"
+                                            ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                                            Style="{StaticResource FluentDataGridStyle}">
+                                            <DataGrid.Columns>
+                                                <DataGridTextColumn Width="50" Binding="{Binding Order}" Header="#" />
+                                                <DataGridTextColumn Width="1.2*" Binding="{Binding Header}" Header="표시 이름" MinWidth="110" />
+                                                <DataGridTextColumn Width="1.1*" Binding="{Binding FieldId}" Header="Field ID" MinWidth="100" />
+                                                <DataGridTextColumn Width="2.2*" Binding="{Binding FileNamePattern}" Header="파일 이름 정규식" MinWidth="180" />
+                                                <DataGridTextColumn Width="100" Binding="{Binding MatchMode}" Header="매칭" />
+                                                <DataGridCheckBoxColumn Width="60" Binding="{Binding Required}" Header="필수" />
+                                                <DataGridCheckBoxColumn Width="100" Binding="{Binding IgnoreCase}" Header="대소문자 무시" />
+                                                <DataGridTextColumn Width="95" Binding="{Binding MaxBytes}" Header="최대 bytes" />
+                                                <DataGridTextColumn Width="85" Binding="{Binding TimeoutMilliseconds}" Header="제한 ms" />
                                             </DataGrid.Columns>
                                         </DataGrid>
                                     </Grid>

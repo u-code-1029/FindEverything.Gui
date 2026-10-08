@@ -49,6 +49,9 @@ public partial class ProfilesViewModel : ObservableObject
         _excludedDirectoryNameRules = [];
 
     [ObservableProperty]
+    private IReadOnlyList<ProfileTextFileFieldInspectionViewModel> _textFileFields = [];
+
+    [ObservableProperty]
     private IReadOnlyList<PluginReportViewModel> _reports = [];
 
     [ObservableProperty]
@@ -205,6 +208,9 @@ public partial class ProfilesViewModel : ObservableObject
     public ObservableCollection<ProfileDirectoryNameExclusionRuleDraftViewModel>
         DraftExcludedDirectoryNameRules { get; } = [];
 
+    public ObservableCollection<ProfileTextFileFieldDraftViewModel>
+        DraftTextFileFields { get; } = [];
+
     public event EventHandler? AssignmentPickerRequested;
 
     partial void OnSelectedProfileChanged(ProfileSummaryViewModel? value)
@@ -221,6 +227,10 @@ public partial class ProfilesViewModel : ObservableObject
             .OrderBy(static rule => rule.Order)
             .Select(static rule =>
                 new ProfileDirectoryNameExclusionRuleInspectionViewModel(rule))
+            .ToArray() ?? [];
+        TextFileFields = value?.Descriptor.TextFileFields
+            .OrderBy(static field => field.Order)
+            .Select(static field => new ProfileTextFileFieldInspectionViewModel(field))
             .ToArray() ?? [];
     }
 
@@ -287,6 +297,7 @@ public partial class ProfilesViewModel : ObservableObject
         UseExpertModeCommand.NotifyCanExecuteChanged();
         UseGuidedModeCommand.NotifyCanExecuteChanged();
         AddDirectoryExclusionRuleCommand.NotifyCanExecuteChanged();
+        AddTextFileFieldCommand.NotifyCanExecuteChanged();
     }
 
     [RelayCommand(CanExecute = nameof(CanEdit))]
@@ -308,6 +319,7 @@ public partial class ProfilesViewModel : ObservableObject
             DraftFields.Clear();
             DraftRules.Clear();
             DraftExcludedDirectoryNameRules.Clear();
+            DraftTextFileFields.Clear();
             AddFieldRow(new ProfileFieldDraftViewModel
             {
                 Header = "이름",
@@ -338,6 +350,7 @@ public partial class ProfilesViewModel : ObservableObject
             TestRows = [];
             ClearRegexDebugResults();
             AddDirectoryExclusionRuleCommand.NotifyCanExecuteChanged();
+            AddTextFileFieldCommand.NotifyCanExecuteChanged();
             TestSummary = "기본 예제를 바로 시험하거나 실제 경로에 맞게 수정하세요.";
             SetEditorStatus(
                 "새 프로필 초안을 만들었습니다. 예제 값을 수정한 뒤 검증하세요.",
@@ -722,6 +735,50 @@ public partial class ProfilesViewModel : ObservableObject
         }
     }
 
+    [RelayCommand(CanExecute = nameof(CanAddTextFileField))]
+    private void AddTextFileField()
+    {
+        var suffix = 1;
+        string fieldId;
+        do
+        {
+            fieldId = $"text-file-{suffix++}";
+        }
+        while (DraftFields.Any(field =>
+                   string.Equals(field.FieldId, fieldId, StringComparison.OrdinalIgnoreCase))
+               || DraftTextFileFields.Any(field =>
+                   string.Equals(field.FieldId, fieldId, StringComparison.OrdinalIgnoreCase)));
+
+        var nextOrder = DraftFields
+            .Select(static (_, index) => (index + 1) * 10)
+            .Concat(DraftTextFileFields.Select(static field => field.Order))
+            .DefaultIfEmpty(0)
+            .Max() + 10;
+        AddTextFileFieldRow(new ProfileTextFileFieldDraftViewModel
+        {
+            Header = "텍스트 파일 내용",
+            FieldId = fieldId,
+            Order = nextOrder,
+            FileNamePattern = @".*\.txt",
+            MatchMode = ProfileRegexMatchMode.Full,
+            IgnoreCase = true,
+            TimeoutMilliseconds = 100,
+            MaxBytes = ProfileManifestLimits.DefaultTextFileMaximumBytes,
+        });
+        AddTextFileFieldCommand.NotifyCanExecuteChanged();
+    }
+
+    [RelayCommand]
+    private void RemoveTextFileField(ProfileTextFileFieldDraftViewModel? field)
+    {
+        if (field is not null && DraftTextFileFields.Remove(field))
+        {
+            field.PropertyChanged -= OnDraftRowChanged;
+            AddTextFileFieldCommand.NotifyCanExecuteChanged();
+            MarkDraftChanged();
+        }
+    }
+
     [RelayCommand]
     private void MoveRuleUp(ProfileRuleDraftViewModel? rule)
     {
@@ -872,7 +929,7 @@ public partial class ProfilesViewModel : ObservableObject
             {
                 var manifest = BuildManifest();
                 var originalProfileId = _originalProfileId;
-                await _operationCoordinator.RunAsync(async cancellationToken =>
+                await _operationCoordinator.RunAsync(ApplicationOperationKind.ProfileWrite, async cancellationToken =>
                 {
                     result = await _authoringService.SaveAndApplyAsync(
                             manifest,
@@ -967,6 +1024,10 @@ public partial class ProfilesViewModel : ObservableObject
         && DraftExcludedDirectoryNameRules.Count
             < ProfileManifestLimits.MaximumExcludedDirectoryNameRuleCount;
 
+    private bool CanAddTextFileField() =>
+        !IsEditorBusy
+        && DraftTextFileFields.Count < ProfileManifestLimits.MaximumTextFileFieldCount;
+
     private ProfileManifest BuildManifest()
     {
         var fields = BuildFieldManifests();
@@ -1025,6 +1086,20 @@ public partial class ProfilesViewModel : ObservableObject
             DisplayName = DraftDisplayName.Trim(),
             CandidateKind = ProfileCandidateKind.Directory,
             Fields = fields,
+            TextFileFields = DraftTextFileFields.Count == 0
+                ? null
+                : DraftTextFileFields.Select(field => new ProfileTextFileFieldManifest
+                {
+                    FieldId = field.FieldId.Trim(),
+                    Header = field.Header.Trim(),
+                    Order = field.Order,
+                    Required = field.Required,
+                    FileNamePattern = field.FileNamePattern,
+                    MatchMode = field.MatchMode,
+                    IgnoreCase = field.IgnoreCase,
+                    TimeoutMilliseconds = field.TimeoutMilliseconds,
+                    MaxBytes = field.MaxBytes,
+                }).ToList(),
             ExcludedDirectoryNameRules = DraftExcludedDirectoryNameRules.Count == 0
                 ? null
                 : DraftExcludedDirectoryNameRules.Select(rule =>
@@ -1056,6 +1131,7 @@ public partial class ProfilesViewModel : ObservableObject
             DraftFields.Clear();
             DraftRules.Clear();
             DraftExcludedDirectoryNameRules.Clear();
+            DraftTextFileFields.Clear();
             GuidedPathSegments = [];
             HasAnalyzedPath = false;
             IsAssignmentPickerOpen = false;
@@ -1078,7 +1154,13 @@ public partial class ProfilesViewModel : ObservableObject
                     new ProfileDirectoryNameExclusionRuleDraftViewModel(rule));
             }
 
+            foreach (var field in manifest.TextFileFields ?? [])
+            {
+                AddTextFileFieldRow(new ProfileTextFileFieldDraftViewModel(field));
+            }
+
             AddDirectoryExclusionRuleCommand.NotifyCanExecuteChanged();
+            AddTextFileFieldCommand.NotifyCanExecuteChanged();
 
             RestoreTerminalField(manifest.Rules?.FirstOrDefault()?.StopTraversalWhenCapturedGroups);
 
@@ -1228,6 +1310,13 @@ public partial class ProfilesViewModel : ObservableObject
         MarkDraftChanged();
     }
 
+    private void AddTextFileFieldRow(ProfileTextFileFieldDraftViewModel field)
+    {
+        field.PropertyChanged += OnDraftRowChanged;
+        DraftTextFileFields.Add(field);
+        MarkDraftChanged();
+    }
+
     private void DetachRows()
     {
         foreach (var field in DraftFields)
@@ -1244,6 +1333,12 @@ public partial class ProfilesViewModel : ObservableObject
         {
             rule.PropertyChanged -= OnDraftRowChanged;
         }
+
+
+        foreach (var field in DraftTextFileFields)
+        {
+            field.PropertyChanged -= OnDraftRowChanged;
+        }
     }
 
     private void OnDraftRowChanged(object? sender, PropertyChangedEventArgs eventArgs)
@@ -1253,7 +1348,8 @@ public partial class ProfilesViewModel : ObservableObject
             return;
         }
 
-        if (sender is ProfileDirectoryNameExclusionRuleDraftViewModel)
+        if (sender is ProfileDirectoryNameExclusionRuleDraftViewModel
+            or ProfileTextFileFieldDraftViewModel)
         {
             MarkDraftChanged();
             return;
@@ -1884,6 +1980,8 @@ public sealed class ProfileSummaryViewModel(ProfileDescriptor descriptor)
     public int FieldCount => Descriptor.Fields.Count;
 
     public int ExcludedDirectoryRuleCount => Descriptor.ExcludedDirectoryNameRules.Count;
+
+    public int TextFileFieldCount => Descriptor.TextFileFields.Count;
 }
 
 public sealed class ProfileFieldInspectionViewModel(ProfileFieldDescriptor descriptor)
@@ -1894,7 +1992,13 @@ public sealed class ProfileFieldInspectionViewModel(ProfileFieldDescriptor descr
 
     public string FieldId => descriptor.FieldId;
 
-    public string CaptureGroups => string.Join(" → ", descriptor.EffectiveGroupNames);
+    public string CaptureGroups => descriptor.SourceKind == ProfileFieldSourceKind.TextFileContent
+        ? "텍스트 파일 내용"
+        : string.Join(" → ", descriptor.EffectiveGroupNames);
+
+    public string Source => descriptor.SourceKind == ProfileFieldSourceKind.TextFileContent
+        ? "텍스트 파일"
+        : "경로 정규식";
 
     public ProfileFieldValueKind Kind => descriptor.Kind;
 
@@ -1905,6 +2009,28 @@ public sealed class ProfileFieldInspectionViewModel(ProfileFieldDescriptor descr
     public string? ParseFormat => descriptor.ParseFormat;
 
     public string? DisplayFormat => descriptor.DisplayFormat;
+}
+
+public sealed class ProfileTextFileFieldInspectionViewModel(
+    ProfileTextFileFieldDescriptor descriptor)
+{
+    public int Order => descriptor.Order;
+
+    public string Header => descriptor.Header;
+
+    public string FieldId => descriptor.FieldId;
+
+    public string FileNamePattern => descriptor.FileNamePattern;
+
+    public ProfileRegexMatchMode MatchMode => descriptor.MatchMode;
+
+    public bool IgnoreCase => descriptor.IgnoreCase;
+
+    public bool Required => descriptor.Required;
+
+    public int TimeoutMilliseconds => descriptor.TimeoutMilliseconds;
+
+    public long MaxBytes => descriptor.MaxBytes;
 }
 
 public sealed class ProfileRuleInspectionViewModel(ProfileRegexRuleDescriptor descriptor)

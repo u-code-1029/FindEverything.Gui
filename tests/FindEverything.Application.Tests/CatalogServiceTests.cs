@@ -758,6 +758,7 @@ public sealed class CatalogServiceTests
             CancellationToken cancellationToken = default)
         {
             onSearch(request.RootPath);
+            request.PageProgress?.Report(directories);
             return Task.FromResult(new DirectorySearchResult(
                 directories,
                 HasPendingScopes: false));

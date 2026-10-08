@@ -60,6 +60,9 @@ public static class DependencyInjection
         services.AddSingleton<IScanConsoleLogWriter, ScanConsoleLogWriter>();
         services.AddSingleton<IPathLauncher, ExplorerPathLauncher>();
         services.AddSingleton<IProfileAuthoringService, ProfileAuthoringService>();
+        services.AddSingleton<ISelectionOutputFormatStore, SelectionOutputFormatStore>();
+        services.AddSingleton<ISelectionOutputFormatter, SelectionOutputFormatter>();
+        services.AddSingleton<IClipboardService, WpfClipboardService>();
         services.TryAddSingleton<IWindowsMappedDrivePathResolver, WindowsMappedDrivePathResolver>();
         services.Replace(ServiceDescriptor.Singleton<IProfilePathCanonicalizer,
             WindowsProfilePathCanonicalizer>());
@@ -92,6 +95,8 @@ public static class DependencyInjection
         services.AddSingleton<CatalogViewModel>();
         services.AddSingleton<ProfilesPage>();
         services.AddSingleton<ProfilesViewModel>();
+        services.AddSingleton<OutputFormatsPage>();
+        services.AddSingleton<OutputFormatsViewModel>();
         services.AddSingleton<SettingsPage>();
         services.AddSingleton<SettingsViewModel>();
 
