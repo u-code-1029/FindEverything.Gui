@@ -57,6 +57,7 @@ public static class DependencyInjection
         services.AddSingleton<IApplicationOperationCoordinator, ApplicationOperationCoordinator>();
         services.AddSingleton<IWorkspaceContext, WorkspaceContext>();
         services.AddSingleton<IDesktopPickerService, DesktopPickerService>();
+        services.AddSingleton<IScanConsoleLogWriter, ScanConsoleLogWriter>();
         services.AddSingleton<IPathLauncher, ExplorerPathLauncher>();
         services.AddSingleton<IProfileAuthoringService, ProfileAuthoringService>();
         services.TryAddSingleton<IWindowsMappedDrivePathResolver, WindowsMappedDrivePathResolver>();

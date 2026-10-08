@@ -11,6 +11,96 @@ namespace FindEverything.Application.Tests;
 public sealed class CatalogServiceTests
 {
     [Fact]
+    public async Task Discover_reports_a_match_before_discovery_finishes()
+    {
+        var root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "catalog-live-root"));
+        var siblingPath = Path.Combine(root, "sibling");
+        var discovery = new GatedMatchDiscoveryService(root, siblingPath);
+        var matched = new TaskCompletionSource<CatalogItem>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var reportedItems = new List<CatalogItem>();
+        var reportedMessages = new List<string>();
+        var reportedItemsGate = new object();
+        var services = new ServiceCollection();
+        services.AddFindEverythingApplication(new ConfigurationBuilder().Build());
+        services.AddSingleton<IIndexSessionFactory, ThrowingSessionFactory>();
+        services.AddSingleton<IDirectoryDiscoveryService>(discovery);
+        services.AddSingleton<IProfileResolver>(new FakeProfileResolver(new PruningProfile()));
+
+        await using var provider = services.BuildServiceProvider();
+        var service = provider.GetRequiredService<ICatalogService>();
+        var progress = new InlineProgress<CatalogOperationProgress>(value =>
+        {
+            lock (reportedItemsGate)
+            {
+                reportedMessages.Add(value.Message);
+            }
+
+            if (value.MatchedItem is { } item)
+            {
+                lock (reportedItemsGate)
+                {
+                    reportedItems.Add(item);
+                }
+
+                matched.TrySetResult(item);
+            }
+        });
+
+        var operation = service.DiscoverAsync(
+            new CatalogRequest("test", root, "unused.db"),
+            progress);
+        CatalogItem liveItem;
+        try
+        {
+            liveItem = await matched.Task.WaitAsync(TimeSpan.FromSeconds(3));
+            Assert.False(operation.IsCompleted);
+            Assert.Equal(siblingPath, liveItem.FullPath);
+            Assert.Equal("sibling", liveItem.Values["name"]);
+        }
+        finally
+        {
+            discovery.Complete();
+        }
+
+        var result = await operation;
+        CatalogItem[] progressItems;
+        string[] progressMessages;
+        lock (reportedItemsGate)
+        {
+            progressItems = reportedItems.ToArray();
+            progressMessages = reportedMessages.ToArray();
+        }
+
+        var progressItem = Assert.Single(progressItems);
+        var finalItem = Assert.Single(result.Items);
+        Assert.Equal(finalItem.FullPath, progressItem.FullPath);
+        Assert.Equal(finalItem.MatchedRuleId, progressItem.MatchedRuleId);
+        Assert.Equal(finalItem.Values, progressItem.Values);
+        Assert.Equal(
+            TimeSpan.FromSeconds(65.43),
+            Assert.IsType<DirectoryDiscoveryReport>(result.DiscoveryReport).Progress.Elapsed);
+        Assert.Contains(
+            progressMessages,
+            static message => message.Contains("소요 1분 05.43초", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData(-1, "0.00초")]
+    [InlineData(0, "0.00초")]
+    [InlineData(12340, "12.34초")]
+    [InlineData(65430, "1분 05.43초")]
+    [InlineData(3723450, "1시간 02분 03.45초")]
+    public void Catalog_elapsed_time_uses_a_consistent_Korean_format(
+        int elapsedMilliseconds,
+        string expected)
+    {
+        Assert.Equal(
+            expected,
+            CatalogElapsedTimeFormatter.Format(TimeSpan.FromMilliseconds(elapsedMilliseconds)));
+    }
+
+    [Fact]
     public async Task Discover_uses_profile_pruning_without_creating_an_index_session()
     {
         var root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "catalog-discovery-root"));
@@ -56,6 +146,7 @@ public sealed class CatalogServiceTests
             Enumerable.Range(1, trace.Events.Count).Select(static value => (long)value),
             trace.Events.Select(static entry => entry.Sequence));
         Assert.Single(trace.Events.Select(static entry => entry.OperationId).Distinct());
+        Assert.Contains("소요 0.00초", trace.Events[^1].Message, StringComparison.Ordinal);
 
         var visits = trace.Events
             .Where(static entry => entry.Kind == CatalogScanTraceKind.DirectoryVisited)
@@ -489,6 +580,55 @@ public sealed class CatalogServiceTests
             IProgress<DirectoryDiscoveryProgress>? progress = null,
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
+    }
+
+    private sealed class GatedMatchDiscoveryService(string root, string matchPath)
+        : IDirectoryDiscoveryService
+    {
+        private readonly TaskCompletionSource _release = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async Task<DirectoryDiscoveryReport> DiscoverAsync(
+            DirectoryDiscoveryRequest request,
+            Func<DiscoveredDirectory, DirectoryTraversalDecision> visitDirectory,
+            IProgress<DirectoryDiscoveryProgress>? progress = null,
+            CancellationToken cancellationToken = default)
+        {
+            _ = visitDirectory(new DiscoveredDirectory(
+                root,
+                Path.GetFileName(root),
+                root,
+                DateTimeOffset.MinValue,
+                DateTimeOffset.MinValue));
+            _ = visitDirectory(new DiscoveredDirectory(
+                matchPath,
+                Path.GetFileName(matchPath),
+                root,
+                DateTimeOffset.MinValue,
+                DateTimeOffset.MinValue));
+
+            await _release.Task.WaitAsync(cancellationToken);
+            var reportProgress = new DirectoryDiscoveryProgress(
+                Entries: 2,
+                Directories: 2,
+                PrunedDirectories: 0,
+                SkippedLinks: 0,
+                ErrorCount: 0,
+                Elapsed: TimeSpan.FromSeconds(65.43));
+            progress?.Report(reportProgress);
+            return new DirectoryDiscoveryReport(
+                root,
+                DirectoryDiscoveryStatus.Completed,
+                reportProgress,
+                []);
+        }
+
+        public void Complete() => _release.TrySetResult();
+    }
+
+    private sealed class InlineProgress<T>(Action<T> report) : IProgress<T>
+    {
+        public void Report(T value) => report(value);
     }
 
     private sealed class ReportingDiscoveryService(

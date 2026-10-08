@@ -15,7 +15,14 @@ public sealed record CatalogOperationProgress(
     CatalogOperationPhase Phase,
     string Message,
     long ProcessedItems = 0,
-    IndexScanProgress? ScanProgress = null);
+    IndexScanProgress? ScanProgress = null)
+{
+    /// <summary>
+    /// Carries a newly matched catalog item while mapping is still in progress.
+    /// Consumers may render it immediately instead of waiting for the final result.
+    /// </summary>
+    public CatalogItem? MatchedItem { get; init; }
+}
 
 public sealed record CatalogRequest(
     string ProfileId,

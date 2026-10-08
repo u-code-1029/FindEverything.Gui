@@ -66,6 +66,7 @@
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 
                     <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
@@ -103,6 +104,16 @@
                         Content="전체 복사" />
                     <ui:Button
                         Grid.Column="3"
+                        x:Name="SaveScanLogButton"
+                        MinWidth="112"
+                        Margin="0,0,8,0"
+                        AutomationProperties.Name="현재 표시된 탐색 로그 파일로 저장"
+                        Command="{Binding SaveLogCommand}"
+                        Content="로그 저장"
+                        Icon="{ui:SymbolIcon Symbol=Save16}"
+                        ToolTip="현재 콘솔에 표시된 로그를 UTF-8 파일로 저장" />
+                    <ui:Button
+                        Grid.Column="4"
                         MinWidth="92"
                         Appearance="Secondary"
                         Command="{Binding ClearCommand}"

@@ -11,6 +11,9 @@ using FindEverything.Application.Catalog;
 using FindEverything.Application.Indexing;
 using FindEverything.Desktop.Services;
 using FindEverything.Profile.Runtime;
+using Microsoft.Extensions.Logging;
+using Wpf.Ui;
+using Wpf.Ui.Controls;
 
 namespace FindEverything.Desktop.ViewModels;
 
@@ -55,6 +58,10 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
     private readonly Dispatcher _dispatcher;
     private readonly DispatcherTimer _drainTimer;
     private readonly Action<string> _setClipboardText;
+    private readonly Func<string, string?> _pickScanLogPath;
+    private readonly Func<string, IReadOnlyList<string>, CancellationToken, Task> _writeScanLogAsync;
+    private readonly Action<string, string, ControlAppearance> _showSnackbar;
+    private readonly Action<Exception> _logExportFailure;
     private int _drainScheduled;
     private long _visited;
     private long _matched;
@@ -102,15 +109,55 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
     [NotifyCanExecuteChangedFor(nameof(CopySelectedPathCommand))]
     private ScanConsoleLineViewModel? _selectedLine;
 
-    public ScanConsoleViewModel()
-        : this(System.Windows.Clipboard.SetText)
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(SaveLogCommand))]
+    private bool _isSavingLog;
+
+    public ScanConsoleViewModel(
+        IDesktopPickerService pickerService,
+        IScanConsoleLogWriter logWriter,
+        ISnackbarService snackbarService,
+        ILogger<ScanConsoleViewModel> logger)
+        : this(
+            System.Windows.Clipboard.SetText,
+            pickerService.PickScanLogPath,
+            logWriter.WriteAsync,
+            (title, message, appearance) => snackbarService.Show(
+                title,
+                message,
+                appearance,
+                null,
+                TimeSpan.FromSeconds(5)),
+            exception => logger.LogError(exception, "Could not export the scan console log."))
     {
     }
 
     internal ScanConsoleViewModel(Action<string> setClipboardText)
+        : this(
+            setClipboardText,
+            static _ => null,
+            static (_, _, _) => Task.CompletedTask,
+            static (_, _, _) => { },
+            static _ => { })
+    {
+    }
+
+    internal ScanConsoleViewModel(
+        Action<string> setClipboardText,
+        Func<string, string?> pickScanLogPath,
+        Func<string, IReadOnlyList<string>, CancellationToken, Task> writeScanLogAsync,
+        Action<string, string, ControlAppearance> showSnackbar,
+        Action<Exception>? logExportFailure = null)
     {
         ArgumentNullException.ThrowIfNull(setClipboardText);
+        ArgumentNullException.ThrowIfNull(pickScanLogPath);
+        ArgumentNullException.ThrowIfNull(writeScanLogAsync);
+        ArgumentNullException.ThrowIfNull(showSnackbar);
         _setClipboardText = setClipboardText;
+        _pickScanLogPath = pickScanLogPath;
+        _writeScanLogAsync = writeScanLogAsync;
+        _showSnackbar = showSnackbar;
+        _logExportFailure = logExportFailure ?? (static _ => { });
         _dispatcher = System.Windows.Application.Current?.Dispatcher
             ?? Dispatcher.CurrentDispatcher;
         _drainTimer = new DispatcherTimer(DispatcherPriority.Background, _dispatcher)
@@ -194,6 +241,50 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
         }
     }
 
+    [RelayCommand(CanExecute = nameof(CanSaveLog))]
+    private async Task SaveLogAsync()
+    {
+        var snapshot = Lines.Select(static line => line.Text).ToArray();
+        if (snapshot.Length == 0)
+        {
+            return;
+        }
+
+        IsSavingLog = true;
+        try
+        {
+            var suggestedFileName =
+                $"FindEverything-scan-{DateTime.Now:yyyyMMdd-HHmmss}.log";
+            var selectedPath = _pickScanLogPath(suggestedFileName);
+            if (string.IsNullOrWhiteSpace(selectedPath))
+            {
+                return;
+            }
+
+            await _writeScanLogAsync(
+                    selectedPath,
+                    snapshot,
+                    CancellationToken.None)
+                .ConfigureAwait(true);
+            _showSnackbar(
+                "탐색 로그 저장 완료",
+                $"현재 표시된 로그 {snapshot.Length:N0}줄을 저장했습니다.\n{selectedPath}",
+                ControlAppearance.Success);
+        }
+        catch (Exception exception)
+        {
+            _logExportFailure(exception);
+            _showSnackbar(
+                "탐색 로그 저장 실패",
+                exception.Message,
+                ControlAppearance.Danger);
+        }
+        finally
+        {
+            IsSavingLog = false;
+        }
+    }
+
     [RelayCommand]
     private void Clear()
     {
@@ -218,9 +309,12 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
         Interlocked.Exchange(ref _dropped, 0);
         UpdateCounterProperties();
         CopyAllCommand.NotifyCanExecuteChanged();
+        SaveLogCommand.NotifyCanExecuteChanged();
     }
 
     private bool CanCopyAll() => Lines.Count > 0;
+
+    private bool CanSaveLog() => Lines.Count > 0 && !IsSavingLog;
 
     private bool CanCopySelectedMessage() => SelectedLine is { Text.Length: > 0 };
 
@@ -353,6 +447,7 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
 
         UpdateCounterProperties();
         CopyAllCommand.NotifyCanExecuteChanged();
+        SaveLogCommand.NotifyCanExecuteChanged();
 
         lock (_pendingGate)
         {

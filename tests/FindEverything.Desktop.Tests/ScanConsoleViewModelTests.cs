@@ -1,7 +1,9 @@
+using System.IO;
 using FindEverything.Application.Catalog;
 using FindEverything.Application.Indexing;
 using FindEverything.Desktop.ViewModels;
 using FindEverything.Profile.Runtime;
+using Wpf.Ui.Controls;
 using Xunit;
 
 namespace FindEverything.Desktop.Tests;
@@ -147,6 +149,114 @@ public sealed class ScanConsoleViewModelTests
         Assert.Null(messageException);
         Assert.Null(pathException);
     }
+
+    [Fact]
+    public async Task Save_log_writes_the_click_time_snapshot_and_reports_success()
+    {
+        var writeStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseWrite = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        string? suggestedFileName = null;
+        string? writtenPath = null;
+        IReadOnlyList<string>? writtenLines = null;
+        var feedback = new List<(string Title, string Message, ControlAppearance Appearance)>();
+        var viewModel = new ScanConsoleViewModel(
+            static _ => { },
+            suggested =>
+            {
+                suggestedFileName = suggested;
+                return @"C:\Logs\scan.log";
+            },
+            async (path, lines, cancellationToken) =>
+            {
+                writtenPath = path;
+                writtenLines = lines;
+                writeStarted.TrySetResult();
+                await releaseWrite.Task.WaitAsync(cancellationToken);
+            },
+            (title, message, appearance) => feedback.Add((title, message, appearance)));
+        viewModel.Lines.Add(CreateDisplayLine("첫 번째 로그"));
+        viewModel.Lines.Add(CreateDisplayLine("second log"));
+
+        var operation = viewModel.SaveLogCommand.ExecuteAsync(null);
+        await writeStarted.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        viewModel.Lines.Add(CreateDisplayLine("저장 시작 후 추가된 로그"));
+        releaseWrite.TrySetResult();
+        await operation;
+
+        Assert.NotNull(suggestedFileName);
+        Assert.StartsWith("FindEverything-scan-", suggestedFileName, StringComparison.Ordinal);
+        Assert.EndsWith(".log", suggestedFileName, StringComparison.Ordinal);
+        Assert.Equal(@"C:\Logs\scan.log", writtenPath);
+        Assert.Equal(["첫 번째 로그", "second log"], writtenLines);
+        var success = Assert.Single(feedback);
+        Assert.Equal("탐색 로그 저장 완료", success.Title);
+        Assert.Contains("2줄", success.Message, StringComparison.Ordinal);
+        Assert.Equal(ControlAppearance.Success, success.Appearance);
+        Assert.False(viewModel.IsSavingLog);
+        Assert.True(viewModel.SaveLogCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task Save_log_does_nothing_when_the_file_picker_is_cancelled()
+    {
+        var writerCalled = false;
+        var feedbackCalled = false;
+        var viewModel = new ScanConsoleViewModel(
+            static _ => { },
+            static _ => null,
+            (_, _, _) =>
+            {
+                writerCalled = true;
+                return Task.CompletedTask;
+            },
+            (_, _, _) => feedbackCalled = true);
+        viewModel.Lines.Add(CreateDisplayLine("로그"));
+
+        await viewModel.SaveLogCommand.ExecuteAsync(null);
+
+        Assert.False(writerCalled);
+        Assert.False(feedbackCalled);
+        Assert.False(viewModel.IsSavingLog);
+        Assert.True(viewModel.SaveLogCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task Save_log_failure_is_reported_without_escaping_the_command()
+    {
+        Exception? loggedException = null;
+        var feedback = new List<(string Title, string Message, ControlAppearance Appearance)>();
+        var viewModel = new ScanConsoleViewModel(
+            static _ => { },
+            static _ => @"C:\Logs\scan.log",
+            static (_, _, _) => throw new IOException("디스크가 가득 찼습니다."),
+            (title, message, appearance) => feedback.Add((title, message, appearance)),
+            exception => loggedException = exception);
+        viewModel.Lines.Add(CreateDisplayLine("로그"));
+
+        var exception = await Record.ExceptionAsync(
+            () => viewModel.SaveLogCommand.ExecuteAsync(null));
+
+        Assert.Null(exception);
+        Assert.IsType<IOException>(loggedException);
+        var failure = Assert.Single(feedback);
+        Assert.Equal("탐색 로그 저장 실패", failure.Title);
+        Assert.Contains("디스크", failure.Message, StringComparison.Ordinal);
+        Assert.Equal(ControlAppearance.Danger, failure.Appearance);
+        Assert.False(viewModel.IsSavingLog);
+        Assert.True(viewModel.SaveLogCommand.CanExecute(null));
+    }
+
+    private static ScanConsoleLineViewModel CreateDisplayLine(string text) =>
+        new(
+            Guid.NewGuid(),
+            1,
+            CatalogScanTraceKind.DirectoryVisited,
+            ScanConsoleLineTone.Match,
+            text,
+            string.Empty,
+            null);
 
     private static CatalogScanTraceEvent CreateEvent(
         CatalogScanTraceKind kind,

@@ -316,11 +316,12 @@
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Margin="0,0,16,0">
-                                            <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="탐색 최적화 · 제외할 폴더 이름" />
+                                            <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="탐색 최적화 · 제외할 마지막 폴더 이름" />
                                             <TextBlock
+                                                x:Name="DirectoryExclusionScopeDescription"
                                                 Margin="0,4,0,0"
                                                 Style="{StaticResource CaptionTextStyle}"
-                                                Text="현재 폴더의 마지막 이름만 정규식으로 검사합니다. 일치한 폴더와 그 하위는 들어가지 않고, 같은 위치의 다른 폴더는 계속 탐색합니다."
+                                                Text="마지막 폴더 이름(leaf)은 절대경로에서 마지막 경로 구분자(\ 또는 /) 뒤에 있는 이름입니다. 이 제외 규칙에는 절대경로 전체가 아니라 그 이름 하나만 전달되며, 드라이브·UNC 주소와 상위 폴더는 비교하지 않습니다."
                                                 TextWrapping="Wrap" />
                                         </StackPanel>
                                         <ui:Button
@@ -337,15 +338,21 @@
                                         Padding="12"
                                         Background="{DynamicResource ControlFillColorSecondaryBrush}"
                                         CornerRadius="6">
-                                        <TextBlock TextWrapping="Wrap">
-                                            <Run FontWeight="SemiBold" Text="예: " />
-                                            <Run FontFamily="Consolas" Text="Full + name" />
-                                            <Run Text=" 규칙은 " />
-                                            <Run FontFamily="Consolas" Text="C:\abc\def\name" />
-                                            <Run Text="에서 마지막 " />
-                                            <Run FontFamily="Consolas" Text="name" />
-                                            <Run Text="만 받아 해당 폴더 트리를 건너뜁니다. 상위 경로는 비교하지 않습니다." />
-                                        </TextBlock>
+                                        <StackPanel AutomationProperties.Name="폴더 이름 제외 규칙 적용 범위 안내">
+                                            <TextBlock TextWrapping="Wrap">
+                                                <Run FontWeight="SemiBold" Text="입력 예시: " />
+                                                <Run FontFamily="Consolas" Text="C:\abc\def\name" />
+                                                <Run Text=" → 정규식에 전달되는 값은 " />
+                                                <Run FontFamily="Consolas" FontWeight="SemiBold" Text="name" />
+                                                <Run Text="입니다." />
+                                            </TextBlock>
+                                            <TextBlock Margin="0,6,0,0" TextWrapping="Wrap">
+                                                <Run FontFamily="Consolas" Text="Full + name" />
+                                                <Run Text="이면 마지막 폴더 이름 전체가 정확히 " />
+                                                <Run FontFamily="Consolas" Text="name" />
+                                                <Run Text="일 때만 제외합니다. 일치하면 그 폴더 자체를 결과 후보에서 제외하고 하위 폴더로 들어가지 않지만, 같은 상위 경로의 다른 형제 폴더는 계속 탐색합니다." />
+                                            </TextBlock>
+                                        </StackPanel>
                                     </Border>
 
                                     <ItemsControl ItemsSource="{Binding DraftExcludedDirectoryNameRules}">

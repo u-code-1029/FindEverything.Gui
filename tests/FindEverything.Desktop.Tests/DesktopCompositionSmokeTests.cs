@@ -211,6 +211,8 @@ public sealed class DesktopCompositionSmokeTests
         Assert.Null(mainWindow.FindName("ScanConsolePanel"));
         var pageLayout = Assert.IsType<Grid>(catalogPage.FindName("CatalogPageLayout"));
         var pageContent = Assert.IsType<Grid>(catalogPage.FindName("CatalogPageContent"));
+        var resultsGrid = Assert.IsType<System.Windows.Controls.DataGrid>(
+            catalogPage.FindName("ResultsGrid"));
         var toggleButton = Assert.IsType<Wpf.Ui.Controls.Button>(
             mainWindow.FindName("ScanConsoleToggleButton"));
         var navigation = Assert.IsType<NavigationView>(mainWindow.FindName("RootNavigation"));
@@ -258,6 +260,10 @@ public sealed class DesktopCompositionSmokeTests
         Assert.InRange(Math.Abs(pageLayoutHeight - pageLayout.ActualHeight), 0d, 1d);
         Assert.True(pageContent.ActualHeight < pageContentHeight);
         var traceList = Assert.IsType<ListBox>(panel.FindName("TraceList"));
+        var saveLogButton = Assert.IsType<Wpf.Ui.Controls.Button>(
+            panel.FindName("SaveScanLogButton"));
+        Assert.Same(viewModel.SaveLogCommand, saveLogButton.Command);
+        Assert.Equal("로그 저장", saveLogButton.Content);
         Assert.True(VirtualizingPanel.GetIsVirtualizing(traceList));
         Assert.Equal(VirtualizationMode.Recycling, VirtualizingPanel.GetVirtualizationMode(traceList));
         var contextMenu = Assert.IsType<System.Windows.Controls.ContextMenu>(
@@ -380,6 +386,7 @@ public sealed class DesktopCompositionSmokeTests
         var scanTask = catalog.ScanCommand.ExecuteAsync(null);
 
         Assert.True(catalog.IsScanning);
+        Assert.False(catalog.CanEditWorkspace);
         Assert.True(viewModel.IsPanelOpen);
         Assert.Equal(Visibility.Visible, panel.Visibility);
         mainWindow.Dispatcher.Invoke(static () => { }, DispatcherPriority.DataBind);
@@ -389,7 +396,81 @@ public sealed class DesktopCompositionSmokeTests
             () => provider.GetRequiredService<BlockingCatalogService>().HasStarted,
             TimeSpan.FromSeconds(3));
 
-        provider.GetRequiredService<BlockingCatalogService>().Complete(profile.Descriptor);
+        catalog.FilterText = "Apollo";
+        var matchingItem = new CatalogItem(
+            Path.Combine(Path.GetTempPath(), "live-result-1"),
+            "live-result-1",
+            "live-rule",
+            new object(),
+            new Dictionary<string, object?> { ["client"] = "Apollo" },
+            false);
+        var filteredItem = new CatalogItem(
+            Path.Combine(Path.GetTempPath(), "live-result-2"),
+            "live-result-2",
+            "live-rule",
+            new object(),
+            new Dictionary<string, object?> { ["client"] = "Fabrikam" },
+            false);
+        var blockingService = provider.GetRequiredService<BlockingCatalogService>();
+        Task.Run(() => blockingService.ReportMatches(matchingItem, filteredItem))
+            .GetAwaiter()
+            .GetResult();
+        PumpDispatcherUntil(
+            mainWindow.Dispatcher,
+            () => catalog.HasLoadedItems && catalog.Items.Count == 1,
+            TimeSpan.FromSeconds(3));
+
+        Assert.False(scanTask.IsCompleted);
+        Assert.True(catalog.IsScanning);
+        Assert.Equal("1 / 2개 항목", catalog.FilterSummary);
+        mainWindow.Dispatcher.Invoke(static () => { }, DispatcherPriority.DataBind);
+        Assert.Equal(Visibility.Visible, resultsGrid.Visibility);
+        Assert.Single(resultsGrid.Items.Cast<object>());
+        Assert.Equal(
+            "Apollo",
+            Assert.IsType<CatalogItemViewModel>(catalog.Items.GetItemAt(0))
+                .DisplayValues["client"]);
+        catalog.FilterText = string.Empty;
+        mainWindow.Dispatcher.Invoke(static () => { }, DispatcherPriority.DataBind);
+        Assert.Equal(2, catalog.Items.Count);
+        Assert.Equal("2개 항목", catalog.FilterSummary);
+
+        var atomicBatchItem = new CatalogItem(
+            Path.Combine(Path.GetTempPath(), "live-batch-valid"),
+            "live-batch-valid",
+            "live-rule",
+            new object(),
+            new Dictionary<string, object?> { ["client"] = "Batch Valid" },
+            false);
+        var malformedBatchItem = new CatalogItem(
+            Path.Combine(Path.GetTempPath(), "live-batch-malformed"),
+            "live-batch-malformed",
+            "live-rule",
+            new object(),
+            new Dictionary<string, object?> { ["client"] = new ThrowingFormattable() },
+            false);
+        Task.Run(() => blockingService.ReportMatches(atomicBatchItem, malformedBatchItem))
+            .GetAwaiter()
+            .GetResult();
+        PumpDispatcherUntil(
+            mainWindow.Dispatcher,
+            () => catalog.ProgressMessage.StartsWith(
+                "실시간 표시를 일시 중단했습니다.",
+                StringComparison.Ordinal),
+            TimeSpan.FromSeconds(3));
+
+        // A failed conversion in the second item must not leave the first item
+        // from the same live batch partially inserted into the backing list.
+        Assert.Equal(2, catalog.Items.Count);
+        Assert.DoesNotContain(
+            catalog.Items.Cast<CatalogItemViewModel>(),
+            item => item.FullPath == atomicBatchItem.FullPath);
+
+        var reconciledItem = matchingItem with
+        {
+            Values = new Dictionary<string, object?> { ["client"] = "Apollo Final" },
+        };
+        blockingService.Complete(profile.Descriptor, reconciledItem, filteredItem);
         PumpDispatcherUntil(
             mainWindow.Dispatcher,
             () => scanTask.IsCompleted,
@@ -397,10 +478,41 @@ public sealed class DesktopCompositionSmokeTests
         scanTask.GetAwaiter().GetResult();
         PumpDispatcherFor(mainWindow.Dispatcher, TimeSpan.FromMilliseconds(20));
         Assert.False(catalog.IsScanning);
+        Assert.True(catalog.CanEditWorkspace);
+        Assert.Equal(2, catalog.Items.Count);
+        Assert.Equal(2, resultsGrid.Items.Count);
+        var reconciledViewModel = Assert.IsType<CatalogItemViewModel>(
+            catalog.Items.GetItemAt(0));
+        Assert.Equal("live-result-1", reconciledViewModel.RelativePath);
+        Assert.Equal("Apollo Final", reconciledViewModel.DisplayValues["client"]);
         Assert.Equal(Visibility.Collapsed, badge.Visibility);
+        Assert.Contains("소요 1분 05.43초", catalog.StatusMessage, StringComparison.Ordinal);
         var notification = Assert.Single(
             provider.GetRequiredService<RecordingScanCompletionNotifier>().Notices);
         Assert.Equal("빠른 불러오기 완료", notification.Title);
+        Assert.Contains("소요 1분 05.43초", notification.Message, StringComparison.Ordinal);
+
+        // Validation fails before a new live-result session starts. The previous
+        // completed rows stay visible, but must not be described as partial rows
+        // from the rejected operation.
+        catalog.RootPath = Path.Combine(
+            Path.GetTempPath(),
+            $"findeverything-missing-{Guid.NewGuid():N}");
+        Assert.False(Directory.Exists(catalog.RootPath));
+        var rejectedScan = catalog.ScanCommand.ExecuteAsync(null);
+        PumpDispatcherUntil(
+            mainWindow.Dispatcher,
+            () => rejectedScan.IsCompleted,
+            TimeSpan.FromSeconds(3));
+        rejectedScan.GetAwaiter().GetResult();
+        PumpDispatcherFor(mainWindow.Dispatcher, TimeSpan.FromMilliseconds(20));
+
+        Assert.Equal("오류", catalog.StatusTitle);
+        Assert.Equal("작업 실패", catalog.ProgressMessage);
+        Assert.DoesNotContain("부분 결과", catalog.StatusMessage, StringComparison.Ordinal);
+        Assert.True(catalog.HasLoadedItems);
+        Assert.Equal(2, catalog.Items.Count);
+        Assert.Single(provider.GetRequiredService<RecordingScanCompletionNotifier>().Notices);
     }
 
     private static void PumpDispatcherFor(Dispatcher dispatcher, TimeSpan duration)
@@ -477,6 +589,12 @@ public sealed class DesktopCompositionSmokeTests
 
     private static void VerifyProfilesFluentControls(ProfilesPage page)
     {
+        var exclusionScopeDescription = Assert.IsType<System.Windows.Controls.TextBlock>(
+            page.FindName("DirectoryExclusionScopeDescription"));
+        Assert.Contains("마지막 폴더 이름(leaf)", exclusionScopeDescription.Text, StringComparison.Ordinal);
+        Assert.Contains("절대경로 전체가 아니라", exclusionScopeDescription.Text, StringComparison.Ordinal);
+        Assert.Contains("상위 폴더는 비교하지 않습니다", exclusionScopeDescription.Text, StringComparison.Ordinal);
+
         foreach (var resourceKey in new[]
                  {
                      "IconOnlyButtonStyle",
@@ -777,10 +895,13 @@ public sealed class DesktopCompositionSmokeTests
 
     private sealed class BlockingCatalogService : ICatalogService
     {
+        private readonly object _gate = new();
         private readonly TaskCompletionSource _started = new(
             TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly TaskCompletionSource<CatalogResult> _completion = new(
             TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly List<CatalogItem> _reportedItems = [];
+        private IProgress<CatalogOperationProgress>? _progress;
 
         public bool HasStarted => _started.Task.IsCompleted;
 
@@ -789,6 +910,11 @@ public sealed class DesktopCompositionSmokeTests
             IProgress<CatalogOperationProgress>? progress = null,
             CancellationToken cancellationToken = default)
         {
+            lock (_gate)
+            {
+                _progress = progress;
+            }
+
             _started.TrySetResult();
             return await _completion.Task.WaitAsync(cancellationToken);
         }
@@ -805,29 +931,96 @@ public sealed class DesktopCompositionSmokeTests
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
-        public void Complete(ProfileDescriptor descriptor) =>
+        public void ReportMatches(params CatalogItem[] items)
+        {
+            IProgress<CatalogOperationProgress>? progress;
+            int totalItems;
+            lock (_gate)
+            {
+                _reportedItems.AddRange(items);
+                progress = _progress;
+                totalItems = _reportedItems.Count;
+            }
+
+            foreach (var item in items)
+            {
+                progress?.Report(new CatalogOperationProgress(
+                    CatalogOperationPhase.Mapping,
+                    $"일치 {totalItems:N0}개를 찾았습니다.")
+                {
+                    MatchedItem = item,
+                });
+            }
+        }
+
+        public void Complete(
+            ProfileDescriptor descriptor,
+            params CatalogItem[] finalItems)
+        {
+            CatalogItem[] items;
+            lock (_gate)
+            {
+                items = finalItems.Length == 0
+                    ? _reportedItems.ToArray()
+                    : finalItems.ToArray();
+            }
+
             _completion.TrySetResult(new CatalogResult(
                 descriptor,
+                items,
                 [],
-                [],
-                0,
+                items.Length,
                 0,
                 false,
-                null));
+                null)
+            {
+                DiscoveryReport = new DirectoryDiscoveryReport(
+                    Path.GetTempPath(),
+                    DirectoryDiscoveryStatus.Completed,
+                    new DirectoryDiscoveryProgress(
+                        Entries: items.Length,
+                        Directories: items.Length,
+                        PrunedDirectories: 0,
+                        SkippedLinks: 0,
+                        ErrorCount: 0,
+                        Elapsed: TimeSpan.FromSeconds(65.43)),
+                    []),
+            });
+        }
     }
 
     private sealed class StubLoadedProfile : ILoadedProfile
     {
+        private static readonly ProfileFieldDescriptor ClientField = new(
+            "client",
+            "client",
+            "고객",
+            10,
+            true,
+            ProfileFieldValueKind.String,
+            true,
+            null,
+            null);
+
         public ProfileDescriptor Descriptor { get; } = new(
             "scan-smoke-profile",
             "1.0.0",
             "스캔 스모크 프로필",
             ProfileCandidateKind.Directory,
-            [],
+            [ClientField],
             []);
 
         public ProfileMapResult Map(ProfilePathCandidate candidate) =>
             ProfileMapResult.NoMatch();
+    }
+
+    private sealed class ThrowingFormattable : IFormattable
+    {
+        public string ToString(string? format, IFormatProvider? formatProvider) =>
+            throw new InvalidOperationException("Intentional live-display failure.");
+
+        public override string ToString() =>
+            throw new InvalidOperationException("Intentional live-display failure.");
     }
 
     private sealed class RecordingScanCompletionNotifier : IScanCompletionNotifier

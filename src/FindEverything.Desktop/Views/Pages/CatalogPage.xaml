@@ -59,7 +59,7 @@
             <TextBlock
                 Margin="0,4,0,0"
                 Style="{StaticResource PageSubtitleTextStyle}"
-                Text="폴더 경로에 담긴 정보를 선택한 프로필 규칙으로 추출해 한눈에 비교합니다." />
+                Text="폴더 경로의 정보를 프로필 규칙으로 추출하고, 일치 항목을 찾는 즉시 목록에 표시합니다." />
         </StackPanel>
 
         <Border Grid.Row="1" Margin="0,0,0,16" Style="{StaticResource FluentSurfaceStyle}">
@@ -71,7 +71,7 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <Grid>
+                <Grid IsEnabled="{Binding CanEditWorkspace}">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="220" />
                         <ColumnDefinition Width="*" />
@@ -157,7 +157,8 @@
                 <Expander
                     Grid.Row="2"
                     Margin="0,12,0,0"
-                    Header="고급: 기존 인덱스에서 불러오기">
+                    Header="고급: 기존 인덱스에서 불러오기"
+                    IsEnabled="{Binding CanEditWorkspace}">
                     <Grid Margin="0,8,0,0">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />

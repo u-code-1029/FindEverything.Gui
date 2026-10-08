@@ -131,7 +131,8 @@ internal sealed class CatalogService(
                 ? null
                 : new InlineProgress<DirectoryDiscoveryProgress>(value => progress.Report(new(
                     CatalogOperationPhase.Scanning,
-                    $"폴더 {value.Directories:N0}개를 확인하고 하위 탐색 {value.PrunedDirectories:N0}개를 생략했습니다.",
+                    $"폴더 {value.Directories:N0}개를 확인하고 하위 탐색 {value.PrunedDirectories:N0}개를 생략했습니다."
+                    + $" · 소요 {CatalogElapsedTimeFormatter.Format(value.Elapsed)}",
                     value.Directories)));
 
             var report = await directoryDiscovery.DiscoverAsync(
@@ -310,7 +311,7 @@ internal sealed class CatalogService(
         var errorSummary = report.Progress.ErrorCount == report.Errors.Count
             ? $"오류 {report.Progress.ErrorCount:N0}개"
             : $"오류 {report.Progress.ErrorCount:N0}개(상세 {report.Errors.Count:N0}개 기록)";
-        return $"빠른 스캔을 완료했습니다. 후보 {result.CandidateCount:N0}개, 제외 {result.ExcludedDirectoryCount:N0}개, 일치 {result.Items.Count:N0}개, 제외 규칙 경고 {result.DirectoryExclusionIssues.Count:N0}개, {errorSummary}를 확인했습니다.";
+        return $"빠른 스캔을 완료했습니다. 후보 {result.CandidateCount:N0}개, 제외 {result.ExcludedDirectoryCount:N0}개, 일치 {result.Items.Count:N0}개, 제외 규칙 경고 {result.DirectoryExclusionIssues.Count:N0}개, {errorSummary}를 확인했습니다. 소요 {CatalogElapsedTimeFormatter.Format(report.Progress.Elapsed)}";
     }
 
     private sealed class InlineProgress<T>(Action<T> report) : IProgress<T>
@@ -379,13 +380,21 @@ internal sealed class CatalogService(
             switch (mapping.Status)
             {
                 case ProfileMapStatus.Success when mapping.Item is not null:
-                    _items.Add(new CatalogItem(
+                    var item = new CatalogItem(
                         mapping.Item.FullPath,
                         relativePath,
                         mapping.Item.MatchedRuleId,
                         mapping.Item.Model,
                         mapping.Item.Values,
-                        coveragePending));
+                        coveragePending);
+                    _items.Add(item);
+                    progress?.Report(new CatalogOperationProgress(
+                        CatalogOperationPhase.Mapping,
+                        $"일치 {_items.Count:N0}개 · 경로 {_candidateCount:N0}개를 판별했습니다.",
+                        _candidateCount)
+                    {
+                        MatchedItem = item,
+                    });
                     break;
                 case ProfileMapStatus.Invalid:
                     _invalidItems.Add(new CatalogInvalidItem(
