@@ -42,6 +42,16 @@ public partial class CatalogPage
     private void OnPageUnloaded(object sender, System.Windows.RoutedEventArgs e) =>
         _viewModel.Deactivate();
 
+    private async void OnWorkspacePathLostKeyboardFocus(
+        object sender,
+        KeyboardFocusChangedEventArgs e)
+    {
+        if (_viewModel.CommitWorkspaceCommand.CanExecute(null))
+        {
+            await _viewModel.CommitWorkspaceCommand.ExecuteAsync(null);
+        }
+    }
+
     private void OnResultsGridMouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
         if (e.OriginalSource is not System.Windows.DependencyObject source

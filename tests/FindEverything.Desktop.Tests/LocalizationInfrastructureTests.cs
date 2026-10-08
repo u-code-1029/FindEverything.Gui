@@ -1,4 +1,6 @@
 using System.IO;
+using FindEverything.Application.Catalog;
+using FindEverything.Application.Indexing;
 using FindEverything.Application.Options;
 using FindEverything.Application.Profiles;
 using FindEverything.Desktop.Hosting;
@@ -108,6 +110,10 @@ public sealed class LocalizationInfrastructureTests
                     "Could not convert mapped network path '{0}' to a UNC path.",
                 ["Loc.Language.ChangeFailed.Message"] =
                     "The language setting could not be saved. Check the user settings file and try again.",
+                ["Loc.Catalog.Error.IndexDatabaseMissing"] =
+                    "Index database '{0}' does not exist. Run 'Index and load' or choose the correct database.",
+                ["Loc.Catalog.Error.RootNotIndexed"] =
+                    "Database '{1}' has no index registered for the exact search root '{0}'. Run 'Index and load' with the same search location.",
             });
         var mappedDriveException = new MappedDrivePathResolutionException(
             @"Z:\Projects",
@@ -121,6 +127,18 @@ public sealed class LocalizationInfrastructureTests
             localizer,
             new ApplicationOperationBusyException(ApplicationOperationKind.ProfileWrite));
         var languageMessage = UserFacingExceptionLocalizer.TranslateLanguageChangeFailure(localizer);
+        var missingIndexMessage = UserFacingExceptionLocalizer.TranslateOperationFailure(
+            localizer,
+            new CatalogIndexUnavailableException(
+                IndexRootAvailability.DatabaseMissing,
+                @"C:\Index\metadata.db",
+                @"D:\Archive"));
+        var wrongRootMessage = UserFacingExceptionLocalizer.TranslateOperationFailure(
+            localizer,
+            new CatalogIndexUnavailableException(
+                IndexRootAvailability.RootNotIndexed,
+                @"C:\Index\metadata.db",
+                @"D:\Archive"));
 
         Assert.Equal(
             "Could not convert mapped network path 'Z:\\Projects' to a UNC path.",
@@ -129,6 +147,9 @@ public sealed class LocalizationInfrastructureTests
         Assert.Equal(
             "The language setting could not be saved. Check the user settings file and try again.",
             languageMessage);
+        Assert.Contains("C:\\Index\\metadata.db", missingIndexMessage, StringComparison.Ordinal);
+        Assert.Contains("D:\\Archive", wrongRootMessage, StringComparison.Ordinal);
+        Assert.Contains("exact search root", wrongRootMessage, StringComparison.Ordinal);
         Assert.DoesNotContain("공급자", mappedDriveMessage, StringComparison.Ordinal);
         Assert.Contains("공급자 원시 상세", mappedDriveException.Message, StringComparison.Ordinal);
     }

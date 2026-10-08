@@ -534,8 +534,118 @@ public sealed class DesktopCompositionSmokeTests
         Assert.Contains("소요 1분 05.43초", catalog.StatusMessage, StringComparison.Ordinal);
         var notification = Assert.Single(
             provider.GetRequiredService<RecordingScanCompletionNotifier>().Notices);
-        Assert.Equal("빠른 불러오기 완료", notification.Title);
+        Assert.Equal("DB에 저장하지 않는 스캔 완료", notification.Title);
         Assert.Contains("소요 1분 05.43초", notification.Message, StringComparison.Ordinal);
+
+        // The persistent workflow is deliberately separate from direct discovery:
+        // it writes through ScanAndLoadAsync and must not open the direct-scan log.
+        viewModel.ClosePanelCommand.Execute(null);
+        var persistentRoot = Path.Combine(
+            Path.GetTempPath(),
+            $"findeverything-catalog-root-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(persistentRoot);
+        catalog.RootPath = persistentRoot;
+        catalog.DatabasePath = Path.Combine(
+            Path.GetTempPath(),
+            $"findeverything-catalog-{Guid.NewGuid():N}.db");
+        var workspaceContext = provider.GetRequiredService<IWorkspaceContext>();
+        var baselineWorkspaceCommit = catalog.CommitWorkspaceCommand.ExecuteAsync(null);
+        PumpDispatcherUntil(
+            mainWindow.Dispatcher,
+            () => baselineWorkspaceCommit.IsCompleted,
+            TimeSpan.FromSeconds(3));
+        baselineWorkspaceCommit.GetAwaiter().GetResult();
+
+        // A destination whose parent is a regular file fails directory creation.
+        // The failed preflight must happen before this new workspace is published.
+        var workspaceBeforeRejectedIndex = workspaceContext.Current;
+        var blockedDatabaseParent = Path.Combine(
+            Path.GetTempPath(),
+            $"findeverything-catalog-blocker-{Guid.NewGuid():N}");
+        try
+        {
+            File.WriteAllText(blockedDatabaseParent, "block directory creation");
+            catalog.DatabasePath = Path.Combine(blockedDatabaseParent, "index.db");
+            var rejectedIndexAndLoad = catalog.IndexAndLoadCommand.ExecuteAsync(null);
+            PumpDispatcherUntil(
+                mainWindow.Dispatcher,
+                () => rejectedIndexAndLoad.IsCompleted,
+                TimeSpan.FromSeconds(3));
+            rejectedIndexAndLoad.GetAwaiter().GetResult();
+            Assert.Equal(workspaceBeforeRejectedIndex, workspaceContext.Current);
+            Assert.Equal(0, blockingService.ScanAndLoadCallCount);
+        }
+        finally
+        {
+            File.Delete(blockedDatabaseParent);
+        }
+
+        catalog.DatabasePath = Path.Combine(
+            Path.GetTempPath(),
+            $"findeverything-catalog-{Guid.NewGuid():N}.db");
+        var operationCoordinator = provider.GetRequiredService<IApplicationOperationCoordinator>();
+        using var loadStarted = new ManualResetEventSlim();
+        var replacedLoad = operationCoordinator.RunAsync(
+            ApplicationOperationKind.IndexLoad,
+            async cancellationToken =>
+            {
+                loadStarted.Set();
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            });
+        Assert.True(loadStarted.Wait(TimeSpan.FromSeconds(3)));
+        var indexAndLoadTask = catalog.IndexAndLoadCommand.ExecuteAsync(null);
+        PumpDispatcherUntil(
+            mainWindow.Dispatcher,
+            () => indexAndLoadTask.IsCompleted,
+            TimeSpan.FromSeconds(3));
+        indexAndLoadTask.GetAwaiter().GetResult();
+        PumpDispatcherFor(mainWindow.Dispatcher, TimeSpan.FromMilliseconds(20));
+
+        Assert.Equal(1, blockingService.ScanAndLoadCallCount);
+        Assert.True(replacedLoad.IsCanceled);
+        Assert.Equal(catalog.DatabasePath, blockingService.LastScanAndLoadRequest?.DatabasePath);
+        Assert.Equal("인덱싱 후 불러오기 완료", catalog.StatusTitle);
+        Assert.False(viewModel.IsPanelOpen);
+        Assert.Equal(
+            "인덱싱 후 불러오기 완료",
+            provider.GetRequiredService<RecordingScanCompletionNotifier>().Notices[^1].Title);
+        var savedWorkspace = workspaceContext.Current;
+        Assert.Equal(catalog.RootPath, savedWorkspace.RootPath);
+        Assert.Equal(catalog.DatabasePath, savedWorkspace.DatabasePath);
+
+        // A local root draft and an external database edit merge field-by-field.
+        // The delayed root save must not overwrite the newer shared database path.
+        var editedRootPath = Path.Combine(
+            Path.GetTempPath(),
+            $"findeverything-catalog-edited-root-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(editedRootPath);
+        var editedDatabasePath = Path.Combine(
+            Path.GetTempPath(),
+            $"findeverything-catalog-edited-{Guid.NewGuid():N}.db");
+        catalog.RootPath = editedRootPath;
+        workspaceContext.SaveAsync(
+                workspaceContext.Current with { DatabasePath = editedDatabasePath })
+            .GetAwaiter()
+            .GetResult();
+        PumpDispatcherUntil(
+            mainWindow.Dispatcher,
+            () => PathsEqual(workspaceContext.Current.RootPath, editedRootPath)
+                && PathsEqual(workspaceContext.Current.DatabasePath, editedDatabasePath),
+            TimeSpan.FromSeconds(3));
+        Assert.Equal(editedRootPath, catalog.RootPath);
+        Assert.Equal(editedDatabasePath, catalog.DatabasePath);
+
+        // Clearing the required DB field is a validation failure, not a request to
+        // silently keep the old shared value while the editor remains blank.
+        catalog.DatabasePath = string.Empty;
+        var rejectedWorkspaceCommit = catalog.CommitWorkspaceCommand.ExecuteAsync(null);
+        PumpDispatcherUntil(
+            mainWindow.Dispatcher,
+            () => rejectedWorkspaceCommit.IsCompleted,
+            TimeSpan.FromSeconds(3));
+        rejectedWorkspaceCommit.GetAwaiter().GetResult();
+        Assert.Equal(editedDatabasePath, workspaceContext.Current.DatabasePath);
+        Assert.Equal("작업 위치 저장 실패", catalog.StatusTitle);
 
         // Validation fails before a new live-result session starts. The previous
         // completed rows stay visible, but must not be described as partial rows
@@ -557,7 +667,9 @@ public sealed class DesktopCompositionSmokeTests
         Assert.DoesNotContain("부분 결과", catalog.StatusMessage, StringComparison.Ordinal);
         Assert.True(catalog.HasLoadedItems);
         Assert.Equal(2, catalog.Items.Count);
-        Assert.Single(provider.GetRequiredService<RecordingScanCompletionNotifier>().Notices);
+        Assert.Equal(
+            2,
+            provider.GetRequiredService<RecordingScanCompletionNotifier>().Notices.Count);
     }
 
     private static void PumpDispatcherFor(Dispatcher dispatcher, TimeSpan duration)
@@ -595,6 +707,19 @@ public sealed class DesktopCompositionSmokeTests
         }
 
         Assert.True(condition(), $"조건이 {timeout.TotalSeconds:0.#}초 안에 충족되지 않았습니다.");
+    }
+
+    private static bool PathsEqual(string? first, string? second)
+    {
+        if (first is null || second is null)
+        {
+            return first is null && second is null;
+        }
+
+        return string.Equals(
+            Path.TrimEndingDirectorySeparator(Path.GetFullPath(first)),
+            Path.TrimEndingDirectorySeparator(Path.GetFullPath(second)),
+            StringComparison.OrdinalIgnoreCase);
     }
 
     private static void VerifyProfilesScrolling(Window window, ProfilesPage page)
@@ -990,9 +1115,15 @@ public sealed class DesktopCompositionSmokeTests
         private readonly TaskCompletionSource<CatalogResult> _completion = new(
             TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly List<CatalogItem> _reportedItems = [];
+        private CatalogItem[] _finalItems = [];
         private IProgress<CatalogOperationProgress>? _progress;
+        private ProfileDescriptor? _descriptor;
 
         public bool HasStarted => _started.Task.IsCompleted;
+
+        public int ScanAndLoadCallCount { get; private set; }
+
+        public CatalogRequest? LastScanAndLoadRequest { get; private set; }
 
         public async Task<CatalogResult> DiscoverAsync(
             CatalogRequest request,
@@ -1017,8 +1148,20 @@ public sealed class DesktopCompositionSmokeTests
         public Task<CatalogResult> ScanAndLoadAsync(
             CatalogRequest request,
             IProgress<CatalogOperationProgress>? progress = null,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            ScanAndLoadCallCount++;
+            LastScanAndLoadRequest = request;
+            return Task.FromResult(new CatalogResult(
+                _descriptor ?? throw new InvalidOperationException("No profile descriptor."),
+                _finalItems,
+                [],
+                _finalItems.Length,
+                0,
+                false,
+                null));
+        }
 
         public void ReportMatches(params CatalogItem[] items)
         {
@@ -1046,12 +1189,14 @@ public sealed class DesktopCompositionSmokeTests
             ProfileDescriptor descriptor,
             params CatalogItem[] finalItems)
         {
+            _descriptor = descriptor;
             CatalogItem[] items;
             lock (_gate)
             {
                 items = finalItems.Length == 0
                     ? _reportedItems.ToArray()
                     : finalItems.ToArray();
+                _finalItems = items;
             }
 
             _completion.TrySetResult(new CatalogResult(

@@ -383,9 +383,8 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
         try
         {
             var normalized = Path.TrimEndingDirectorySeparator(Path.GetFullPath(selected));
-            var current = _workspaceContext.Current;
-            await _workspaceContext.SaveAsync(
-                current with { RootPath = normalized },
+            await _workspaceContext.UpdateAsync(
+                current => current with { RootPath = normalized },
                 CancellationToken.None).ConfigureAwait(true);
             InvalidateScope();
             RootPath = normalized;
@@ -430,9 +429,8 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
                 throw DatabaseInsideRootException();
             }
 
-            var current = _workspaceContext.Current;
-            await _workspaceContext.SaveAsync(
-                current with { DatabasePath = normalized },
+            await _workspaceContext.UpdateAsync(
+                current => current with { DatabasePath = normalized },
                 CancellationToken.None).ConfigureAwait(true);
             InvalidateScope();
             DatabasePath = normalized;
@@ -484,9 +482,12 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
             {
                 scope = ValidateScope();
                 EnsureDatabaseDirectory(scope.DatabasePath);
-                var current = _workspaceContext.Current;
-                await _workspaceContext.SaveAsync(
-                    current with { RootPath = scope.RootPath, DatabasePath = scope.DatabasePath },
+                await _workspaceContext.UpdateAsync(
+                    current => current with
+                    {
+                        RootPath = scope.RootPath,
+                        DatabasePath = scope.DatabasePath,
+                    },
                     CancellationToken.None).ConfigureAwait(true);
             }
             catch (Exception exception)

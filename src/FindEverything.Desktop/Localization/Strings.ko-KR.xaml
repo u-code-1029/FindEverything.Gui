@@ -116,8 +116,10 @@
     <sys:String x:Key="Loc.Catalog.Column.Status">상태</sys:String>
     <sys:String x:Key="Loc.Catalog.Error.DatabaseInsideRoot">인덱스 데이터베이스는 검색 루트 밖에 저장해야 합니다.</sys:String>
     <sys:String x:Key="Loc.Catalog.Error.DatabaseParentMissing">데이터베이스의 상위 폴더를 확인할 수 없습니다.</sys:String>
+    <sys:String x:Key="Loc.Catalog.Error.IndexDatabaseMissing">인덱스 DB '{0}'가 없습니다. '인덱싱 후 불러오기'를 실행하거나 올바른 DB를 선택하세요.</sys:String>
     <sys:String x:Key="Loc.Catalog.Error.NoResult">카탈로그 결과를 받지 못했습니다.</sys:String>
     <sys:String x:Key="Loc.Catalog.Error.ResultSessionChanged">구조화 결과 세션이 작업 도중 변경되었습니다.</sys:String>
+    <sys:String x:Key="Loc.Catalog.Error.RootNotIndexed">DB '{1}'에는 검색 위치 '{0}'를 정확한 루트로 만든 인덱스가 없습니다. 같은 검색 위치로 '인덱싱 후 불러오기'를 실행하세요.</sys:String>
     <sys:String x:Key="Loc.Catalog.Error.RootNotFound">루트 폴더를 찾을 수 없습니다: {0}</sys:String>
     <sys:String x:Key="Loc.Catalog.Error.SelectDatabase">인덱스 데이터베이스 경로를 선택하세요.</sys:String>
     <sys:String x:Key="Loc.Catalog.Error.SelectProfile">검색 프로필을 선택하세요.</sys:String>
@@ -132,12 +134,14 @@
     <sys:String x:Key="Loc.Catalog.Operation.Cancelled.Message">{0} 작업이 취소되었습니다.{1}</sys:String>
     <sys:String x:Key="Loc.Catalog.Operation.Cancelled.Snackbar">{0} 작업을 취소했습니다.{1}</sys:String>
     <sys:String x:Key="Loc.Catalog.Operation.Failed">{0} 실패</sys:String>
+    <sys:String x:Key="Loc.Catalog.Operation.DirectScan">DB에 저장하지 않고 바로 스캔</sys:String>
+    <sys:String x:Key="Loc.Catalog.Operation.IndexAndLoad">인덱싱 후 불러오기</sys:String>
     <sys:String x:Key="Loc.Catalog.Operation.LoadExisting">기존 인덱스에서 불러오기</sys:String>
-    <sys:String x:Key="Loc.Catalog.Operation.QuickLoad">프로필로 빠르게 불러오기</sys:String>
     <sys:String x:Key="Loc.Catalog.Operation.Started">{0} 작업을 시작했습니다.</sys:String>
     <sys:String x:Key="Loc.Catalog.Progress.AutoLoadDeferred">현재 작업이 끝나면 기존 인덱스를 자동으로 불러옵니다.</sys:String>
     <sys:String x:Key="Loc.Catalog.Progress.CancelAutomaticLoadOnClose">페이지를 닫아 자동 불러오기를 취소하는 중…</sys:String>
     <sys:String x:Key="Loc.Catalog.Progress.CancelExistingLoad">기존 인덱스 불러오기를 취소하는 중…</sys:String>
+    <sys:String x:Key="Loc.Catalog.Progress.CancelExistingLoadForIndex">기존 인덱스 불러오기를 취소하고 새 인덱싱을 준비하는 중…</sys:String>
     <sys:String x:Key="Loc.Catalog.Progress.CancelledPartial">취소됨 · 부분 결과 {0:N0}개</sys:String>
     <sys:String x:Key="Loc.Catalog.Progress.Failed">작업 실패</sys:String>
     <sys:String x:Key="Loc.Catalog.Progress.FailedPartial">작업 실패 · 부분 결과 {0:N0}개</sys:String>
@@ -145,8 +149,9 @@
     <sys:String x:Key="Loc.Catalog.Progress.Loaded">{0:N0}개 항목을 불러왔습니다.</sys:String>
     <sys:String x:Key="Loc.Catalog.Progress.ProfileChanged">프로필이 변경되었습니다.</sys:String>
     <sys:String x:Key="Loc.Catalog.Progress.SelectProfileAndRoot">프로필과 검색 위치를 선택하세요.</sys:String>
-    <sys:String x:Key="Loc.Catalog.Progress.PreparingQuickLoad">프로필 기반 빠른 불러오기를 준비하고 있습니다.</sys:String>
+    <sys:String x:Key="Loc.Catalog.Progress.PreparingDirectScan">DB에 저장하지 않는 직접 스캔을 준비하고 있습니다.</sys:String>
     <sys:String x:Key="Loc.Catalog.Progress.PreparingExistingIndex">프로필과 기존 인덱스를 준비하고 있습니다.</sys:String>
+    <sys:String x:Key="Loc.Catalog.Progress.PreparingIndexAndLoad">인덱스를 새로 만들고 구조화 결과를 불러올 준비를 하고 있습니다.</sys:String>
     <sys:String x:Key="Loc.Catalog.Progress.IndexScanning">폴더 {0:N0}개, 항목 {1:N0}개를 확인했습니다.</sys:String>
     <sys:String x:Key="Loc.Catalog.Progress.DirectoryScanning">폴더 {0:N0}개를 확인했습니다.</sys:String>
     <sys:String x:Key="Loc.Catalog.Progress.SearchingIndex">인덱스에서 폴더를 조회하고 있습니다.</sys:String>
@@ -161,11 +166,12 @@
     <sys:String x:Key="Loc.Catalog.Result.ExclusionSummary"> · 이름 규칙 제외 {0:N0}{1}</sys:String>
     <sys:String x:Key="Loc.Catalog.Result.ExclusionWarningSuffix"> · 제외 규칙 경고 {0:N0}</sys:String>
     <sys:String x:Key="Loc.Catalog.Result.ExistingLoadCompleted">기존 인덱스 불러오기 완료</sys:String>
+    <sys:String x:Key="Loc.Catalog.Result.DirectScanCompleted">DB에 저장하지 않는 스캔 완료</sys:String>
+    <sys:String x:Key="Loc.Catalog.Result.IndexAndLoadCompleted">인덱싱 후 불러오기 완료</sys:String>
     <sys:String x:Key="Loc.Catalog.Result.IncompleteSuffix"> 일부 경로는 확인이 필요합니다.</sys:String>
     <sys:String x:Key="Loc.Catalog.Result.Partial">부분 결과</sys:String>
     <sys:String x:Key="Loc.Catalog.Result.PartialRetained"> 발견한 부분 결과 {0:N0}개는 목록에 유지됩니다.</sys:String>
     <sys:String x:Key="Loc.Catalog.Result.PendingScopesSuffix"> · 아직 인덱싱되지 않은 범위가 있습니다.</sys:String>
-    <sys:String x:Key="Loc.Catalog.Result.QuickLoadCompleted">빠른 불러오기 완료</sys:String>
     <sys:String x:Key="Loc.Catalog.Result.ScanSummary"> · 인덱싱 상태 {0} · 오류 {1:N0}</sys:String>
     <sys:String x:Key="Loc.Catalog.Result.Summary">후보 {0:N0} · 일치 {1:N0} · 규칙 외 {2:N0} · 변환 오류 {3:N0}{4}{5}{6}{7}</sys:String>
     <sys:String x:Key="Loc.Catalog.Elapsed.Hours">{0:0}시간 {1:00}분 {2:00.00}초</sys:String>
@@ -178,8 +184,9 @@
     <sys:String x:Key="Loc.Catalog.Status.ProfileApplied">새 프로필이 적용되었습니다. 검색 위치를 선택하세요.</sys:String>
     <sys:String x:Key="Loc.Catalog.Status.ProfileChanged">프로필 변경됨</sys:String>
     <sys:String x:Key="Loc.Catalog.Status.ProfileChanged.Message">작업 중 프로필 구성이 변경되어 이전 규칙의 결과를 비웠습니다. 다시 불러오세요.</sys:String>
-    <sys:String x:Key="Loc.Catalog.Status.Ready.Message">프로필로 폴더를 바로 찾거나 기존 인덱스에서 불러올 수 있습니다.</sys:String>
+    <sys:String x:Key="Loc.Catalog.Status.Ready.Message">DB에 저장하지 않고 바로 스캔하거나, 인덱싱한 뒤 구조화 결과를 불러올 수 있습니다.</sys:String>
     <sys:String x:Key="Loc.Catalog.Status.WaitForProfileSave">프로필 저장이 끝난 뒤 다시 시도하세요.</sys:String>
+    <sys:String x:Key="Loc.Catalog.Status.WorkspaceSaveFailed">작업 위치 저장 실패</sys:String>
 
     <sys:String x:Key="Loc.Picker.Root.Title">검색할 디스크 또는 폴더 선택</sys:String>
     <sys:String x:Key="Loc.Picker.Database.Title">FindEverything 인덱스 데이터베이스 선택</sys:String>
@@ -249,7 +256,7 @@
     <sys:String x:Key="Loc.Clipboard.Empty">복사할 내용이 없습니다.</sys:String>
     <sys:String x:Key="Loc.Clipboard.Busy">클립보드를 다른 프로그램이 사용 중입니다. 잠시 후 다시 시도해 주세요.</sys:String>
     <sys:String x:Key="Loc.Scan.Status.Idle">대기 중</sys:String>
-    <sys:String x:Key="Loc.Scan.Status.Instruction">빠른 불러오기를 시작하면 방문 경로가 여기에 표시됩니다.</sys:String>
+    <sys:String x:Key="Loc.Scan.Status.Instruction">바로 스캔을 시작하면 방문 경로가 여기에 표시됩니다.</sys:String>
     <sys:String x:Key="Loc.Scan.Status.Running">탐색 중</sys:String>
     <sys:String x:Key="Loc.Scan.Status.Failed">실패</sys:String>
     <sys:String x:Key="Loc.Scan.Panel.Close">하단 탐색 로그 닫기</sys:String>
@@ -262,9 +269,9 @@
     <sys:String x:Key="Loc.Scan.Retention.Dropped">최근 {0:N0}줄 · 이전 {1:N0}줄 생략</sys:String>
     <sys:String x:Key="Loc.Scan.Retention.Visible">표시 {0:N0} / 최대 {1:N0}줄</sys:String>
     <sys:String x:Key="Loc.Scan.Session.Summary">{0} · 절대 경로 · {1}</sys:String>
-    <sys:String x:Key="Loc.Scan.Trace.Completed">빠른 불러오기를 완료했습니다.</sys:String>
-    <sys:String x:Key="Loc.Scan.Trace.Cancelled">빠른 불러오기가 취소되었습니다.</sys:String>
-    <sys:String x:Key="Loc.Scan.Trace.Failed">빠른 불러오기에 실패했습니다. 상태 메시지에서 자세한 내용을 확인하세요.</sys:String>
+    <sys:String x:Key="Loc.Scan.Trace.Completed">바로 스캔을 완료했습니다.</sys:String>
+    <sys:String x:Key="Loc.Scan.Trace.Cancelled">바로 스캔이 취소되었습니다.</sys:String>
+    <sys:String x:Key="Loc.Scan.Trace.Failed">바로 스캔에 실패했습니다. 상태 메시지에서 자세한 내용을 확인하세요.</sys:String>
     <sys:String x:Key="Loc.Profile.Rule">규칙</sys:String>
     <sys:String x:Key="Loc.Profile.Source.TextFile">텍스트 파일</sys:String>
     <sys:String x:Key="Loc.Profile.Source.RequiredPath">필수 경로 값</sys:String>
@@ -274,7 +281,7 @@
     <sys:String x:Key="Loc.Playground.Result.Invalid">경로는 일치했지만 일부 값을 변환하거나 읽을 수 없습니다.</sys:String>
     <sys:String x:Key="Loc.Playground.Result.Success">규칙 '{0}'에 일치했고 {1:N0}개 값을 불러왔습니다.</sys:String>
     <sys:String x:Key="Loc.Playground.Result.Empty">프로필이 결과를 반환하지 않았습니다.</sys:String>
-    <sys:String x:Key="Loc.Playground.Exclusion.Scope">이 판정은 구조화 보기의 ‘프로필로 빠르게 불러오기’에서 검색 루트 아래 폴더에만 적용됩니다. 입력 경로 자체를 검색 루트로 선택한 경우에는 명시적 루트 예외로 제외하지 않으며, 파일 인덱싱과 기존 인덱스 불러오기에도 적용하지 않습니다.</sys:String>
+    <sys:String x:Key="Loc.Playground.Exclusion.Scope">이 판정은 구조화 보기의 ‘DB에 저장하지 않고 바로 스캔’에서 검색 루트 아래 폴더에만 적용됩니다. 입력 경로 자체를 검색 루트로 선택한 경우에는 명시적 루트 예외로 제외하지 않으며, 파일 인덱싱과 기존 인덱스 불러오기에도 적용하지 않습니다.</sys:String>
     <sys:String x:Key="Loc.Playground.Exclusion.Root">(드라이브 또는 공유 루트)</sys:String>
     <sys:String x:Key="Loc.Playground.Exclusion.NoLeaf">leaf 폴더 이름이 없어 제외 판정을 생략했습니다.</sys:String>
     <sys:String x:Key="Loc.Playground.Exclusion.NoRules">제외 규칙이 없어 이 폴더를 계속 탐색합니다.</sys:String>
@@ -455,7 +462,7 @@
     <sys:String x:Key="Loc.RegexDebug.Status.NoPartial">원본 패턴과 부분적으로 일치하는 구간이 없습니다.{0}</sys:String>
     <sys:String x:Key="Loc.RegexDebug.Status.ActualFolderFull">실제 폴더 이름 전체 일치</sys:String>
     <sys:String x:Key="Loc.RegexDebug.Status.ActualPathFull">실제 전체 경로 일치</sys:String>
-    <sys:String x:Key="Loc.RegexDebug.Status.FolderRequirement">실제 빠른 불러오기에서는 폴더 이름 전체가 일치해야 합니다.</sys:String>
+    <sys:String x:Key="Loc.RegexDebug.Status.FolderRequirement">실제 바로 스캔에서는 폴더 이름 전체가 일치해야 합니다.</sys:String>
     <sys:String x:Key="Loc.RegexDebug.Status.PathRequirement">실제 스캔에서는 전체 경로가 일치해야 합니다.</sys:String>
     <sys:String x:Key="Loc.RegexDebug.Status.FullMatched">{0} · 원본 패턴 후보 {1:N0}개{2}</sys:String>
     <sys:String x:Key="Loc.RegexDebug.Status.PartialCandidates">부분 후보 {0:N0}개{1}</sys:String>

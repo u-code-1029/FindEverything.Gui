@@ -15,7 +15,7 @@ using Wpf.Ui.Controls;
 
 namespace FindEverything.Desktop.ViewModels;
 
-public partial class CatalogViewModel : ObservableObject
+public partial class CatalogViewModel : ObservableObject, IDisposable
 {
     private readonly ICatalogService _catalogService;
     private readonly IProfileCatalog _profileCatalog;
@@ -41,6 +41,13 @@ public partial class CatalogViewModel : ObservableObject
     private IReadOnlyList<CatalogItemViewModel> _selectedItems = [];
     private bool _isActive;
     private bool _isAutomaticIndexLoad;
+    private bool _isApplyingWorkspaceSnapshot;
+    private CancellationTokenSource? _workspaceSaveDebounce;
+    private long _workspaceDraftVersion;
+    private WorkspaceSaveAttempt? _latestWorkspaceDraft;
+    private int _workspaceDirtyFields;
+    private CatalogOperationMode _activeOperationMode;
+    private bool _disposed;
 
     [ObservableProperty]
     private IReadOnlyList<ProfileChoiceViewModel> _profiles = [];
@@ -166,14 +173,13 @@ public partial class CatalogViewModel : ObservableObject
         _statusTitle = L("Loc.Common.Ready", "준비");
         _statusMessage = L(
             "Loc.Catalog.Status.Ready.Message",
-            "프로필로 폴더를 바로 찾거나 기존 인덱스에서 불러올 수 있습니다.");
+            "DB에 저장하지 않고 바로 스캔하거나, 인덱싱한 뒤 구조화 결과를 불러올 수 있습니다.");
         _dispatcher = System.Windows.Application.Current?.Dispatcher
             ?? Dispatcher.CurrentDispatcher;
         Items = CreateItemsView(_loadedItems);
 
         var workspace = workspaceContext.Current;
-        RootPath = workspace.RootPath;
-        DatabasePath = workspace.DatabasePath;
+        ApplyWorkspaceSnapshot(workspace);
         ApplyProfileSnapshot(profileCatalog.Current, workspace.SelectedProfileId);
         _profileCatalog.Changed += OnProfileCatalogChanged;
         _workspaceContext.Changed += OnWorkspaceChanged;
@@ -215,6 +221,22 @@ public partial class CatalogViewModel : ObservableObject
         _operationCoordinator.Cancel();
     }
 
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        CancelWorkspacePersistenceDebounce();
+        _profileCatalog.Changed -= OnProfileCatalogChanged;
+        _workspaceContext.Changed -= OnWorkspaceChanged;
+        _outputFormatStore.Changed -= OnOutputFormatsChanged;
+        _operationCoordinator.StateChanged -= OnOperationCoordinatorStateChanged;
+        GC.SuppressFinalize(this);
+    }
+
     partial void OnSelectedProfileChanged(ProfileChoiceViewModel? value)
     {
         _lastAutomaticLoadKey = null;
@@ -233,19 +255,36 @@ public partial class CatalogViewModel : ObservableObject
         SetSelection([]);
         RefreshOutputFormats();
         ScanCommand.NotifyCanExecuteChanged();
+        IndexAndLoadCommand.NotifyCanExecuteChanged();
         LoadCommand.NotifyCanExecuteChanged();
         ScheduleAutomaticLoad();
+    }
+
+    partial void OnRootPathChanged(string? value)
+    {
+        _lastAutomaticLoadKey = null;
+        ScheduleWorkspacePersistence(WorkspaceDraftFields.RootPath);
+    }
+
+    partial void OnDatabasePathChanged(string? value)
+    {
+        _lastAutomaticLoadKey = null;
+        ScheduleWorkspacePersistence(WorkspaceDraftFields.DatabasePath);
     }
 
     partial void OnIsBusyChanged(bool value)
     {
         ScanCommand.NotifyCanExecuteChanged();
+        IndexAndLoadCommand.NotifyCanExecuteChanged();
         LoadCommand.NotifyCanExecuteChanged();
         CancelCommand.NotifyCanExecuteChanged();
     }
 
-    partial void OnIsLoadingExistingIndexChanged(bool value) =>
+    partial void OnIsLoadingExistingIndexChanged(bool value)
+    {
         ScanCommand.NotifyCanExecuteChanged();
+        IndexAndLoadCommand.NotifyCanExecuteChanged();
+    }
 
     partial void OnSelectedItemChanged(CatalogItemViewModel? value)
     {
@@ -297,9 +336,25 @@ public partial class CatalogViewModel : ObservableObject
         var dispatcher = System.Windows.Application.Current?.Dispatcher;
         void Apply()
         {
-            RootPath = eventArgs.Current.RootPath;
-            DatabasePath = eventArgs.Current.DatabasePath;
-            ScheduleAutomaticLoad();
+            var latestDraft = Volatile.Read(ref _latestWorkspaceDraft);
+            var currentVersion = Volatile.Read(ref _workspaceDraftVersion);
+            var currentAttempt = latestDraft is not null
+                && latestDraft.Version == currentVersion
+                    ? latestDraft
+                    : null;
+            var pendingFields = ReadWorkspaceDirtyFields()
+                | (currentAttempt?.Fields ?? WorkspaceDraftFields.None);
+            ApplyWorkspaceSnapshot(eventArgs.Current, pendingFields);
+
+            // An event from another page can arrive while a local field is still
+            // being edited. Apply its non-dirty fields immediately, but wait to
+            // load until the shared snapshot also contains this page's draft.
+            if (pendingFields == WorkspaceDraftFields.None
+                || currentAttempt is not null
+                && DraftFieldsMatch(currentAttempt, eventArgs.Current))
+            {
+                ScheduleAutomaticLoad();
+            }
         }
 
         if (dispatcher is null || dispatcher.CheckAccess())
@@ -358,24 +413,60 @@ public partial class CatalogViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void BrowseRoot()
+    private async Task BrowseRootAsync()
     {
         var selected = _pickerService.PickRootDirectory(RootPath);
         if (selected is not null)
         {
             RootPath = selected;
-            ScheduleAutomaticLoad();
+            await CommitWorkspaceAsync().ConfigureAwait(true);
         }
     }
 
     [RelayCommand]
-    private void BrowseDatabase()
+    private async Task BrowseDatabaseAsync()
     {
         var selected = _pickerService.PickDatabasePath(DatabasePath);
         if (selected is not null)
         {
             DatabasePath = selected;
-            ScheduleAutomaticLoad();
+            await CommitWorkspaceAsync().ConfigureAwait(true);
+        }
+    }
+
+    [RelayCommand]
+    private async Task CommitWorkspaceAsync()
+    {
+        CancelWorkspacePersistenceDebounce();
+        var version = Interlocked.Increment(ref _workspaceDraftVersion);
+        try
+        {
+            var fields = ReadWorkspaceDirtyFields();
+            if (fields == WorkspaceDraftFields.None)
+            {
+                ScheduleAutomaticLoad();
+                return;
+            }
+
+            var attempt = CreateWorkspaceSaveAttempt(version, fields);
+            Volatile.Write(ref _latestWorkspaceDraft, attempt);
+            var saved = await PersistWorkspaceDraftAsync(
+                    attempt,
+                    CancellationToken.None,
+                    reportFailure: true)
+                .ConfigureAwait(true);
+            if (saved)
+            {
+                ScheduleAutomaticLoad();
+            }
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException
+                or NotSupportedException
+                or PathTooLongException)
+        {
+            Volatile.Write(ref _latestWorkspaceDraft, null);
+            ReportWorkspaceSaveFailure(exception);
         }
     }
 
@@ -397,15 +488,37 @@ public partial class CatalogViewModel : ObservableObject
         }
 
         await RunOperationAsync(
-                L("Loc.Catalog.Operation.QuickLoad", "프로필로 빠르게 불러오기"),
-                discoverDirectly: true)
+                L(
+                    "Loc.Catalog.Operation.DirectScan",
+                    "DB에 저장하지 않고 바로 스캔"),
+                CatalogOperationMode.DirectDiscovery)
+            .ConfigureAwait(true);
+    }
+
+    [RelayCommand(CanExecute = nameof(CanIndexAndLoad))]
+    private async Task IndexAndLoadAsync()
+    {
+        if (IsLoadingExistingIndex
+            && _operationCoordinator.CurrentKind == ApplicationOperationKind.IndexLoad)
+        {
+            ProgressMessage = L(
+                "Loc.Catalog.Progress.CancelExistingLoadForIndex",
+                "기존 인덱스 불러오기를 취소하고 새 인덱싱을 준비하는 중…");
+            await _operationCoordinator.CancelAndWaitAsync(TimeSpan.FromSeconds(30))
+                .ConfigureAwait(true);
+            await Dispatcher.Yield(DispatcherPriority.Background);
+        }
+
+        await RunOperationAsync(
+                L("Loc.Catalog.Operation.IndexAndLoad", "인덱싱 후 불러오기"),
+                CatalogOperationMode.IndexAndLoad)
             .ConfigureAwait(true);
     }
 
     [RelayCommand(CanExecute = nameof(CanStart))]
     private Task LoadAsync() => RunOperationAsync(
         L("Loc.Catalog.Operation.LoadExisting", "기존 인덱스에서 불러오기"),
-        discoverDirectly: false);
+        CatalogOperationMode.ExistingIndex);
 
     [RelayCommand(CanExecute = nameof(CanCancel))]
     private void Cancel()
@@ -616,6 +729,9 @@ public partial class CatalogViewModel : ObservableObject
 
     private bool CanScan() => SelectedProfile is not null && (!IsBusy || IsLoadingExistingIndex);
 
+    private bool CanIndexAndLoad() =>
+        SelectedProfile is not null && (!IsBusy || IsLoadingExistingIndex);
+
     private bool CanCancel() => IsBusy;
 
     private bool CanOpenSelected() => SelectedItem is not null;
@@ -679,9 +795,10 @@ public partial class CatalogViewModel : ObservableObject
 
     private async Task RunOperationAsync(
         string operationName,
-        bool discoverDirectly,
+        CatalogOperationMode mode,
         bool isAutomatic = false)
     {
+        var writesIndex = mode == CatalogOperationMode.IndexAndLoad;
         if (IsBusy)
         {
             return;
@@ -698,19 +815,30 @@ public partial class CatalogViewModel : ObservableObject
                 return;
             }
 
-            SetStatus(
-                L("Loc.Common.OperationInProgress", "다른 작업 진행 중"),
-                L(
-                    "Loc.Catalog.Status.WaitForProfileSave",
-                    "프로필 저장이 끝난 뒤 다시 시도하세요."),
-                InfoBarSeverity.Warning);
-            return;
+            if (writesIndex
+                && _operationCoordinator.CurrentKind == ApplicationOperationKind.IndexLoad)
+            {
+                // ReplaceAsync below cancels the read and claims the write slot
+                // atomically, so another automatic load cannot slip in between.
+            }
+            else
+            {
+                SetStatus(
+                    L("Loc.Common.OperationInProgress", "다른 작업 진행 중"),
+                    L(
+                        "Loc.Catalog.Status.WaitForProfileSave",
+                        "프로필 저장이 끝난 뒤 다시 시도하세요."),
+                    InfoBarSeverity.Warning);
+                return;
+            }
         }
 
-        IsLoadingExistingIndex = !discoverDirectly;
-        _isAutomaticIndexLoad = isAutomatic && !discoverDirectly;
+        IsLoadingExistingIndex = mode == CatalogOperationMode.ExistingIndex;
+        _isAutomaticIndexLoad = isAutomatic && mode == CatalogOperationMode.ExistingIndex;
+        _activeOperationMode = mode;
         IsBusy = true;
-        IsScanning = discoverDirectly;
+        IsScanning = mode is CatalogOperationMode.DirectDiscovery
+            or CatalogOperationMode.IndexAndLoad;
         SetStatus(
             operationName,
             F(
@@ -726,42 +854,105 @@ public partial class CatalogViewModel : ObservableObject
         {
             // Capture UI-bound values before the coordinator moves the operation
             // to its background scheduler.
-            var workspace = ValidateWorkspace(requiresDatabase: !discoverDirectly);
+            var workspace = ValidateWorkspace(
+                requiresDatabase: mode != CatalogOperationMode.DirectDiscovery);
+            CancelWorkspacePersistenceDebounce();
+            var workspaceVersion = Interlocked.Increment(ref _workspaceDraftVersion);
+            var operationWorkspaceAttempt = new WorkspaceSaveAttempt(
+                workspaceVersion,
+                WorkspaceDraftFields.All,
+                new WorkspaceSnapshot(
+                    workspace.ProfileId,
+                    workspace.RootPath,
+                    workspace.DatabasePath));
+            Volatile.Write(ref _latestWorkspaceDraft, operationWorkspaceAttempt);
             var request = CreateRequest(workspace);
             resultSession = BeginResultSession();
             progress = CreateProgress(resultSession);
-            if (discoverDirectly)
+            if (mode == CatalogOperationMode.DirectDiscovery)
             {
                 _scanConsolePanelController.Show();
             }
 
-            var operationKind = discoverDirectly
-                ? ApplicationOperationKind.ProfileDiscovery
-                : ApplicationOperationKind.IndexLoad;
-            await _operationCoordinator.RunAsync(operationKind, async cancellationToken =>
+            var operationKind = mode switch
             {
-                await PersistWorkspaceAsync(workspace, cancellationToken).ConfigureAwait(false);
-                if (!discoverDirectly)
+                CatalogOperationMode.DirectDiscovery =>
+                    ApplicationOperationKind.ProfileDiscovery,
+                CatalogOperationMode.IndexAndLoad => ApplicationOperationKind.IndexWrite,
+                _ => ApplicationOperationKind.IndexLoad,
+            };
+            async Task RunCatalogOperationAsync(CancellationToken cancellationToken)
+            {
+                try
                 {
-                    EnsureDatabaseDirectory(workspace.DatabasePath);
+                    if (mode == CatalogOperationMode.IndexAndLoad)
+                    {
+                        EnsureDatabaseDirectory(workspace.DatabasePath);
+                    }
+
+                    await PersistWorkspaceAsync(
+                            workspace,
+                            operationWorkspaceAttempt,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                catch
+                {
+                    AbandonWorkspaceSaveAttempt(operationWorkspaceAttempt);
+                    throw;
                 }
 
-                result = discoverDirectly
-                    ? await _catalogService.DiscoverAsync(
+                result = mode switch
+                {
+                    CatalogOperationMode.DirectDiscovery =>
+                        await _catalogService.DiscoverAsync(
                         request,
                         progress,
-                        cancellationToken).ConfigureAwait(false)
-                    : await _catalogService.LoadExistingAsync(
+                        cancellationToken).ConfigureAwait(false),
+                    CatalogOperationMode.IndexAndLoad =>
+                        await _catalogService.ScanAndLoadAsync(
+                            request,
+                            progress,
+                            cancellationToken).ConfigureAwait(false),
+                    _ => await _catalogService.LoadExistingAsync(
                         request,
                         progress,
-                        cancellationToken).ConfigureAwait(false);
-            }).ConfigureAwait(true);
+                        cancellationToken).ConfigureAwait(false),
+                };
+            }
+
+            try
+            {
+                if (writesIndex)
+                {
+                    await _operationCoordinator.ReplaceAsync(
+                            ApplicationOperationKind.IndexLoad,
+                            operationKind,
+                            RunCatalogOperationAsync)
+                        .ConfigureAwait(true);
+                }
+                else
+                {
+                    await _operationCoordinator.RunAsync(
+                            operationKind,
+                            RunCatalogOperationAsync)
+                        .ConfigureAwait(true);
+                }
+            }
+            catch
+            {
+                // The coordinator can reject or cancel an operation before its
+                // delegate runs. Do not leave that unpublished workspace draft
+                // shielding all later shared-workspace changes.
+                AbandonWorkspaceSaveAttempt(operationWorkspaceAttempt);
+                throw;
+            }
 
             progress.FlushAndClose();
             completionNotice = ApplyResult(
                 result ?? throw new InvalidOperationException(
                     L("Loc.Catalog.Error.NoResult", "카탈로그 결과를 받지 못했습니다.")),
-                discoverDirectly,
+                mode,
                 resultSession);
         }
         catch (OperationCanceledException)
@@ -831,6 +1022,7 @@ public partial class CatalogViewModel : ObservableObject
             IsScanning = false;
             IsLoadingExistingIndex = false;
             _isAutomaticIndexLoad = false;
+            _activeOperationMode = default;
             IsBusy = false;
             if (ApplyPendingProfileSnapshot())
             {
@@ -853,7 +1045,8 @@ public partial class CatalogViewModel : ObservableObject
                 completionNotice.IsPartial
                     ? ControlAppearance.Caution
                     : ControlAppearance.Success);
-            if (discoverDirectly)
+            if (mode is CatalogOperationMode.DirectDiscovery
+                or CatalogOperationMode.IndexAndLoad)
             {
                 _scanCompletionNotifier.Notify(completionNotice);
             }
@@ -927,7 +1120,7 @@ public partial class CatalogViewModel : ObservableObject
                 L(
                     "Loc.Catalog.Operation.AutomaticLoadExisting",
                     "기존 인덱스 자동 불러오기"),
-                discoverDirectly: false,
+                CatalogOperationMode.ExistingIndex,
                 isAutomatic: true)
             .ConfigureAwait(true);
     }
@@ -1032,10 +1225,16 @@ public partial class CatalogViewModel : ObservableObject
         int matchedCount) =>
         progress.Phase switch
         {
-            CatalogOperationPhase.Preparing when IsScanning =>
+            CatalogOperationPhase.Preparing
+                when _activeOperationMode == CatalogOperationMode.DirectDiscovery =>
                 L(
-                    "Loc.Catalog.Progress.PreparingQuickLoad",
-                    "프로필 기반 빠른 불러오기를 준비하고 있습니다."),
+                    "Loc.Catalog.Progress.PreparingDirectScan",
+                    "DB에 저장하지 않는 직접 스캔을 준비하고 있습니다."),
+            CatalogOperationPhase.Preparing
+                when _activeOperationMode == CatalogOperationMode.IndexAndLoad =>
+                L(
+                    "Loc.Catalog.Progress.PreparingIndexAndLoad",
+                    "인덱스를 새로 만들고 구조화 결과를 불러올 준비를 하고 있습니다."),
             CatalogOperationPhase.Preparing =>
                 L(
                     "Loc.Catalog.Progress.PreparingExistingIndex",
@@ -1098,9 +1297,10 @@ public partial class CatalogViewModel : ObservableObject
 
     private ScanCompletionNotice ApplyResult(
         CatalogResult result,
-        bool discoveredDirectly,
+        CatalogOperationMode mode,
         CatalogResultSession resultSession)
     {
+        var discoveredDirectly = mode == CatalogOperationMode.DirectDiscovery;
         var selectedPath = SelectedItem?.FullPath;
         var fields = result.Profile.Fields.OrderBy(static field => field.Order).ToArray();
         if (!Fields.SequenceEqual(fields))
@@ -1187,9 +1387,18 @@ public partial class CatalogViewModel : ObservableObject
             : string.Empty;
         var statusTitle = incomplete
             ? L("Loc.Catalog.Result.Partial", "부분 결과")
-            : discoveredDirectly
-                ? L("Loc.Catalog.Result.QuickLoadCompleted", "빠른 불러오기 완료")
-                : L("Loc.Catalog.Result.ExistingLoadCompleted", "기존 인덱스 불러오기 완료");
+            : mode switch
+            {
+                CatalogOperationMode.DirectDiscovery => L(
+                    "Loc.Catalog.Result.DirectScanCompleted",
+                    "DB에 저장하지 않는 스캔 완료"),
+                CatalogOperationMode.IndexAndLoad => L(
+                    "Loc.Catalog.Result.IndexAndLoadCompleted",
+                    "인덱싱 후 불러오기 완료"),
+                _ => L(
+                    "Loc.Catalog.Result.ExistingLoadCompleted",
+                    "기존 인덱스 불러오기 완료"),
+            };
         var statusMessage = F(
             "Loc.Catalog.Result.Summary",
             "후보 {0:N0} · 일치 {1:N0} · 규칙 외 {2:N0} · 변환 오류 {3:N0}{4}{5}{6}{7}",
@@ -1339,15 +1548,258 @@ public partial class CatalogViewModel : ObservableObject
 
     private async Task PersistWorkspaceAsync(
         WorkspaceSelection workspace,
+        WorkspaceSaveAttempt attempt,
         CancellationToken cancellationToken)
     {
-        await _workspaceContext.SaveAsync(
-            new WorkspaceSnapshot(
-                workspace.ProfileId,
-                workspace.RootPath,
-                workspace.DatabasePath),
-            cancellationToken).ConfigureAwait(false);
+        var snapshot = new WorkspaceSnapshot(
+            workspace.ProfileId,
+            workspace.RootPath,
+            workspace.DatabasePath);
+        await _workspaceContext.SaveAsync(snapshot, cancellationToken).ConfigureAwait(false);
+        CompleteWorkspaceSaveAttempt(attempt);
     }
+
+    private void ApplyWorkspaceSnapshot(
+        WorkspaceSnapshot snapshot,
+        WorkspaceDraftFields preservedFields = WorkspaceDraftFields.None)
+    {
+        _isApplyingWorkspaceSnapshot = true;
+        try
+        {
+            if (!preservedFields.HasFlag(WorkspaceDraftFields.RootPath))
+            {
+                RootPath = snapshot.RootPath;
+            }
+
+            if (!preservedFields.HasFlag(WorkspaceDraftFields.DatabasePath))
+            {
+                DatabasePath = snapshot.DatabasePath;
+            }
+        }
+        finally
+        {
+            _isApplyingWorkspaceSnapshot = false;
+        }
+    }
+
+    private void ScheduleWorkspacePersistence(WorkspaceDraftFields changedField)
+    {
+        if (_disposed || _isApplyingWorkspaceSnapshot)
+        {
+            return;
+        }
+
+        _ = Interlocked.Or(ref _workspaceDirtyFields, (int)changedField);
+        CancelWorkspacePersistenceDebounce();
+        var version = Interlocked.Increment(ref _workspaceDraftVersion);
+        WorkspaceSaveAttempt attempt;
+        try
+        {
+            attempt = CreateWorkspaceSaveAttempt(version, ReadWorkspaceDirtyFields());
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException
+                or NotSupportedException
+                or PathTooLongException)
+        {
+            // TextBox updates arrive for every keystroke. An incomplete path is
+            // not an error until focus is committed; simply wait for the next edit.
+            Volatile.Write(ref _latestWorkspaceDraft, null);
+            return;
+        }
+
+        var source = new CancellationTokenSource();
+        Volatile.Write(ref _latestWorkspaceDraft, attempt);
+        _workspaceSaveDebounce = source;
+        _ = PersistWorkspaceAfterDelayAsync(attempt, source);
+    }
+
+    private async Task PersistWorkspaceAfterDelayAsync(
+        WorkspaceSaveAttempt attempt,
+        CancellationTokenSource source)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(500), source.Token)
+                .ConfigureAwait(false);
+            _ = await PersistWorkspaceDraftAsync(
+                    attempt,
+                    source.Token,
+                    reportFailure: true)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (source.IsCancellationRequested)
+        {
+            // A later keystroke or an explicit operation owns the current draft.
+        }
+        finally
+        {
+            _ = Interlocked.CompareExchange(
+                ref _workspaceSaveDebounce,
+                null,
+                source);
+            source.Dispose();
+        }
+    }
+
+    private async Task<bool> PersistWorkspaceDraftAsync(
+        WorkspaceSaveAttempt attempt,
+        CancellationToken cancellationToken,
+        bool reportFailure)
+    {
+        if (attempt.Version != Volatile.Read(ref _workspaceDraftVersion))
+        {
+            _ = Interlocked.CompareExchange(
+                ref _latestWorkspaceDraft,
+                null,
+                attempt);
+            return false;
+        }
+
+        try
+        {
+            await _workspaceContext.UpdateAsync(
+                    current => MergeWorkspaceDraft(current, attempt),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            CompleteWorkspaceSaveAttempt(attempt);
+            return true;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception) when (reportFailure)
+        {
+            _ = Interlocked.CompareExchange(
+                ref _latestWorkspaceDraft,
+                null,
+                attempt);
+            _logger.LogWarning(exception, "Could not persist the catalog workspace draft.");
+            if (_dispatcher.CheckAccess())
+            {
+                ReportWorkspaceSaveFailure(exception);
+            }
+            else if (!_dispatcher.HasShutdownStarted && !_dispatcher.HasShutdownFinished)
+            {
+                _ = _dispatcher.BeginInvoke(() => ReportWorkspaceSaveFailure(exception));
+            }
+
+            return false;
+        }
+    }
+
+    private WorkspaceSaveAttempt CreateWorkspaceSaveAttempt(
+        long version,
+        WorkspaceDraftFields fields)
+    {
+        var current = _workspaceContext.Current;
+        var normalizedRoot = fields.HasFlag(WorkspaceDraftFields.RootPath)
+            ? string.IsNullOrWhiteSpace(RootPath)
+                ? null
+                : Path.TrimEndingDirectorySeparator(Path.GetFullPath(RootPath))
+            : current.RootPath;
+        var normalizedDatabase = fields.HasFlag(WorkspaceDraftFields.DatabasePath)
+            ? string.IsNullOrWhiteSpace(DatabasePath)
+                ? throw new ArgumentException(
+                    L(
+                        "Loc.Catalog.Error.SelectDatabase",
+                        "인덱스 데이터베이스 경로를 선택하세요."),
+                    nameof(DatabasePath))
+                : Path.GetFullPath(DatabasePath)
+            : current.DatabasePath;
+        return new WorkspaceSaveAttempt(
+            version,
+            fields,
+            new WorkspaceSnapshot(
+                SelectedProfile?.Id ?? current.SelectedProfileId,
+                normalizedRoot,
+                normalizedDatabase));
+    }
+
+    private static WorkspaceSnapshot MergeWorkspaceDraft(
+        WorkspaceSnapshot current,
+        WorkspaceSaveAttempt attempt) =>
+        new(
+            attempt.Fields.HasFlag(WorkspaceDraftFields.Profile)
+                ? attempt.Snapshot.SelectedProfileId
+                : current.SelectedProfileId,
+            attempt.Fields.HasFlag(WorkspaceDraftFields.RootPath)
+                ? attempt.Snapshot.RootPath
+                : current.RootPath,
+            attempt.Fields.HasFlag(WorkspaceDraftFields.DatabasePath)
+                ? attempt.Snapshot.DatabasePath
+                : current.DatabasePath);
+
+    private static bool DraftFieldsMatch(
+        WorkspaceSaveAttempt attempt,
+        WorkspaceSnapshot current) =>
+        (!attempt.Fields.HasFlag(WorkspaceDraftFields.Profile)
+            || string.Equals(
+                attempt.Snapshot.SelectedProfileId,
+                current.SelectedProfileId,
+                StringComparison.OrdinalIgnoreCase))
+        && (!attempt.Fields.HasFlag(WorkspaceDraftFields.RootPath)
+            || PathsEqual(attempt.Snapshot.RootPath, current.RootPath))
+        && (!attempt.Fields.HasFlag(WorkspaceDraftFields.DatabasePath)
+            || PathsEqual(attempt.Snapshot.DatabasePath, current.DatabasePath));
+
+    private static bool PathsEqual(string? first, string? second)
+    {
+        if (first is null || second is null)
+        {
+            return first is null && second is null;
+        }
+
+        return string.Equals(
+            Path.TrimEndingDirectorySeparator(Path.GetFullPath(first)),
+            Path.TrimEndingDirectorySeparator(Path.GetFullPath(second)),
+            OperatingSystem.IsWindows()
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal);
+    }
+
+    private WorkspaceDraftFields ReadWorkspaceDirtyFields() =>
+        (WorkspaceDraftFields)Volatile.Read(ref _workspaceDirtyFields);
+
+    private void CompleteWorkspaceSaveAttempt(WorkspaceSaveAttempt attempt)
+    {
+        if (attempt.Version == Volatile.Read(ref _workspaceDraftVersion))
+        {
+            _ = Interlocked.And(ref _workspaceDirtyFields, ~(int)attempt.Fields);
+        }
+
+        AbandonWorkspaceSaveAttempt(attempt);
+    }
+
+    private void AbandonWorkspaceSaveAttempt(WorkspaceSaveAttempt attempt) =>
+        _ = Interlocked.CompareExchange(
+            ref _latestWorkspaceDraft,
+            null,
+            attempt);
+
+    private void CancelWorkspacePersistenceDebounce()
+    {
+        var source = Interlocked.Exchange(ref _workspaceSaveDebounce, null);
+        if (source is null)
+        {
+            return;
+        }
+
+        try
+        {
+            source.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // The delayed writer completed while the edit was being committed.
+        }
+    }
+
+    private void ReportWorkspaceSaveFailure(Exception exception) => SetStatus(
+        L("Loc.Catalog.Status.WorkspaceSaveFailed", "작업 위치 저장 실패"),
+        exception.Message,
+        InfoBarSeverity.Error);
 
     private void EnsureDatabaseDirectory(string databasePath)
     {
@@ -1627,4 +2079,26 @@ public partial class CatalogViewModel : ObservableObject
         string ProfileId,
         string RootPath,
         string DatabasePath);
+
+    private sealed record WorkspaceSaveAttempt(
+        long Version,
+        WorkspaceDraftFields Fields,
+        WorkspaceSnapshot Snapshot);
+
+    [Flags]
+    private enum WorkspaceDraftFields
+    {
+        None = 0,
+        Profile = 1,
+        RootPath = 2,
+        DatabasePath = 4,
+        All = Profile | RootPath | DatabasePath,
+    }
+
+    private enum CatalogOperationMode
+    {
+        DirectDiscovery = 0,
+        ExistingIndex = 1,
+        IndexAndLoad = 2,
+    }
 }

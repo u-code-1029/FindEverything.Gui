@@ -186,7 +186,7 @@ public sealed class ProfilePlaygroundEvaluator(
         var directScanScope = Get(
             localizer,
             "Loc.Playground.Exclusion.Scope",
-            "이 판정은 구조화 보기의 ‘프로필로 빠르게 불러오기’에서 검색 루트 아래 폴더에만 적용됩니다. "
+            "이 판정은 구조화 보기의 ‘DB에 저장하지 않고 바로 스캔’에서 검색 루트 아래 폴더에만 적용됩니다. "
             + "입력 경로 자체를 검색 루트로 선택한 경우에는 명시적 루트 예외로 제외하지 않으며, "
             + "파일 인덱싱과 기존 인덱스 불러오기에도 적용하지 않습니다.");
 

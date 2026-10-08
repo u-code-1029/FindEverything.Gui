@@ -110,13 +110,13 @@ internal sealed class CatalogService(
             profile.Descriptor);
         trace.Report(
             CatalogScanTraceKind.Started,
-            message: "프로필 기반 빠른 스캔을 시작했습니다.");
+            message: "DB에 저장하지 않는 바로 스캔을 시작했습니다.");
 
         try
         {
             progress?.Report(new(
                 CatalogOperationPhase.Preparing,
-                "프로필 기반 빠른 스캔을 준비하고 있습니다."));
+                "DB에 저장하지 않는 바로 스캔을 준비하고 있습니다."));
 
             var accumulator = new MappingAccumulator(
                 profile,
@@ -167,14 +167,14 @@ internal sealed class CatalogService(
         {
             trace.Report(
                 CatalogScanTraceKind.Cancelled,
-                message: "빠른 스캔이 취소되었습니다.");
+                message: "바로 스캔이 취소되었습니다.");
             throw;
         }
         catch (Exception exception)
         {
             trace.Report(
                 CatalogScanTraceKind.Failed,
-                message: $"빠른 스캔에 실패했습니다: {exception.Message}");
+                message: $"바로 스캔에 실패했습니다: {exception.Message}");
             throw;
         }
     }
@@ -192,6 +192,17 @@ internal sealed class CatalogService(
 
         var operationSettings = indexingSettings.Current;
         await using var session = sessionFactory.Create(request.DatabasePath);
+        var rootStatus = await session.GetRootStatusAsync(
+            request.RootPath,
+            cancellationToken).ConfigureAwait(false);
+        if (rootStatus.Availability != IndexRootAvailability.Available)
+        {
+            throw new CatalogIndexUnavailableException(
+                rootStatus.Availability,
+                session.DatabasePath,
+                request.RootPath);
+        }
+
         return await LoadFromIndexSessionAsync(
             request,
             profileRootPath,
@@ -267,6 +278,11 @@ internal sealed class CatalogService(
             pathCanonicalizer,
             progress,
             applyDirectoryNameExclusions: false);
+        // A full persistent scan stores the root as index metadata rather than
+        // as an entry row, while direct discovery evaluates it as a candidate.
+        // Synthesize the same candidate so both structured workflows apply the
+        // profile to an identical path set.
+        accumulator.Visit(CreateRootCandidate(request.RootPath));
         progress?.Report(new CatalogOperationProgress(
             CatalogOperationPhase.Searching,
             "인덱스에서 폴더를 조회하고 있습니다."));
@@ -315,6 +331,18 @@ internal sealed class CatalogService(
             scanReport);
     }
 
+    private static DiscoveredDirectory CreateRootCandidate(string rootPath)
+    {
+        var trimmedRoot = Path.TrimEndingDirectorySeparator(rootPath);
+        var name = Path.GetFileName(trimmedRoot);
+        return new DiscoveredDirectory(
+            rootPath,
+            string.IsNullOrEmpty(name) ? rootPath : name,
+            Path.GetDirectoryName(trimmedRoot) ?? rootPath,
+            DateTimeOffset.MinValue,
+            DateTimeOffset.MinValue);
+    }
+
     private static void Validate(CatalogRequest request, bool requireDatabase)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -333,7 +361,7 @@ internal sealed class CatalogService(
         var errorSummary = report.Progress.ErrorCount == report.Errors.Count
             ? $"오류 {report.Progress.ErrorCount:N0}개"
             : $"오류 {report.Progress.ErrorCount:N0}개(상세 {report.Errors.Count:N0}개 기록)";
-        return $"빠른 스캔을 완료했습니다. 후보 {result.CandidateCount:N0}개, 제외 {result.ExcludedDirectoryCount:N0}개, 일치 {result.Items.Count:N0}개, 제외 규칙 경고 {result.DirectoryExclusionIssues.Count:N0}개, {errorSummary}를 확인했습니다. 소요 {CatalogElapsedTimeFormatter.Format(report.Progress.Elapsed)}";
+        return $"바로 스캔을 완료했습니다. 후보 {result.CandidateCount:N0}개, 제외 {result.ExcludedDirectoryCount:N0}개, 일치 {result.Items.Count:N0}개, 제외 규칙 경고 {result.DirectoryExclusionIssues.Count:N0}개, {errorSummary}를 확인했습니다. 소요 {CatalogElapsedTimeFormatter.Format(report.Progress.Elapsed)}";
     }
 
     private sealed class InlineProgress<T>(Action<T> report) : IProgress<T>

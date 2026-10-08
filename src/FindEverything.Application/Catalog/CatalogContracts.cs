@@ -64,6 +64,57 @@ public sealed record CatalogResult(
         Array.Empty<CatalogDirectoryExclusionIssue>();
 }
 
+/// <summary>
+/// Indicates that an existing catalog index cannot be loaded because either the
+/// database is missing or the requested root has never been published to it.
+/// </summary>
+public sealed class CatalogIndexUnavailableException : InvalidOperationException
+{
+    public CatalogIndexUnavailableException(
+        IndexRootAvailability availability,
+        string databasePath,
+        string rootPath)
+        : base(CreateMessage(availability, databasePath, rootPath))
+    {
+        if (availability == IndexRootAvailability.Available)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(availability),
+                availability,
+                "An available index cannot produce an unavailable-index exception.");
+        }
+
+        ArgumentException.ThrowIfNullOrWhiteSpace(databasePath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(rootPath);
+        Availability = availability;
+        DatabasePath = databasePath;
+        RootPath = rootPath;
+    }
+
+    public IndexRootAvailability Availability { get; }
+
+    public string DatabasePath { get; }
+
+    public string RootPath { get; }
+
+    private static string CreateMessage(
+        IndexRootAvailability availability,
+        string databasePath,
+        string rootPath) => availability switch
+    {
+        IndexRootAvailability.DatabaseMissing =>
+            $"The index database '{databasePath}' does not exist. Create the index before loading catalog data.",
+        IndexRootAvailability.RootNotIndexed =>
+            $"The exact root '{rootPath}' has not been indexed in database '{databasePath}'. Index this root before loading catalog data.",
+        IndexRootAvailability.Available =>
+            "The catalog index is available.",
+        _ => throw new ArgumentOutOfRangeException(
+            nameof(availability),
+            availability,
+            "Unknown index-root availability."),
+    };
+}
+
 public interface ICatalogService
 {
     Task<CatalogResult> LoadExistingAsync(

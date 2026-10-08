@@ -26,6 +26,10 @@ public interface IWorkspaceContext
     Task SaveAsync(
         WorkspaceSnapshot snapshot,
         CancellationToken cancellationToken = default);
+
+    Task UpdateAsync(
+        Func<WorkspaceSnapshot, WorkspaceSnapshot> update,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -91,6 +95,47 @@ public sealed class WorkspaceContext : IWorkspaceContext, IDisposable
             {
                 Changed?.Invoke(this, new WorkspaceChangedEventArgs(previous, normalized));
             }
+        }
+        finally
+        {
+            _saveGate.Release();
+        }
+    }
+
+    public async Task UpdateAsync(
+        Func<WorkspaceSnapshot, WorkspaceSnapshot> update,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(update);
+
+        await _saveGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var previous = Volatile.Read(ref _current);
+            var requested = update(previous)
+                ?? throw new InvalidOperationException("The workspace update returned null.");
+            ArgumentException.ThrowIfNullOrWhiteSpace(requested.DatabasePath);
+            var normalized = new WorkspaceSnapshot(
+                NormalizeOptional(requested.SelectedProfileId),
+                NormalizeOptionalPath(requested.RootPath),
+                Path.GetFullPath(requested.DatabasePath));
+            if (previous == normalized)
+            {
+                return;
+            }
+
+            await _settingsWriter.SaveAsync(
+                new UserSettingsUpdate(
+                    Workspace: new WorkspaceOptions
+                    {
+                        SelectedProfileId = normalized.SelectedProfileId,
+                        RootPath = normalized.RootPath,
+                        DatabasePath = normalized.DatabasePath,
+                    }),
+                cancellationToken).ConfigureAwait(false);
+
+            _ = Interlocked.Exchange(ref _current, normalized);
+            Changed?.Invoke(this, new WorkspaceChangedEventArgs(previous, normalized));
         }
         finally
         {

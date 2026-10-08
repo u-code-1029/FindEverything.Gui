@@ -14,6 +14,65 @@ namespace FindEverything.Infrastructure.FindEverything.Tests;
 public sealed class DirectDirectoryDiscoveryIntegrationTests
 {
     [Fact]
+    public async Task ScanAndLoad_writes_the_selected_database_and_the_same_root_loads_again()
+    {
+        using var workspace = new TestWorkspace();
+        var projectPath = Path.Combine(workspace.SourcePath, "2026", "0521_Project");
+        var siblingPath = Path.Combine(workspace.SourcePath, "2026", "0522_Sibling");
+        Directory.CreateDirectory(projectPath);
+        Directory.CreateDirectory(siblingPath);
+
+        var configuration = new ConfigurationBuilder().Build();
+        var services = new ServiceCollection();
+        services.AddSingleton(typeof(ILogger<>), typeof(NoOpLogger<>));
+        services
+            .AddFindEverythingApplication(configuration)
+            .AddFindEverythingInfrastructure()
+            .AddProfileRuntime();
+
+        await using var provider = services.BuildServiceProvider(new ServiceProviderOptions
+        {
+            ValidateOnBuild = true,
+            ValidateScopes = true,
+        });
+        var review = provider
+            .GetRequiredService<IProfileDefinitionCompiler>()
+            .Validate(CreateManifest(workspace.SourcePath));
+        Assert.True(
+            review.IsValid,
+            string.Join(
+                Environment.NewLine,
+                review.Diagnostics.Select(static diagnostic => diagnostic.Message)));
+        var profile = Assert.IsAssignableFrom<ILoadedProfile>(review.Profile);
+        provider.GetRequiredService<IProfileCatalogPublisher>().Publish(
+            new ProfileCatalogSnapshot([profile], [], DateTimeOffset.UtcNow));
+
+        var request = new CatalogRequest(
+            profile.Descriptor.Id,
+            workspace.SourcePath,
+            workspace.DatabasePath);
+        var service = provider.GetRequiredService<ICatalogService>();
+
+        var indexed = await service.ScanAndLoadAsync(request);
+
+        Assert.True(File.Exists(workspace.DatabasePath));
+        Assert.Equal(
+            global::FindEverything.Application.Indexing.IndexScanStatus.Completed,
+            Assert.IsType<global::FindEverything.Application.Indexing.IndexScanReport>(
+                indexed.ScanReport).Status);
+        Assert.Equal(
+            [projectPath, siblingPath],
+            indexed.Items.Select(static item => item.FullPath).Order().ToArray());
+
+        var loaded = await service.LoadExistingAsync(request);
+
+        Assert.Null(loaded.ScanReport);
+        Assert.Equal(
+            indexed.Items.Select(static item => item.FullPath).Order(),
+            loaded.Items.Select(static item => item.FullPath).Order());
+    }
+
+    [Fact]
     public async Task Discover_maps_terminal_directories_prunes_children_and_does_not_create_an_index()
     {
         using var workspace = new TestWorkspace();

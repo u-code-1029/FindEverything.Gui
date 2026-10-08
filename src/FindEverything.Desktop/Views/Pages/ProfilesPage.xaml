@@ -1565,7 +1565,7 @@
                                             <TextBlock
                                                 Margin="0,4,0,0"
                                                 Style="{StaticResource CaptionTextStyle}"
-                                                Text="빠른 불러오기에서 현재 폴더의 마지막 이름에만 적용됩니다."
+                                                Text="바로 스캔에서 현재 폴더의 마지막 이름에만 적용됩니다."
                                                 TextWrapping="Wrap" />
                                         </StackPanel>
                                         <DataGrid

@@ -396,6 +396,35 @@ public sealed class CatalogServiceTests
         Assert.Empty(trace.Events);
     }
 
+    [Theory]
+    [InlineData(IndexRootAvailability.DatabaseMissing, "does not exist")]
+    [InlineData(IndexRootAvailability.RootNotIndexed, "exact root")]
+    public async Task LoadExisting_reports_why_the_index_cannot_be_loaded_before_searching(
+        IndexRootAvailability availability,
+        string expectedMessage)
+    {
+        var root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "catalog-unavailable-root"));
+        var databasePath = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "catalog-unavailable.db"));
+        var sessionFactory = new FakeSessionFactory([], rootAvailability: availability);
+        var services = new ServiceCollection();
+        services.AddFindEverythingApplication(new ConfigurationBuilder().Build());
+        services.AddSingleton<IIndexSessionFactory>(sessionFactory);
+        services.AddSingleton<IDirectoryDiscoveryService, UnsupportedDiscoveryService>();
+        services.AddSingleton<IProfileResolver>(new FakeProfileResolver(new FakeProfile()));
+
+        await using var provider = services.BuildServiceProvider();
+        var exception = await Assert.ThrowsAsync<CatalogIndexUnavailableException>(() =>
+            provider.GetRequiredService<ICatalogService>().LoadExistingAsync(
+                new CatalogRequest("test", root, databasePath)));
+
+        Assert.Equal(availability, exception.Availability);
+        Assert.Equal(databasePath, exception.DatabasePath);
+        Assert.Equal(root, exception.RootPath);
+        Assert.Contains(expectedMessage, exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(root, sessionFactory.LastStatusRoot);
+        Assert.Null(sessionFactory.LastSearchRoot);
+    }
+
     [Fact]
     public async Task LoadExisting_does_not_apply_direct_discovery_directory_exclusions()
     {
@@ -423,6 +452,27 @@ public sealed class CatalogServiceTests
         Assert.Equal(directoryPath, Assert.Single(result.Items).FullPath);
         Assert.Equal(0, result.ExcludedDirectoryCount);
         Assert.Empty(result.DirectoryExclusionIssues);
+    }
+
+    [Fact]
+    public async Task LoadExisting_evaluates_the_root_candidate_even_when_it_has_no_index_row()
+    {
+        var root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "catalog-root-candidate"));
+        var services = new ServiceCollection();
+        services.AddFindEverythingApplication(new ConfigurationBuilder().Build());
+        services.AddSingleton<IIndexSessionFactory>(new FakeSessionFactory([]));
+        services.AddSingleton<IDirectoryDiscoveryService, UnsupportedDiscoveryService>();
+        services.AddSingleton<IProfileResolver>(new FakeProfileResolver(
+            new ExactPathProfile(root)));
+
+        await using var provider = services.BuildServiceProvider();
+        var result = await provider.GetRequiredService<ICatalogService>().LoadExistingAsync(
+            new CatalogRequest("test", root, "index.db"));
+
+        var item = Assert.Single(result.Items);
+        Assert.Equal(root, item.FullPath);
+        Assert.Equal(".", item.RelativePath);
+        Assert.Equal(1, result.CandidateCount);
     }
 
     [Fact]
@@ -495,18 +545,23 @@ public sealed class CatalogServiceTests
 
     private sealed class FakeSessionFactory(
         IReadOnlyList<IndexedDirectory> directories,
-        bool allowScan = false) : IIndexSessionFactory
+        bool allowScan = false,
+        IndexRootAvailability rootAvailability = IndexRootAvailability.Available) : IIndexSessionFactory
     {
         public int ScanCalls { get; private set; }
 
         public string? LastSearchRoot { get; private set; }
+
+        public string? LastStatusRoot { get; private set; }
 
         public IIndexSession Create(string databasePath) =>
             new FakeSession(
                 databasePath,
                 directories,
                 allowScan ? () => ScanCalls++ : null,
-                rootPath => LastSearchRoot = rootPath);
+                rootPath => LastSearchRoot = rootPath,
+                rootPath => LastStatusRoot = rootPath,
+                rootAvailability);
     }
 
     private sealed class ThrowingSessionFactory : IIndexSessionFactory
@@ -728,7 +783,9 @@ public sealed class CatalogServiceTests
         string databasePath,
         IReadOnlyList<IndexedDirectory> directories,
         Action? onScan,
-        Action<string> onSearch) : IIndexSession
+        Action<string> onSearch,
+        Action<string> onStatus,
+        IndexRootAvailability rootAvailability) : IIndexSession
     {
         public string DatabasePath { get; } = databasePath;
 
@@ -770,7 +827,21 @@ public sealed class CatalogServiceTests
 
         public Task<IndexRootStatus> GetRootStatusAsync(
             string rootPath,
-            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            onStatus(rootPath);
+            return Task.FromResult(new IndexRootStatus(
+                rootPath,
+                rootAvailability,
+                rootAvailability == IndexRootAvailability.Available ? Guid.NewGuid() : null,
+                rootAvailability == IndexRootAvailability.Available ? rootPath : null,
+                rootAvailability == IndexRootAvailability.Available ? IndexScanStatus.Completed : null,
+                rootAvailability == IndexRootAvailability.Available ? DateTimeOffset.UtcNow : null,
+                rootAvailability == IndexRootAvailability.Available ? directories.Count : 0,
+                0,
+                false));
+        }
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
@@ -837,6 +908,11 @@ public sealed class CatalogServiceTests
                 ]);
             }
 
+            if (name is not ("good" or "excluded"))
+            {
+                return ProfileMapResult.NoMatch();
+            }
+
             var values = new Dictionary<string, object?> { ["name"] = name };
             return ProfileMapResult.Success(new MappedProfileItem(
                 "test",
@@ -845,6 +921,27 @@ public sealed class CatalogServiceTests
                 new object(),
                 values));
         }
+    }
+
+    private sealed class ExactPathProfile(string expectedPath) : ILoadedProfile
+    {
+        public ProfileDescriptor Descriptor { get; } = new(
+            "test",
+            "1.0.0",
+            "Test",
+            ProfileCandidateKind.Directory,
+            [],
+            []);
+
+        public ProfileMapResult Map(ProfilePathCandidate candidate) =>
+            string.Equals(candidate.AbsolutePath, expectedPath, StringComparison.Ordinal)
+                ? ProfileMapResult.Success(new MappedProfileItem(
+                    "test",
+                    candidate.AbsolutePath,
+                    "root-rule",
+                    new object(),
+                    new Dictionary<string, object?>()))
+                : ProfileMapResult.NoMatch();
     }
 
     private sealed class PruningProfile : ILoadedProfile
