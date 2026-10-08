@@ -5,10 +5,12 @@
     xmlns:behaviors="clr-namespace:FindEverything.Desktop.Behaviors"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:localization="clr-namespace:FindEverything.Desktop.Localization"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
     Title="파일 찾기"
     Background="Transparent"
     Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+    localization:LocalizationScope.IsEnabled="True"
     PreviewKeyDown="OnPagePreviewKeyDown"
     ScrollViewer.CanContentScroll="False"
     mc:Ignorable="d">
@@ -55,7 +57,7 @@
                     <TextBlock
                         Margin="0,2,0,0"
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                        Text="{Binding RootPath, TargetNullValue=검색 위치가 선택되지 않았습니다.}"
+                        Text="{Binding RootPath, TargetNullValue={StaticResource Loc.Files.Root.None}}"
                         TextTrimming="CharacterEllipsis"
                         ToolTip="{Binding RootPath}" />
                     <TextBlock
@@ -313,6 +315,7 @@
                 AutomationProperties.Name="파일 검색 결과"
                 IsEnabled="{Binding CanSearch}"
                 ItemsSource="{Binding Items}"
+                ContextMenuOpening="OnResultsGridContextMenuOpening"
                 MouseDoubleClick="OnResultsGridMouseDoubleClick"
                 PreviewMouseRightButtonDown="OnResultsGridPreviewMouseRightButtonDown"
                 ScrollViewer.ScrollChanged="OnResultsGridScrollChanged"
@@ -323,12 +326,12 @@
                 Sorting="OnResultsGridSorting"
                 Visibility="{Binding HasIndex, Converter={StaticResource BooleanToVisibilityConverter}}">
                 <DataGrid.ContextMenu>
-                    <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
-                        <MenuItem Command="{Binding OpenSelectedFolderCommand}" Header="폴더 경로 열기" />
-                        <MenuItem Command="{Binding CopySelectedFolderPathCommand}" Header="폴더 경로 복사" />
+                    <ContextMenu DataContext="{Binding PlacementTarget, RelativeSource={RelativeSource Self}}">
+                        <MenuItem Command="{Binding DataContext.OpenItemFolderCommand}" CommandParameter="{Binding CurrentItem}" Header="폴더 경로 열기" />
+                        <MenuItem Command="{Binding DataContext.CopyItemFolderPathCommand}" CommandParameter="{Binding CurrentItem}" Header="폴더 경로 복사" />
                         <Separator />
-                        <MenuItem Command="{Binding CopySelectionCommand}" Header="선택 항목을 현재 출력 형식으로 복사" />
-                        <MenuItem Command="{Binding OpenSelectedCommand}" Header="항목 열기" />
+                        <MenuItem Command="{Binding DataContext.CopySelectionCommand}" Header="선택 항목을 현재 출력 형식으로 복사" />
+                        <MenuItem Command="{Binding DataContext.OpenItemCommand}" CommandParameter="{Binding CurrentItem}" Header="항목 열기" />
                     </ContextMenu>
                 </DataGrid.ContextMenu>
                 <DataGrid.Columns>
@@ -382,7 +385,7 @@
                         Margin="4,0,12,0"
                         VerticalAlignment="Center"
                         FontWeight="SemiBold"
-                        Text="{Binding SelectedCount, StringFormat={}{0:N0}개 선택}" />
+                        Text="{Binding SelectedCount, StringFormat={StaticResource Loc.Common.SelectedCountFormat}}" />
                     <ComboBox
                         Width="220"
                         Margin="0,0,8,0"

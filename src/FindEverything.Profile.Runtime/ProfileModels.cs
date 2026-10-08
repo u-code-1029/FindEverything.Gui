@@ -34,6 +34,17 @@ public sealed record ProfileFieldDescriptor(
     public ProfileFieldSourceKind SourceKind { get; init; } =
         ProfileFieldSourceKind.RegexCapture;
 
+    /// <summary>
+    /// Exact raw-string to display-string mappings. They are presentation metadata;
+    /// parsing, model creation, filtering by raw data, and profile logic keep the
+    /// captured value unchanged.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> ValueMappings { get; init; } =
+        new ReadOnlyDictionary<string, string>(
+            new Dictionary<string, string>(StringComparer.Ordinal));
+
+    public bool HasValueMappings => ValueMappings.Count > 0;
+
     public IReadOnlyList<string> EffectiveGroupNames =>
         GroupNames.Count > 0
             ? GroupNames
@@ -114,7 +125,14 @@ public sealed record MappedProfileItem(
     string FullPath,
     string MatchedRuleId,
     object Model,
-    IReadOnlyDictionary<string, object?> Values);
+    IReadOnlyDictionary<string, object?> Values)
+{
+    /// <summary>
+    /// Values prepared for display. This differs from <see cref="Values"/> only
+    /// where a field declares an exact value mapping.
+    /// </summary>
+    public IReadOnlyDictionary<string, object?> DisplayValues { get; init; } = Values;
+}
 
 public enum ProfileMapStatus
 {

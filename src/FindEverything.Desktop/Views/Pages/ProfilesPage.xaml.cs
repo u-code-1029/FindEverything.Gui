@@ -12,6 +12,19 @@ public partial class ProfilesPage
         DataContext = viewModel;
         InitializeComponent();
         viewModel.AssignmentPickerRequested += OnAssignmentPickerRequested;
+        viewModel.EditorStepChanged += OnEditorStepChanged;
+    }
+
+    private void OnEditorStepChanged(object? sender, EventArgs e)
+    {
+        if (Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished)
+        {
+            return;
+        }
+
+        _ = Dispatcher.BeginInvoke(
+            System.Windows.Threading.DispatcherPriority.Loaded,
+            new Action(() => ProfileEditorScrollViewer.ScrollToTop()));
     }
 
     private void OnAssignmentPickerRequested(object? sender, EventArgs e)

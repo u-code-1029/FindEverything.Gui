@@ -6,6 +6,7 @@ using FindEverything.Application.Catalog;
 using FindEverything.Application.Indexing;
 using FindEverything.Desktop.Configuration;
 using FindEverything.Desktop.Filtering;
+using FindEverything.Desktop.Localization;
 using FindEverything.Desktop.Services;
 using FindEverything.Profile.Runtime;
 using Microsoft.Extensions.Logging;
@@ -27,7 +28,9 @@ public partial class CatalogViewModel : ObservableObject
     private readonly ISnackbarService _snackbarService;
     private readonly ISelectionOutputFormatStore _outputFormatStore;
     private readonly ISelectionOutputFormatter _outputFormatter;
+    private readonly ICatalogSelectionExporter _selectionExporter;
     private readonly IClipboardService _clipboardService;
+    private readonly IAppLocalizer _localizer;
     private readonly ILogger<CatalogViewModel> _logger;
     private readonly Dispatcher _dispatcher;
     private List<CatalogItemViewModel> _loadedItems = [];
@@ -77,7 +80,13 @@ public partial class CatalogViewModel : ObservableObject
     private bool _hasLoadedItems;
 
     [ObservableProperty]
-    private string _filterSummary = "0개 항목";
+    private bool _hasValueMappings;
+
+    [ObservableProperty]
+    private bool _showOriginalValues;
+
+    [ObservableProperty]
+    private string _filterSummary = string.Empty;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanEditWorkspace))]
@@ -94,13 +103,13 @@ public partial class CatalogViewModel : ObservableObject
     private bool _isDetailsOpen;
 
     [ObservableProperty]
-    private string _progressMessage = "프로필과 검색 위치를 선택하세요.";
+    private string _progressMessage = string.Empty;
 
     [ObservableProperty]
-    private string _statusTitle = "준비";
+    private string _statusTitle = string.Empty;
 
     [ObservableProperty]
-    private string _statusMessage = "프로필로 폴더를 바로 찾거나 기존 인덱스에서 불러올 수 있습니다.";
+    private string _statusMessage = string.Empty;
 
     [ObservableProperty]
     private bool _isStatusOpen = true;
@@ -110,9 +119,13 @@ public partial class CatalogViewModel : ObservableObject
 
     public bool CanEditWorkspace => !IsBusy;
 
-    public string DetailsButtonText => IsDetailsOpen ? "간단히" : "자세히";
+    public string DetailsButtonText => IsDetailsOpen
+        ? L("Loc.Common.Compact", "간단히")
+        : L("Loc.Common.Details", "자세히");
 
     public bool HasSelection => SelectedCount > 0;
+
+    public IAppLocalizer Localizer => _localizer;
 
     public CatalogViewModel(
         ICatalogService catalogService,
@@ -126,7 +139,9 @@ public partial class CatalogViewModel : ObservableObject
         ISnackbarService snackbarService,
         ISelectionOutputFormatStore outputFormatStore,
         ISelectionOutputFormatter outputFormatter,
+        ICatalogSelectionExporter selectionExporter,
         IClipboardService clipboardService,
+        IAppLocalizer localizer,
         ILogger<CatalogViewModel> logger)
     {
         _catalogService = catalogService;
@@ -140,8 +155,18 @@ public partial class CatalogViewModel : ObservableObject
         _snackbarService = snackbarService;
         _outputFormatStore = outputFormatStore;
         _outputFormatter = outputFormatter;
+        _selectionExporter = selectionExporter;
         _clipboardService = clipboardService;
+        _localizer = localizer;
         _logger = logger;
+        _filterSummary = F("Loc.Catalog.Filter.Empty", "{0:N0}개 항목", 0);
+        _progressMessage = L(
+            "Loc.Catalog.Progress.SelectProfileAndRoot",
+            "프로필과 검색 위치를 선택하세요.");
+        _statusTitle = L("Loc.Common.Ready", "준비");
+        _statusMessage = L(
+            "Loc.Catalog.Status.Ready.Message",
+            "프로필로 폴더를 바로 찾거나 기존 인덱스에서 불러올 수 있습니다.");
         _dispatcher = System.Windows.Application.Current?.Dispatcher
             ?? Dispatcher.CurrentDispatcher;
         Items = CreateItemsView(_loadedItems);
@@ -159,8 +184,10 @@ public partial class CatalogViewModel : ObservableObject
         if (Profiles.Count == 0)
         {
             SetStatus(
-                "프로필 없음",
-                "로드된 프로필이 없습니다. 프로필 화면에서 진단을 확인하세요.",
+                L("Loc.Catalog.Status.NoProfiles", "프로필 없음"),
+                L(
+                    "Loc.Catalog.Status.NoProfiles.Message",
+                    "로드된 프로필이 없습니다. 프로필 화면에서 진단을 확인하세요."),
                 InfoBarSeverity.Warning);
         }
     }
@@ -182,7 +209,9 @@ public partial class CatalogViewModel : ObservableObject
         }
 
         _lastAutomaticLoadKey = null;
-        ProgressMessage = "페이지를 닫아 자동 불러오기를 취소하는 중…";
+        ProgressMessage = L(
+            "Loc.Catalog.Progress.CancelAutomaticLoadOnClose",
+            "페이지를 닫아 자동 불러오기를 취소하는 중…");
         _operationCoordinator.Cancel();
     }
 
@@ -193,12 +222,14 @@ public partial class CatalogViewModel : ObservableObject
         Fields = value?.Profile.Descriptor.Fields
             .OrderBy(static field => field.Order)
             .ToArray() ?? [];
+        HasValueMappings = Fields.Any(static field => field.HasValueMappings);
+        ShowOriginalValues = false;
         _loadedItems = [];
         Items = CreateItemsView(_loadedItems);
         SelectedItem = null;
         FilterText = string.Empty;
         HasLoadedItems = false;
-        FilterSummary = "0개 항목";
+        FilterSummary = F("Loc.Catalog.Filter.Empty", "{0:N0}개 항목", 0);
         SetSelection([]);
         RefreshOutputFormats();
         ScanCommand.NotifyCanExecuteChanged();
@@ -224,6 +255,16 @@ public partial class CatalogViewModel : ObservableObject
     }
 
     partial void OnFilterTextChanged(string value) => ApplyFilter();
+
+    partial void OnShowOriginalValuesChanged(bool value)
+    {
+        foreach (var item in _loadedItems)
+        {
+            item.SetShowOriginalValues(value);
+        }
+
+        ApplyFilter();
+    }
 
     private void OnProfileCatalogChanged(object? sender, ProfileCatalogChangedEventArgs eventArgs)
     {
@@ -275,19 +316,25 @@ public partial class CatalogViewModel : ObservableObject
     {
         var hadProfiles = Profiles.Count > 0;
         ApplyProfileSnapshot(snapshot, SelectedProfile?.Id);
-        if (!hadProfiles && Profiles.Count > 0 && StatusTitle == "프로필 없음")
+        if (!hadProfiles
+            && Profiles.Count > 0
+            && StatusTitle == L("Loc.Catalog.Status.NoProfiles", "프로필 없음"))
         {
             SetStatus(
-                "준비",
-                "새 프로필이 적용되었습니다. 검색 위치를 선택하세요.",
+                L("Loc.Common.Ready", "준비"),
+                L(
+                    "Loc.Catalog.Status.ProfileApplied",
+                    "새 프로필이 적용되었습니다. 검색 위치를 선택하세요."),
                 InfoBarSeverity.Informational);
             ScheduleAutomaticLoad();
         }
         else if (hadProfiles && Profiles.Count == 0)
         {
             SetStatus(
-                "프로필 없음",
-                "로드된 프로필이 없습니다. 프로필 화면에서 진단을 확인하세요.",
+                L("Loc.Catalog.Status.NoProfiles", "프로필 없음"),
+                L(
+                    "Loc.Catalog.Status.NoProfiles.Message",
+                    "로드된 프로필이 없습니다. 프로필 화면에서 진단을 확인하세요."),
                 InfoBarSeverity.Warning);
         }
     }
@@ -341,23 +388,29 @@ public partial class CatalogViewModel : ObservableObject
         if (IsLoadingExistingIndex
             && _operationCoordinator.CurrentKind == ApplicationOperationKind.IndexLoad)
         {
-            ProgressMessage = "기존 인덱스 불러오기를 취소하는 중…";
+            ProgressMessage = L(
+                "Loc.Catalog.Progress.CancelExistingLoad",
+                "기존 인덱스 불러오기를 취소하는 중…");
             await _operationCoordinator.CancelAndWaitAsync(TimeSpan.FromSeconds(30))
                 .ConfigureAwait(true);
             await Dispatcher.Yield(DispatcherPriority.Background);
         }
 
-        await RunOperationAsync("프로필로 빠르게 불러오기", discoverDirectly: true)
+        await RunOperationAsync(
+                L("Loc.Catalog.Operation.QuickLoad", "프로필로 빠르게 불러오기"),
+                discoverDirectly: true)
             .ConfigureAwait(true);
     }
 
     [RelayCommand(CanExecute = nameof(CanStart))]
-    private Task LoadAsync() => RunOperationAsync("기존 인덱스에서 불러오기", discoverDirectly: false);
+    private Task LoadAsync() => RunOperationAsync(
+        L("Loc.Catalog.Operation.LoadExisting", "기존 인덱스에서 불러오기"),
+        discoverDirectly: false);
 
     [RelayCommand(CanExecute = nameof(CanCancel))]
     private void Cancel()
     {
-        ProgressMessage = "작업을 취소하는 중입니다…";
+        ProgressMessage = L("Loc.Common.Cancelling", "작업을 취소하는 중입니다…");
         _operationCoordinator.Cancel();
     }
 
@@ -385,7 +438,10 @@ public partial class CatalogViewModel : ObservableObject
         catch (Exception exception)
         {
             _logger.LogWarning(exception, "Could not open folder {FolderPath}.", item.FullPath);
-            ShowSnackbar("폴더 열기 실패", exception.Message, ControlAppearance.Danger);
+            ShowSnackbar(
+                L("Loc.Files.Action.OpenFolderFailed", "폴더 열기 실패"),
+                exception.Message,
+                ControlAppearance.Danger);
         }
     }
 
@@ -401,20 +457,29 @@ public partial class CatalogViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanOpenSelected))]
     private void CopySelectedFolderPath()
     {
-        if (SelectedItem is null)
+        CopyItemFolderPath(SelectedItem);
+    }
+
+    [RelayCommand]
+    private void CopyItemFolderPath(CatalogItemViewModel? item)
+    {
+        if (item is null)
         {
             return;
         }
 
-        if (_clipboardService.TrySetText(SelectedItem.FullPath, out var errorMessage))
+        if (_clipboardService.TrySetText(item.FullPath, out var errorMessage))
         {
-            ShowSnackbar("폴더 경로 복사 완료", SelectedItem.FullPath, ControlAppearance.Secondary);
+            ShowSnackbar(
+                L("Loc.Files.Action.CopyFolderCompleted", "폴더 경로 복사 완료"),
+                item.FullPath,
+                ControlAppearance.Secondary);
         }
         else
         {
             SetStatus(
-                "폴더 경로 복사 실패",
-                errorMessage ?? "클립보드에 복사하지 못했습니다.",
+                L("Loc.Catalog.Action.CopyFolderFailed", "폴더 경로 복사 실패"),
+                errorMessage ?? L("Loc.Common.ClipboardFailed", "클립보드에 복사하지 못했습니다."),
                 InfoBarSeverity.Error);
         }
     }
@@ -422,31 +487,120 @@ public partial class CatalogViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanCopySelection))]
     private void CopySelection()
     {
-        var format = SelectedOutputFormat ?? SelectionOutputFormatDefaults.FullPathLines;
+        var format = SelectedOutputFormat
+            ?? SelectionOutputFormatDefaults.CreateFullPathLines(_localizer);
         try
         {
             var outputItems = _selectedItems.Select(item => new SelectionOutputItem(
                 item.FullPath,
                 item.FullPath,
                 Path.GetFileName(Path.TrimEndingDirectorySeparator(item.FullPath)),
-                item.Values));
+                item.OutputValues));
             var text = _outputFormatter.Format(format, outputItems);
             if (!_clipboardService.TrySetText(text, out var errorMessage))
             {
-                throw new InvalidOperationException(errorMessage ?? "클립보드에 복사하지 못했습니다.");
+                throw new InvalidOperationException(
+                    errorMessage
+                    ?? L("Loc.Common.ClipboardFailed", "클립보드에 복사하지 못했습니다."));
             }
 
             ShowSnackbar(
-                "선택 항목 복사 완료",
-                $"{SelectedCount:N0}개 항목을 '{format.DisplayName}' 형식으로 복사했습니다.",
+                L("Loc.Selection.CopyCompleted", "선택 항목 복사 완료"),
+                F(
+                    "Loc.Selection.CopyCompleted.Message",
+                    "{0:N0}개 항목을 '{1}' 형식으로 복사했습니다.",
+                    SelectedCount,
+                    format.DisplayName),
                 ControlAppearance.Success);
         }
         catch (Exception exception) when (
             exception is InvalidOperationException or FormatException or ArgumentException)
         {
             _logger.LogWarning(exception, "Could not format selected catalog items.");
-            SetStatus("선택 항목 복사 실패", exception.Message, InfoBarSeverity.Error);
+            SetStatus(
+                L("Loc.Selection.CopyFailed", "선택 항목 복사 실패"),
+                exception.Message,
+                InfoBarSeverity.Error);
         }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanCopySelection))]
+    private async Task ExportSelectionAsync()
+    {
+        var destination = _pickerService.PickCatalogExportPath(
+            $"FindEverything-catalog-{DateTime.Now:yyyyMMdd-HHmmss}.xlsx");
+        if (destination is null)
+        {
+            return;
+        }
+
+        // Capture the UI-owned collection and profile schema before yielding.
+        // The writer consumes this immutable snapshot on a background thread for
+        // XLSX files and through asynchronous file I/O for CSV files.
+        var selectedItems = _selectedItems.ToArray();
+        var fields = Fields.OrderBy(static field => field.Order).ToArray();
+        var headers = new[] { L("Loc.Catalog.Column.Status", "상태") }
+            .Concat(fields.Select(static field => field.Header))
+            .Append(L("Loc.Catalog.Column.FolderPath", "폴더 경로"))
+            .ToArray();
+        var rows = selectedItems
+            .Select(item => CreateExportRow(item, fields))
+            .ToArray();
+        var document = new CatalogSelectionExportDocument(
+            headers,
+            rows,
+            rows.Length);
+
+        try
+        {
+            await _selectionExporter.ExportAsync(
+                    destination.Path,
+                    destination.Format,
+                    document)
+                .ConfigureAwait(true);
+            ShowSnackbar(
+                L("Loc.Catalog.Export.Completed", "선택 항목 내보내기 완료"),
+                F(
+                    "Loc.Catalog.Export.Completed.Message",
+                    "{0:N0}개 항목을 저장했습니다: {1}",
+                    selectedItems.Length,
+                    destination.Path),
+                ControlAppearance.Success);
+        }
+        catch (Exception exception) when (
+            exception is IOException
+                or UnauthorizedAccessException
+                or InvalidOperationException
+                or ArgumentException)
+        {
+            _logger.LogWarning(
+                exception,
+                "Could not export selected catalog items to {ExportPath}.",
+                destination.Path);
+            SetStatus(
+                L("Loc.Catalog.Export.Failed", "선택 항목 내보내기 실패"),
+                exception.Message,
+                InfoBarSeverity.Error);
+        }
+    }
+
+    private static IReadOnlyList<string> CreateExportRow(
+        CatalogItemViewModel item,
+        IReadOnlyList<ProfileFieldDescriptor> fields)
+    {
+        var values = new string[fields.Count + 2];
+        values[0] = item.CoverageText;
+        for (var index = 0; index < fields.Count; index++)
+        {
+            values[index + 1] = item.ExportDisplayValues.TryGetValue(
+                fields[index].FieldId,
+                out var value)
+                ? value
+                : string.Empty;
+        }
+
+        values[^1] = item.FullPath;
+        return values;
     }
 
     public void SetSelection(IEnumerable<CatalogItemViewModel> items)
@@ -455,6 +609,7 @@ public partial class CatalogViewModel : ObservableObject
         _selectedItems = items.Distinct().ToArray();
         SelectedCount = _selectedItems.Count;
         CopySelectionCommand.NotifyCanExecuteChanged();
+        ExportSelectionCommand.NotifyCanExecuteChanged();
     }
 
     private bool CanStart() => !IsBusy && SelectedProfile is not null;
@@ -537,13 +692,17 @@ public partial class CatalogViewModel : ObservableObject
             if (isAutomatic)
             {
                 _lastAutomaticLoadKey = null;
-                ProgressMessage = "현재 작업이 끝나면 기존 인덱스를 자동으로 불러옵니다.";
+                ProgressMessage = L(
+                    "Loc.Catalog.Progress.AutoLoadDeferred",
+                    "현재 작업이 끝나면 기존 인덱스를 자동으로 불러옵니다.");
                 return;
             }
 
             SetStatus(
-                "다른 작업 진행 중",
-                "프로필 저장이 끝난 뒤 다시 시도하세요.",
+                L("Loc.Common.OperationInProgress", "다른 작업 진행 중"),
+                L(
+                    "Loc.Catalog.Status.WaitForProfileSave",
+                    "프로필 저장이 끝난 뒤 다시 시도하세요."),
                 InfoBarSeverity.Warning);
             return;
         }
@@ -552,7 +711,13 @@ public partial class CatalogViewModel : ObservableObject
         _isAutomaticIndexLoad = isAutomatic && !discoverDirectly;
         IsBusy = true;
         IsScanning = discoverDirectly;
-        SetStatus(operationName, $"{operationName} 작업을 시작했습니다.", InfoBarSeverity.Informational);
+        SetStatus(
+            operationName,
+            F(
+                "Loc.Catalog.Operation.Started",
+                "{0} 작업을 시작했습니다.",
+                operationName),
+            InfoBarSeverity.Informational);
         CatalogOperationProgressPump? progress = null;
         CatalogResultSession? resultSession = null;
         CatalogResult? result = null;
@@ -594,7 +759,8 @@ public partial class CatalogViewModel : ObservableObject
 
             progress.FlushAndClose();
             completionNotice = ApplyResult(
-                result ?? throw new InvalidOperationException("카탈로그 결과를 받지 못했습니다."),
+                result ?? throw new InvalidOperationException(
+                    L("Loc.Catalog.Error.NoResult", "카탈로그 결과를 받지 못했습니다.")),
                 discoverDirectly,
                 resultSession);
         }
@@ -604,22 +770,35 @@ public partial class CatalogViewModel : ObservableObject
             var partialResultCount = resultSession?.Items.Count ?? 0;
             var partialResultMessage = CreatePartialResultMessage(partialResultCount);
             SetStatus(
-                "취소됨",
-                $"{operationName} 작업이 취소되었습니다.{partialResultMessage}",
+                L("Loc.Common.Cancelled", "취소됨"),
+                F(
+                    "Loc.Catalog.Operation.Cancelled.Message",
+                    "{0} 작업이 취소되었습니다.{1}",
+                    operationName,
+                    partialResultMessage),
                 InfoBarSeverity.Warning);
             ProgressMessage = partialResultCount > 0
-                ? $"취소됨 · 부분 결과 {partialResultCount:N0}개"
-                : "취소됨";
+                ? F(
+                    "Loc.Catalog.Progress.CancelledPartial",
+                    "취소됨 · 부분 결과 {0:N0}개",
+                    partialResultCount)
+                : L("Loc.Common.Cancelled", "취소됨");
             ShowSnackbar(
-                "작업 취소",
-                $"{operationName} 작업을 취소했습니다.{partialResultMessage}",
+                L("Loc.Catalog.Operation.Cancelled", "작업 취소"),
+                F(
+                    "Loc.Catalog.Operation.Cancelled.Snackbar",
+                    "{0} 작업을 취소했습니다.{1}",
+                    operationName,
+                    partialResultMessage),
                 ControlAppearance.Caution);
         }
         catch (ApplicationOperationBusyException) when (isAutomatic)
         {
             progress?.FlushAndClose();
             _lastAutomaticLoadKey = null;
-            ProgressMessage = "현재 작업이 끝나면 기존 인덱스를 자동으로 불러옵니다.";
+            ProgressMessage = L(
+                "Loc.Catalog.Progress.AutoLoadDeferred",
+                "현재 작업이 끝나면 기존 인덱스를 자동으로 불러옵니다.");
         }
         catch (Exception exception)
         {
@@ -627,16 +806,22 @@ public partial class CatalogViewModel : ObservableObject
             _logger.LogError(exception, "{OperationName} operation failed.", operationName);
             var partialResultCount = resultSession?.Items.Count ?? 0;
             var partialResultMessage = CreatePartialResultMessage(partialResultCount);
+            var failureMessage = UserFacingExceptionLocalizer.TranslateOperationFailure(
+                _localizer,
+                exception);
             SetStatus(
-                "오류",
-                $"{exception.Message}{partialResultMessage}",
+                L("Loc.Catalog.Status.Error", "오류"),
+                $"{failureMessage}{partialResultMessage}",
                 InfoBarSeverity.Error);
             ProgressMessage = partialResultCount > 0
-                ? $"작업 실패 · 부분 결과 {partialResultCount:N0}개"
-                : "작업 실패";
+                ? F(
+                    "Loc.Catalog.Progress.FailedPartial",
+                    "작업 실패 · 부분 결과 {0:N0}개",
+                    partialResultCount)
+                : L("Loc.Catalog.Progress.Failed", "작업 실패");
             ShowSnackbar(
-                $"{operationName} 실패",
-                $"{exception.Message}{partialResultMessage}",
+                F("Loc.Catalog.Operation.Failed", "{0} 실패", operationName),
+                $"{failureMessage}{partialResultMessage}",
                 ControlAppearance.Danger);
         }
         finally
@@ -739,7 +924,9 @@ public partial class CatalogViewModel : ObservableObject
         }
 
         await RunOperationAsync(
-                "기존 인덱스 자동 불러오기",
+                L(
+                    "Loc.Catalog.Operation.AutomaticLoadExisting",
+                    "기존 인덱스 자동 불러오기"),
                 discoverDirectly: false,
                 isAutomatic: true)
             .ConfigureAwait(true);
@@ -748,9 +935,12 @@ public partial class CatalogViewModel : ObservableObject
     private static CatalogRequest CreateRequest(WorkspaceSelection workspace) =>
         new(workspace.ProfileId, workspace.RootPath, workspace.DatabasePath);
 
-    private static string CreatePartialResultMessage(int partialResultCount) =>
+    private string CreatePartialResultMessage(int partialResultCount) =>
         partialResultCount > 0
-        ? $" 발견한 부분 결과 {partialResultCount:N0}개는 목록에 유지됩니다."
+        ? F(
+            "Loc.Catalog.Result.PartialRetained",
+            " 발견한 부분 결과 {0:N0}개는 목록에 유지됩니다.",
+            partialResultCount)
         : string.Empty;
 
     private bool ApplyPendingProfileSnapshot()
@@ -769,17 +959,21 @@ public partial class CatalogViewModel : ObservableObject
         }
 
         SetStatus(
-            "프로필 변경됨",
-            "작업 중 프로필 구성이 변경되어 이전 규칙의 결과를 비웠습니다. 다시 불러오세요.",
+            L("Loc.Catalog.Status.ProfileChanged", "프로필 변경됨"),
+            L(
+                "Loc.Catalog.Status.ProfileChanged.Message",
+                "작업 중 프로필 구성이 변경되어 이전 규칙의 결과를 비웠습니다. 다시 불러오세요."),
             InfoBarSeverity.Warning);
-        ProgressMessage = "프로필이 변경되었습니다.";
+        ProgressMessage = L(
+            "Loc.Catalog.Progress.ProfileChanged",
+            "프로필이 변경되었습니다.");
         return true;
     }
 
     private CatalogOperationProgressPump CreateProgress(CatalogResultSession session) =>
         new(
             _dispatcher,
-            (message, matchedItems) => ApplyProgress(session, message, matchedItems),
+            (progress, matchedItems) => ApplyProgress(session, progress, matchedItems),
             exception => HandleProgressDisplayFailure(session, exception));
 
     private CatalogResultSession BeginResultSession()
@@ -801,7 +995,7 @@ public partial class CatalogViewModel : ObservableObject
 
     private void ApplyProgress(
         CatalogResultSession session,
-        string? message,
+        CatalogOperationProgress? progress,
         IReadOnlyList<CatalogItem> matchedItems)
     {
         if (!ReferenceEquals(_activeResultSession, session)
@@ -811,9 +1005,11 @@ public partial class CatalogViewModel : ObservableObject
             return;
         }
 
-        if (!string.IsNullOrWhiteSpace(message))
+        if (progress is not null)
         {
-            ProgressMessage = message;
+            ProgressMessage = FormatProgress(
+                progress,
+                session.Items.Count + matchedItems.Count);
         }
 
         if (matchedItems.Count == 0)
@@ -824,12 +1020,57 @@ public partial class CatalogViewModel : ObservableObject
         // Materialize before mutating the backing list. If one item cannot be
         // formatted, the batch is rejected as a whole and the view stays in sync.
         var viewModels = matchedItems.Select(item =>
-            new CatalogItemViewModel(item, session.Fields)).ToList();
+            CreateItemViewModel(item, session.Fields)).ToList();
         var selectedPath = SelectedItem?.FullPath;
         session.Items.AddRange(viewModels);
         HasLoadedItems = true;
         ApplyFilter(selectedPath);
     }
+
+    private string FormatProgress(
+        CatalogOperationProgress progress,
+        int matchedCount) =>
+        progress.Phase switch
+        {
+            CatalogOperationPhase.Preparing when IsScanning =>
+                L(
+                    "Loc.Catalog.Progress.PreparingQuickLoad",
+                    "프로필 기반 빠른 불러오기를 준비하고 있습니다."),
+            CatalogOperationPhase.Preparing =>
+                L(
+                    "Loc.Catalog.Progress.PreparingExistingIndex",
+                    "프로필과 기존 인덱스를 준비하고 있습니다."),
+            CatalogOperationPhase.Scanning when progress.ScanProgress is { } scan =>
+                F(
+                    "Loc.Catalog.Progress.IndexScanning",
+                    "폴더 {0:N0}개, 항목 {1:N0}개를 확인했습니다.",
+                    scan.Directories,
+                    scan.Entries),
+            CatalogOperationPhase.Scanning =>
+                F(
+                    "Loc.Catalog.Progress.DirectoryScanning",
+                    "폴더 {0:N0}개를 확인했습니다.",
+                    progress.ProcessedItems),
+            CatalogOperationPhase.Searching =>
+                L(
+                    "Loc.Catalog.Progress.SearchingIndex",
+                    "인덱스에서 폴더를 조회하고 있습니다."),
+            CatalogOperationPhase.Mapping when matchedCount > 0 =>
+                F(
+                    "Loc.Catalog.Progress.MappingWithMatches",
+                    "일치 {0:N0}개 · 경로 {1:N0}개를 판별했습니다.",
+                    matchedCount,
+                    progress.ProcessedItems),
+            CatalogOperationPhase.Mapping =>
+                F(
+                    "Loc.Catalog.Progress.Mapping",
+                    "경로 {0:N0}개를 프로필 규칙으로 판별했습니다.",
+                    progress.ProcessedItems),
+            _ => F(
+                "Loc.Catalog.Progress.Processed",
+                "{0:N0}개 항목을 처리했습니다.",
+                progress.ProcessedItems),
+        };
 
     private void EndResultSession(CatalogResultSession? session)
     {
@@ -849,7 +1090,9 @@ public partial class CatalogViewModel : ObservableObject
         _logger.LogWarning(exception, "Could not render live catalog results.");
         if (ReferenceEquals(_activeResultSession, session))
         {
-            ProgressMessage = "실시간 표시를 일시 중단했습니다. 완료 후 전체 결과를 표시합니다.";
+            ProgressMessage = L(
+                "Loc.Catalog.Progress.LiveDisplaySuspended",
+                "실시간 표시를 일시 중단했습니다. 완료 후 전체 결과를 표시합니다.");
         }
     }
 
@@ -863,11 +1106,15 @@ public partial class CatalogViewModel : ObservableObject
         if (!Fields.SequenceEqual(fields))
         {
             Fields = fields;
+            HasValueMappings = Fields.Any(static field => field.HasValueMappings);
         }
         if (!ReferenceEquals(_activeResultSession, resultSession)
             || !ReferenceEquals(_loadedItems, resultSession.Items))
         {
-            throw new InvalidOperationException("구조화 결과 세션이 작업 도중 변경되었습니다.");
+            throw new InvalidOperationException(
+                L(
+                    "Loc.Catalog.Error.ResultSessionChanged",
+                    "구조화 결과 세션이 작업 도중 변경되었습니다."));
         }
 
         // The final result remains authoritative. Reconcile the same backing list
@@ -880,13 +1127,16 @@ public partial class CatalogViewModel : ObservableObject
         {
             resultSession.Items.Clear();
             resultSession.Items.AddRange(result.Items.Select(item =>
-                new CatalogItemViewModel(item, fields)));
+                CreateItemViewModel(item, fields)));
         }
 
         _loadedItems = resultSession.Items;
         HasLoadedItems = _loadedItems.Count > 0;
         ApplyFilter(selectedPath);
-        ProgressMessage = $"{_loadedItems.Count:N0}개 항목을 불러왔습니다.";
+        ProgressMessage = F(
+            "Loc.Catalog.Progress.Loaded",
+            "{0:N0}개 항목을 불러왔습니다.",
+            _loadedItems.Count);
 
         var scanIncomplete = result.ScanReport is { } scanReport
             && (scanReport.Status != IndexScanStatus.Completed
@@ -904,37 +1154,76 @@ public partial class CatalogViewModel : ObservableObject
             : InfoBarSeverity.Success;
         var scanSummary = result.ScanReport is null
             ? string.Empty
-            : $" · 인덱싱 상태 {result.ScanReport.Status} · 오류 {result.ScanReport.Errors.Count:N0}";
+            : F(
+                "Loc.Catalog.Result.ScanSummary",
+                " · 인덱싱 상태 {0} · 오류 {1:N0}",
+                result.ScanReport.Status,
+                result.ScanReport.Errors.Count);
         var discoverySummary = result.DiscoveryReport is null
             ? string.Empty
-            : $" · 방문 폴더 {result.DiscoveryReport.Progress.Directories:N0}"
-              + $" · 하위 탐색 생략 {result.DiscoveryReport.Progress.PrunedDirectories:N0}"
-              + $" · 오류 {result.DiscoveryReport.Progress.ErrorCount:N0}"
-              + (discoveredDirectly
-                  ? $" · 소요 {CatalogElapsedTimeFormatter.Format(result.DiscoveryReport.Progress.Elapsed)}"
-                  : string.Empty);
+            : F(
+                "Loc.Catalog.Result.DiscoverySummary",
+                " · 방문 폴더 {0:N0} · 하위 탐색 생략 {1:N0} · 오류 {2:N0}{3}",
+                result.DiscoveryReport.Progress.Directories,
+                result.DiscoveryReport.Progress.PrunedDirectories,
+                result.DiscoveryReport.Progress.ErrorCount,
+                discoveredDirectly
+                    ? F(
+                        "Loc.Catalog.Result.ElapsedSuffix",
+                        " · 소요 {0}",
+                        FormatElapsed(result.DiscoveryReport.Progress.Elapsed))
+                    : string.Empty);
         var exclusionSummary = discoveredDirectly
-            ? $" · 이름 규칙 제외 {result.ExcludedDirectoryCount:N0}"
-              + (exclusionIncomplete
-                  ? $" · 제외 규칙 경고 {result.DirectoryExclusionIssues.Count:N0}"
-                  : string.Empty)
+            ? F(
+                "Loc.Catalog.Result.ExclusionSummary",
+                " · 이름 규칙 제외 {0:N0}{1}",
+                result.ExcludedDirectoryCount,
+                exclusionIncomplete
+                    ? F(
+                        "Loc.Catalog.Result.ExclusionWarningSuffix",
+                        " · 제외 규칙 경고 {0:N0}",
+                        result.DirectoryExclusionIssues.Count)
+                    : string.Empty)
             : string.Empty;
         var statusTitle = incomplete
-            ? "부분 결과"
+            ? L("Loc.Catalog.Result.Partial", "부분 결과")
             : discoveredDirectly
-                ? "빠른 불러오기 완료"
-                : "기존 인덱스 불러오기 완료";
-        var statusMessage = $"후보 {result.CandidateCount:N0} · 일치 {result.Items.Count:N0} · 규칙 외 {result.NoMatchCount:N0} · 변환 오류 {result.InvalidItems.Count:N0}{exclusionSummary}{discoverySummary}{scanSummary}"
-            + (result.HasPendingScopes ? " · 아직 인덱싱되지 않은 범위가 있습니다." : string.Empty);
+                ? L("Loc.Catalog.Result.QuickLoadCompleted", "빠른 불러오기 완료")
+                : L("Loc.Catalog.Result.ExistingLoadCompleted", "기존 인덱스 불러오기 완료");
+        var statusMessage = F(
+            "Loc.Catalog.Result.Summary",
+            "후보 {0:N0} · 일치 {1:N0} · 규칙 외 {2:N0} · 변환 오류 {3:N0}{4}{5}{6}{7}",
+            result.CandidateCount,
+            result.Items.Count,
+            result.NoMatchCount,
+            result.InvalidItems.Count,
+            exclusionSummary,
+            discoverySummary,
+            scanSummary,
+            result.HasPendingScopes
+                ? L(
+                    "Loc.Catalog.Result.PendingScopesSuffix",
+                    " · 아직 인덱싱되지 않은 범위가 있습니다.")
+                : string.Empty);
         SetStatus(statusTitle, statusMessage, severity);
         var completionElapsedSummary = discoveredDirectly && result.DiscoveryReport is { } report
-            ? $" 소요 {CatalogElapsedTimeFormatter.Format(report.Progress.Elapsed)}"
+            ? F(
+                "Loc.Catalog.Result.CompletionElapsedSuffix",
+                " 소요 {0}",
+                FormatElapsed(report.Progress.Elapsed))
             : string.Empty;
         return new ScanCompletionNotice(
             statusTitle,
-            $"프로필 규칙에 맞는 {result.Items.Count:N0}개 폴더를 찾았습니다."
-                + completionElapsedSummary
-                + (incomplete ? " 일부 경로는 확인이 필요합니다." : string.Empty),
+            F(
+                "Loc.Catalog.Result.CompletionNotice",
+                "프로필 규칙에 맞는 {0:N0}개 폴더를 찾았습니다.{1}{2}",
+                result.Items.Count,
+                completionElapsedSummary,
+                incomplete
+                    ? L(
+                        "Loc.Catalog.Result.IncompleteSuffix",
+                        " 일부 경로는 확인이 필요합니다.")
+                    : string.Empty),
             incomplete);
     }
 
@@ -968,8 +1257,12 @@ public partial class CatalogViewModel : ObservableObject
             : Items.Cast<CatalogItemViewModel>().FirstOrDefault(item =>
                 string.Equals(item.FullPath, selectedPath, StringComparison.OrdinalIgnoreCase));
         FilterSummary = TextFilter.Normalize(FilterText).Length == 0
-            ? $"{_loadedItems.Count:N0}개 항목"
-            : $"{Items.Count:N0} / {_loadedItems.Count:N0}개 항목";
+            ? F("Loc.Catalog.Filter.Empty", "{0:N0}개 항목", _loadedItems.Count)
+            : F(
+                "Loc.Catalog.Filter.Active",
+                "{0:N0} / {1:N0}개 항목",
+                Items.Count,
+                _loadedItems.Count);
     }
 
     private ListCollectionView CreateItemsView(List<CatalogItemViewModel> items)
@@ -981,22 +1274,37 @@ public partial class CatalogViewModel : ObservableObject
         return view;
     }
 
+    private CatalogItemViewModel CreateItemViewModel(
+        CatalogItem item,
+        IReadOnlyList<ProfileFieldDescriptor> fields)
+    {
+        var viewModel = new CatalogItemViewModel(item, fields, _localizer);
+        viewModel.SetShowOriginalValues(ShowOriginalValues);
+        return viewModel;
+    }
+
     private WorkspaceSelection ValidateWorkspace(bool requiresDatabase)
     {
         if (SelectedProfile is null)
         {
-            throw new InvalidOperationException("검색 프로필을 선택하세요.");
+            throw new InvalidOperationException(
+                L("Loc.Catalog.Error.SelectProfile", "검색 프로필을 선택하세요."));
         }
 
         if (string.IsNullOrWhiteSpace(RootPath))
         {
-            throw new InvalidOperationException("검색할 루트 폴더를 선택하세요.");
+            throw new InvalidOperationException(
+                L("Loc.Catalog.Error.SelectRoot", "검색할 루트 폴더를 선택하세요."));
         }
 
         var rootPath = Path.GetFullPath(RootPath);
         if (!Directory.Exists(rootPath))
         {
-            throw new DirectoryNotFoundException($"루트 폴더를 찾을 수 없습니다: {rootPath}");
+            throw new DirectoryNotFoundException(
+                F(
+                    "Loc.Catalog.Error.RootNotFound",
+                    "루트 폴더를 찾을 수 없습니다: {0}",
+                    rootPath));
         }
 
         var databasePath = string.IsNullOrWhiteSpace(DatabasePath)
@@ -1004,7 +1312,10 @@ public partial class CatalogViewModel : ObservableObject
             : Path.GetFullPath(DatabasePath);
         if (requiresDatabase && string.IsNullOrWhiteSpace(DatabasePath))
         {
-            throw new InvalidOperationException("인덱스 데이터베이스 경로를 선택하세요.");
+            throw new InvalidOperationException(
+                L(
+                    "Loc.Catalog.Error.SelectDatabase",
+                    "인덱스 데이터베이스 경로를 선택하세요."));
         }
 
         var normalizedRoot = Path.TrimEndingDirectorySeparator(rootPath);
@@ -1017,7 +1328,9 @@ public partial class CatalogViewModel : ObservableObject
                 || databasePath.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase))
             {
                 throw new InvalidOperationException(
-                    "인덱스 데이터베이스는 검색 루트 밖에 저장해야 합니다.");
+                    L(
+                        "Loc.Catalog.Error.DatabaseInsideRoot",
+                        "인덱스 데이터베이스는 검색 루트 밖에 저장해야 합니다."));
             }
         }
 
@@ -1036,12 +1349,15 @@ public partial class CatalogViewModel : ObservableObject
             cancellationToken).ConfigureAwait(false);
     }
 
-    private static void EnsureDatabaseDirectory(string databasePath)
+    private void EnsureDatabaseDirectory(string databasePath)
     {
         var directory = Path.GetDirectoryName(databasePath);
         if (string.IsNullOrWhiteSpace(directory))
         {
-            throw new InvalidOperationException("데이터베이스의 상위 폴더를 확인할 수 없습니다.");
+            throw new InvalidOperationException(
+                L(
+                    "Loc.Catalog.Error.DatabaseParentMissing",
+                    "데이터베이스의 상위 폴더를 확인할 수 없습니다."));
         }
 
         Directory.CreateDirectory(directory);
@@ -1061,6 +1377,47 @@ public partial class CatalogViewModel : ObservableObject
         ControlAppearance appearance) =>
         _snackbarService.Show(title, message, appearance, null, TimeSpan.FromSeconds(4));
 
+    private string L(string key, string koreanFallback) =>
+        _localizer.Get(key, koreanFallback);
+
+    private string F(
+        string key,
+        string koreanFallback,
+        params object?[] arguments) =>
+        _localizer.Format(key, koreanFallback, arguments);
+
+    private string FormatElapsed(TimeSpan elapsed)
+    {
+        if (elapsed < TimeSpan.Zero)
+        {
+            elapsed = TimeSpan.Zero;
+        }
+
+        if (elapsed.TotalHours >= 1)
+        {
+            return F(
+                "Loc.Catalog.Elapsed.Hours",
+                "{0:0}시간 {1:00}분 {2:00.00}초",
+                (long)elapsed.TotalHours,
+                elapsed.Minutes,
+                elapsed.Seconds + elapsed.Milliseconds / 1000d);
+        }
+
+        if (elapsed.TotalMinutes >= 1)
+        {
+            return F(
+                "Loc.Catalog.Elapsed.Minutes",
+                "{0:0}분 {1:00.00}초",
+                (long)elapsed.TotalMinutes,
+                elapsed.Seconds + elapsed.Milliseconds / 1000d);
+        }
+
+        return F(
+            "Loc.Catalog.Elapsed.Seconds",
+            "{0:0.00}초",
+            elapsed.TotalSeconds);
+    }
+
     private sealed record CatalogResultSession(
         long Version,
         List<CatalogItemViewModel> Items,
@@ -1074,15 +1431,15 @@ public partial class CatalogViewModel : ObservableObject
         private readonly Queue<CatalogItem> _pendingItems = new();
         private readonly Dispatcher _dispatcher;
         private readonly DispatcherTimer _drainTimer;
-        private readonly Action<string?, IReadOnlyList<CatalogItem>> _applyProgress;
+        private readonly Action<CatalogOperationProgress?, IReadOnlyList<CatalogItem>> _applyProgress;
         private readonly Action<Exception> _reportFailure;
-        private string? _latestMessage;
+        private CatalogOperationProgress? _latestProgress;
         private bool _drainScheduled;
         private bool _closed;
 
         public CatalogOperationProgressPump(
             Dispatcher dispatcher,
-            Action<string?, IReadOnlyList<CatalogItem>> applyProgress,
+            Action<CatalogOperationProgress?, IReadOnlyList<CatalogItem>> applyProgress,
             Action<Exception> reportFailure)
         {
             _dispatcher = dispatcher;
@@ -1108,7 +1465,7 @@ public partial class CatalogViewModel : ObservableObject
                     return;
                 }
 
-                _latestMessage = value.Message;
+                _latestProgress = value;
                 if (value.MatchedItem is { } item)
                 {
                     _pendingItems.Enqueue(item);
@@ -1136,7 +1493,7 @@ public partial class CatalogViewModel : ObservableObject
             }
 
             List<CatalogItem> batch;
-            string? message;
+            CatalogOperationProgress? progress;
             lock (_gate)
             {
                 if (_closed)
@@ -1146,14 +1503,14 @@ public partial class CatalogViewModel : ObservableObject
 
                 _closed = true;
                 batch = DrainPendingItems(int.MaxValue);
-                message = _latestMessage;
-                _latestMessage = null;
+                progress = _latestProgress;
+                _latestProgress = null;
                 _drainScheduled = false;
             }
 
             _drainTimer.Stop();
             _drainTimer.Tick -= OnDrainTimerTick;
-            ApplySafely(message, batch);
+            ApplySafely(progress, batch);
         }
 
         private void ScheduleDrain()
@@ -1193,7 +1550,7 @@ public partial class CatalogViewModel : ObservableObject
         private void OnDrainTimerTick(object? sender, EventArgs eventArgs)
         {
             List<CatalogItem> batch;
-            string? message;
+            CatalogOperationProgress? progress;
             bool stopTimer;
             lock (_gate)
             {
@@ -1205,8 +1562,8 @@ public partial class CatalogViewModel : ObservableObject
                 }
 
                 batch = DrainPendingItems(DrainBatchSize);
-                message = _latestMessage;
-                _latestMessage = null;
+                progress = _latestProgress;
+                _latestProgress = null;
                 stopTimer = _pendingItems.Count == 0;
                 if (stopTimer)
                 {
@@ -1219,14 +1576,16 @@ public partial class CatalogViewModel : ObservableObject
                 _drainTimer.Stop();
             }
 
-            ApplySafely(message, batch);
+            ApplySafely(progress, batch);
         }
 
-        private void ApplySafely(string? message, IReadOnlyList<CatalogItem> batch)
+        private void ApplySafely(
+            CatalogOperationProgress? progress,
+            IReadOnlyList<CatalogItem> batch)
         {
             try
             {
-                _applyProgress(message, batch);
+                _applyProgress(progress, batch);
             }
             catch (Exception exception)
             {
@@ -1241,7 +1600,7 @@ public partial class CatalogViewModel : ObservableObject
             {
                 _closed = true;
                 _pendingItems.Clear();
-                _latestMessage = null;
+                _latestProgress = null;
                 _drainScheduled = false;
             }
 

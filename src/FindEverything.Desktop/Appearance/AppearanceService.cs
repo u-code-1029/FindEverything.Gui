@@ -10,6 +10,8 @@ public interface IAppearanceService
     void Attach(FluentWindow window);
 
     void Apply(FluentWindow window, AppearanceOptions options);
+
+    void ApplyToAttachedWindow(AppearanceOptions options);
 }
 
 public sealed class AppearanceService : IAppearanceService, IDisposable
@@ -22,13 +24,7 @@ public sealed class AppearanceService : IAppearanceService, IDisposable
     {
         ArgumentNullException.ThrowIfNull(monitor);
         _subscription = monitor.OnChange(options =>
-        {
-            var window = Volatile.Read(ref _attachedWindow);
-            if (window is not null)
-            {
-                Apply(window, options);
-            }
-        });
+            ApplyToAttachedWindow(options));
     }
 
     public void Attach(FluentWindow window)
@@ -78,6 +74,16 @@ public sealed class AppearanceService : IAppearanceService, IDisposable
                     nameof(options),
                     options.Theme,
                     "지원되지 않는 테마 설정입니다.");
+        }
+    }
+
+    public void ApplyToAttachedWindow(AppearanceOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        var window = Volatile.Read(ref _attachedWindow);
+        if (window is not null)
+        {
+            Apply(window, options);
         }
     }
 

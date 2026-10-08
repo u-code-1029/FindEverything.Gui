@@ -231,7 +231,7 @@ public sealed class ProfileRegexDebugBuilderTests
     [Fact]
     public void Directory_exclusion_test_result_reports_leaf_match_and_direct_scan_scope()
     {
-        var result = ProfilesViewModel.BuildDirectoryExclusionTestResult(
+        var result = ProfilePlaygroundEvaluator.BuildDirectoryExclusionTestResult(
             "name",
             ruleCount: 1,
             new ExcludingProfile());
@@ -253,13 +253,13 @@ public sealed class ProfileRegexDebugBuilderTests
             "parent",
             "name"));
 
-        Assert.Equal("name", ProfilesViewModel.GetDirectoryLeafName(canonicalPath));
+        Assert.Equal("name", ProfilePlaygroundEvaluator.GetDirectoryLeafName(canonicalPath));
         Assert.Equal(
             "name",
-            ProfilesViewModel.GetDirectoryLeafName(@"\\server\share\parent\name\"));
+            ProfilePlaygroundEvaluator.GetDirectoryLeafName(@"\\server\share\parent\name\"));
         Assert.Equal(
             string.Empty,
-            ProfilesViewModel.GetDirectoryLeafName(@"\\server\share\"));
+            ProfilePlaygroundEvaluator.GetDirectoryLeafName(@"\\server\share\"));
     }
 
     private static ProfileRegexRuleManifest Rule(

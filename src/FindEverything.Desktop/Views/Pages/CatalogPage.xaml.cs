@@ -9,6 +9,7 @@ namespace FindEverything.Desktop.Views.Pages;
 public partial class CatalogPage
 {
     private readonly CatalogViewModel _viewModel;
+    private CatalogItemViewModel? _pointerContextItem;
 
     public CatalogPage(
         CatalogViewModel viewModel,
@@ -67,6 +68,7 @@ public partial class CatalogPage
         object sender,
         MouseButtonEventArgs e)
     {
+        _pointerContextItem = null;
         if (e.OriginalSource is not System.Windows.DependencyObject source
             || System.Windows.Controls.ItemsControl.ContainerFromElement(ResultsGrid, source)
                 is not System.Windows.Controls.DataGridRow row)
@@ -74,14 +76,34 @@ public partial class CatalogPage
             return;
         }
 
+        _pointerContextItem = row.Item as CatalogItemViewModel;
         if (!row.IsSelected)
         {
             ResultsGrid.SelectedItems.Clear();
             row.IsSelected = true;
+            ResultsGrid.SelectedItem = row.Item;
         }
 
-        ResultsGrid.SelectedItem = row.Item;
+        // Keep an existing multi-selection intact. Context-menu actions receive
+        // CurrentItem, while selection-wide actions continue to use SelectedItems.
+        ResultsGrid.CurrentItem = row.Item;
         row.Focus();
+    }
+
+    private void OnResultsGridContextMenuOpening(
+        object sender,
+        System.Windows.Controls.ContextMenuEventArgs e)
+    {
+        if (e.CursorLeft < 0)
+        {
+            // Keyboard invocation uses the DataGrid's current row.
+            e.Handled = ResultsGrid.CurrentItem is not CatalogItemViewModel;
+            return;
+        }
+
+        // The menu is row-specific. Do not reuse the previous CurrentItem when
+        // the pointer is over a header, scrollbar, or empty grid area.
+        e.Handled = _pointerContextItem is null;
     }
 
     private void OnSelectAllClick(object sender, System.Windows.RoutedEventArgs e) =>

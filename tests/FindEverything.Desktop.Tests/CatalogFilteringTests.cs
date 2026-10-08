@@ -36,7 +36,8 @@ public sealed class CatalogFilteringTests
                 new object(),
                 values,
                 CoveragePending: false),
-            fields);
+            fields,
+            new TestAppLocalizer());
 
         var displayedAmount = ((IFormattable)values["amount"]!).ToString(
             "N2",
@@ -45,6 +46,7 @@ public sealed class CatalogFilteringTests
         Assert.Equal("2026-10-07", item.DisplayValues["collectedOn"]);
         Assert.Equal(displayedAmount, item.DisplayValues["amount"]);
         Assert.Equal("—", item.DisplayValues["note"]);
+        Assert.Same(item.DisplayValues, item.ExportDisplayValues);
         Assert.True(item.Matches("  APOLLO  "));
         Assert.True(item.Matches("2026-10-07"));
         Assert.True(item.Matches(displayedAmount));
@@ -54,6 +56,60 @@ public sealed class CatalogFilteringTests
         Assert.True(item.Matches("Apollo 2026-10-07"));
         Assert.False(item.Matches("Apollo not-present"));
         Assert.False(item.Matches("not-present"));
+    }
+
+    [Fact]
+    public void Catalog_item_uses_mapped_values_by_default_and_switches_every_output_to_raw()
+    {
+        var field = new ProfileFieldDescriptor(
+            "owner",
+            "alias",
+            "담당자",
+            0,
+            Required: true,
+            ProfileFieldValueKind.String,
+            IsNullable: false,
+            ParseFormat: null,
+            DisplayFormat: null)
+        {
+            ValueMappings = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["ZX-42"] = "홍길동",
+            },
+        };
+        var item = new CatalogItemViewModel(
+            new CatalogItem(
+                @"C:\Archive\A",
+                "A",
+                "sample",
+                new object(),
+                new Dictionary<string, object?> { ["owner"] = "ZX-42" },
+                CoveragePending: false),
+            [field],
+            new TestAppLocalizer(
+                "en-US",
+                new Dictionary<string, string>
+                {
+                    ["Loc.Common.Completed"] = "Complete",
+                    ["Loc.Catalog.Alias.Tooltip"] = "Value mapping: {0} → {1}",
+                }));
+
+        Assert.Equal("Complete", item.CoverageText);
+        Assert.Equal("홍길동", item.DisplayValues["owner"]);
+        Assert.Equal("홍길동", item.ExportDisplayValues["owner"]);
+        Assert.Equal("홍길동", item.OutputValues["owner"]);
+        Assert.True(item.MappedValueIndicators["owner"]);
+        Assert.Equal("Value mapping: ZX-42 → 홍길동", item.MappedValueTooltips["owner"]);
+        Assert.True(item.Matches("홍길동"));
+        Assert.False(item.Matches("ZX-42"));
+
+        item.SetShowOriginalValues(true);
+
+        Assert.Equal("ZX-42", item.DisplayValues["owner"]);
+        Assert.Equal("ZX-42", item.ExportDisplayValues["owner"]);
+        Assert.Equal("ZX-42", item.OutputValues["owner"]);
+        Assert.True(item.Matches("ZX-42"));
+        Assert.False(item.Matches("홍길동"));
     }
 
     [Fact]

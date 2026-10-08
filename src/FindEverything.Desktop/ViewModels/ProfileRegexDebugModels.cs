@@ -207,9 +207,11 @@ internal static class ProfileRegexDebugBuilder
             if (!budget.HasTimeRemaining)
             {
                 result.Add(CreateLimitNotice(
-                    $"색상 미리보기의 전체 시간 제한 {previewDuration.TotalSeconds:0.##}초에 도달해 "
-                    + $"나머지 {rules.Count - ruleIndex:N0}개 규칙은 표시하지 않았습니다. "
-                    + "이 제한은 색상 표시 전용이며 프로필 검증 대상을 줄이지 않습니다."));
+                    ProfileEditorText.Format(
+                        "Loc.RegexDebug.Limit.Time",
+                        "색상 미리보기의 전체 시간 제한 {0:0.##}초에 도달해 나머지 {1:N0}개 규칙은 표시하지 않았습니다. 이 제한은 색상 표시 전용이며 프로필 검증 대상을 줄이지 않습니다.",
+                        previewDuration.TotalSeconds,
+                        rules.Count - ruleIndex)));
                 return result;
             }
 
@@ -224,9 +226,11 @@ internal static class ProfileRegexDebugBuilder
             if (budgetReached && ruleIndex + 1 < rules.Count)
             {
                 result.Add(CreateLimitNotice(
-                    $"색상 미리보기의 전체 시간 제한 {previewDuration.TotalSeconds:0.##}초에 도달해 "
-                    + $"나머지 {rules.Count - ruleIndex - 1:N0}개 규칙은 표시하지 않았습니다. "
-                    + "이 제한은 색상 표시 전용이며 프로필 검증 대상을 줄이지 않습니다."));
+                    ProfileEditorText.Format(
+                        "Loc.RegexDebug.Limit.Time",
+                        "색상 미리보기의 전체 시간 제한 {0:0.##}초에 도달해 나머지 {1:N0}개 규칙은 표시하지 않았습니다. 이 제한은 색상 표시 전용이며 프로필 검증 대상을 줄이지 않습니다.",
+                        previewDuration.TotalSeconds,
+                        rules.Count - ruleIndex - 1)));
                 return result;
             }
         }
@@ -234,8 +238,11 @@ internal static class ProfileRegexDebugBuilder
         if (rules.Count > displayedRuleCount)
         {
             result.Add(CreateLimitNotice(
-                $"규칙이 많아 앞 {displayedRuleCount:N0}개만 색상으로 표시했습니다. "
-                + $"나머지 {rules.Count - displayedRuleCount:N0}개 규칙도 프로필 검증 대상에는 그대로 포함됩니다."));
+                ProfileEditorText.Format(
+                    "Loc.RegexDebug.Limit.Count",
+                    "규칙이 많아 앞 {0:N0}개만 색상으로 표시했습니다. 나머지 {1:N0}개 규칙도 프로필 검증 대상에는 그대로 포함됩니다.",
+                    displayedRuleCount,
+                    rules.Count - displayedRuleCount)));
         }
 
         return result;
@@ -258,9 +265,9 @@ internal static class ProfileRegexDebugBuilder
         var accentBrush = Freeze(accent, byte.MaxValue);
         var matchMode = rule.MatchMode == ProfileRegexMatchMode.Full
             ? subject == RegexDebugSubject.DirectoryName
-                ? "폴더 이름 전체 일치"
-                : "전체 경로 일치 규칙"
-            : "부분 일치 규칙";
+                ? ProfileEditorText.Get("Loc.RegexDebug.Mode.FolderFull", "폴더 이름 전체 일치")
+                : ProfileEditorText.Get("Loc.RegexDebug.Mode.PathFull", "전체 경로 일치 규칙")
+            : ProfileEditorText.Get("Loc.RegexDebug.Mode.Partial", "부분 일치 규칙");
         var maximumPatternLength = subject == RegexDebugSubject.DirectoryName
             ? ProfileManifestLimits.MaximumExcludedDirectoryNamePatternLength
             : ProfileManifestLimits.MaximumRegexPatternLength;
@@ -272,7 +279,7 @@ internal static class ProfileRegexDebugBuilder
                 ruleId,
                 pattern,
                 matchMode,
-                "패턴이 비어 있습니다.",
+                ProfileEditorText.Get("Loc.RegexDebug.Error.Empty", "패턴이 비어 있습니다."),
                 accentBrush,
                 accent);
         }
@@ -284,7 +291,10 @@ internal static class ProfileRegexDebugBuilder
                 ruleId,
                 pattern,
                 matchMode,
-                $"패턴은 최대 {maximumPatternLength:N0}자까지 사용할 수 있습니다.",
+                ProfileEditorText.Format(
+                    "Loc.RegexDebug.Error.TooLong",
+                    "패턴은 최대 {0:N0}자까지 사용할 수 있습니다.",
+                    maximumPatternLength),
                 accentBrush,
                 accent);
         }
@@ -296,7 +306,9 @@ internal static class ProfileRegexDebugBuilder
                 ruleId,
                 pattern,
                 matchMode,
-                "시간 제한은 1~10000ms여야 합니다.",
+                ProfileEditorText.Get(
+                    "Loc.RegexDebug.Error.TimeoutRange",
+                    "시간 제한은 1~10000ms여야 합니다."),
                 accentBrush,
                 accent);
         }
@@ -320,7 +332,9 @@ internal static class ProfileRegexDebugBuilder
                     ruleId,
                     pattern,
                     matchMode,
-                    "색상 미리보기의 전체 시간 제한에 도달해 이 규칙을 검사하지 못했습니다.",
+                    ProfileEditorText.Get(
+                        "Loc.RegexDebug.Error.Budget",
+                        "색상 미리보기의 전체 시간 제한에 도달해 이 규칙을 검사하지 못했습니다."),
                     accentBrush,
                     accent);
             }
@@ -378,7 +392,7 @@ internal static class ProfileRegexDebugBuilder
             var lanes = new List<ProfileRegexDebugLaneViewModel>
             {
                 new(
-                    "패턴",
+                    ProfileEditorText.Get("Loc.RegexDebug.Pattern", "패턴"),
                     BuildPatternDetail(
                         matches,
                         positiveMatches,
@@ -389,7 +403,10 @@ internal static class ProfileRegexDebugBuilder
                         input,
                         overallRanges,
                         Freeze(accent, 82),
-                        $"규칙 '{ruleId}'의 원본 패턴 일치")),
+                        ProfileEditorText.Format(
+                            "Loc.RegexDebug.Tooltip.PatternMatch",
+                            "규칙 '{0}'의 원본 패턴 일치",
+                            ruleId))),
             };
 
             var allNamedGroups = regex.GetGroupNames()
@@ -427,16 +444,25 @@ internal static class ProfileRegexDebugBuilder
                 lanes.Add(new ProfileRegexDebugLaneViewModel(
                     groupName,
                     ranges.Length == 0
-                        ? "캡처되지 않음"
+                        ? ProfileEditorText.Get("Loc.RegexDebug.Capture.None", "캡처되지 않음")
                         : capturesTruncated
-                            ? $"캡처 {ranges.Length:N0}개까지 표시"
-                            : $"캡처 {ranges.Length:N0}개",
+                            ? ProfileEditorText.Format(
+                                "Loc.RegexDebug.Capture.Truncated",
+                                "캡처 {0:N0}개까지 표시",
+                                ranges.Length)
+                            : ProfileEditorText.Format(
+                                "Loc.RegexDebug.Capture.Count",
+                                "캡처 {0:N0}개",
+                                ranges.Length),
                     groupBrush,
                     BuildSegments(
                         input,
                         ranges,
                         Freeze(groupColor, 82),
-                        $"named group '{groupName}' 캡처")));
+                        ProfileEditorText.Format(
+                            "Loc.RegexDebug.Tooltip.NamedCapture",
+                            "named group '{0}' 캡처",
+                            groupName))));
                 displayedNamedGroupCount++;
             }
 
@@ -466,7 +492,10 @@ internal static class ProfileRegexDebugBuilder
                 ruleId,
                 pattern,
                 matchMode,
-                $"{rule.TimeoutMilliseconds:N0}ms 안에 검사를 마치지 못했습니다.",
+                ProfileEditorText.Format(
+                    "Loc.RegexDebug.Error.RuleTimeout",
+                    "{0:N0}ms 안에 검사를 마치지 못했습니다.",
+                    rule.TimeoutMilliseconds),
                 accentBrush,
                 accent);
         }
@@ -477,7 +506,10 @@ internal static class ProfileRegexDebugBuilder
                 ruleId,
                 pattern,
                 matchMode,
-                $"정규식 오류: {exception.Message}",
+                ProfileEditorText.Format(
+                    "Loc.RegexDebug.Error.Regex",
+                    "정규식 오류: {0}",
+                    exception.Message),
                 accentBrush,
                 accent);
         }
@@ -487,9 +519,9 @@ internal static class ProfileRegexDebugBuilder
     {
         var color = Color.FromRgb(0x60, 0x60, 0x60);
         return new ProfileRegexDebugRuleViewModel(
-            "미리보기 제한",
+            ProfileEditorText.Get("Loc.RegexDebug.Limit.Title", "미리보기 제한"),
             string.Empty,
-            "색상 디버깅",
+            ProfileEditorText.Get("Loc.RegexDebug.Limit.Mode", "색상 디버깅"),
             status,
             Freeze(color, byte.MaxValue),
             []);
@@ -505,14 +537,17 @@ internal static class ProfileRegexDebugBuilder
         Color accent)
     {
         var lane = new ProfileRegexDebugLaneViewModel(
-            "패턴",
-            "강조할 수 없음",
+            ProfileEditorText.Get("Loc.RegexDebug.Pattern", "패턴"),
+            ProfileEditorText.Get("Loc.RegexDebug.Highlight.Unavailable", "강조할 수 없음"),
             accentBrush,
             BuildSegments(
                 input,
                 [],
                 Freeze(accent, 82),
-                $"규칙 '{ruleId}'의 원본 패턴 일치"));
+                ProfileEditorText.Format(
+                    "Loc.RegexDebug.Tooltip.PatternMatch",
+                    "규칙 '{0}'의 원본 패턴 일치",
+                    ruleId)));
         return new ProfileRegexDebugRuleViewModel(
             ruleId,
             pattern,
@@ -528,21 +563,43 @@ internal static class ProfileRegexDebugBuilder
         bool matchesTruncated,
         bool evaluationTimedOut)
     {
-        var timeoutNotice = evaluationTimedOut ? " · 시간 초과 전 결과" : string.Empty;
+        var timeoutNotice = evaluationTimedOut
+            ? ProfileEditorText.Get(
+                "Loc.RegexDebug.Detail.BeforeTimeout",
+                " · 시간 초과 전 결과")
+            : string.Empty;
         if (positiveMatches.Count > 0)
         {
             return matchesTruncated
-                ? $"원본 패턴 일치 {positiveMatches.Count:N0}개까지 표시{timeoutNotice}"
-                : $"원본 패턴 일치 {positiveMatches.Count:N0}개{timeoutNotice}";
+                ? ProfileEditorText.Format(
+                    "Loc.RegexDebug.Detail.MatchTruncated",
+                    "원본 패턴 일치 {0:N0}개까지 표시{1}",
+                    positiveMatches.Count,
+                    timeoutNotice)
+                : ProfileEditorText.Format(
+                    "Loc.RegexDebug.Detail.MatchCount",
+                    "원본 패턴 일치 {0:N0}개{1}",
+                    positiveMatches.Count,
+                    timeoutNotice);
         }
 
         return matches.Count > 0
             ? matchesTruncated
-                ? $"길이 0인 일치 {matches.Count:N0}개까지 표시{timeoutNotice}"
-                : $"길이 0인 일치 {matches.Count:N0}개{timeoutNotice}"
+                ? ProfileEditorText.Format(
+                    "Loc.RegexDebug.Detail.ZeroTruncated",
+                    "길이 0인 일치 {0:N0}개까지 표시{1}",
+                    matches.Count,
+                    timeoutNotice)
+                : ProfileEditorText.Format(
+                    "Loc.RegexDebug.Detail.ZeroCount",
+                    "길이 0인 일치 {0:N0}개{1}",
+                    matches.Count,
+                    timeoutNotice)
             : evaluationTimedOut
-                ? "부분 검사 시간 초과"
-                : "일치 없음";
+                ? ProfileEditorText.Get(
+                    "Loc.RegexDebug.Detail.PartialTimeout",
+                    "부분 검사 시간 초과")
+                : ProfileEditorText.Get("Loc.RegexDebug.Detail.NoMatch", "일치 없음");
     }
 
     private static string BuildStatus(
@@ -561,27 +618,37 @@ internal static class ProfileRegexDebugBuilder
         var notices = new List<string>(4);
         if (matchesTruncated || namedGroupsTruncated)
         {
-            notices.Add("안전을 위해 일부 결과만 표시");
+            notices.Add(ProfileEditorText.Get(
+                "Loc.RegexDebug.Notice.Truncated",
+                "안전을 위해 일부 결과만 표시"));
         }
 
         if (partialEvaluationTimedOut)
         {
-            notices.Add("원본 패턴 부분 검사가 시간 초과되어 그전 결과만 표시");
+            notices.Add(ProfileEditorText.Get(
+                "Loc.RegexDebug.Notice.PartialTimeout",
+                "원본 패턴 부분 검사가 시간 초과되어 그전 결과만 표시"));
         }
 
         if (fullEvaluationTimedOut)
         {
-            notices.Add("실제 전체 일치 확인 시간 초과");
+            notices.Add(ProfileEditorText.Get(
+                "Loc.RegexDebug.Notice.FullTimeout",
+                "실제 전체 일치 확인 시간 초과"));
         }
 
         if (fullEvaluationSkippedByBudget)
         {
-            notices.Add("실제 전체 일치 확인 생략");
+            notices.Add(ProfileEditorText.Get(
+                "Loc.RegexDebug.Notice.FullSkipped",
+                "실제 전체 일치 확인 생략"));
         }
 
         if (previewBudgetReached)
         {
-            notices.Add("색상 미리보기 전체 시간 제한 도달");
+            notices.Add(ProfileEditorText.Get(
+                "Loc.RegexDebug.Notice.Budget",
+                "색상 미리보기 전체 시간 제한 도달"));
         }
 
         var notice = notices.Count == 0
@@ -590,26 +657,58 @@ internal static class ProfileRegexDebugBuilder
         if (positiveMatches.Count == 0)
         {
             return matches.Count > 0
-                ? $"원본 패턴이 길이 0인 위치에만 일치합니다. 색으로 표시할 문자는 없습니다.{notice}"
-                : $"원본 패턴과 부분적으로 일치하는 구간이 없습니다.{notice}";
+                ? ProfileEditorText.Format(
+                    "Loc.RegexDebug.Status.ZeroOnly",
+                    "원본 패턴이 길이 0인 위치에만 일치합니다. 색으로 표시할 문자는 없습니다.{0}",
+                    notice)
+                : ProfileEditorText.Format(
+                    "Loc.RegexDebug.Status.NoPartial",
+                    "원본 패턴과 부분적으로 일치하는 구간이 없습니다.{0}",
+                    notice);
         }
 
         if (matchMode == ProfileRegexMatchMode.Full)
         {
             var fullMatchDescription = subject == RegexDebugSubject.DirectoryName
-                ? "실제 폴더 이름 전체 일치"
-                : "실제 전체 경로 일치";
+                ? ProfileEditorText.Get(
+                    "Loc.RegexDebug.Status.ActualFolderFull",
+                    "실제 폴더 이름 전체 일치")
+                : ProfileEditorText.Get(
+                    "Loc.RegexDebug.Status.ActualPathFull",
+                    "실제 전체 경로 일치");
             var requirementDescription = subject == RegexDebugSubject.DirectoryName
-                ? "실제 빠른 불러오기에서는 폴더 이름 전체가 일치해야 합니다."
-                : "실제 스캔에서는 전체 경로가 일치해야 합니다.";
+                ? ProfileEditorText.Get(
+                    "Loc.RegexDebug.Status.FolderRequirement",
+                    "실제 빠른 불러오기에서는 폴더 이름 전체가 일치해야 합니다.")
+                : ProfileEditorText.Get(
+                    "Loc.RegexDebug.Status.PathRequirement",
+                    "실제 스캔에서는 전체 경로가 일치해야 합니다.");
             return actualRuleMatches
-                ? $"{fullMatchDescription} · 원본 패턴 후보 {positiveMatches.Count:N0}개{notice}"
+                ? ProfileEditorText.Format(
+                    "Loc.RegexDebug.Status.FullMatched",
+                    "{0} · 원본 패턴 후보 {1:N0}개{2}",
+                    fullMatchDescription,
+                    positiveMatches.Count,
+                    notice)
                 : fullEvaluationTimedOut || fullEvaluationSkippedByBudget
-                    ? $"부분 후보 {positiveMatches.Count:N0}개{notice}"
-                    : $"부분 후보 {positiveMatches.Count:N0}개 · {requirementDescription}{notice}";
+                    ? ProfileEditorText.Format(
+                        "Loc.RegexDebug.Status.PartialCandidates",
+                        "부분 후보 {0:N0}개{1}",
+                        positiveMatches.Count,
+                        notice)
+                    : ProfileEditorText.Format(
+                        "Loc.RegexDebug.Status.PartialRequirement",
+                        "부분 후보 {0:N0}개 · {1}{2}",
+                        positiveMatches.Count,
+                        requirementDescription,
+                        notice);
         }
 
-        return $"부분 일치 {positiveMatches.Count:N0}개{notice}";
+        return ProfileEditorText.Format(
+            "Loc.RegexDebug.Status.PartialMatched",
+            "부분 일치 {0:N0}개{1}",
+            positiveMatches.Count,
+            notice);
     }
 
     private static Match[] CollectMatches(
@@ -681,8 +780,15 @@ internal static class ProfileRegexDebugBuilder
                 range.Start <= start && range.End >= end);
             var text = input[start..end];
             var toolTip = isHighlighted
-                ? $"{highlightedToolTip} · 위치 {start:N0}~{end - 1:N0}"
-                : "일치하지 않는 구간";
+                ? ProfileEditorText.Format(
+                    "Loc.RegexDebug.Tooltip.Position",
+                    "{0} · 위치 {1:N0}~{2:N0}",
+                    highlightedToolTip,
+                    start,
+                    end - 1)
+                : ProfileEditorText.Get(
+                    "Loc.RegexDebug.Tooltip.Unmatched",
+                    "일치하지 않는 구간");
             if (segments.Count > 0
                 && segments[^1].IsHighlighted == isHighlighted
                 && string.Equals(segments[^1].ToolTip, toolTip, StringComparison.Ordinal))

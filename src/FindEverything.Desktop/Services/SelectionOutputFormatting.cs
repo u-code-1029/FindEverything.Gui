@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using FindEverything.Desktop.Localization;
 
 namespace FindEverything.Desktop.Services;
 
@@ -49,7 +50,7 @@ public interface ISelectionOutputFormatter
         IEnumerable<SelectionOutputItem> items);
 }
 
-public sealed class SelectionOutputFormatter : ISelectionOutputFormatter
+public sealed class SelectionOutputFormatter(IAppLocalizer? localizer = null) : ISelectionOutputFormatter
 {
     private const int MaximumTemplateCharacters = 16_384;
     private const int MaximumOutputCharacters = 32 * 1024 * 1024;
@@ -62,14 +63,16 @@ public sealed class SelectionOutputFormatter : ISelectionOutputFormatter
         template ??= string.Empty;
         if (template.Length > MaximumTemplateCharacters)
         {
-            errors.Add("출력 템플릿은 16,384자 이하여야 합니다.");
+            errors.Add(L(
+                "Loc.Output.Validation.TemplateTooLong",
+                "출력 템플릿은 16,384자 이하여야 합니다."));
             return new SelectionOutputTemplateValidation(errors.AsReadOnly());
         }
 
         var segments = Parse(template, errors);
         if (segments.Count == 0 && errors.Count == 0)
         {
-            errors.Add("출력 템플릿을 입력하세요.");
+            errors.Add(L("Loc.Output.Validation.TemplateRequired", "출력 템플릿을 입력하세요."));
         }
 
         if (allowedFieldIds is not null)
@@ -82,7 +85,10 @@ public sealed class SelectionOutputFormatter : ISelectionOutputFormatter
             {
                 if (!allowed.Contains(fieldId))
                 {
-                    errors.Add($"선택한 프로필에 '{fieldId}' 필드가 없습니다.");
+                    errors.Add(F(
+                        "Loc.Output.Validation.FieldMissing",
+                        "선택한 프로필에 '{0}' 필드가 없습니다.",
+                        fieldId));
                 }
             }
         }
@@ -98,17 +104,21 @@ public sealed class SelectionOutputFormatter : ISelectionOutputFormatter
         ArgumentNullException.ThrowIfNull(items);
 
         var template = format.Template
-            ?? throw new FormatException("출력 템플릿을 입력하세요.");
+            ?? throw new FormatException(L(
+                "Loc.Output.Validation.TemplateRequired",
+                "출력 템플릿을 입력하세요."));
         if (template.Length > MaximumTemplateCharacters)
         {
-            throw new FormatException("출력 템플릿은 16,384자 이하여야 합니다.");
+            throw new FormatException(L(
+                "Loc.Output.Validation.TemplateTooLong",
+                "출력 템플릿은 16,384자 이하여야 합니다."));
         }
 
         var errors = new List<string>();
         var segments = Parse(template, errors);
         if (segments.Count == 0 && errors.Count == 0)
         {
-            errors.Add("출력 템플릿을 입력하세요.");
+            errors.Add(L("Loc.Output.Validation.TemplateRequired", "출력 템플릿을 입력하세요."));
         }
 
         if (errors.Count > 0)
@@ -136,7 +146,9 @@ public sealed class SelectionOutputFormatter : ISelectionOutputFormatter
                     SegmentKind.FolderPath => item.FolderPath,
                     SegmentKind.Name => item.Name,
                     SegmentKind.Field => FormatField(item.Fields, segment.Value),
-                    _ => throw new InvalidOperationException("지원되지 않는 출력 템플릿 조각입니다."),
+                    _ => throw new InvalidOperationException(L(
+                        "Loc.Output.Validation.UnsupportedSegment",
+                        "지원되지 않는 출력 템플릿 조각입니다.")),
                 };
                 AppendChecked(builder, value ?? string.Empty);
             }
@@ -147,7 +159,7 @@ public sealed class SelectionOutputFormatter : ISelectionOutputFormatter
         return builder.ToString();
     }
 
-    private static IReadOnlyList<TemplateSegment> Parse(
+    private IReadOnlyList<TemplateSegment> Parse(
         string template,
         ICollection<string> errors)
     {
@@ -173,7 +185,10 @@ public sealed class SelectionOutputFormatter : ISelectionOutputFormatter
 
             if (current == '}')
             {
-                errors.Add($"템플릿의 {index + 1}번째 문자에 닫는 중괄호가 남아 있습니다.");
+                errors.Add(F(
+                    "Loc.Output.Validation.ExtraClosingBrace",
+                    "템플릿의 {0}번째 문자에 닫는 중괄호가 남아 있습니다.",
+                    index + 1));
                 index++;
                 continue;
             }
@@ -189,7 +204,10 @@ public sealed class SelectionOutputFormatter : ISelectionOutputFormatter
             var closingIndex = template.IndexOf('}', index + 1);
             if (closingIndex < 0)
             {
-                errors.Add($"템플릿의 {index + 1}번째 문자에서 열린 중괄호가 닫히지 않았습니다.");
+                errors.Add(F(
+                    "Loc.Output.Validation.UnclosedBrace",
+                    "템플릿의 {0}번째 문자에서 열린 중괄호가 닫히지 않았습니다.",
+                    index + 1));
                 break;
             }
 
@@ -211,7 +229,9 @@ public sealed class SelectionOutputFormatter : ISelectionOutputFormatter
                 var fieldId = token["Field:".Length..].Trim();
                 if (fieldId.Length == 0)
                 {
-                    errors.Add("{Field:필드ID} 토큰에 필드 ID를 입력하세요.");
+                    errors.Add(L(
+                        "Loc.Output.Validation.FieldIdRequired",
+                        "{Field:필드ID} 토큰에 필드 ID를 입력하세요."));
                 }
                 else
                 {
@@ -220,7 +240,10 @@ public sealed class SelectionOutputFormatter : ISelectionOutputFormatter
             }
             else
             {
-                errors.Add($"지원하지 않는 토큰입니다: {{{token}}}");
+                errors.Add(F(
+                    "Loc.Output.Validation.UnsupportedToken",
+                    "지원하지 않는 토큰입니다: {{{0}}}",
+                    token));
             }
 
             index = closingIndex + 1;
@@ -263,16 +286,24 @@ public sealed class SelectionOutputFormatter : ISelectionOutputFormatter
         };
     }
 
-    private static void AppendChecked(StringBuilder builder, string value)
+    private void AppendChecked(StringBuilder builder, string value)
     {
         if (value.Length > MaximumOutputCharacters - builder.Length)
         {
-            throw new InvalidOperationException(
-                "선택 항목의 출력 결과가 약 3,200만 자 제한을 초과했습니다. 항목 수나 템플릿을 줄여 주세요.");
+            throw new InvalidOperationException(L(
+                "Loc.Output.Validation.OutputTooLong",
+                "선택 항목의 출력 결과가 약 3,200만 자 제한을 초과했습니다. 항목 수나 템플릿을 줄여 주세요."));
         }
 
         builder.Append(value);
     }
+
+    private string L(string key, string koreanFallback) =>
+        localizer?.Get(key, koreanFallback) ?? koreanFallback;
+
+    private string F(string key, string koreanFallback, params object?[] arguments) =>
+        localizer?.Format(key, koreanFallback, arguments)
+        ?? string.Format(CultureInfo.CurrentCulture, koreanFallback, arguments);
 
     private enum SegmentKind
     {
@@ -291,13 +322,15 @@ public interface IClipboardService
     bool TrySetText(string text, out string? errorMessage);
 }
 
-public sealed class WpfClipboardService : IClipboardService
+public sealed class WpfClipboardService(IAppLocalizer? localizer = null) : IClipboardService
 {
     public bool TrySetText(string text, out string? errorMessage)
     {
         if (string.IsNullOrEmpty(text))
         {
-            errorMessage = "복사할 내용이 없습니다.";
+            errorMessage = localizer?.Get(
+                "Loc.Clipboard.Empty",
+                "복사할 내용이 없습니다.") ?? "복사할 내용이 없습니다.";
             return false;
         }
 
@@ -312,7 +345,10 @@ public sealed class WpfClipboardService : IClipboardService
                 or InvalidOperationException
                 or System.Threading.ThreadStateException)
         {
-            errorMessage = "클립보드를 다른 프로그램이 사용 중입니다. 잠시 후 다시 시도해 주세요.";
+            errorMessage = localizer?.Get(
+                "Loc.Clipboard.Busy",
+                "클립보드를 다른 프로그램이 사용 중입니다. 잠시 후 다시 시도해 주세요.")
+                ?? "클립보드를 다른 프로그램이 사용 중입니다. 잠시 후 다시 시도해 주세요.";
             return false;
         }
     }

@@ -39,6 +39,31 @@ public sealed class ApplicationOperationCoordinatorTests
     }
 
     [Fact]
+    public async Task CancelAndWaitAsync_does_not_rethrow_an_operation_failure_during_shutdown()
+    {
+        var coordinator = CreateCoordinator();
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var operation = coordinator.RunAsync(async cancellationToken =>
+        {
+            started.TrySetResult();
+            try
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                throw new InvalidOperationException("operation failed while stopping");
+            }
+        });
+
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await coordinator.CancelAndWaitAsync(TimeSpan.FromSeconds(5));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => operation);
+        Assert.False(coordinator.IsRunning);
+    }
+
+    [Fact]
     public async Task RunAsync_exposes_operation_kind_until_the_operation_finishes()
     {
         var coordinator = CreateCoordinator();

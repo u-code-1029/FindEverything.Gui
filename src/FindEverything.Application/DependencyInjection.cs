@@ -33,6 +33,12 @@ public static class DependencyInjection
                 static options => Enum.IsDefined(options.Theme) && Enum.IsDefined(options.Backdrop),
                 "Appearance theme and backdrop values must be supported enum values.")
             .ValidateOnStart();
+        services.AddOptions<LocalizationOptions>()
+            .Bind(configuration.GetSection(LocalizationOptions.SectionName))
+            .Validate(
+                static options => LocalizationOptions.IsSupported(options.CultureName),
+                "Localization culture must be ko-KR or en-US.")
+            .ValidateOnStart();
 
         services.AddSingleton<ValidatedSettingsState<WorkspaceOptions>>();
         services.AddSingleton<IValidatedSettingsState<WorkspaceOptions>>(
@@ -49,6 +55,11 @@ public static class DependencyInjection
             static provider => provider.GetRequiredService<ValidatedSettingsState<AppearanceOptions>>());
         services.AddSingleton<IValidatedSettingsUpdater<AppearanceOptions>>(
             static provider => provider.GetRequiredService<ValidatedSettingsState<AppearanceOptions>>());
+        services.AddSingleton<ValidatedSettingsState<LocalizationOptions>>();
+        services.AddSingleton<IValidatedSettingsState<LocalizationOptions>>(
+            static provider => provider.GetRequiredService<ValidatedSettingsState<LocalizationOptions>>());
+        services.AddSingleton<IValidatedSettingsUpdater<LocalizationOptions>>(
+            static provider => provider.GetRequiredService<ValidatedSettingsState<LocalizationOptions>>());
         services.TryAddSingleton<AbsoluteProfilePathCanonicalizer>();
         services.TryAddSingleton<IProfilePathCanonicalizer>(
             static provider => provider.GetRequiredService<AbsoluteProfilePathCanonicalizer>());

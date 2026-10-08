@@ -6,11 +6,13 @@
     xmlns:controls="clr-namespace:FindEverything.Desktop.Views.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:localization="clr-namespace:FindEverything.Desktop.Localization"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
     Title="구조화 보기"
     Background="Transparent"
     Foreground="{DynamicResource TextFillColorPrimaryBrush}"
     Loaded="OnPageLoaded"
+    localization:LocalizationScope.IsEnabled="True"
     PreviewKeyDown="OnPagePreviewKeyDown"
     ScrollViewer.CanContentScroll="False"
     Unloaded="OnPageUnloaded"
@@ -108,7 +110,7 @@
                         Margin="0,22,16,0"
                         VerticalAlignment="Center"
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                        Text="{Binding RootPath, TargetNullValue=검색 위치를 선택하세요.}"
+                        Text="{Binding RootPath, TargetNullValue={StaticResource Loc.Catalog.Root.None}}"
                         TextTrimming="CharacterEllipsis"
                         ToolTip="{Binding RootPath}">
                         <TextBlock.Style>
@@ -298,13 +300,25 @@
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <TextBlock
                         VerticalAlignment="Center"
                         FontWeight="SemiBold"
                         Text="구조화 결과" />
-                    <TextBlock
+                    <ui:ToggleSwitch
                         Grid.Column="1"
+                        Margin="16,0"
+                        VerticalAlignment="Center"
+                        AutomationProperties.HelpText="↔ 표시가 있는 값은 프로필의 매핑표로 치환되었습니다. 켜면 저장된 원본 값을 표시하고 검색·복사·내보내기에도 같은 기준을 사용합니다."
+                        AutomationProperties.Name="원본 값 보기"
+                        IsChecked="{Binding ShowOriginalValues}"
+                        OffContent="치환 값 표시"
+                        OnContent="원본 값 표시"
+                        ToolTip="↔ 표시는 원본 코드가 사람이 읽기 쉬운 값으로 치환되었음을 뜻합니다."
+                        Visibility="{Binding HasValueMappings, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <TextBlock
+                        Grid.Column="2"
                         MinWidth="120"
                         VerticalAlignment="Center"
                         AutomationProperties.LiveSetting="Polite"
@@ -328,6 +342,7 @@
                 x:Name="ResultsGrid"
                 Grid.Row="2"
                 behaviors:DynamicProfileGrid.Fields="{Binding Fields}"
+                behaviors:DynamicProfileGrid.Localizer="{Binding Localizer}"
                 behaviors:DynamicProfileGrid.ProfileId="{Binding SelectedProfile.Id}"
                 AutoGenerateColumns="False"
                 CanUserAddRows="False"
@@ -335,6 +350,7 @@
                 EnableRowVirtualization="True"
                 IsReadOnly="True"
                 ItemsSource="{Binding Items}"
+                ContextMenuOpening="OnResultsGridContextMenuOpening"
                 MouseDoubleClick="OnResultsGridMouseDoubleClick"
                 PreviewMouseRightButtonDown="OnResultsGridPreviewMouseRightButtonDown"
                 SelectedItem="{Binding SelectedItem}"
@@ -344,11 +360,11 @@
                 Style="{StaticResource FluentDataGridStyle}"
                 Visibility="{Binding HasLoadedItems, Converter={StaticResource BooleanToVisibilityConverter}}">
                 <DataGrid.ContextMenu>
-                    <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
-                        <MenuItem Command="{Binding OpenSelectedFolderCommand}" Header="폴더 경로 열기" />
-                        <MenuItem Command="{Binding CopySelectedFolderPathCommand}" Header="폴더 경로 복사" />
+                    <ContextMenu DataContext="{Binding PlacementTarget, RelativeSource={RelativeSource Self}}">
+                        <MenuItem Command="{Binding DataContext.OpenItemCommand}" CommandParameter="{Binding CurrentItem}" Header="폴더 경로 열기" />
+                        <MenuItem Command="{Binding DataContext.CopyItemFolderPathCommand}" CommandParameter="{Binding CurrentItem}" Header="폴더 경로 복사" />
                         <Separator />
-                        <MenuItem Command="{Binding CopySelectionCommand}" Header="선택 항목을 현재 출력 형식으로 복사" />
+                        <MenuItem Command="{Binding DataContext.CopySelectionCommand}" Header="선택 항목을 현재 출력 형식으로 복사" />
                     </ContextMenu>
                 </DataGrid.ContextMenu>
             </DataGrid>
@@ -368,7 +384,7 @@
                         Margin="4,0,12,0"
                         VerticalAlignment="Center"
                         FontWeight="SemiBold"
-                        Text="{Binding SelectedCount, StringFormat={}{0:N0}개 선택}" />
+                        Text="{Binding SelectedCount, StringFormat={StaticResource Loc.Common.SelectedCountFormat}}" />
                     <ComboBox
                         Width="220"
                         Margin="0,0,8,0"
@@ -377,11 +393,18 @@
                         ItemsSource="{Binding OutputFormats}"
                         SelectedItem="{Binding SelectedOutputFormat}" />
                     <ui:Button
-                        Margin="0,0,12,0"
+                        Margin="0,0,6,0"
                         Appearance="Primary"
                         Command="{Binding CopySelectionCommand}"
                         Content="복사"
                         Icon="{ui:SymbolIcon Symbol=Copy20}" />
+                    <ui:Button
+                        x:Name="ExportSelectionButton"
+                        Margin="0,0,12,0"
+                        Command="{Binding ExportSelectionCommand}"
+                        Content="내보내기"
+                        Icon="{ui:SymbolIcon Symbol=ArrowExportUp20}"
+                        ToolTip="선택한 구조화 결과를 Excel 또는 CSV 파일로 저장합니다." />
                     <ui:Button
                         Margin="0,0,6,0"
                         Click="OnSelectAllClick"

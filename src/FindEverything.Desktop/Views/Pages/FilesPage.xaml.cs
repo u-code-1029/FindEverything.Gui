@@ -10,6 +10,7 @@ namespace FindEverything.Desktop.Views.Pages;
 public partial class FilesPage
 {
     private readonly FileSearchViewModel _viewModel;
+    private FileSearchItemViewModel? _pointerContextItem;
 
     public FilesPage(FileSearchViewModel viewModel)
     {
@@ -49,20 +50,38 @@ public partial class FilesPage
         object sender,
         MouseButtonEventArgs e)
     {
+        _pointerContextItem = null;
         if (e.OriginalSource is not System.Windows.DependencyObject source
             || ItemsControl.ContainerFromElement(ResultsGrid, source) is not DataGridRow row)
         {
             return;
         }
 
+        _pointerContextItem = row.Item as FileSearchItemViewModel;
         if (!row.IsSelected)
         {
             ResultsGrid.SelectedItems.Clear();
             row.IsSelected = true;
+            ResultsGrid.SelectedItem = row.Item;
         }
 
-        ResultsGrid.SelectedItem = row.Item;
+        // Do not replace SelectedItem for a row that already belongs to a
+        // multi-selection. Context-menu item actions use CurrentItem instead.
+        ResultsGrid.CurrentItem = row.Item;
         row.Focus();
+    }
+
+    private void OnResultsGridContextMenuOpening(
+        object sender,
+        ContextMenuEventArgs e)
+    {
+        if (e.CursorLeft < 0)
+        {
+            e.Handled = ResultsGrid.CurrentItem is not FileSearchItemViewModel;
+            return;
+        }
+
+        e.Handled = _pointerContextItem is null;
     }
 
     private void OnSelectAllClick(object sender, System.Windows.RoutedEventArgs e) =>

@@ -6,6 +6,7 @@ using FindEverything.Application.FileSearch;
 using FindEverything.Application.Indexing;
 using FindEverything.Application.Options;
 using FindEverything.Desktop.Configuration;
+using FindEverything.Desktop.Localization;
 using FindEverything.Desktop.Services;
 using FindEverything.Profile.Runtime;
 using Microsoft.Extensions.Logging;
@@ -30,6 +31,7 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
     private readonly IClipboardService _clipboardService;
     private readonly IProfileCatalog _profileCatalog;
     private readonly IProfilePathCanonicalizer _profilePathCanonicalizer;
+    private readonly IAppLocalizer _localizer;
     private readonly ILogger<FileSearchViewModel> _logger;
     private CancellationTokenSource? _queryCancellation;
     private Task? _activeLoadTask;
@@ -53,6 +55,7 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
         IClipboardService clipboardService,
         IProfileCatalog profileCatalog,
         IProfilePathCanonicalizer profilePathCanonicalizer,
+        IAppLocalizer localizer,
         ILogger<FileSearchViewModel> logger)
     {
         _fileSearchService = fileSearchService;
@@ -68,30 +71,31 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
         _clipboardService = clipboardService;
         _profileCatalog = profileCatalog;
         _profilePathCanonicalizer = profilePathCanonicalizer;
+        _localizer = localizer;
         _logger = logger;
 
         KindChoices =
         [
-            new(null, "전체"),
-            new(IndexedPathKind.File, "파일"),
-            new(IndexedPathKind.Directory, "폴더"),
+            new(null, L("Loc.Files.Kind.All", "전체")),
+            new(IndexedPathKind.File, L("Loc.Files.Kind.File", "파일")),
+            new(IndexedPathKind.Directory, L("Loc.Files.Kind.Folder", "폴더")),
         ];
         SortChoices =
         [
-            new(EntrySortField.Name, "이름"),
-            new(EntrySortField.Path, "경로"),
-            new(EntrySortField.Kind, "종류"),
-            new(EntrySortField.Size, "크기"),
-            new(EntrySortField.Modified, "수정일"),
-            new(EntrySortField.Created, "생성일"),
+            new(EntrySortField.Name, L("Loc.Files.Sort.Name", "이름")),
+            new(EntrySortField.Path, L("Loc.Files.Sort.Path", "경로")),
+            new(EntrySortField.Kind, L("Loc.Files.Sort.Kind", "종류")),
+            new(EntrySortField.Size, L("Loc.Files.Sort.Size", "크기")),
+            new(EntrySortField.Modified, L("Loc.Files.Sort.Modified", "수정일")),
+            new(EntrySortField.Created, L("Loc.Files.Sort.Created", "생성일")),
         ];
         DateFilterChoices =
         [
-            new(DateFilterPreset.Any, "전체 기간"),
-            new(DateFilterPreset.Today, "오늘"),
-            new(DateFilterPreset.LastSevenDays, "최근 7일"),
-            new(DateFilterPreset.LastThirtyDays, "최근 30일"),
-            new(DateFilterPreset.Custom, "직접 지정"),
+            new(DateFilterPreset.Any, L("Loc.Files.Date.Any", "전체 기간")),
+            new(DateFilterPreset.Today, L("Loc.Files.Date.Today", "오늘")),
+            new(DateFilterPreset.LastSevenDays, L("Loc.Files.Date.LastSeven", "최근 7일")),
+            new(DateFilterPreset.LastThirtyDays, L("Loc.Files.Date.LastThirty", "최근 30일")),
+            new(DateFilterPreset.Custom, L("Loc.Files.Date.Custom", "직접 지정")),
         ];
 
         SelectedKind = KindChoices[0];
@@ -100,6 +104,10 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
         SelectedModifiedDateFilter = DateFilterChoices[0];
         RootPath = workspaceContext.Current.RootPath;
         DatabasePath = workspaceContext.Current.DatabasePath;
+        IndexStatusTitle = L("Loc.Files.Status.ChooseRoot", "검색 위치를 선택하세요");
+        IndexStatusDetail = L(
+            "Loc.Files.Status.ChooseRoot.Detail",
+            "선택한 위치만 색인하며 원본 파일은 변경하지 않습니다.");
         _workspaceContext.Changed += OnWorkspaceChanged;
         _outputFormatStore.Changed += OnOutputFormatsChanged;
         _profileCatalog.Changed += OnProfilesChanged;
@@ -245,22 +253,24 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
     public bool HasSelection => SelectedCount > 0;
 
     public string MinimumSizeText => MinimumSizeStep <= 0
-        ? "제한 없음"
+        ? L("Loc.Files.Size.Unlimited", "제한 없음")
         : FileSizeFormatter.Format(SizeStepToBytes(MinimumSizeStep) ?? 0);
 
     public string MaximumSizeText => MaximumSizeStep >= UnlimitedSizeStep
-        ? "제한 없음"
+        ? L("Loc.Files.Size.Unlimited", "제한 없음")
         : FileSizeFormatter.Format(SizeStepToBytes(MaximumSizeStep) ?? 0);
 
     public string ResultSummary => HasSearched
-        ? $"{TotalCount:N0}개 결과 · {Items.Count:N0}개 표시"
-        : "검색 준비";
+        ? F("Loc.Files.Results.Summary", "{0:N0}개 결과 · {1:N0}개 표시", TotalCount, Items.Count)
+        : L("Loc.Files.Results.Ready", "검색 준비");
 
     public string SortDirectionText => SortDirection == EntrySortDirection.Ascending
-        ? "오름차순"
-        : "내림차순";
+        ? L("Loc.Files.Sort.Ascending", "오름차순")
+        : L("Loc.Files.Sort.Descending", "내림차순");
 
-    public string DetailsButtonText => IsDetailsOpen ? "간단히" : "자세히";
+    public string DetailsButtonText => IsDetailsOpen
+        ? L("Loc.Common.Compact", "간단히")
+        : L("Loc.Common.Details", "자세히");
 
     public bool IsCreatedCustomRange => SelectedCreatedDateFilter.Value == DateFilterPreset.Custom;
 
@@ -357,7 +367,10 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
     {
         if (_operationCoordinator.IsRunning)
         {
-            ShowStatus("다른 작업 진행 중", "현재 작업이 끝난 뒤 검색 위치를 변경하세요.", InfoBarSeverity.Warning);
+            ShowStatus(
+                L("Loc.Common.OperationInProgress", "다른 작업 진행 중"),
+                L("Loc.Files.Status.WaitToChangeRoot", "현재 작업이 끝난 뒤 검색 위치를 변경하세요."),
+                InfoBarSeverity.Warning);
             return;
         }
 
@@ -384,7 +397,10 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
         catch (Exception exception)
         {
             _logger.LogWarning(exception, "Could not change the file-search root.");
-            ShowStatus("검색 위치 변경 실패", exception.Message, InfoBarSeverity.Error);
+            ShowStatus(
+                L("Loc.Files.Status.ChangeRootFailed", "검색 위치 변경 실패"),
+                exception.Message,
+                InfoBarSeverity.Error);
         }
     }
 
@@ -393,7 +409,10 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
     {
         if (_operationCoordinator.IsRunning)
         {
-            ShowStatus("다른 작업 진행 중", "현재 작업이 끝난 뒤 인덱스 위치를 변경하세요.", InfoBarSeverity.Warning);
+            ShowStatus(
+                L("Loc.Common.OperationInProgress", "다른 작업 진행 중"),
+                L("Loc.Files.Status.WaitToChangeDatabase", "현재 작업이 끝난 뒤 인덱스 위치를 변경하세요."),
+                InfoBarSeverity.Warning);
             return;
         }
 
@@ -425,7 +444,10 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
         catch (Exception exception)
         {
             _logger.LogWarning(exception, "Could not change the file-search database.");
-            ShowStatus("인덱스 위치 변경 실패", exception.Message, InfoBarSeverity.Error);
+            ShowStatus(
+                L("Loc.Files.Status.ChangeDatabaseFailed", "인덱스 위치 변경 실패"),
+                exception.Message,
+                InfoBarSeverity.Error);
         }
     }
 
@@ -441,15 +463,17 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
             {
                 if (_operationCoordinator.CurrentKind == ApplicationOperationKind.IndexLoad)
                 {
-                    ProgressMessage = "기존 인덱스 불러오기를 취소하는 중…";
+                    ProgressMessage = L(
+                        "Loc.Files.Progress.CancelIndexLoad",
+                        "기존 인덱스 불러오기를 취소하는 중…");
                     await _operationCoordinator.CancelAndWaitAsync(TimeSpan.FromSeconds(30))
                         .ConfigureAwait(true);
                 }
                 else
                 {
                     ShowStatus(
-                        "다른 작업 진행 중",
-                        "현재 작업이 끝난 뒤 다시 시도하세요.",
+                        L("Loc.Common.OperationInProgress", "다른 작업 진행 중"),
+                        L("Loc.Common.TryAfterOperation", "현재 작업이 끝난 뒤 다시 시도하세요."),
                         InfoBarSeverity.Warning);
                     return;
                 }
@@ -467,17 +491,24 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
             }
             catch (Exception exception)
             {
-                ShowStatus("검색 위치 확인 필요", exception.Message, InfoBarSeverity.Error);
+                ShowStatus(
+                    L("Loc.Files.Status.CheckScope", "검색 위치 확인 필요"),
+                    exception.Message,
+                    InfoBarSeverity.Error);
                 return;
             }
 
             // IsBusy is already true, so filter changes cannot start another read
             // between cancelling this session and atomically claiming IndexWrite.
             await CancelActiveLoadAsync().ConfigureAwait(true);
-            ProgressMessage = "인덱스를 준비하고 있습니다…";
+            ProgressMessage = L("Loc.Files.Progress.PreparingIndex", "인덱스를 준비하고 있습니다…");
             var progress = new Progress<IndexScanProgress>(value =>
             {
-                ProgressMessage = $"{value.Entries:N0}개 항목 · {value.Directories:N0}개 폴더";
+                ProgressMessage = F(
+                    "Loc.Files.Progress.Scanning",
+                    "{0:N0}개 항목 · {1:N0}개 폴더",
+                    value.Entries,
+                    value.Directories);
             });
             IndexScanReport? report = null;
             await _operationCoordinator.ReplaceAsync(
@@ -491,37 +522,64 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
 
             if (report is null)
             {
-                throw new InvalidOperationException("인덱싱 결과를 받지 못했습니다.");
+                throw new InvalidOperationException(L(
+                    "Loc.Files.Error.NoIndexResult",
+                    "인덱싱 결과를 받지 못했습니다."));
             }
 
             var incomplete = report.Status != IndexScanStatus.Completed || report.Errors.Count > 0;
             ShowStatus(
-                incomplete ? "일부 항목 색인 완료" : "인덱스 새로 고침 완료",
-                $"{report.Progress.Entries:N0}개 항목을 확인했습니다. 오류 {report.Errors.Count:N0}개",
+                incomplete
+                    ? L("Loc.Files.Index.Partial", "일부 항목 색인 완료")
+                    : L("Loc.Files.Index.Completed", "인덱스 새로 고침 완료"),
+                F(
+                    "Loc.Files.Index.Result",
+                    "{0:N0}개 항목을 확인했습니다. 오류 {1:N0}개",
+                    report.Progress.Entries,
+                    report.Errors.Count),
                 incomplete ? InfoBarSeverity.Warning : InfoBarSeverity.Success);
             _snackbarService.Show(
-                "인덱스 새로 고침 완료",
-                $"{report.Progress.Entries:N0}개 항목을 검색할 수 있습니다.",
+                L("Loc.Files.Index.Completed", "인덱스 새로 고침 완료"),
+                F(
+                    "Loc.Files.Index.Searchable",
+                    "{0:N0}개 항목을 검색할 수 있습니다.",
+                    report.Progress.Entries),
                 incomplete ? ControlAppearance.Caution : ControlAppearance.Success,
                 null,
                 TimeSpan.FromSeconds(4));
             refreshResults = await RefreshStatusAsync(CancellationToken.None).ConfigureAwait(true)
                 && HasIndex;
             completionNotice = new ScanCompletionNotice(
-                incomplete ? "일부 항목 색인 완료" : "인덱스 새로 고침 완료",
-                $"{report.Progress.Entries:N0}개 항목을 검색할 수 있습니다."
-                    + (incomplete ? $" 오류 {report.Errors.Count:N0}개를 확인하세요." : string.Empty),
+                incomplete
+                    ? L("Loc.Files.Index.Partial", "일부 항목 색인 완료")
+                    : L("Loc.Files.Index.Completed", "인덱스 새로 고침 완료"),
+                F(
+                    "Loc.Files.Index.Searchable",
+                    "{0:N0}개 항목을 검색할 수 있습니다.",
+                    report.Progress.Entries)
+                    + (incomplete
+                        ? F(
+                            "Loc.Files.Index.ErrorsSuffix",
+                            " 오류 {0:N0}개를 확인하세요.",
+                            report.Errors.Count)
+                        : string.Empty),
                 incomplete);
         }
         catch (OperationCanceledException)
         {
-            ShowStatus("인덱싱 취소", "기존에 게시된 인덱스는 그대로 유지됩니다.", InfoBarSeverity.Warning);
-            ProgressMessage = "취소됨";
+            ShowStatus(
+                L("Loc.Files.Index.Cancelled", "인덱싱 취소"),
+                L("Loc.Files.Index.Cancelled.Detail", "기존에 게시된 인덱스는 그대로 유지됩니다."),
+                InfoBarSeverity.Warning);
+            ProgressMessage = L("Loc.Common.Cancelled", "취소됨");
         }
         catch (Exception exception)
         {
             _logger.LogError(exception, "Could not refresh the file index.");
-            ShowStatus("인덱싱 실패", exception.Message, InfoBarSeverity.Error);
+            ShowStatus(
+                L("Loc.Files.Index.Failed", "인덱싱 실패"),
+                UserFacingExceptionLocalizer.TranslateOperationFailure(_localizer, exception),
+                InfoBarSeverity.Error);
         }
         finally
         {
@@ -542,7 +600,7 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
     [RelayCommand(CanExecute = nameof(CanCancel))]
     private void Cancel()
     {
-        ProgressMessage = "취소하는 중…";
+        ProgressMessage = L("Loc.Common.Cancelling", "취소하는 중…");
         _operationCoordinator.Cancel();
     }
 
@@ -584,10 +642,20 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
     [RelayCommand(CanExecute = nameof(CanUseSelected))]
     private void OpenSelected()
     {
-        if (SelectedItem is not null)
+        OpenItem(SelectedItem);
+    }
+
+    [RelayCommand]
+    private void OpenItem(FileSearchItemViewModel? item)
+    {
+        if (item is null)
         {
-            ExecutePathAction(() => _pathLauncher.OpenPath(SelectedItem.FullPath), "항목 열기 실패");
+            return;
         }
+
+        ExecutePathAction(
+            () => _pathLauncher.OpenPath(item.FullPath),
+            L("Loc.Files.Action.OpenFailed", "항목 열기 실패"));
     }
 
     [RelayCommand(CanExecute = nameof(CanUseSelected))]
@@ -595,7 +663,9 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
     {
         if (SelectedItem is not null)
         {
-            ExecutePathAction(() => _pathLauncher.ShowInFolder(SelectedItem.FullPath), "위치 열기 실패");
+            ExecutePathAction(
+                () => _pathLauncher.ShowInFolder(SelectedItem.FullPath),
+                L("Loc.Files.Action.ShowInFolderFailed", "위치 열기 실패"));
         }
     }
 
@@ -611,7 +681,7 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
         {
             System.Windows.Clipboard.SetText(SelectedItem.FullPath);
             _snackbarService.Show(
-                "경로 복사 완료",
+                L("Loc.Files.Action.CopyPathCompleted", "경로 복사 완료"),
                 SelectedItem.FullPath,
                 ControlAppearance.Secondary,
                 null,
@@ -620,44 +690,66 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
         catch (Exception exception)
         {
             _logger.LogWarning(exception, "Could not copy {Path} to the clipboard.", SelectedItem.FullPath);
-            ShowStatus("경로 복사 실패", exception.Message, InfoBarSeverity.Error);
+            ShowStatus(
+                L("Loc.Files.Action.CopyPathFailed", "경로 복사 실패"),
+                exception.Message,
+                InfoBarSeverity.Error);
         }
     }
 
     [RelayCommand(CanExecute = nameof(CanUseSelected))]
     private void OpenSelectedFolder()
     {
-        if (SelectedItem is not null)
+        OpenItemFolder(SelectedItem);
+    }
+
+    [RelayCommand]
+    private void OpenItemFolder(FileSearchItemViewModel? item)
+    {
+        if (item is null)
         {
-            ExecutePathAction(
-                () => _pathLauncher.OpenDirectory(SelectedItem.FolderPath),
-                "폴더 경로 열기 실패");
+            return;
         }
+
+        ExecutePathAction(
+            () => _pathLauncher.OpenDirectory(item.FolderPath),
+            L("Loc.Files.Action.OpenFolderFailed", "폴더 경로 열기 실패"));
     }
 
     [RelayCommand(CanExecute = nameof(CanUseSelected))]
     private void CopySelectedFolderPath()
     {
-        if (SelectedItem is null)
+        CopyItemFolderPath(SelectedItem);
+    }
+
+    [RelayCommand]
+    private void CopyItemFolderPath(FileSearchItemViewModel? item)
+    {
+        if (item is null)
         {
             return;
         }
 
-        CopyText(SelectedItem.FolderPath, "폴더 경로 복사 완료");
+        CopyText(
+            item.FolderPath,
+            L("Loc.Files.Action.CopyFolderCompleted", "폴더 경로 복사 완료"));
     }
 
     [RelayCommand(CanExecute = nameof(CanCopySelection))]
     private void CopySelection()
     {
-        var format = SelectedOutputFormat ?? SelectionOutputFormatDefaults.FullPathLines;
+        var format = SelectedOutputFormat
+            ?? SelectionOutputFormatDefaults.CreateFullPathLines(_localizer);
         try
         {
             ILoadedProfile? profile = null;
             if (!string.IsNullOrWhiteSpace(format.ProfileId)
                 && !_profileCatalog.Current.TryGetProfile(format.ProfileId, out profile))
             {
-                throw new InvalidOperationException(
-                    $"출력 포맷에 연결된 프로필을 찾을 수 없습니다: {format.ProfileId}");
+                throw new InvalidOperationException(F(
+                    "Loc.Selection.ProfileNotFound",
+                    "출력 포맷에 연결된 프로필을 찾을 수 없습니다: {0}",
+                    format.ProfileId));
             }
 
             var outputItems = _selectedItems.Select(item =>
@@ -670,10 +762,15 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
                     var mapping = profile.Map(new ProfilePathCandidate(profilePath));
                     if (mapping.Status != ProfileMapStatus.Success || mapping.Item is null)
                     {
-                        var reason = mapping.Issues.FirstOrDefault()?.Message
-                            ?? "프로필 규칙과 일치하지 않습니다.";
-                        throw new InvalidOperationException(
-                            $"'{item.FolderPath}'에서 구조화 값을 가져올 수 없습니다. {reason}");
+                        var issue = mapping.Issues.FirstOrDefault();
+                        var reason = issue is null
+                            ? L("Loc.Selection.ProfileNoMatch", "프로필 규칙과 일치하지 않습니다.")
+                            : ProfileDiagnosticLocalizer.Translate(_localizer, issue);
+                        throw new InvalidOperationException(F(
+                            "Loc.Selection.StructuredValueFailed",
+                            "'{0}'에서 구조화 값을 가져올 수 없습니다. {1}",
+                            item.FolderPath,
+                            reason));
                     }
 
                     fields = mapping.Item.Values;
@@ -688,21 +785,33 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
             var text = _outputFormatter.Format(format, outputItems);
             if (!_clipboardService.TrySetText(text, out var errorMessage))
             {
-                throw new InvalidOperationException(errorMessage ?? "클립보드에 복사하지 못했습니다.");
+                throw new InvalidOperationException(
+                    errorMessage
+                    ?? L("Loc.Common.ClipboardFailed", "클립보드에 복사하지 못했습니다."));
             }
 
             _snackbarService.Show(
-                "선택 항목 복사 완료",
-                $"{SelectedCount:N0}개 항목을 '{format.DisplayName}' 형식으로 복사했습니다.",
+                L("Loc.Selection.CopyCompleted", "선택 항목 복사 완료"),
+                F(
+                    "Loc.Selection.CopyCompleted.Message",
+                    "{0:N0}개 항목을 '{1}' 형식으로 복사했습니다.",
+                    SelectedCount,
+                    format.DisplayName),
                 ControlAppearance.Success,
                 null,
                 TimeSpan.FromSeconds(3));
         }
         catch (Exception exception) when (
-            exception is InvalidOperationException or FormatException or ArgumentException)
+            exception is InvalidOperationException
+                or FormatException
+                or ArgumentException
+                or MappedDrivePathResolutionException)
         {
             _logger.LogWarning(exception, "Could not format selected file-search items.");
-            ShowStatus("선택 항목 복사 실패", exception.Message, InfoBarSeverity.Error);
+            ShowStatus(
+                L("Loc.Selection.CopyFailed", "선택 항목 복사 실패"),
+                UserFacingExceptionLocalizer.TranslateOperationFailure(_localizer, exception),
+                InfoBarSeverity.Error);
         }
     }
 
@@ -780,7 +889,10 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
             return;
         }
 
-        ShowStatus(title, errorMessage ?? "클립보드에 복사하지 못했습니다.", InfoBarSeverity.Error);
+        ShowStatus(
+            title,
+            errorMessage ?? L("Loc.Common.ClipboardFailed", "클립보드에 복사하지 못했습니다."),
+            InfoBarSeverity.Error);
     }
 
     private Task InitializeAsync() => StartLoadAsync(refreshStatus: true, debounce: false);
@@ -790,8 +902,10 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
         if (!HasRoot)
         {
             HasIndex = false;
-            IndexStatusTitle = "검색 위치를 선택하세요";
-            IndexStatusDetail = "선택한 위치만 색인하며 원본 파일은 변경하지 않습니다.";
+            IndexStatusTitle = L("Loc.Files.Status.ChooseRoot", "검색 위치를 선택하세요");
+            IndexStatusDetail = L(
+                "Loc.Files.Status.ChooseRoot.Detail",
+                "선택한 위치만 색인하며 원본 파일은 변경하지 않습니다.");
             return true;
         }
 
@@ -811,13 +925,24 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
         {
             case IndexRootAvailability.DatabaseMissing:
             case IndexRootAvailability.RootNotIndexed:
-                IndexStatusTitle = "이 위치는 아직 색인되지 않았습니다";
-                IndexStatusDetail = "인덱스 만들기를 실행하면 파일명과 메타데이터를 빠르게 검색할 수 있습니다.";
+                IndexStatusTitle = L(
+                    "Loc.Files.Status.NotIndexed",
+                    "이 위치는 아직 색인되지 않았습니다");
+                IndexStatusDetail = L(
+                    "Loc.Files.Status.NotIndexed.Detail",
+                    "인덱스 만들기를 실행하면 파일명과 메타데이터를 빠르게 검색할 수 있습니다.");
                 break;
             case IndexRootAvailability.Available:
-                IndexStatusTitle = status.HasPendingScopes ? "일부 범위 색인됨" : "검색 준비 완료";
-                var published = status.LastPublishedUtc?.LocalDateTime.ToString("g") ?? "시간 정보 없음";
-                IndexStatusDetail = $"{status.EntryCount:N0}개 항목 · 마지막 새로 고침 {published}";
+                IndexStatusTitle = status.HasPendingScopes
+                    ? L("Loc.Files.Status.PartialIndex", "일부 범위 색인됨")
+                    : L("Loc.Files.Status.Ready", "검색 준비 완료");
+                var published = status.LastPublishedUtc?.LocalDateTime.ToString("g")
+                    ?? L("Loc.Common.TimeUnavailable", "시간 정보 없음");
+                IndexStatusDetail = F(
+                    "Loc.Files.Status.IndexDetail",
+                    "{0:N0}개 항목 · 마지막 새로 고침 {1}",
+                    status.EntryCount,
+                    published);
                 break;
         }
 
@@ -850,8 +975,10 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
         HasIndex = false;
         HasMore = false;
         HasPendingScopes = false;
-        IndexStatusTitle = "인덱스 상태 확인 중";
-        IndexStatusDetail = "선택한 위치의 기존 인덱스를 확인하고 있습니다.";
+        IndexStatusTitle = L("Loc.Files.Status.Checking", "인덱스 상태 확인 중");
+        IndexStatusDetail = L(
+            "Loc.Files.Status.Checking.Detail",
+            "선택한 위치의 기존 인덱스를 확인하고 있습니다.");
     }
 
     private Task StartLoadAsync(
@@ -910,7 +1037,9 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
         {
             _logger.LogWarning(exception, "Could not load the file index.");
             ShowStatus(
-                refreshStatus ? "인덱스 상태 확인 실패" : "검색 실패",
+                refreshStatus
+                    ? L("Loc.Files.Status.CheckFailed", "인덱스 상태 확인 실패")
+                    : L("Loc.Files.Search.Failed", "검색 실패"),
                 exception.Message,
                 refreshStatus ? InfoBarSeverity.Warning : InfoBarSeverity.Error);
         }
@@ -986,7 +1115,7 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
 
                 foreach (var entry in result.Entries)
                 {
-                    Items.Add(new FileSearchItemViewModel(entry));
+                    Items.Add(new FileSearchItemViewModel(entry, _localizer));
                 }
 
                 TotalCount = result.TotalCount;
@@ -995,8 +1124,15 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
                 HasSearched = true;
                 offset = Items.Count;
                 ProgressMessage = HasMore
-                    ? $"인덱스에서 {Items.Count:N0}/{TotalCount:N0}개를 불러오는 중…"
-                    : $"{Items.Count:N0}개 항목을 불러왔습니다.";
+                    ? F(
+                        "Loc.Files.Progress.Loading",
+                        "인덱스에서 {0:N0}/{1:N0}개를 불러오는 중…",
+                        Items.Count,
+                        TotalCount)
+                    : F(
+                        "Loc.Files.Progress.Loaded",
+                        "{0:N0}개 항목을 불러왔습니다.",
+                        Items.Count);
                 OnPropertyChanged(nameof(ResultSummary));
                 OnPropertyChanged(nameof(IsNoResultsVisible));
                 LoadMoreCommand.NotifyCanExecuteChanged();
@@ -1004,7 +1140,9 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
                 if (result.HasMore && result.Entries.Count == 0)
                 {
                     throw new InvalidDataException(
-                        "인덱스가 다음 결과가 있다고 응답했지만 현재 페이지가 비어 있습니다.");
+                        L(
+                            "Loc.Files.Error.EmptyContinuationPage",
+                            "인덱스가 다음 결과가 있다고 응답했지만 현재 페이지가 비어 있습니다."));
                 }
 
                 loadNextPage = result.HasMore;
@@ -1018,7 +1156,10 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
 
             if (IsStatusOpen
                 && StatusSeverity == InfoBarSeverity.Error
-                && string.Equals(StatusTitle, "검색 실패", StringComparison.Ordinal))
+                && string.Equals(
+                    StatusTitle,
+                    L("Loc.Files.Search.Failed", "검색 실패"),
+                    StringComparison.Ordinal))
             {
                 IsStatusOpen = false;
             }
@@ -1067,18 +1208,25 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
     {
         if (string.IsNullOrWhiteSpace(RootPath))
         {
-            throw new InvalidOperationException("검색할 폴더나 드라이브를 선택하세요.");
+            throw new InvalidOperationException(L(
+                "Loc.Files.Error.SelectRoot",
+                "검색할 폴더나 드라이브를 선택하세요."));
         }
 
         var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(RootPath));
         if (!Directory.Exists(root))
         {
-            throw new DirectoryNotFoundException($"검색 위치를 찾을 수 없습니다: {root}");
+            throw new DirectoryNotFoundException(F(
+                "Loc.Files.Error.RootNotFound",
+                "검색 위치를 찾을 수 없습니다: {0}",
+                root));
         }
 
         if (string.IsNullOrWhiteSpace(DatabasePath))
         {
-            throw new InvalidOperationException("인덱스 저장 위치를 확인할 수 없습니다.");
+            throw new InvalidOperationException(L(
+                "Loc.Files.Error.DatabaseMissing",
+                "인덱스 저장 위치를 확인할 수 없습니다."));
         }
 
         var database = Path.GetFullPath(DatabasePath);
@@ -1123,19 +1271,29 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
             comparison);
     }
 
-    private static InvalidOperationException DatabaseInsideRootException() =>
-        new("선택한 검색 위치 안에 인덱스 DB가 있습니다. 더 좁은 위치를 선택하거나 '인덱스 위치'에서 DB를 검색 범위 밖의 로컬 디스크로 옮기세요.");
+    private InvalidOperationException DatabaseInsideRootException() =>
+        new(L(
+            "Loc.Files.Error.DatabaseInsideRoot",
+            "선택한 검색 위치 안에 인덱스 DB가 있습니다. 더 좁은 위치를 선택하거나 '인덱스 위치'에서 DB를 검색 범위 밖의 로컬 디스크로 옮기세요."));
 
-    private static void EnsureDatabaseDirectory(string databasePath)
+    private void EnsureDatabaseDirectory(string databasePath)
     {
         var directory = Path.GetDirectoryName(databasePath);
         if (string.IsNullOrWhiteSpace(directory))
         {
-            throw new InvalidOperationException("인덱스 DB의 상위 폴더를 확인할 수 없습니다.");
+            throw new InvalidOperationException(L(
+                "Loc.Files.Error.DatabaseParentMissing",
+                "인덱스 DB의 상위 폴더를 확인할 수 없습니다."));
         }
 
         Directory.CreateDirectory(directory);
     }
+
+    private string L(string key, string koreanFallback) =>
+        _localizer.Get(key, koreanFallback);
+
+    private string F(string key, string koreanFallback, params object?[] arguments) =>
+        _localizer.Format(key, koreanFallback, arguments);
 
     private static (DateTimeOffset? From, DateTimeOffset? Before) ResolveDateRange(
         DateFilterPreset preset,

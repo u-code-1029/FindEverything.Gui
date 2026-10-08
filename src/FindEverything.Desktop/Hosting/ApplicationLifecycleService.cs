@@ -22,6 +22,7 @@ public sealed class ApplicationLifecycleService(
     IOptions<WorkspaceOptions> workspaceOptions,
     IOptions<IndexingOptions> indexingOptions,
     IOptions<AppearanceOptions> appearanceOptions,
+    IOptions<LocalizationOptions> localizationOptions,
     ILogger<ApplicationLifecycleService> logger) : IHostedService
 {
     private int _stopping;
@@ -35,6 +36,7 @@ public sealed class ApplicationLifecycleService(
         _ = workspaceOptions.Value;
         _ = indexingOptions.Value;
         _ = appearanceOptions.Value;
+        _ = localizationOptions.Value;
 
         ProfileCatalogSnapshot snapshot;
         try
@@ -79,6 +81,7 @@ public sealed class ApplicationLifecycleService(
             _ = serviceProvider.GetRequiredService<FilesPage>();
             _ = serviceProvider.GetRequiredService<CatalogPage>();
             _ = serviceProvider.GetRequiredService<ProfilesPage>();
+            _ = serviceProvider.GetRequiredService<ProfilePlaygroundPage>();
             _ = serviceProvider.GetRequiredService<SettingsPage>();
             var mainWindow = serviceProvider.GetRequiredService<MainWindow>();
             application.MainWindow = mainWindow;

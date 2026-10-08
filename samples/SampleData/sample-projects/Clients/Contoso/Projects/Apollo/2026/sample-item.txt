@@ -1,1 +1,1 @@
-필수 필드(고객, 프로젝트, 연도)만 포함한 샘플 폴더입니다.
+Sample folder containing only the required fields: client, project, and year.

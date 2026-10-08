@@ -3,6 +3,7 @@ using FindEverything.Application.Options;
 using FindEverything.Desktop.Appearance;
 using FindEverything.Desktop.Configuration;
 using FindEverything.Desktop.Hosting;
+using FindEverything.Desktop.Localization;
 using FindEverything.Desktop.Services;
 using FindEverything.Desktop.ViewModels;
 using FindEverything.Desktop.Views;
@@ -55,13 +56,33 @@ public static class DependencyInjection
         services.AddSingleton<IContentDialogService, ContentDialogService>();
 
         services.AddSingleton<IApplicationOperationCoordinator, ApplicationOperationCoordinator>();
+        services.AddSingleton<IApplicationLifetimeController, WpfApplicationLifetimeController>();
+        services.TryAddSingleton<ApplicationLaunchContext>(static _ =>
+        {
+            var commandLine = Environment.GetCommandLineArgs();
+            return ApplicationLaunchContext.Capture(
+                commandLine.FirstOrDefault()
+                    ?? Environment.ProcessPath
+                    ?? string.Empty,
+                Array.AsReadOnly(commandLine.Skip(1).ToArray()),
+                Environment.CurrentDirectory);
+        });
+        services.AddSingleton<IApplicationProcessLauncher, CurrentApplicationProcessLauncher>();
+        services.AddSingleton<ApplicationRestartCoordinator>();
+        services.AddSingleton<IApplicationRestartCoordinator>(
+            static provider => provider.GetRequiredService<ApplicationRestartCoordinator>());
+        services.AddSingleton<IAppLocalizer, AppLocalizer>();
+        services.AddSingleton<ILanguageSelectionService, LanguageSelectionService>();
         services.AddSingleton<IWorkspaceContext, WorkspaceContext>();
         services.AddSingleton<IDesktopPickerService, DesktopPickerService>();
         services.AddSingleton<IScanConsoleLogWriter, ScanConsoleLogWriter>();
         services.AddSingleton<IPathLauncher, ExplorerPathLauncher>();
         services.AddSingleton<IProfileAuthoringService, ProfileAuthoringService>();
+        services.AddSingleton<IProfilePlaygroundEvaluator, ProfilePlaygroundEvaluator>();
+        services.AddSingleton<IProfilePlaygroundNavigator, ProfilePlaygroundNavigator>();
         services.AddSingleton<ISelectionOutputFormatStore, SelectionOutputFormatStore>();
         services.AddSingleton<ISelectionOutputFormatter, SelectionOutputFormatter>();
+        services.AddSingleton<ICatalogSelectionExporter, CatalogSelectionExporter>();
         services.AddSingleton<IClipboardService, WpfClipboardService>();
         services.TryAddSingleton<IWindowsMappedDrivePathResolver, WindowsMappedDrivePathResolver>();
         services.Replace(ServiceDescriptor.Singleton<IProfilePathCanonicalizer,
@@ -95,6 +116,8 @@ public static class DependencyInjection
         services.AddSingleton<CatalogViewModel>();
         services.AddSingleton<ProfilesPage>();
         services.AddSingleton<ProfilesViewModel>();
+        services.AddSingleton<ProfilePlaygroundPage>();
+        services.AddSingleton<ProfilePlaygroundViewModel>();
         services.AddSingleton<OutputFormatsPage>();
         services.AddSingleton<OutputFormatsViewModel>();
         services.AddSingleton<SettingsPage>();

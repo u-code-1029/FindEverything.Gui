@@ -20,6 +20,38 @@ internal interface IWindowsMappedDrivePathResolver
     string ExpandToUnc(string absolutePath);
 }
 
+internal sealed class MappedDrivePathResolutionException : IOException
+{
+    public MappedDrivePathResolutionException(
+        string mappedPath,
+        uint? providerErrorCode = null,
+        string? providerDetail = null)
+        : base(CreateDiagnosticMessage(mappedPath, providerErrorCode, providerDetail))
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(mappedPath);
+        MappedPath = mappedPath;
+        ProviderErrorCode = providerErrorCode;
+        ProviderDetail = providerDetail;
+    }
+
+    public string MappedPath { get; }
+
+    public uint? ProviderErrorCode { get; }
+
+    public string? ProviderDetail { get; }
+
+    private static string CreateDiagnosticMessage(
+        string mappedPath,
+        uint? providerErrorCode,
+        string? providerDetail)
+    {
+        var providerSuffix = providerErrorCode is null
+            ? string.Empty
+            : $" Windows error {providerErrorCode}: {providerDetail ?? "No provider detail was returned."}";
+        return $"Could not resolve mapped network path '{mappedPath}' to a UNC path.{providerSuffix}";
+    }
+}
+
 internal sealed partial class WindowsMappedDrivePathResolver : IWindowsMappedDrivePathResolver
 {
     private const uint UniversalNameInfoLevel = 1;
@@ -95,8 +127,7 @@ internal sealed partial class WindowsMappedDrivePathResolver : IWindowsMappedDri
                     if (string.IsNullOrWhiteSpace(universalName)
                         || !universalName.StartsWith(@"\\", StringComparison.Ordinal))
                     {
-                        throw new IOException(
-                            $"매핑된 네트워크 경로 '{absolutePath}'의 UNC 경로를 확인할 수 없습니다.");
+                        throw new MappedDrivePathResolutionException(absolutePath);
                     }
 
                     return Path.TrimEndingDirectorySeparator(Path.GetFullPath(universalName));
@@ -123,15 +154,17 @@ internal sealed partial class WindowsMappedDrivePathResolver : IWindowsMappedDri
         throw CreateResolutionException(absolutePath, ErrorMoreData);
     }
 
-    private static IOException CreateResolutionException(string path, uint errorCode)
+    private static MappedDrivePathResolutionException CreateResolutionException(
+        string path,
+        uint errorCode)
     {
-        var detail = errorCode == NoError
-            ? "UNC 경로 정보가 반환되지 않았습니다."
-            : new Win32Exception(checked((int)errorCode)).Message;
-        return new IOException(
-            $"매핑된 네트워크 경로 '{path}'를 UNC 경로로 변환하지 못했습니다. "
-            + $"연결을 다시 확인하거나 UNC 경로를 직접 입력하세요. "
-            + $"Windows 오류 {errorCode}: {detail}");
+        if (errorCode == NoError)
+        {
+            return new MappedDrivePathResolutionException(path);
+        }
+
+        var detail = new Win32Exception(checked((int)errorCode)).Message;
+        return new MappedDrivePathResolutionException(path, errorCode, detail);
     }
 
     [LibraryImport(

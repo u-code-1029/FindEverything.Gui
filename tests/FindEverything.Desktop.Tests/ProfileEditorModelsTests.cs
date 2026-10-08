@@ -80,6 +80,72 @@ public sealed class ProfileEditorModelsTests
     }
 
     [Fact]
+    public void Alias_value_mapping_round_trip_preserves_rows_and_notifies_edits()
+    {
+        var draft = new ProfileFieldDraftViewModel(new ProfileFieldManifest
+        {
+            FieldId = "employee",
+            GroupName = "alias",
+            Header = "담당자",
+            Kind = ProfileFieldValueKind.String,
+            ValueMappings =
+            [
+                new ProfileValueMappingManifest { Source = "A", Display = "홍길동" },
+            ],
+        });
+        var valueMappingsChanged = 0;
+        draft.PropertyChanged += (_, eventArgs) =>
+        {
+            if (eventArgs.PropertyName == nameof(ProfileFieldDraftViewModel.ValueMappings))
+            {
+                valueMappingsChanged++;
+            }
+        };
+
+        Assert.True(draft.HasAliasGroup);
+        Assert.True(draft.HasValueMappings);
+        Assert.True(draft.CanConfigureValueMappings);
+        var mapping = Assert.Single(draft.ValueMappings);
+        Assert.Equal("A", mapping.Source);
+        Assert.Equal("홍길동", mapping.Display);
+
+        mapping.Display = "Hong Gil-dong";
+
+        Assert.Equal(1, valueMappingsChanged);
+        draft.Kind = ProfileFieldValueKind.Int32;
+        Assert.False(draft.CanConfigureValueMappings);
+        Assert.True(draft.ShowValueMappingEditor);
+
+        draft.RemoveValueMappingCommand.Execute(mapping);
+        Assert.Empty(draft.ValueMappings);
+        Assert.False(draft.HasValueMappings);
+        Assert.False(draft.ShowValueMappingEditor);
+    }
+
+    [Fact]
+    public void Profile_field_manifest_builder_preserves_value_mapping_whitespace()
+    {
+        var draft = new ProfileFieldDraftViewModel
+        {
+            FieldId = "employee",
+            GroupName = "alias",
+            Header = "담당자",
+            Kind = ProfileFieldValueKind.String,
+        };
+        draft.ValueMappings.Add(new ProfileValueMappingDraftViewModel
+        {
+            Source = " A ",
+            Display = " 홍길동 ",
+        });
+
+        var manifest = ProfilesViewModel.BuildFieldManifest(draft, index: 0);
+
+        var mapping = Assert.Single(manifest.ValueMappings!);
+        Assert.Equal(" A ", mapping.Source);
+        Assert.Equal(" 홍길동 ", mapping.Display);
+    }
+
+    [Fact]
     public void Guided_mode_rejects_ambiguous_or_non_date_composite_groups()
     {
         var reversedDate = new ProfileFieldDraftViewModel(new ProfileFieldManifest

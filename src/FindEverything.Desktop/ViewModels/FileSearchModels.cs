@@ -1,9 +1,12 @@
 using System.Globalization;
 using FindEverything.Application.Indexing;
+using FindEverything.Desktop.Localization;
 
 namespace FindEverything.Desktop.ViewModels;
 
-public sealed class FileSearchItemViewModel(IndexedPathEntry entry)
+public sealed class FileSearchItemViewModel(
+    IndexedPathEntry entry,
+    IAppLocalizer? localizer = null)
 {
     public IndexedPathEntry Entry { get; } = entry;
 
@@ -18,10 +21,13 @@ public sealed class FileSearchItemViewModel(IndexedPathEntry entry)
     public IndexedPathKind Kind => Entry.Kind;
 
     public string KindText => Kind == IndexedPathKind.Directory
-        ? "폴더"
+        ? Get("Loc.Files.Kind.Folder", "폴더")
         : string.IsNullOrWhiteSpace(Path.GetExtension(Name))
-            ? "파일"
-            : $"{Path.GetExtension(Name).TrimStart('.').ToUpper(CultureInfo.CurrentCulture)} 파일";
+            ? Get("Loc.Files.Kind.File", "파일")
+            : string.Format(
+                CultureInfo.CurrentCulture,
+                Get("Loc.Files.Kind.ExtensionFile", "{0} 파일"),
+                Path.GetExtension(Name).TrimStart('.').ToUpper(CultureInfo.CurrentCulture));
 
     public long? SizeBytes => Entry.SizeBytes;
 
@@ -35,7 +41,12 @@ public sealed class FileSearchItemViewModel(IndexedPathEntry entry)
 
     public bool CoveragePending => Entry.CoveragePending;
 
-    public string StatusText => CoveragePending ? "확인 대기" : string.Empty;
+    public string StatusText => CoveragePending
+        ? Get("Loc.Files.Status.Pending", "확인 대기")
+        : string.Empty;
+
+    private string Get(string key, string koreanFallback) =>
+        localizer?.Get(key, koreanFallback) ?? koreanFallback;
 }
 
 public sealed record EntryKindChoice(IndexedPathKind? Value, string DisplayName);

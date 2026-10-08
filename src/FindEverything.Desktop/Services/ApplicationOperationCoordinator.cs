@@ -270,6 +270,15 @@ public sealed class ApplicationOperationCoordinator(
                 "The active index operation did not stop within {ShutdownTimeout}.",
                 timeout);
         }
+        catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            // Shutdown is a join point, not a second observer for the operation
+            // result. The initiating view model still receives the original
+            // failure; shutdown can safely continue to dispose and restart.
+            logger.LogWarning(
+                exception,
+                "The active operation ended with an error during shutdown.");
+        }
     }
 
     private async Task RunCoreAsync(

@@ -1,1 +1,1 @@
-달 탐사 영상 처리 프로젝트
+Lunar exploration video-processing project

@@ -34,24 +34,18 @@ public interface IWorkspaceContext
 /// </summary>
 public sealed class WorkspaceContext : IWorkspaceContext, IDisposable
 {
-    private readonly IValidatedSettingsState<IndexingOptions> _indexingSettings;
-    private readonly IValidatedSettingsState<AppearanceOptions> _appearanceSettings;
     private readonly IUserSettingsWriter _settingsWriter;
     private readonly SemaphoreSlim _saveGate = new(1, 1);
     private WorkspaceSnapshot _current;
 
     public WorkspaceContext(
         IValidatedSettingsState<WorkspaceOptions> workspaceSettings,
-        IValidatedSettingsState<IndexingOptions> indexingSettings,
-        IValidatedSettingsState<AppearanceOptions> appearanceSettings,
         IUserSettingsWriter settingsWriter,
         AppPaths paths)
     {
         ArgumentNullException.ThrowIfNull(workspaceSettings);
         ArgumentNullException.ThrowIfNull(paths);
 
-        _indexingSettings = indexingSettings;
-        _appearanceSettings = appearanceSettings;
         _settingsWriter = settingsWriter;
 
         var workspace = workspaceSettings.Current;
@@ -82,26 +76,13 @@ public sealed class WorkspaceContext : IWorkspaceContext, IDisposable
         await _saveGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var indexing = _indexingSettings.Current;
-            var appearance = _appearanceSettings.Current;
             await _settingsWriter.SaveAsync(
                 new UserSettingsUpdate(
-                    new WorkspaceOptions
+                    Workspace: new WorkspaceOptions
                     {
                         SelectedProfileId = normalized.SelectedProfileId,
                         RootPath = normalized.RootPath,
                         DatabasePath = normalized.DatabasePath,
-                    },
-                    new IndexingOptions
-                    {
-                        SearchPageSize = indexing.SearchPageSize,
-                        MaxEntriesPerSecond = indexing.MaxEntriesPerSecond,
-                        DirectoryDelayMilliseconds = indexing.DirectoryDelayMilliseconds,
-                    },
-                    new AppearanceOptions
-                    {
-                        Theme = appearance.Theme,
-                        Backdrop = appearance.Backdrop,
                     }),
                 cancellationToken).ConfigureAwait(false);
 

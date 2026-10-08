@@ -1,4 +1,5 @@
 using System.Text.Json;
+using FindEverything.Desktop.Localization;
 using Microsoft.Extensions.Logging;
 
 namespace FindEverything.Desktop.Configuration;
@@ -20,12 +21,19 @@ public static class SelectionOutputFormatDefaults
 {
     public const string FullPathLinesId = "builtin.full-path-lines";
 
-    public static SelectionOutputFormatDefinition FullPathLines { get; } = new(
-        FullPathLinesId,
-        "전체 경로 (한 줄에 하나)",
-        "{FullPath}",
-        Environment.NewLine,
-        ProfileId: null);
+    public static SelectionOutputFormatDefinition FullPathLines { get; } =
+        CreateFullPathLines();
+
+    public static SelectionOutputFormatDefinition CreateFullPathLines(
+        IAppLocalizer? localizer = null) => new(
+            FullPathLinesId,
+            localizer?.Get(
+                "Loc.Output.BuiltIn.FullPathLines",
+                "전체 경로 (한 줄에 하나)")
+                ?? "전체 경로 (한 줄에 하나)",
+            "{FullPath}",
+            Environment.NewLine,
+            ProfileId: null);
 }
 
 public interface ISelectionOutputFormatStore
@@ -53,14 +61,19 @@ public sealed class SelectionOutputFormatStore : ISelectionOutputFormatStore
     private readonly object _sync = new();
     private readonly AppPaths _paths;
     private readonly ILogger<SelectionOutputFormatStore> _logger;
+    private readonly IAppLocalizer? _localizer;
+    private readonly SelectionOutputFormatDefinition _builtInFormat;
     private Dictionary<string, SelectionOutputFormatDefinition>? _customFormats;
 
     public SelectionOutputFormatStore(
         AppPaths paths,
-        ILogger<SelectionOutputFormatStore> logger)
+        ILogger<SelectionOutputFormatStore> logger,
+        IAppLocalizer? localizer = null)
     {
         _paths = paths;
         _logger = logger;
+        _localizer = localizer;
+        _builtInFormat = SelectionOutputFormatDefaults.CreateFullPathLines(localizer);
     }
 
     public event EventHandler? Changed;
@@ -95,7 +108,9 @@ public sealed class SelectionOutputFormatStore : ISelectionOutputFormatStore
         var normalized = NormalizeAndValidate(definition);
         if (normalized.IsBuiltIn)
         {
-            throw new InvalidOperationException("기본 출력 포맷은 수정할 수 없습니다.");
+            throw new InvalidOperationException(L(
+                "Loc.Output.Error.BuiltInReadOnly",
+                "기본 출력 포맷은 수정할 수 없습니다."));
         }
 
         lock (_sync)
@@ -171,7 +186,7 @@ public sealed class SelectionOutputFormatStore : ISelectionOutputFormatStore
         var custom = _customFormats!.Values
             .Where(predicate)
             .OrderBy(static format => format.DisplayName, StringComparer.CurrentCultureIgnoreCase);
-        return new[] { SelectionOutputFormatDefaults.FullPathLines }
+        return new[] { _builtInFormat }
             .Concat(custom)
             .ToArray();
     }
@@ -291,7 +306,7 @@ public sealed class SelectionOutputFormatStore : ISelectionOutputFormatStore
         }
     }
 
-    private static SelectionOutputFormatDefinition NormalizeAndValidate(
+    private SelectionOutputFormatDefinition NormalizeAndValidate(
         SelectionOutputFormatDefinition definition)
     {
         ArgumentNullException.ThrowIfNull(definition);
@@ -305,27 +320,37 @@ public sealed class SelectionOutputFormatStore : ISelectionOutputFormatStore
 
         if (id.Length is < 1 or > 128)
         {
-            throw new ArgumentException("출력 포맷 ID는 1~128자여야 합니다.", nameof(definition));
+            throw new ArgumentException(
+                L("Loc.Output.Error.IdLength", "출력 포맷 ID는 1~128자여야 합니다."),
+                nameof(definition));
         }
 
         if (displayName.Length is < 1 or > 100)
         {
-            throw new ArgumentException("출력 포맷 이름은 1~100자여야 합니다.", nameof(definition));
+            throw new ArgumentException(
+                L("Loc.Output.Error.NameLength", "출력 포맷 이름은 1~100자여야 합니다."),
+                nameof(definition));
         }
 
         if (template.Length is < 1 or > 16_384)
         {
-            throw new ArgumentException("출력 템플릿은 1~16,384자여야 합니다.", nameof(definition));
+            throw new ArgumentException(
+                L("Loc.Output.Error.TemplateLength", "출력 템플릿은 1~16,384자여야 합니다."),
+                nameof(definition));
         }
 
         if (itemSeparator.Length > 1_024)
         {
-            throw new ArgumentException("항목 구분자는 1,024자 이하여야 합니다.", nameof(definition));
+            throw new ArgumentException(
+                L("Loc.Output.Error.SeparatorLength", "항목 구분자는 1,024자 이하여야 합니다."),
+                nameof(definition));
         }
 
         if (profileId is { Length: > 128 })
         {
-            throw new ArgumentException("프로필 ID는 128자 이하여야 합니다.", nameof(definition));
+            throw new ArgumentException(
+                L("Loc.Output.Error.ProfileIdLength", "프로필 ID는 128자 이하여야 합니다."),
+                nameof(definition));
         }
 
         return new SelectionOutputFormatDefinition(
@@ -335,6 +360,9 @@ public sealed class SelectionOutputFormatStore : ISelectionOutputFormatStore
             itemSeparator,
             profileId);
     }
+
+    private string L(string key, string koreanFallback) =>
+        _localizer?.Get(key, koreanFallback) ?? koreanFallback;
 
     private sealed record SelectionOutputFormatDocument(
         int Version,

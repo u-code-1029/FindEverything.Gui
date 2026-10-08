@@ -4,10 +4,12 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:localization="clr-namespace:FindEverything.Desktop.Localization"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
     Title="출력 포맷"
     Background="Transparent"
     Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+    localization:LocalizationScope.IsEnabled="True"
     mc:Ignorable="d">
     <Page.Resources>
         <Style x:Key="OutputFieldLabelStyle" TargetType="TextBlock">

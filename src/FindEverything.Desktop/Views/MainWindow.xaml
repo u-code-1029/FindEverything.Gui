@@ -4,13 +4,16 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:localization="clr-namespace:FindEverything.Desktop.Localization"
     xmlns:pages="clr-namespace:FindEverything.Desktop.Views.Pages"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
     Title="{Binding ApplicationTitle}"
     Width="1360"
     Height="860"
+    Language="{StaticResource Loc.Culture.XmlLanguage}"
     MinWidth="960"
     MinHeight="640"
+    localization:LocalizationScope.IsEnabled="True"
     ExtendsContentIntoTitleBar="True"
     Foreground="{DynamicResource TextFillColorPrimaryBrush}"
     WindowBackdropType="None"
@@ -84,6 +87,12 @@
                     TargetPageTag="profiles"
                     TargetPageType="{x:Type pages:ProfilesPage}" />
                 <ui:NavigationViewItem
+                    Content="프로필 Playground"
+                    Icon="{ui:SymbolIcon Symbol=DocumentSearch24}"
+                    NavigationCacheMode="Required"
+                    TargetPageTag="profile-playground"
+                    TargetPageType="{x:Type pages:ProfilePlaygroundPage}" />
+                <ui:NavigationViewItem
                     Content="출력 포맷"
                     Icon="{ui:SymbolIcon Symbol=ClipboardTask24}"
                     NavigationCacheMode="Required"
@@ -108,28 +117,78 @@
             Panel.ZIndex="1"
             Title="{Binding ApplicationTitle}">
             <ui:TitleBar.TrailingContent>
-                <ui:Button
-                    x:Name="ScanConsoleToggleButton"
-                    Width="40"
-                    Height="32"
-                    Margin="0,0,8,0"
-                    Padding="0"
-                    AutomationProperties.ItemStatus="{Binding ScanConsole.PanelToggleToolTip}"
-                    AutomationProperties.Name="{Binding ScanConsole.PanelToggleToolTip}"
-                    Command="{Binding ToggleScanConsoleCommand}"
-                    Icon="{ui:SymbolIcon Symbol=PanelBottom20}"
-                    ToolTip="{Binding ScanConsole.PanelToggleToolTip}">
-                    <ui:Button.Style>
-                        <Style BasedOn="{StaticResource {x:Type ui:Button}}" TargetType="{x:Type ui:Button}">
-                            <Setter Property="Appearance" Value="Transparent" />
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding ScanConsole.IsPanelOpen}" Value="True">
-                                    <Setter Property="Appearance" Value="Secondary" />
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </ui:Button.Style>
-                </ui:Button>
+                <StackPanel Orientation="Horizontal">
+                    <Border
+                        Margin="0,0,8,0"
+                        Padding="2"
+                        VerticalAlignment="Center"
+                        Background="{DynamicResource ControlFillColorSecondaryBrush}"
+                        CornerRadius="6"
+                        ToolTip="{Binding LanguageRestartHint}">
+                        <StackPanel Orientation="Horizontal">
+                            <ui:Button
+                                MinWidth="38"
+                                Height="28"
+                                Padding="8,0"
+                                AutomationProperties.Name="한국어로 전환"
+                                Command="{Binding ChangeLanguageCommand}"
+                                CommandParameter="ko-KR"
+                                Content="KO">
+                                <ui:Button.Style>
+                                    <Style BasedOn="{StaticResource {x:Type ui:Button}}" TargetType="{x:Type ui:Button}">
+                                        <Setter Property="Appearance" Value="Transparent" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsKorean}" Value="True">
+                                                <Setter Property="Appearance" Value="Secondary" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </ui:Button.Style>
+                            </ui:Button>
+                            <ui:Button
+                                MinWidth="38"
+                                Height="28"
+                                Padding="8,0"
+                                AutomationProperties.Name="영어로 전환"
+                                Command="{Binding ChangeLanguageCommand}"
+                                CommandParameter="en-US"
+                                Content="EN">
+                                <ui:Button.Style>
+                                    <Style BasedOn="{StaticResource {x:Type ui:Button}}" TargetType="{x:Type ui:Button}">
+                                        <Setter Property="Appearance" Value="Transparent" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsEnglish}" Value="True">
+                                                <Setter Property="Appearance" Value="Secondary" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </ui:Button.Style>
+                            </ui:Button>
+                        </StackPanel>
+                    </Border>
+                    <ui:Button
+                        x:Name="ScanConsoleToggleButton"
+                        Width="40"
+                        Height="32"
+                        Margin="0,0,8,0"
+                        Padding="0"
+                        AutomationProperties.ItemStatus="{Binding ScanConsole.PanelToggleToolTip}"
+                        AutomationProperties.Name="{Binding ScanConsole.PanelToggleToolTip}"
+                        Command="{Binding ToggleScanConsoleCommand}"
+                        Icon="{ui:SymbolIcon Symbol=PanelBottom20}"
+                        ToolTip="{Binding ScanConsole.PanelToggleToolTip}">
+                        <ui:Button.Style>
+                            <Style BasedOn="{StaticResource {x:Type ui:Button}}" TargetType="{x:Type ui:Button}">
+                                <Setter Property="Appearance" Value="Transparent" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ScanConsole.IsPanelOpen}" Value="True">
+                                        <Setter Property="Appearance" Value="Secondary" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ui:Button.Style>
+                    </ui:Button>
+                </StackPanel>
             </ui:TitleBar.TrailingContent>
         </ui:TitleBar>
 

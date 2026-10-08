@@ -46,7 +46,13 @@ public interface IUserSettingsWriter
     Task SaveAsync(UserSettingsUpdate update, CancellationToken cancellationToken = default);
 }
 
+/// <summary>
+/// A partial settings update. Null sections are preserved from the current
+/// user-settings document so independent UI operations cannot overwrite one
+/// another with stale snapshots.
+/// </summary>
 public sealed record UserSettingsUpdate(
-    WorkspaceOptions Workspace,
-    IndexingOptions Indexing,
-    AppearanceOptions Appearance);
+    WorkspaceOptions? Workspace = null,
+    IndexingOptions? Indexing = null,
+    AppearanceOptions? Appearance = null,
+    LocalizationOptions? Localization = null);

@@ -2,7 +2,7 @@
   "contractVersion": 2,
   "id": "sample-projects",
   "version": "1.0.0",
-  "displayName": "샘플 프로젝트 폴더",
+  "displayName": "Sample project folders",
   "entryAssembly": "FindEverything.Profiles.SampleProjects.dll",
   "modelType": "FindEverything.Profiles.SampleProjects.SampleProjectItem",
   "candidateKind": "Directory",

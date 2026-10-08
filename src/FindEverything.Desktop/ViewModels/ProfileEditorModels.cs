@@ -1,9 +1,25 @@
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
+using System.ComponentModel;
 using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using FindEverything.Profile.Runtime;
 
 namespace FindEverything.Desktop.ViewModels;
+
+internal static class ProfileEditorText
+{
+    public static string Get(string key, string koreanFallback) =>
+        System.Windows.Application.Current?.TryFindResource(key) as string
+        ?? koreanFallback;
+
+    public static string Format(
+        string key,
+        string koreanFallback,
+        params object?[] arguments) =>
+        string.Format(CultureInfo.CurrentCulture, Get(key, koreanFallback), arguments);
+}
 
 public enum ProfileEditorMode
 {
@@ -31,6 +47,26 @@ public enum GuidedSourcePart
     MonthDay,
     Month,
     Day,
+}
+
+public partial class ProfileValueMappingDraftViewModel : ObservableObject
+{
+    [ObservableProperty]
+    private string _source = string.Empty;
+
+    [ObservableProperty]
+    private string _display = string.Empty;
+
+    public ProfileValueMappingDraftViewModel()
+    {
+    }
+
+    public ProfileValueMappingDraftViewModel(ProfileValueMappingManifest mapping)
+    {
+        ArgumentNullException.ThrowIfNull(mapping);
+        Source = mapping.Source ?? string.Empty;
+        Display = mapping.Display ?? string.Empty;
+    }
 }
 
 /// <summary>
@@ -85,11 +121,11 @@ public sealed record GuidedPathAssignmentViewModel(
 
     public static string SourcePartDisplayName(GuidedSourcePart part) => part switch
     {
-        GuidedSourcePart.Year => "연도",
-        GuidedSourcePart.MonthDay => "월일",
-        GuidedSourcePart.Month => "월",
-        GuidedSourcePart.Day => "일",
-        _ => "값",
+        GuidedSourcePart.Year => ProfileEditorText.Get("Loc.Profiles.SourcePart.Year", "연도"),
+        GuidedSourcePart.MonthDay => ProfileEditorText.Get("Loc.Profiles.SourcePart.MonthDay", "월일"),
+        GuidedSourcePart.Month => ProfileEditorText.Get("Loc.Profiles.SourcePart.Month", "월"),
+        GuidedSourcePart.Day => ProfileEditorText.Get("Loc.Profiles.SourcePart.Day", "일"),
+        _ => ProfileEditorText.Get("Loc.Profiles.SourcePart.Value", "값"),
     };
 }
 
@@ -100,15 +136,15 @@ public partial class ProfileFieldDraftViewModel : ObservableObject
 {
     private static readonly IReadOnlyList<GuidedDateFormatChoice> CommonDateFormats =
     [
-        new("yyyyMMdd", "20260521  ·  숫자 8자리"),
-        new("yyyy-MM-dd", "2026-05-21  ·  하이픈(-)"),
-        new("yyyy_MM_dd", "2026_05_21  ·  밑줄(_)"),
-        new("yyyy.MM.dd", "2026.05.21  ·  점(.)"),
-        new("yyyy MM dd", "2026 05 21  ·  공백"),
-        new("yyyy년 MM월 dd일", "2026년 05월 21일  ·  한글"),
-        new("MM-dd-yyyy", "05-21-2026  ·  월-일-연도"),
-        new("dd-MM-yyyy", "21-05-2026  ·  일-월-연도"),
-        new("yyyyMMdd_HHmmss", "20260521_143005  ·  날짜와 시간"),
+        new("yyyyMMdd", ProfileEditorText.Get("Loc.Profiles.DateFormat.Digits", "20260521  ·  숫자 8자리")),
+        new("yyyy-MM-dd", ProfileEditorText.Get("Loc.Profiles.DateFormat.Hyphen", "2026-05-21  ·  하이픈(-)")),
+        new("yyyy_MM_dd", ProfileEditorText.Get("Loc.Profiles.DateFormat.Underscore", "2026_05_21  ·  밑줄(_)")),
+        new("yyyy.MM.dd", ProfileEditorText.Get("Loc.Profiles.DateFormat.Dot", "2026.05.21  ·  점(.)")),
+        new("yyyy MM dd", ProfileEditorText.Get("Loc.Profiles.DateFormat.Space", "2026 05 21  ·  공백")),
+        new("yyyy년 MM월 dd일", ProfileEditorText.Get("Loc.Profiles.DateFormat.Korean", "2026년 05월 21일  ·  한글")),
+        new("MM-dd-yyyy", ProfileEditorText.Get("Loc.Profiles.DateFormat.MonthDayYear", "05-21-2026  ·  월-일-연도")),
+        new("dd-MM-yyyy", ProfileEditorText.Get("Loc.Profiles.DateFormat.DayMonthYear", "21-05-2026  ·  일-월-연도")),
+        new("yyyyMMdd_HHmmss", ProfileEditorText.Get("Loc.Profiles.DateFormat.DateTime", "20260521_143005  ·  날짜와 시간")),
     ];
 
     private bool _isInitializing;
@@ -146,19 +182,24 @@ public partial class ProfileFieldDraftViewModel : ObservableObject
 
     public ObservableCollection<GuidedPathAssignmentViewModel> GuidedAssignments { get; } = [];
 
+    public ObservableCollection<ProfileValueMappingDraftViewModel> ValueMappings { get; } = [];
+
     public string KindDisplayName => Kind switch
     {
-        ProfileFieldValueKind.String => "텍스트",
-        ProfileFieldValueKind.Int32 => "정수",
-        ProfileFieldValueKind.Decimal => "소수",
-        ProfileFieldValueKind.DateTime => "날짜/시간",
-        ProfileFieldValueKind.Boolean => "참/거짓",
+        ProfileFieldValueKind.String => ProfileEditorText.Get("Loc.Profiles.Kind.Text", "텍스트"),
+        ProfileFieldValueKind.Int32 => ProfileEditorText.Get("Loc.Profiles.Kind.Integer", "정수"),
+        ProfileFieldValueKind.Decimal => ProfileEditorText.Get("Loc.Profiles.Kind.Decimal", "소수"),
+        ProfileFieldValueKind.DateTime => ProfileEditorText.Get("Loc.Profiles.Kind.DateTime", "날짜/시간"),
+        ProfileFieldValueKind.Boolean => ProfileEditorText.Get("Loc.Profiles.Kind.Boolean", "참/거짓"),
         _ => Kind.ToString(),
     };
 
     public string TemplateActionLabel => string.IsNullOrWhiteSpace(Header)
-        ? "경로 조각 선택"
-        : $"‘{Header}’에 넣을 경로 조각 선택";
+        ? ProfileEditorText.Get("Loc.Profiles.Action.SelectSegment", "경로 조각 선택")
+        : ProfileEditorText.Format(
+            "Loc.Profiles.Action.SelectSegmentForField",
+            "‘{0}’에 넣을 경로 조각 선택",
+            Header);
 
     public bool IsDateTime => Kind == ProfileFieldValueKind.DateTime;
 
@@ -172,6 +213,26 @@ public partial class ProfileFieldDraftViewModel : ObservableObject
         IsDateTime && DateSourcePreset == GuidedDateSourcePreset.YearMonthAndDay;
 
     public bool HasGuidedAssignments => GuidedAssignments.Count > 0;
+
+    public bool CanConfigureValueMappings => Kind == ProfileFieldValueKind.String;
+
+    public bool HasValueMappings => ValueMappings.Count > 0;
+
+    // Keep an existing mapping table reachable after the field kind changes.
+    // Validation intentionally rejects mappings on non-string fields, so hiding
+    // these rows would leave the user with no way to remove the invalid data.
+    public bool ShowValueMappingEditor => CanConfigureValueMappings || HasValueMappings;
+
+    public bool HasAliasGroup => EffectiveGroupNames.Any(static groupName =>
+        string.Equals(groupName, "alias", StringComparison.OrdinalIgnoreCase));
+
+    public string ValueMappingDescription => HasAliasGroup
+        ? ProfileEditorText.Get(
+            "Loc.Profiles.Mapping.AliasDescription",
+            "alias 그룹의 원본 코드를 사람이 읽기 쉬운 값으로 바꿔 표시합니다. 원본은 보존됩니다.")
+        : ProfileEditorText.Get(
+            "Loc.Profiles.Mapping.Description",
+            "캡처한 원본 코드와 화면에 보여 줄 값을 연결합니다. 원본은 보존됩니다.");
 
     /// <summary>
     /// Known formats are described with concrete path examples so guided-mode
@@ -197,7 +258,12 @@ public partial class ProfileFieldDraftViewModel : ObservableObject
             return
             [
                 .. choices,
-                new(current, $"현재 사용자 지정 형식 유지  ·  {current}"),
+                new(
+                    current,
+                    ProfileEditorText.Format(
+                        "Loc.Profiles.DateFormat.KeepCustom",
+                        "현재 사용자 지정 형식 유지  ·  {0}",
+                        current)),
             ];
         }
     }
@@ -205,10 +271,16 @@ public partial class ProfileFieldDraftViewModel : ObservableObject
     public string DateFormatHelpText => DateSourcePreset switch
     {
         GuidedDateSourcePreset.YearAndMonthDay =>
-            "선택한 연도와 월일을 붙인 모습과 같은 예시를 고르세요. 예: 2026 + 0521 → 20260521",
+            ProfileEditorText.Get(
+                "Loc.Profiles.Date.Help.YearMonthDay",
+                "선택한 연도와 월일을 붙인 모습과 같은 예시를 고르세요. 예: 2026 + 0521 → 20260521"),
         GuidedDateSourcePreset.YearMonthAndDay =>
-            "선택한 연도, 월, 일을 붙인 모습과 같은 예시를 고르세요. 예: 2026 + 05 + 21 → 20260521",
-        _ => "경로에서 날짜가 보이는 모습과 같은 예시를 고르세요.",
+            ProfileEditorText.Get(
+                "Loc.Profiles.Date.Help.YearMonthAndDay",
+                "선택한 연도, 월, 일을 붙인 모습과 같은 예시를 고르세요. 예: 2026 + 05 + 21 → 20260521"),
+        _ => ProfileEditorText.Get(
+            "Loc.Profiles.Date.Help.Single",
+            "경로에서 날짜가 보이는 모습과 같은 예시를 고르세요."),
     };
 
     public bool SupportsGuidedAssignments =>
@@ -227,8 +299,13 @@ public partial class ProfileFieldDraftViewModel : ObservableObject
 
             var groups = EffectiveGroupNames;
             return groups.Count == 0
-                ? "아직 경로 조각을 연결하지 않았습니다."
-                : $"정규식 그룹: {string.Join(" + ", groups)}";
+                ? ProfileEditorText.Get(
+                    "Loc.Profiles.Source.None",
+                    "아직 경로 조각을 연결하지 않았습니다.")
+                : ProfileEditorText.Format(
+                    "Loc.Profiles.Source.RegexGroups",
+                    "정규식 그룹: {0}",
+                    string.Join(" + ", groups));
         }
     }
 
@@ -250,6 +327,7 @@ public partial class ProfileFieldDraftViewModel : ObservableObject
 
     public ProfileFieldDraftViewModel()
     {
+        InitializeValueMappings();
     }
 
     public ProfileFieldDraftViewModel(ProfileFieldManifest field)
@@ -266,6 +344,15 @@ public partial class ProfileFieldDraftViewModel : ObservableObject
             Required = field.Required;
             ParseFormat = field.ParseFormat ?? string.Empty;
             DisplayFormat = field.DisplayFormat ?? string.Empty;
+            foreach (var mapping in field.ValueMappings ?? [])
+            {
+                if (mapping is null)
+                {
+                    continue;
+                }
+
+                ValueMappings.Add(new ProfileValueMappingDraftViewModel(mapping));
+            }
             DateSourcePreset = TryInferGuidedDateSourcePreset(out var preset)
                 ? preset
                 : GuidedDateSourcePreset.SingleValue;
@@ -274,6 +361,8 @@ public partial class ProfileFieldDraftViewModel : ObservableObject
         {
             _isInitializing = false;
         }
+
+        InitializeValueMappings();
     }
 
     partial void OnKindChanged(ProfileFieldValueKind value)
@@ -309,6 +398,9 @@ public partial class ProfileFieldDraftViewModel : ObservableObject
         OnPropertyChanged(nameof(DateFormatChoices));
         OnPropertyChanged(nameof(DateFormatHelpText));
         OnPropertyChanged(nameof(SupportsGuidedAssignments));
+        OnPropertyChanged(nameof(CanConfigureValueMappings));
+        OnPropertyChanged(nameof(ShowValueMappingEditor));
+        AddValueMappingCommand.NotifyCanExecuteChanged();
     }
 
     partial void OnHeaderChanged(string value) =>
@@ -319,9 +411,83 @@ public partial class ProfileFieldDraftViewModel : ObservableObject
         OnPropertyChanged(nameof(TemplateActionLabel));
     }
 
-    partial void OnGroupNameChanged(string value) => NotifySourceStateChanged();
+    partial void OnGroupNameChanged(string value)
+    {
+        NotifySourceStateChanged();
+        NotifyValueMappingDescriptionChanged();
+    }
 
-    partial void OnGroupNamesTextChanged(string value) => NotifySourceStateChanged();
+    partial void OnGroupNamesTextChanged(string value)
+    {
+        NotifySourceStateChanged();
+        NotifyValueMappingDescriptionChanged();
+    }
+
+    [RelayCommand(CanExecute = nameof(CanAddValueMapping))]
+    private void AddValueMapping()
+    {
+        var mapping = new ProfileValueMappingDraftViewModel();
+        ValueMappings.Add(mapping);
+    }
+
+    [RelayCommand]
+    private void RemoveValueMapping(ProfileValueMappingDraftViewModel? mapping)
+    {
+        if (mapping is not null)
+        {
+            ValueMappings.Remove(mapping);
+        }
+    }
+
+    private bool CanAddValueMapping() =>
+        CanConfigureValueMappings
+        && ValueMappings.Count < ProfileManifestLimits.MaximumValueMappingCount;
+
+    private void InitializeValueMappings()
+    {
+        ValueMappings.CollectionChanged += OnValueMappingsCollectionChanged;
+        foreach (var mapping in ValueMappings)
+        {
+            mapping.PropertyChanged += OnValueMappingPropertyChanged;
+        }
+
+        AddValueMappingCommand.NotifyCanExecuteChanged();
+    }
+
+    private void OnValueMappingsCollectionChanged(
+        object? sender,
+        NotifyCollectionChangedEventArgs eventArgs)
+    {
+        if (eventArgs.OldItems is not null)
+        {
+            foreach (ProfileValueMappingDraftViewModel mapping in eventArgs.OldItems)
+            {
+                mapping.PropertyChanged -= OnValueMappingPropertyChanged;
+            }
+        }
+
+        if (eventArgs.NewItems is not null)
+        {
+            foreach (ProfileValueMappingDraftViewModel mapping in eventArgs.NewItems)
+            {
+                mapping.PropertyChanged += OnValueMappingPropertyChanged;
+            }
+        }
+
+        OnPropertyChanged(nameof(HasValueMappings));
+        OnPropertyChanged(nameof(ShowValueMappingEditor));
+        OnPropertyChanged(nameof(ValueMappings));
+        AddValueMappingCommand.NotifyCanExecuteChanged();
+    }
+
+    private void OnValueMappingPropertyChanged(object? sender, PropertyChangedEventArgs eventArgs) =>
+        OnPropertyChanged(nameof(ValueMappings));
+
+    private void NotifyValueMappingDescriptionChanged()
+    {
+        OnPropertyChanged(nameof(HasAliasGroup));
+        OnPropertyChanged(nameof(ValueMappingDescription));
+    }
 
     partial void OnParseFormatChanged(string value)
     {
@@ -466,7 +632,11 @@ public partial class ProfileFieldDraftViewModel : ObservableObject
         }
 
         var fieldName = string.IsNullOrWhiteSpace(Header) ? FieldId : Header;
-        errorMessage = $"‘{fieldName}’의 선택 값 ‘{sample}’은(는) 선택한 날짜 모양으로 읽을 수 없습니다. 경로 속 날짜 모양을 다시 선택하세요.";
+        errorMessage = ProfileEditorText.Format(
+            "Loc.Profiles.Date.Error.Invalid",
+            "‘{0}’의 선택 값 ‘{1}’은(는) 선택한 날짜 모양으로 읽을 수 없습니다. 경로 속 날짜 모양을 다시 선택하세요.",
+            fieldName,
+            sample);
         return false;
     }
 
@@ -733,8 +903,8 @@ public partial class ProfileRuleDraftViewModel : ObservableObject
 
     public string MatchModeDisplayName => MatchMode switch
     {
-        ProfileRegexMatchMode.Full => "전체 일치",
-        ProfileRegexMatchMode.Partial => "부분 일치",
+        ProfileRegexMatchMode.Full => ProfileEditorText.Get("Loc.Profiles.Match.FullShort", "전체 일치"),
+        ProfileRegexMatchMode.Partial => ProfileEditorText.Get("Loc.Profiles.Match.Partial", "부분 일치"),
         _ => MatchMode.ToString(),
     };
 
@@ -782,8 +952,8 @@ public partial class ProfileDirectoryNameExclusionRuleDraftViewModel : Observabl
 
     public string MatchModeDisplayName => MatchMode switch
     {
-        ProfileRegexMatchMode.Full => "폴더 이름 전체 일치",
-        ProfileRegexMatchMode.Partial => "폴더 이름 일부 일치",
+        ProfileRegexMatchMode.Full => ProfileEditorText.Get("Loc.Profiles.Match.FolderFull", "폴더 이름 전체 일치"),
+        ProfileRegexMatchMode.Partial => ProfileEditorText.Get("Loc.Profiles.Match.FolderPartial", "폴더 이름 일부 일치"),
         _ => MatchMode.ToString(),
     };
 
@@ -842,8 +1012,8 @@ public partial class ProfileTextFileFieldDraftViewModel : ObservableObject
 
     public string MatchModeDisplayName => MatchMode switch
     {
-        ProfileRegexMatchMode.Full => "파일 이름 전체 일치",
-        ProfileRegexMatchMode.Partial => "파일 이름 일부 일치",
+        ProfileRegexMatchMode.Full => ProfileEditorText.Get("Loc.Profiles.Match.FileFull", "파일 이름 전체 일치"),
+        ProfileRegexMatchMode.Partial => ProfileEditorText.Get("Loc.Profiles.Match.FilePartial", "파일 이름 일부 일치"),
         _ => MatchMode.ToString(),
     };
 
@@ -876,6 +1046,16 @@ public partial class ProfileTextFileFieldDraftViewModel : ObservableObject
 public sealed class ProfileTestResultViewModel
 {
     public ProfileTestResultViewModel(string fieldName, string? value, string status)
+        : this(fieldName, value, status, rawValue: null, hasMappedValue: false)
+    {
+    }
+
+    public ProfileTestResultViewModel(
+        string fieldName,
+        string? value,
+        string status,
+        string? rawValue,
+        bool hasMappedValue)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(fieldName);
         ArgumentNullException.ThrowIfNull(status);
@@ -883,6 +1063,8 @@ public sealed class ProfileTestResultViewModel
         FieldName = fieldName;
         Value = string.IsNullOrEmpty(value) ? "—" : value;
         Status = status;
+        RawValue = string.IsNullOrEmpty(rawValue) ? "—" : rawValue;
+        HasMappedValue = hasMappedValue;
     }
 
     public string FieldName { get; }
@@ -890,4 +1072,8 @@ public sealed class ProfileTestResultViewModel
     public string Value { get; }
 
     public string Status { get; }
+
+    public string RawValue { get; }
+
+    public bool HasMappedValue { get; }
 }

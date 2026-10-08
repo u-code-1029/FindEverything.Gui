@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FindEverything.Desktop.Configuration;
+using FindEverything.Desktop.Localization;
 using FindEverything.Desktop.Services;
 using FindEverything.Profile.Runtime;
 using Microsoft.Extensions.Logging;
@@ -11,11 +12,12 @@ namespace FindEverything.Desktop.ViewModels;
 
 public sealed record OutputFormatSummaryViewModel(
     SelectionOutputFormatDefinition Definition,
-    string ScopeText)
+    string ScopeText,
+    string BuiltInDetail)
 {
     public string DisplayName => Definition.DisplayName;
 
-    public string Detail => Definition.IsBuiltIn ? "기본 제공 · 모든 페이지" : ScopeText;
+    public string Detail => Definition.IsBuiltIn ? BuiltInDetail : ScopeText;
 }
 
 public sealed record OutputFormatProfileChoice(
@@ -38,6 +40,7 @@ public partial class OutputFormatsViewModel : ObservableObject
     private readonly IProfileCatalog _profileCatalog;
     private readonly ISnackbarService _snackbarService;
     private readonly IContentDialogService _contentDialogService;
+    private readonly IAppLocalizer _localizer;
     private readonly ILogger<OutputFormatsViewModel> _logger;
     private string _draftId = string.Empty;
     private bool _isPopulatingDraft;
@@ -82,6 +85,7 @@ public partial class OutputFormatsViewModel : ObservableObject
         IProfileCatalog profileCatalog,
         ISnackbarService snackbarService,
         IContentDialogService contentDialogService,
+        IAppLocalizer localizer,
         ILogger<OutputFormatsViewModel> logger)
     {
         _formatStore = formatStore;
@@ -89,7 +93,11 @@ public partial class OutputFormatsViewModel : ObservableObject
         _profileCatalog = profileCatalog;
         _snackbarService = snackbarService;
         _contentDialogService = contentDialogService;
+        _localizer = localizer;
         _logger = logger;
+        StatusMessage = L(
+            "Loc.Output.Status.Initial",
+            "기본 포맷을 그대로 사용하거나 새 출력 포맷을 만드세요.");
 
         RefreshProfileChoices(preferredProfileId: null);
         RefreshFormats(SelectionOutputFormatDefaults.FullPathLinesId);
@@ -150,7 +158,7 @@ public partial class OutputFormatsViewModel : ObservableObject
             SelectedFormat = null;
             _draftId = $"format.{Guid.NewGuid():N}";
             CanEdit = true;
-            DraftDisplayName = "새 출력 포맷";
+            DraftDisplayName = L("Loc.Output.New.DefaultName", "새 출력 포맷");
             DraftTemplate = "{FullPath}";
             DraftItemSeparator = "\\r\\n";
             SelectedProfileChoice = ProfileChoices.FirstOrDefault();
@@ -162,7 +170,9 @@ public partial class OutputFormatsViewModel : ObservableObject
         }
 
         StatusSeverity = InfoBarSeverity.Informational;
-        StatusMessage = "이름과 템플릿을 정한 뒤 저장하세요.";
+        StatusMessage = L(
+            "Loc.Output.New.Instruction",
+            "이름과 템플릿을 정한 뒤 저장하세요.");
         _isDraftDirty = true;
     }
 
@@ -185,7 +195,7 @@ public partial class OutputFormatsViewModel : ObservableObject
             var displayName = DraftDisplayName.Trim();
             if (displayName.Length == 0)
             {
-                SetError("출력 포맷 이름을 입력하세요.");
+                SetError(L("Loc.Output.Error.NameRequired", "출력 포맷 이름을 입력하세요."));
                 return;
             }
 
@@ -209,9 +219,12 @@ public partial class OutputFormatsViewModel : ObservableObject
             _isDraftDirty = false;
             RefreshFormats(definition.Id);
             StatusSeverity = InfoBarSeverity.Success;
-            StatusMessage = $"'{definition.DisplayName}' 포맷을 저장했습니다.";
+            StatusMessage = F(
+                "Loc.Output.Save.Message",
+                "'{0}' 포맷을 저장했습니다.",
+                definition.DisplayName);
             _snackbarService.Show(
-                "출력 포맷 저장 완료",
+                L("Loc.Output.Save.Completed", "출력 포맷 저장 완료"),
                 StatusMessage,
                 ControlAppearance.Success,
                 null,
@@ -240,10 +253,13 @@ public partial class OutputFormatsViewModel : ObservableObject
         var result = await _contentDialogService.ShowAsync(
             new ContentDialog
             {
-                Title = "출력 포맷을 삭제할까요?",
-                Content = $"'{selected.DisplayName}' 포맷을 삭제합니다.",
-                PrimaryButtonText = "삭제",
-                CloseButtonText = "취소",
+                Title = L("Loc.Output.Delete.Title", "출력 포맷을 삭제할까요?"),
+                Content = F(
+                    "Loc.Output.Delete.Message",
+                    "'{0}' 포맷을 삭제합니다.",
+                    selected.DisplayName),
+                PrimaryButtonText = L("Loc.Common.Delete", "삭제"),
+                CloseButtonText = L("Loc.Common.Cancel", "취소"),
                 DefaultButton = ContentDialogButton.Close,
                 PrimaryButtonAppearance = ControlAppearance.Danger,
             },
@@ -260,7 +276,10 @@ public partial class OutputFormatsViewModel : ObservableObject
                 _isDraftDirty = false;
                 RefreshFormats(SelectionOutputFormatDefaults.FullPathLinesId);
                 StatusSeverity = InfoBarSeverity.Success;
-                StatusMessage = $"'{selected.DisplayName}' 포맷을 삭제했습니다.";
+                StatusMessage = F(
+                    "Loc.Output.Delete.Completed",
+                    "'{0}' 포맷을 삭제했습니다.",
+                    selected.DisplayName);
             }
         }
         catch (Exception exception) when (
@@ -306,8 +325,12 @@ public partial class OutputFormatsViewModel : ObservableObject
 
         StatusSeverity = InfoBarSeverity.Informational;
         StatusMessage = definition.IsBuiltIn
-            ? "기본 포맷은 모든 페이지에서 사용할 수 있으며 수정하거나 삭제할 수 없습니다."
-            : "포맷을 편집한 뒤 저장하면 파일 찾기와 구조화 보기에서 바로 사용할 수 있습니다.";
+            ? L(
+                "Loc.Output.BuiltIn.Detail",
+                "기본 포맷은 모든 페이지에서 사용할 수 있으며 수정하거나 삭제할 수 없습니다.")
+            : L(
+                "Loc.Output.Edit.Detail",
+                "포맷을 편집한 뒤 저장하면 파일 찾기와 구조화 보기에서 바로 사용할 수 있습니다.");
     }
 
     private void RefreshFormats(string? preferredId)
@@ -321,10 +344,11 @@ public partial class OutputFormatsViewModel : ObservableObject
                 format,
                 format.ProfileId is not null
                     && profileNames.TryGetValue(format.ProfileId, out var displayName)
-                        ? $"프로필 · {displayName}"
+                        ? F("Loc.Output.Scope.Profile", "프로필 · {0}", displayName)
                         : string.IsNullOrWhiteSpace(format.ProfileId)
-                            ? "모든 페이지"
-                            : $"프로필 · {format.ProfileId}"))
+                            ? L("Loc.Output.Scope.AllPages", "모든 페이지")
+                            : F("Loc.Output.Scope.Profile", "프로필 · {0}", format.ProfileId),
+                L("Loc.Output.Scope.BuiltIn", "기본 제공 · 모든 페이지")))
             .ToArray();
         var preferred = Formats.FirstOrDefault(format =>
             string.Equals(
@@ -353,7 +377,10 @@ public partial class OutputFormatsViewModel : ObservableObject
     {
         var choices = new List<OutputFormatProfileChoice>
         {
-            new(null, "공통 필드만 사용 (모든 페이지)", []),
+            new(
+                null,
+                L("Loc.Output.Profile.Common", "공통 필드만 사용 (모든 페이지)"),
+                []),
         };
         choices.AddRange(_profileCatalog.Current.Profiles
             .OrderBy(static profile => profile.Descriptor.DisplayName, StringComparer.CurrentCultureIgnoreCase)
@@ -377,9 +404,18 @@ public partial class OutputFormatsViewModel : ObservableObject
     {
         var choices = new List<OutputFormatTokenChoice>
         {
-            new("전체 경로", "{FullPath}", "파일 또는 구조화 항목의 전체 경로"),
-            new("폴더 경로", "{FolderPath}", "항목이 들어 있는 폴더 경로"),
-            new("이름", "{Name}", "파일 또는 폴더 이름"),
+            new(
+                L("Loc.Output.Token.FullPath", "전체 경로"),
+                "{FullPath}",
+                L("Loc.Output.Token.FullPath.Detail", "파일 또는 구조화 항목의 전체 경로")),
+            new(
+                L("Loc.Output.Token.FolderPath", "폴더 경로"),
+                "{FolderPath}",
+                L("Loc.Output.Token.FolderPath.Detail", "항목이 들어 있는 폴더 경로")),
+            new(
+                L("Loc.Output.Token.Name", "이름"),
+                "{Name}",
+                L("Loc.Output.Token.Name.Detail", "파일 또는 폴더 이름")),
         };
         if (profile is not null)
         {
@@ -436,7 +472,9 @@ public partial class OutputFormatsViewModel : ObservableObject
         }
 
         StatusSeverity = InfoBarSeverity.Informational;
-        StatusMessage = "변경 사항을 저장하면 결과 페이지의 포맷 목록에 반영됩니다.";
+        StatusMessage = L(
+            "Loc.Output.Status.Dirty",
+            "변경 사항을 저장하면 결과 페이지의 포맷 목록에 반영됩니다.");
         _isDraftDirty = true;
     }
 
@@ -445,12 +483,18 @@ public partial class OutputFormatsViewModel : ObservableObject
         StatusSeverity = InfoBarSeverity.Error;
         StatusMessage = message;
         _snackbarService.Show(
-            "출력 포맷을 확인해 주세요",
+            L("Loc.Output.Error.Title", "출력 포맷을 확인해 주세요"),
             message,
             ControlAppearance.Danger,
             null,
             TimeSpan.FromSeconds(4));
     }
+
+    private string L(string key, string koreanFallback) =>
+        _localizer.Get(key, koreanFallback);
+
+    private string F(string key, string koreanFallback, params object?[] arguments) =>
+        _localizer.Format(key, koreanFallback, arguments);
 
     internal static string EncodeSeparator(string separator) => separator
         .Replace("\\", "\\\\", StringComparison.Ordinal)

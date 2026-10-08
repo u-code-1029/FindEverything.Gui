@@ -1,0 +1,359 @@
+<Page
+    x:Class="FindEverything.Desktop.Views.Pages.ProfilePlaygroundPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:localization="clr-namespace:FindEverything.Desktop.Localization"
+    xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+    Title="프로필 Playground"
+    Background="Transparent"
+    Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+    localization:LocalizationScope.IsEnabled="True"
+    ScrollViewer.CanContentScroll="False"
+    mc:Ignorable="d">
+    <Page.Resources>
+        <Style x:Key="PlaygroundFieldCardStyle" TargetType="Border">
+            <Setter Property="Margin" Value="0,0,0,10" />
+            <Setter Property="Padding" Value="14" />
+            <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+        </Style>
+        <Style x:Key="PlaygroundRegexDebugItemsStyle" TargetType="ItemsControl">
+            <Setter Property="ItemTemplate">
+                <Setter.Value>
+                    <DataTemplate>
+                        <Border
+                            Margin="0,0,0,12"
+                            Padding="14"
+                            Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{Binding AccentBrush}"
+                            BorderThickness="3,1,1,1"
+                            CornerRadius="7">
+                            <StackPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock FontWeight="SemiBold" Text="{Binding RuleId}" />
+                                    <TextBlock
+                                        Grid.Column="1"
+                                        Margin="12,0,0,0"
+                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                        Text="{Binding MatchMode}" />
+                                </Grid>
+                                <TextBlock
+                                    Margin="0,5,0,0"
+                                    FontFamily="Consolas"
+                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                    Text="{Binding Pattern}"
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    Margin="0,5,0,10"
+                                    FontWeight="SemiBold"
+                                    Text="{Binding Status}"
+                                    TextWrapping="Wrap" />
+                                <ItemsControl ItemsSource="{Binding Lanes}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="0,0,0,8">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="150" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel Margin="0,1,12,0">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <Border
+                                                            Width="10"
+                                                            Height="10"
+                                                            Margin="0,0,7,0"
+                                                            VerticalAlignment="Center"
+                                                            Background="{Binding MarkerBrush}"
+                                                            CornerRadius="2" />
+                                                        <TextBlock
+                                                            FontWeight="SemiBold"
+                                                            Text="{Binding Label}"
+                                                            TextTrimming="CharacterEllipsis"
+                                                            ToolTip="{Binding Label}" />
+                                                    </StackPanel>
+                                                    <TextBlock
+                                                        Margin="17,2,0,0"
+                                                        FontSize="11"
+                                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                        Text="{Binding Detail}" />
+                                                </StackPanel>
+                                                <ScrollViewer
+                                                    Grid.Column="1"
+                                                    HorizontalScrollBarVisibility="Auto"
+                                                    VerticalScrollBarVisibility="Disabled">
+                                                    <ItemsControl ItemsSource="{Binding Segments}">
+                                                        <ItemsControl.ItemsPanel>
+                                                            <ItemsPanelTemplate>
+                                                                <StackPanel Orientation="Horizontal" />
+                                                            </ItemsPanelTemplate>
+                                                        </ItemsControl.ItemsPanel>
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate>
+                                                                <Border Background="{Binding BackgroundBrush}">
+                                                                    <TextBlock
+                                                                        Padding="1,3"
+                                                                        FontFamily="Consolas"
+                                                                        Text="{Binding Text}"
+                                                                        ToolTip="{Binding ToolTip}" />
+                                                                </Border>
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                    </ItemsControl>
+                                                </ScrollViewer>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Page.Resources>
+
+    <Grid Margin="24,0,24,24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Margin="0,20,0,16">
+            <TextBlock
+                AutomationProperties.HeadingLevel="Level1"
+                Style="{StaticResource PageTitleTextStyle}"
+                Text="프로필 Playground" />
+            <TextBlock
+                Margin="0,4,0,0"
+                Style="{StaticResource PageSubtitleTextStyle}"
+                Text="저장되어 현재 앱에 적용된 프로필을 실제 절대 경로에 실행해 보고, 값과 정규식 판정을 함께 확인합니다."
+                TextWrapping="Wrap" />
+        </StackPanel>
+
+        <ScrollViewer
+            x:Name="ProfilePlaygroundScrollViewer"
+            Grid.Row="1"
+            Style="{StaticResource FluentGutteredScrollViewerStyle}">
+            <StackPanel Margin="8,0,0,24">
+                <Border Style="{StaticResource FluentSurfaceStyle}">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="테스트할 프로필과 경로" />
+                        <TextBlock
+                            Grid.Row="1"
+                            Margin="0,4,0,14"
+                            Style="{StaticResource CaptionTextStyle}"
+                            Text="편집 중인 초안이 아니라 마지막으로 저장되어 적용된 프로필을 사용합니다. 드라이브 또는 UNC 루트를 포함한 전체 경로를 입력하세요."
+                            TextWrapping="Wrap" />
+
+                        <Grid
+                            x:Name="PlaygroundInputPanel"
+                            Grid.Row="2"
+                            IsEnabled="{Binding IsReady}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="0.8*" MinWidth="220" />
+                                <ColumnDefinition Width="16" />
+                                <ColumnDefinition Width="1.4*" MinWidth="320" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Margin="0,0,0,4" FontWeight="SemiBold" Text="프로필" />
+                                <ComboBox
+                                    AutomationProperties.Name="테스트할 저장된 프로필"
+                                    DisplayMemberPath="Description"
+                                    ItemsSource="{Binding Profiles}"
+                                    SelectedItem="{Binding SelectedProfile}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Margin="0,0,0,4" FontWeight="SemiBold" Text="실제 절대 경로" />
+                                <ui:TextBox
+                                    AutomationProperties.Name="Playground 절대 경로"
+                                    ClearButtonEnabled="True"
+                                    PlaceholderText="예: C:\Archive\고객사\프로젝트\2026\Rev-3"
+                                    Text="{Binding InputPath, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                            <ui:Button
+                                Grid.Column="3"
+                                Margin="8,23,0,0"
+                                VerticalAlignment="Top"
+                                AutomationProperties.Name="테스트 경로 찾아보기"
+                                Command="{Binding BrowsePathCommand}"
+                                Content="찾아보기"
+                                Icon="{ui:SymbolIcon Symbol=FolderOpen20}" />
+                        </Grid>
+
+                        <ui:Button
+                            Grid.Row="3"
+                            Margin="0,14,0,0"
+                            HorizontalAlignment="Stretch"
+                            Appearance="Primary"
+                            AutomationProperties.Name="저장된 프로필 테스트 실행"
+                            Command="{Binding EvaluateCommand}"
+                            Content="이 경로에서 프로필 실행"
+                            Icon="{ui:SymbolIcon Symbol=Play20}" />
+                    </Grid>
+                </Border>
+
+                <ProgressBar
+                    Height="3"
+                    Margin="0,10,0,0"
+                    IsIndeterminate="True"
+                    Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}" />
+
+                <ui:InfoBar
+                    Margin="0,16,0,0"
+                    AutomationProperties.LiveSetting="Polite"
+                    IsClosable="False"
+                    IsOpen="True"
+                    Message="{Binding Summary}"
+                    Severity="{Binding SummarySeverity}"
+                    Title="Playground 결과" />
+
+                <Border Margin="0,16,0,0" Style="{StaticResource FluentSurfaceStyle}">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="구조화된 값" />
+                        <TextBlock
+                            Margin="0,4,0,12"
+                            Style="{StaticResource CaptionTextStyle}"
+                            Text="실제 구조화 보기와 같은 프로필 매퍼가 반환한 값입니다."
+                            TextWrapping="Wrap" />
+                        <ItemsControl ItemsSource="{Binding Rows}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Style="{StaticResource PlaygroundFieldCardStyle}">
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                            </Grid.RowDefinitions>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="180" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock FontWeight="SemiBold" Text="{Binding FieldName}" />
+                                            <TextBlock
+                                                Grid.Column="1"
+                                                Margin="12,0"
+                                                Text="{Binding Value}"
+                                                TextWrapping="Wrap" />
+                                            <TextBlock
+                                                Grid.Column="2"
+                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                Text="{Binding Status}" />
+                                            <TextBlock
+                                                Grid.Row="1"
+                                                Grid.Column="1"
+                                                Grid.ColumnSpan="2"
+                                                Margin="12,6,0,0"
+                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                Text="{Binding RawValue, StringFormat={StaticResource Loc.Playground.RawValueFormat}}"
+                                                Visibility="{Binding HasMappedValue, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+
+                <Border
+                    x:Name="PlaygroundDirectoryExclusionResultPanel"
+                    Margin="0,16,0,0"
+                    AutomationProperties.Name="Playground 폴더 이름 제외 판정 결과"
+                    Style="{StaticResource FluentSurfaceStyle}"
+                    Visibility="{Binding HasDirectoryExclusionTestResult, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="폴더 이름 제외 판정" />
+                        <TextBlock
+                            Margin="0,4,0,10"
+                            Style="{StaticResource CaptionTextStyle}"
+                            Text="전체 경로가 아니라 canonical 경로의 마지막 폴더 이름 하나만 실제 컴파일된 프로필에 전달합니다."
+                            TextWrapping="Wrap" />
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock FontWeight="SemiBold" Text="입력 leaf" />
+                            <TextBlock
+                                Grid.Column="1"
+                                Margin="12,0,0,0"
+                                FontFamily="Consolas"
+                                Text="{Binding DirectoryExclusionTestResult.LeafName}"
+                                TextTrimming="CharacterEllipsis"
+                                ToolTip="{Binding DirectoryExclusionTestResult.LeafName}" />
+                        </Grid>
+                        <ui:InfoBar
+                            IsClosable="False"
+                            IsOpen="True"
+                            Message="{Binding DirectoryExclusionTestResult.Message}"
+                            Severity="{Binding DirectoryExclusionTestResult.Severity}"
+                            Title="{Binding DirectoryExclusionTestResult.Title}" />
+                    </StackPanel>
+                </Border>
+
+                <Expander
+                    x:Name="PlaygroundRegexDebugExpander"
+                    Margin="0,16,0,0"
+                    AutomationProperties.Name="경로 정규식 색상 디버깅"
+                    Header="경로 정규식 색상 디버깅"
+                    IsExpanded="True"
+                    Visibility="{Binding HasRegexDebugRules, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <Border Margin="0,8,0,0" Style="{StaticResource FluentSurfaceStyle}">
+                        <StackPanel>
+                            <TextBlock
+                                Style="{StaticResource CaptionTextStyle}"
+                                Text="전체 일치 여부와 별개로 원본 pattern의 부분 후보와 named group을 색상별 행으로 표시합니다."
+                                TextWrapping="Wrap" />
+                            <TextBlock
+                                Margin="0,8,0,12"
+                                FontFamily="Consolas"
+                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                Text="{Binding RegexDebugInputPath}"
+                                TextTrimming="CharacterEllipsis"
+                                ToolTip="{Binding RegexDebugInputPath}" />
+                            <ItemsControl
+                                ItemsSource="{Binding RegexDebugRules}"
+                                Style="{StaticResource PlaygroundRegexDebugItemsStyle}" />
+                        </StackPanel>
+                    </Border>
+                </Expander>
+
+                <Expander
+                    x:Name="PlaygroundDirectoryExclusionRegexDebugExpander"
+                    Margin="0,12,0,0"
+                    AutomationProperties.Name="폴더 제외 정규식 색상 디버깅"
+                    Header="폴더 제외 정규식 색상 디버깅"
+                    Visibility="{Binding HasDirectoryExclusionRegexDebugRules, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <Border Margin="0,8,0,0" Style="{StaticResource FluentSurfaceStyle}">
+                        <StackPanel>
+                            <TextBlock
+                                Style="{StaticResource CaptionTextStyle}"
+                                Text="마지막 폴더 이름에 대해 각 제외 pattern과 named group의 부분 후보를 표시합니다."
+                                TextWrapping="Wrap" />
+                            <ItemsControl
+                                Margin="0,12,0,0"
+                                ItemsSource="{Binding DirectoryExclusionRegexDebugRules}"
+                                Style="{StaticResource PlaygroundRegexDebugItemsStyle}" />
+                        </StackPanel>
+                    </Border>
+                </Expander>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Page>

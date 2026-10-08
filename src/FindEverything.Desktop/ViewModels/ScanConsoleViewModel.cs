@@ -10,6 +10,7 @@ using CommunityToolkit.Mvvm.Input;
 using FindEverything.Application.Catalog;
 using FindEverything.Application.Indexing;
 using FindEverything.Desktop.Services;
+using FindEverything.Desktop.Localization;
 using FindEverything.Profile.Runtime;
 using Microsoft.Extensions.Logging;
 using Wpf.Ui;
@@ -62,6 +63,7 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
     private readonly Func<string, IReadOnlyList<string>, CancellationToken, Task> _writeScanLogAsync;
     private readonly Action<string, string, ControlAppearance> _showSnackbar;
     private readonly Action<Exception> _logExportFailure;
+    private readonly IAppLocalizer? _localizer;
     private int _drainScheduled;
     private long _visited;
     private long _matched;
@@ -117,6 +119,7 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
         IDesktopPickerService pickerService,
         IScanConsoleLogWriter logWriter,
         ISnackbarService snackbarService,
+        IAppLocalizer localizer,
         ILogger<ScanConsoleViewModel> logger)
         : this(
             System.Windows.Clipboard.SetText,
@@ -128,7 +131,8 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
                 appearance,
                 null,
                 TimeSpan.FromSeconds(5)),
-            exception => logger.LogError(exception, "Could not export the scan console log."))
+            exception => logger.LogError(exception, "Could not export the scan console log."),
+            localizer)
     {
     }
 
@@ -138,7 +142,8 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
             static _ => null,
             static (_, _, _) => Task.CompletedTask,
             static (_, _, _) => { },
-            static _ => { })
+            static _ => { },
+            null)
     {
     }
 
@@ -147,7 +152,8 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
         Func<string, string?> pickScanLogPath,
         Func<string, IReadOnlyList<string>, CancellationToken, Task> writeScanLogAsync,
         Action<string, string, ControlAppearance> showSnackbar,
-        Action<Exception>? logExportFailure = null)
+        Action<Exception>? logExportFailure = null,
+        IAppLocalizer? localizer = null)
     {
         ArgumentNullException.ThrowIfNull(setClipboardText);
         ArgumentNullException.ThrowIfNull(pickScanLogPath);
@@ -158,6 +164,7 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
         _writeScanLogAsync = writeScanLogAsync;
         _showSnackbar = showSnackbar;
         _logExportFailure = logExportFailure ?? (static _ => { });
+        _localizer = localizer;
         _dispatcher = System.Windows.Application.Current?.Dispatcher
             ?? Dispatcher.CurrentDispatcher;
         _drainTimer = new DispatcherTimer(DispatcherPriority.Background, _dispatcher)
@@ -165,14 +172,22 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
             Interval = DrainInterval,
         };
         _drainTimer.Tick += OnDrainTimerTick;
+        StatusText = L("Loc.Scan.Status.Idle", "대기 중");
+        SessionSummary = L(
+            "Loc.Scan.Status.Instruction",
+            "빠른 불러오기를 시작하면 방문 경로가 여기에 표시됩니다.");
+        RetentionSummary = F(
+            "Loc.Scan.Retention.Empty",
+            "표시 0 / 최대 {0:N0}줄",
+            MaximumVisibleLines);
     }
 
     public ObservableCollection<ScanConsoleLineViewModel> Lines { get; } =
         new ScanConsoleLineCollection();
 
     public string PanelToggleToolTip => IsPanelOpen
-        ? "하단 탐색 로그 닫기"
-        : "하단 탐색 로그 열기";
+        ? L("Loc.Scan.Panel.Close", "하단 탐색 로그 닫기")
+        : L("Loc.Scan.Panel.Open", "하단 탐색 로그 열기");
 
     public void Show()
     {
@@ -204,7 +219,7 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
         try
         {
             UpdateBackgroundCounters(value);
-            Enqueue(CreateLine(value));
+            Enqueue(CreateLine(value, _localizer));
         }
         catch (Exception)
         {
@@ -267,15 +282,19 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
                     CancellationToken.None)
                 .ConfigureAwait(true);
             _showSnackbar(
-                "탐색 로그 저장 완료",
-                $"현재 표시된 로그 {snapshot.Length:N0}줄을 저장했습니다.\n{selectedPath}",
+                L("Loc.Scan.Save.Completed", "탐색 로그 저장 완료"),
+                F(
+                    "Loc.Scan.Save.Completed.Message",
+                    "현재 표시된 로그 {0:N0}줄을 저장했습니다.\n{1}",
+                    snapshot.Length,
+                    selectedPath),
                 ControlAppearance.Success);
         }
         catch (Exception exception)
         {
             _logExportFailure(exception);
             _showSnackbar(
-                "탐색 로그 저장 실패",
+                L("Loc.Scan.Save.Failed", "탐색 로그 저장 실패"),
                 exception.Message,
                 ControlAppearance.Danger);
         }
@@ -481,20 +500,20 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
         switch (line.Kind)
         {
             case CatalogScanTraceKind.Started:
-                StatusText = "탐색 중";
+                StatusText = L("Loc.Scan.Status.Running", "탐색 중");
                 StatusBrush = RunningBrush;
                 SessionSummary = line.SessionSummary;
                 break;
             case CatalogScanTraceKind.Completed:
-                StatusText = "완료";
+                StatusText = L("Loc.Common.Completed", "완료");
                 StatusBrush = SuccessBrush;
                 break;
             case CatalogScanTraceKind.Cancelled:
-                StatusText = "취소됨";
+                StatusText = L("Loc.Common.Cancelled", "취소됨");
                 StatusBrush = WarningBrush;
                 break;
             case CatalogScanTraceKind.Failed:
-                StatusText = "실패";
+                StatusText = L("Loc.Scan.Status.Failed", "실패");
                 StatusBrush = ErrorBrush;
                 break;
         }
@@ -509,11 +528,21 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
         PrunedCount = Interlocked.Read(ref _pruned);
         var dropped = Interlocked.Read(ref _dropped);
         RetentionSummary = dropped > 0
-            ? $"최근 {Lines.Count:N0}줄 · 이전 {dropped:N0}줄 생략"
-            : $"표시 {Lines.Count:N0} / 최대 {MaximumVisibleLines:N0}줄";
+            ? F(
+                "Loc.Scan.Retention.Dropped",
+                "최근 {0:N0}줄 · 이전 {1:N0}줄 생략",
+                Lines.Count,
+                dropped)
+            : F(
+                "Loc.Scan.Retention.Visible",
+                "표시 {0:N0} / 최대 {1:N0}줄",
+                Lines.Count,
+                MaximumVisibleLines);
     }
 
-    internal static ScanConsoleLineViewModel CreateLine(CatalogScanTraceEvent value)
+    internal static ScanConsoleLineViewModel CreateLine(
+        CatalogScanTraceEvent value,
+        IAppLocalizer? localizer = null)
     {
         var timestamp = value.TimestampUtc.ToLocalTime().ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture);
         var builder = new StringBuilder(timestamp.Length + 160);
@@ -530,13 +559,13 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
                     .Append(" | root=\"").Append(Escape(value.RootPath)).Append('"');
                 break;
             case CatalogScanTraceKind.DirectoryVisited:
-                tone = AppendDirectoryVisit(builder, value);
+                tone = AppendDirectoryVisit(builder, value, localizer);
                 break;
             case CatalogScanTraceKind.DirectoryExcluded:
-                tone = AppendDirectoryExclusion(builder, value);
+                tone = AppendDirectoryExclusion(builder, value, localizer);
                 break;
             case CatalogScanTraceKind.DirectoryExclusionIssue:
-                tone = AppendDirectoryExclusionIssue(builder, value);
+                tone = AppendDirectoryExclusionIssue(builder, value, localizer);
                 break;
             case CatalogScanTraceKind.DiscoveryError:
                 tone = ScanConsoleLineTone.Error;
@@ -545,15 +574,27 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
                 break;
             case CatalogScanTraceKind.Completed:
                 tone = ScanConsoleLineTone.Lifecycle;
-                builder.Append("[DONE] ").Append(Escape(value.Message));
+                builder.Append("[DONE] ").Append(Escape(
+                    localizer?.Get(
+                        "Loc.Scan.Trace.Completed",
+                        "빠른 불러오기를 완료했습니다.")
+                    ?? value.Message));
                 break;
             case CatalogScanTraceKind.Cancelled:
                 tone = ScanConsoleLineTone.Pruned;
-                builder.Append("[CANCELLED] ").Append(Escape(value.Message));
+                builder.Append("[CANCELLED] ").Append(Escape(
+                    localizer?.Get(
+                        "Loc.Scan.Trace.Cancelled",
+                        "빠른 불러오기가 취소되었습니다.")
+                    ?? value.Message));
                 break;
             case CatalogScanTraceKind.Failed:
                 tone = ScanConsoleLineTone.Error;
-                builder.Append("[FAILED] ").Append(Escape(value.Message));
+                builder.Append("[FAILED] ").Append(Escape(
+                    localizer?.Get(
+                        "Loc.Scan.Trace.Failed",
+                        "빠른 불러오기에 실패했습니다. 상태 메시지에서 자세한 내용을 확인하세요.")
+                    ?? value.Message));
                 break;
             default:
                 builder.Append("[TRACE] ").Append(Escape(value.Message));
@@ -566,7 +607,7 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
             value.Kind,
             tone,
             builder.ToString(),
-            CreateLifecycleSummary(value),
+            CreateLifecycleSummary(value, localizer),
             GetCopyablePath(value));
     }
 
@@ -587,7 +628,8 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
 
     private static ScanConsoleLineTone AppendDirectoryVisit(
         StringBuilder builder,
-        CatalogScanTraceEvent value)
+        CatalogScanTraceEvent value,
+        IAppLocalizer? localizer)
     {
         var tone = value.MappingStatus switch
         {
@@ -654,7 +696,8 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
                     builder.Append('[').Append(issue.FieldId).Append(']');
                 }
 
-                builder.Append(": ").Append(Escape(issue.Message));
+                builder.Append(": ").Append(Escape(
+                    ProfileDiagnosticLocalizer.Translate(localizer, issue)));
             }
 
             builder.Append('}');
@@ -666,7 +709,8 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
 
     private static ScanConsoleLineTone AppendDirectoryExclusion(
         StringBuilder builder,
-        CatalogScanTraceEvent value)
+        CatalogScanTraceEvent value,
+        IAppLocalizer? localizer)
     {
         builder.Append("[EXCLUDED] [PRUNE] ")
             .Append('#').Append(value.Sequence.ToString("000000", CultureInfo.InvariantCulture))
@@ -688,7 +732,8 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
                 }
 
                 var issue = value.Issues[index];
-                builder.Append(issue.Code).Append(": ").Append(Escape(issue.Message));
+                builder.Append(issue.Code).Append(": ").Append(Escape(
+                    ProfileDiagnosticLocalizer.Translate(localizer, issue)));
             }
 
             builder.Append('}');
@@ -700,7 +745,8 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
 
     private static ScanConsoleLineTone AppendDirectoryExclusionIssue(
         StringBuilder builder,
-        CatalogScanTraceEvent value)
+        CatalogScanTraceEvent value,
+        IAppLocalizer? localizer)
     {
         builder.Append("[EXCLUDE WARNING] [CONTINUE] ")
             .Append('#').Append(value.Sequence.ToString("000000", CultureInfo.InvariantCulture))
@@ -717,7 +763,8 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
                 }
 
                 var issue = value.Issues[index];
-                builder.Append(issue.Code).Append(": ").Append(Escape(issue.Message));
+                builder.Append(issue.Code).Append(": ").Append(Escape(
+                    ProfileDiagnosticLocalizer.Translate(localizer, issue)));
             }
 
             builder.Append('}');
@@ -727,10 +774,24 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
         return ScanConsoleLineTone.Warning;
     }
 
-    private static string CreateLifecycleSummary(CatalogScanTraceEvent value) =>
+    private static string CreateLifecycleSummary(
+        CatalogScanTraceEvent value,
+        IAppLocalizer? localizer) =>
         value.Kind == CatalogScanTraceKind.Started
-            ? $"{value.ProfileDisplayName} · 절대 경로 · {value.RootPath}"
+            ? localizer?.Format(
+                "Loc.Scan.Session.Summary",
+                "{0} · 절대 경로 · {1}",
+                value.ProfileDisplayName,
+                value.RootPath)
+              ?? $"{value.ProfileDisplayName} · 절대 경로 · {value.RootPath}"
             : string.Empty;
+
+    private string L(string key, string koreanFallback) =>
+        _localizer?.Get(key, koreanFallback) ?? koreanFallback;
+
+    private string F(string key, string koreanFallback, params object?[] arguments) =>
+        _localizer?.Format(key, koreanFallback, arguments)
+        ?? string.Format(CultureInfo.CurrentCulture, koreanFallback, arguments);
 
     private static string FormatValue(object? value) =>
         value switch

@@ -1,12 +1,12 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
-using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FindEverything.Application.Catalog;
 using FindEverything.Application.Profiles;
+using FindEverything.Desktop.Localization;
 using FindEverything.Desktop.Services;
 using FindEverything.Profile.Abstractions;
 using FindEverything.Profile.Runtime;
@@ -15,6 +15,14 @@ using Wpf.Ui;
 using Wpf.Ui.Controls;
 
 namespace FindEverything.Desktop.ViewModels;
+
+public enum ProfileEditorStep
+{
+    Profile = 0,
+    PathAndFields = 1,
+    ScanOptions = 2,
+    Review = 3,
+}
 
 public partial class ProfilesViewModel : ObservableObject
 {
@@ -26,6 +34,8 @@ public partial class ProfilesViewModel : ObservableObject
     private readonly IApplicationOperationCoordinator _operationCoordinator;
     private readonly ISnackbarService _snackbarService;
     private readonly IContentDialogService _contentDialogService;
+    private readonly IProfilePlaygroundNavigator _playgroundNavigator;
+    private readonly IAppLocalizer _localizer;
     private readonly ILogger<ProfilesViewModel> _logger;
     private string? _originalProfileId;
     private string _draftVersion = "1.0.0";
@@ -93,25 +103,6 @@ public partial class ProfilesViewModel : ObservableObject
     private bool _canUseGuidedMode = true;
 
     [ObservableProperty]
-    private IReadOnlyList<ProfileTestResultViewModel> _testRows = [];
-
-    [ObservableProperty]
-    private IReadOnlyList<ProfileRegexDebugRuleViewModel> _regexDebugRules = [];
-
-    [ObservableProperty]
-    private string _regexDebugInputPath = string.Empty;
-
-    [ObservableProperty]
-    private ProfileDirectoryExclusionTestResultViewModel? _directoryExclusionTestResult;
-
-    [ObservableProperty]
-    private IReadOnlyList<ProfileRegexDebugRuleViewModel>
-        _directoryExclusionRegexDebugRules = [];
-
-    [ObservableProperty]
-    private string _testSummary = "예제 경로를 입력하면 실제 변환 결과를 미리 볼 수 있습니다.";
-
-    [ObservableProperty]
     private string _editorStatusMessage = "기본 정보, 컬럼, 경로 규칙을 입력한 뒤 검증하세요.";
 
     [ObservableProperty]
@@ -132,6 +123,14 @@ public partial class ProfilesViewModel : ObservableObject
     [ObservableProperty]
     private string _assignmentPickerTitle = "먼저 결과 값에서 경로 조각 선택을 누르세요.";
 
+    [ObservableProperty]
+    private ProfileEditorStep _currentEditorStep = ProfileEditorStep.Profile;
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(OpenSavedProfileInPlaygroundCommand))]
+    [NotifyPropertyChangedFor(nameof(CanOpenSavedProfileInPlayground))]
+    private bool _isDraftDirty = true;
+
     private ProfileFieldDraftViewModel? _activeAssignmentField;
 
     private GuidedSourcePart _activeAssignmentPart = GuidedSourcePart.Value;
@@ -145,6 +144,8 @@ public partial class ProfilesViewModel : ObservableObject
         IApplicationOperationCoordinator operationCoordinator,
         ISnackbarService snackbarService,
         IContentDialogService contentDialogService,
+        IProfilePlaygroundNavigator playgroundNavigator,
+        IAppLocalizer localizer,
         ILogger<ProfilesViewModel> logger)
     {
         _profileCatalog = profileCatalog;
@@ -155,27 +156,38 @@ public partial class ProfilesViewModel : ObservableObject
         _operationCoordinator = operationCoordinator;
         _snackbarService = snackbarService;
         _contentDialogService = contentDialogService;
+        _playgroundNavigator = playgroundNavigator;
+        _localizer = localizer;
         _logger = logger;
 
         FieldKindChoices =
         [
-            new(ProfileFieldValueKind.String, "텍스트"),
-            new(ProfileFieldValueKind.Int32, "정수"),
-            new(ProfileFieldValueKind.Decimal, "소수"),
-            new(ProfileFieldValueKind.DateTime, "날짜/시간"),
-            new(ProfileFieldValueKind.Boolean, "참/거짓"),
+            new(ProfileFieldValueKind.String, L("Loc.Profiles.Kind.Text", "텍스트")),
+            new(ProfileFieldValueKind.Int32, L("Loc.Profiles.Kind.Integer", "정수")),
+            new(ProfileFieldValueKind.Decimal, L("Loc.Profiles.Kind.Decimal", "소수")),
+            new(ProfileFieldValueKind.DateTime, L("Loc.Profiles.Kind.DateTime", "날짜/시간")),
+            new(ProfileFieldValueKind.Boolean, L("Loc.Profiles.Kind.Boolean", "참/거짓")),
         ];
         MatchModeChoices =
         [
-            new(ProfileRegexMatchMode.Full, "전체 일치 (권장)"),
-            new(ProfileRegexMatchMode.Partial, "부분 일치"),
+            new(ProfileRegexMatchMode.Full, L("Loc.Profiles.Match.Full", "전체 일치 (권장)")),
+            new(ProfileRegexMatchMode.Partial, L("Loc.Profiles.Match.Partial", "부분 일치")),
         ];
         DateSourcePresetChoices =
         [
-            new(GuidedDateSourcePreset.SingleValue, "한 조각에서 날짜 읽기"),
-            new(GuidedDateSourcePreset.YearAndMonthDay, "연도 + 월일"),
-            new(GuidedDateSourcePreset.YearMonthAndDay, "연도 + 월 + 일"),
+            new(GuidedDateSourcePreset.SingleValue, L("Loc.Profiles.Date.Single", "한 조각에서 날짜 읽기")),
+            new(GuidedDateSourcePreset.YearAndMonthDay, L("Loc.Profiles.Date.YearMonthDay", "연도 + 월일")),
+            new(GuidedDateSourcePreset.YearMonthAndDay, L("Loc.Profiles.Date.YearMonthAndDay", "연도 + 월 + 일")),
         ];
+        TemplateStatusMessage = L(
+            "Loc.Profiles.Status.TemplateInitial",
+            "실제 경로에서 변하는 부분을 결과 값으로 지정하세요.");
+        EditorStatusMessage = L(
+            "Loc.Profiles.Status.EditorInitial",
+            "기본 정보, 컬럼, 경로 규칙을 입력한 뒤 검증하세요.");
+        AssignmentPickerTitle = L(
+            "Loc.Profiles.Status.AssignmentInitial",
+            "먼저 결과 값에서 경로 조각 선택을 누르세요.");
         ApplySnapshot(profileCatalog.Current, preferredProfileId: null);
         _profileCatalog.Changed += OnProfileCatalogChanged;
         NewDraft();
@@ -194,12 +206,34 @@ public partial class ProfilesViewModel : ObservableObject
 
     public bool IsExpertMode => EditorMode == ProfileEditorMode.Expert;
 
-    public bool HasRegexDebugRules => RegexDebugRules.Count > 0;
+    public string EditorModeDisplay => EditorMode == ProfileEditorMode.Guided
+        ? L("Loc.Profiles.EditorMode.Guided", "초보자 모드")
+        : L("Loc.Profiles.EditorMode.Expert", "전문가 모드");
 
-    public bool HasDirectoryExclusionTestResult => DirectoryExclusionTestResult is not null;
+    public bool IsProfileStep => CurrentEditorStep == ProfileEditorStep.Profile;
 
-    public bool HasDirectoryExclusionRegexDebugRules =>
-        DirectoryExclusionRegexDebugRules.Count > 0;
+    public bool IsPathAndFieldsStep => CurrentEditorStep == ProfileEditorStep.PathAndFields;
+
+    public bool IsScanOptionsStep => CurrentEditorStep == ProfileEditorStep.ScanOptions;
+
+    public bool IsReviewStep => CurrentEditorStep == ProfileEditorStep.Review;
+
+    public bool CanGoToPreviousStep =>
+        !IsEditorBusy && CurrentEditorStep > ProfileEditorStep.Profile;
+
+    public bool CanGoToNextStep =>
+        !IsEditorBusy && CurrentEditorStep < ProfileEditorStep.Review;
+
+    public string EditorStepStatus => F(
+        "Loc.Profiles.Step.Status",
+        "{0}/4 단계",
+        (int)CurrentEditorStep + 1);
+
+    public bool CanOpenSavedProfileInPlayground =>
+        !IsEditorBusy
+        && !IsDraftDirty
+        && _originalProfileId is { Length: > 0 } profileId
+        && _profileCatalog.Current.TryGetProfile(profileId, out _);
 
     public ObservableCollection<ProfileFieldDraftViewModel> DraftFields { get; } = [];
 
@@ -213,15 +247,17 @@ public partial class ProfilesViewModel : ObservableObject
 
     public event EventHandler? AssignmentPickerRequested;
 
+    public event EventHandler? EditorStepChanged;
+
     partial void OnSelectedProfileChanged(ProfileSummaryViewModel? value)
     {
         Fields = value?.Descriptor.Fields
             .OrderBy(static field => field.Order)
-            .Select(static field => new ProfileFieldInspectionViewModel(field))
+            .Select(field => new ProfileFieldInspectionViewModel(field, _localizer))
             .ToArray() ?? [];
         Rules = value?.Descriptor.Rules
             .OrderBy(static rule => rule.Order)
-            .Select(static rule => new ProfileRuleInspectionViewModel(rule))
+            .Select(rule => new ProfileRuleInspectionViewModel(rule, _localizer))
             .ToArray() ?? [];
         ExcludedDirectoryNameRules = value?.Descriptor.ExcludedDirectoryNameRules
             .OrderBy(static rule => rule.Order)
@@ -240,31 +276,17 @@ public partial class ProfilesViewModel : ObservableObject
 
     partial void OnSamplePathChanged(string value)
     {
-        TestDraftCommand.NotifyCanExecuteChanged();
         if (_isPopulatingDraft)
         {
             return;
         }
 
-        TestRows = [];
-        ClearRegexDebugResults();
-        TestSummary = "예제 경로가 변경되었습니다. 결과를 다시 확인하세요.";
         SetEditorStatus(
-            "예제 경로가 변경되었습니다. 결과를 다시 시험하세요.",
+            L(
+                "Loc.Profiles.Status.SampleChanged",
+                "작성용 경로가 변경되었습니다. 2단계에서 경로 조각을 다시 분석하세요."),
             InfoBarSeverity.Informational);
     }
-
-    partial void OnRegexDebugRulesChanged(
-        IReadOnlyList<ProfileRegexDebugRuleViewModel> value) =>
-        OnPropertyChanged(nameof(HasRegexDebugRules));
-
-    partial void OnDirectoryExclusionTestResultChanged(
-        ProfileDirectoryExclusionTestResultViewModel? value) =>
-        OnPropertyChanged(nameof(HasDirectoryExclusionTestResult));
-
-    partial void OnDirectoryExclusionRegexDebugRulesChanged(
-        IReadOnlyList<ProfileRegexDebugRuleViewModel> value) =>
-        OnPropertyChanged(nameof(HasDirectoryExclusionRegexDebugRules));
 
     partial void OnEditorModeChanged(ProfileEditorMode value)
     {
@@ -272,6 +294,21 @@ public partial class ProfilesViewModel : ObservableObject
         IsAssignmentPickerOpen = false;
         OnPropertyChanged(nameof(IsGuidedMode));
         OnPropertyChanged(nameof(IsExpertMode));
+        OnPropertyChanged(nameof(EditorModeDisplay));
+    }
+
+    partial void OnCurrentEditorStepChanged(ProfileEditorStep value)
+    {
+        OnPropertyChanged(nameof(IsProfileStep));
+        OnPropertyChanged(nameof(IsPathAndFieldsStep));
+        OnPropertyChanged(nameof(IsScanOptionsStep));
+        OnPropertyChanged(nameof(IsReviewStep));
+        OnPropertyChanged(nameof(CanGoToPreviousStep));
+        OnPropertyChanged(nameof(CanGoToNextStep));
+        OnPropertyChanged(nameof(EditorStepStatus));
+        PreviousEditorStepCommand.NotifyCanExecuteChanged();
+        NextEditorStepCommand.NotifyCanExecuteChanged();
+        EditorStepChanged?.Invoke(this, EventArgs.Empty);
     }
 
     partial void OnDraftPathTemplateChanged(string value)
@@ -291,14 +328,46 @@ public partial class ProfilesViewModel : ObservableObject
         NewDraftCommand.NotifyCanExecuteChanged();
         LoadDraftCommand.NotifyCanExecuteChanged();
         ValidateDraftCommand.NotifyCanExecuteChanged();
-        TestDraftCommand.NotifyCanExecuteChanged();
         SaveDraftCommand.NotifyCanExecuteChanged();
         BuildTemplateFromSampleCommand.NotifyCanExecuteChanged();
         UseExpertModeCommand.NotifyCanExecuteChanged();
         UseGuidedModeCommand.NotifyCanExecuteChanged();
         AddDirectoryExclusionRuleCommand.NotifyCanExecuteChanged();
         AddTextFileFieldCommand.NotifyCanExecuteChanged();
+        PreviousEditorStepCommand.NotifyCanExecuteChanged();
+        NextEditorStepCommand.NotifyCanExecuteChanged();
+        OpenSavedProfileInPlaygroundCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(CanGoToPreviousStep));
+        OnPropertyChanged(nameof(CanGoToNextStep));
+        OnPropertyChanged(nameof(CanOpenSavedProfileInPlayground));
     }
+
+    [RelayCommand]
+    private void GoToEditorStep(ProfileEditorStep? step)
+    {
+        if (IsEditorBusy || step is null || !Enum.IsDefined(step.Value))
+        {
+            return;
+        }
+
+        CurrentEditorStep = step.Value;
+    }
+
+    [RelayCommand(CanExecute = nameof(CanGoToPreviousEditorStep))]
+    private void PreviousEditorStep()
+    {
+        CurrentEditorStep--;
+    }
+
+    [RelayCommand(CanExecute = nameof(CanGoToNextEditorStep))]
+    private void NextEditorStep()
+    {
+        CurrentEditorStep++;
+    }
+
+    private bool CanGoToPreviousEditorStep() => CanGoToPreviousStep;
+
+    private bool CanGoToNextEditorStep() => CanGoToNextStep;
 
     [RelayCommand(CanExecute = nameof(CanEdit))]
     private void NewDraft()
@@ -308,9 +377,10 @@ public partial class ProfilesViewModel : ObservableObject
         {
             DetachRows();
             _originalProfileId = null;
+            CurrentEditorStep = ProfileEditorStep.Profile;
             _draftVersion = "1.0.0";
             CanEditDraftId = true;
-            DraftDisplayName = "새 프로필";
+            DraftDisplayName = L("Loc.Profiles.New.DefaultName", "새 프로필");
             DraftId = $"profile-{DateTime.Now:yyyyMMddHHmmss}";
             EditorMode = ProfileEditorMode.Guided;
             CanUseGuidedMode = true;
@@ -322,7 +392,7 @@ public partial class ProfilesViewModel : ObservableObject
             DraftTextFileFields.Clear();
             AddFieldRow(new ProfileFieldDraftViewModel
             {
-                Header = "이름",
+                Header = L("Loc.Profiles.New.DefaultField", "이름"),
                 FieldId = "name",
                 GroupName = "name",
                 Kind = ProfileFieldValueKind.String,
@@ -347,13 +417,12 @@ public partial class ProfilesViewModel : ObservableObject
                     GuidedPathSegments[^1].WholeChoice);
             }
             RebuildGuidedTemplate();
-            TestRows = [];
-            ClearRegexDebugResults();
             AddDirectoryExclusionRuleCommand.NotifyCanExecuteChanged();
             AddTextFileFieldCommand.NotifyCanExecuteChanged();
-            TestSummary = "기본 예제를 바로 시험하거나 실제 경로에 맞게 수정하세요.";
             SetEditorStatus(
-                "새 프로필 초안을 만들었습니다. 예제 값을 수정한 뒤 검증하세요.",
+                L(
+                    "Loc.Profiles.Status.NewDraft",
+                    "새 프로필 초안을 만들었습니다. 예제 값을 수정한 뒤 검증하세요."),
                 InfoBarSeverity.Informational);
         }
         finally
@@ -362,6 +431,9 @@ public partial class ProfilesViewModel : ObservableObject
         }
 
         RefreshTemplatePreview();
+        IsDraftDirty = true;
+        OpenSavedProfileInPlaygroundCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(CanOpenSavedProfileInPlayground));
     }
 
     [RelayCommand(CanExecute = nameof(CanLoadDraft))]
@@ -378,12 +450,17 @@ public partial class ProfilesViewModel : ObservableObject
                 .ConfigureAwait(true);
             if (manifest is null)
             {
-                throw new InvalidOperationException("선택한 파일은 GUI에서 편집할 수 있는 선언형 프로필이 아닙니다.");
+                throw new InvalidOperationException(L(
+                    "Loc.Profiles.Error.NotEditable",
+                    "선택한 파일은 GUI에서 편집할 수 있는 선언형 프로필이 아닙니다."));
             }
 
             PopulateDraft(manifest);
             SetEditorStatus(
-                $"'{DraftDisplayName}' 프로필을 열었습니다.",
+                F(
+                    "Loc.Profiles.Status.Opened",
+                    "'{0}' 프로필을 열었습니다.",
+                    DraftDisplayName),
                 InfoBarSeverity.Informational);
         }).ConfigureAwait(true);
     }
@@ -393,7 +470,9 @@ public partial class ProfilesViewModel : ObservableObject
     {
         if (string.IsNullOrWhiteSpace(SamplePath))
         {
-            TemplateStatusMessage = "먼저 실제 폴더 경로를 붙여 넣으세요.";
+            TemplateStatusMessage = L(
+                "Loc.Profiles.Status.PastePath",
+                "먼저 실제 폴더 경로를 붙여 넣으세요.");
             TemplateStatusSeverity = InfoBarSeverity.Warning;
             return;
         }
@@ -406,7 +485,10 @@ public partial class ProfilesViewModel : ObservableObject
         catch (Exception exception) when (
             exception is ArgumentException or IOException or NotSupportedException)
         {
-            TemplateStatusMessage = exception.Message;
+            _logger.LogWarning(exception, "Could not canonicalize the profile authoring path.");
+            TemplateStatusMessage = L(
+                "Loc.Profiles.Error.InvalidPath",
+                "이 경로를 사용할 수 없습니다. 드라이브 또는 UNC 루트를 포함한 실제 절대 경로를 확인하세요.");
             TemplateStatusSeverity = InfoBarSeverity.Error;
             return;
         }
@@ -422,10 +504,12 @@ public partial class ProfilesViewModel : ObservableObject
             var result = await _contentDialogService.ShowAsync(
                 new ContentDialog
                 {
-                    Title = "새 경로를 분석할까요?",
-                    Content = "현재 연결된 경로 조각이 초기화됩니다. 결과 값은 그대로 유지됩니다.",
-                    PrimaryButtonText = "새 경로 분석",
-                    CloseButtonText = "취소",
+                    Title = L("Loc.Profiles.Analyze.Title", "새 경로를 분석할까요?"),
+                    Content = L(
+                        "Loc.Profiles.Analyze.Message",
+                        "현재 연결된 경로 조각이 초기화됩니다. 결과 값은 그대로 유지됩니다."),
+                    PrimaryButtonText = L("Loc.Profiles.Analyze.Action", "새 경로 분석"),
+                    CloseButtonText = L("Loc.Common.Cancel", "취소"),
                     DefaultButton = ContentDialogButton.Close,
                 },
                 CancellationToken.None).ConfigureAwait(true);
@@ -434,6 +518,9 @@ public partial class ProfilesViewModel : ObservableObject
                 return;
             }
         }
+
+        var hadGuidedAssignments = DraftFields.Any(static field => field.HasGuidedAssignments);
+        var previousPathTemplate = DraftPathTemplate;
 
         _isPopulatingDraft = true;
         try
@@ -451,10 +538,21 @@ public partial class ProfilesViewModel : ObservableObject
         }
 
         RebuildGuidedTemplate();
+        if (hadGuidedAssignments
+            || !string.Equals(
+                previousPathTemplate,
+                DraftPathTemplate,
+                StringComparison.Ordinal))
+        {
+            MarkDraftChanged();
+        }
+
         _activeAssignmentField = null;
         IsAssignmentPickerOpen = false;
         TemplateStatusMessage =
-            "결과 값 카드에서 경로 조각 선택을 누른 뒤, 아래의 폴더 또는 세부 조각 버튼을 클릭하세요.";
+            L(
+                "Loc.Profiles.Status.ChooseSegment",
+                "결과 값 카드에서 경로 조각 선택을 누른 뒤, 아래의 폴더 또는 세부 조각 버튼을 클릭하세요.");
         TemplateStatusSeverity = InfoBarSeverity.Informational;
     }
 
@@ -498,7 +596,10 @@ public partial class ProfilesViewModel : ObservableObject
         if (nextPart is null)
         {
             IsAssignmentPickerOpen = false;
-            TemplateStatusMessage = $"‘{_activeAssignmentField.Header}’ 연결을 완료했습니다.";
+            TemplateStatusMessage = F(
+                "Loc.Profiles.Status.AssignmentCompleted",
+                "‘{0}’ 연결을 완료했습니다.",
+                _activeAssignmentField.Header);
             TemplateStatusSeverity = InfoBarSeverity.Success;
             _activeAssignmentField = null;
         }
@@ -565,7 +666,9 @@ public partial class ProfilesViewModel : ObservableObject
             OnPropertyChanged(nameof(IsGuidedMode));
             OnPropertyChanged(nameof(IsExpertMode));
             SetEditorStatus(
-                "이 정규식은 초보자 모드로 안전하게 바꿀 수 없습니다. 전문가 모드에서 계속 편집하세요.",
+                L(
+                    "Loc.Profiles.Status.GuidedUnavailable",
+                    "이 정규식은 초보자 모드로 안전하게 바꿀 수 없습니다. 전문가 모드에서 계속 편집하세요."),
                 InfoBarSeverity.Warning);
             return;
         }
@@ -589,7 +692,9 @@ public partial class ProfilesViewModel : ObservableObject
         }
 
         RefreshTemplatePreview();
-        SetEditorStatus("초보자 모드로 전환했습니다.", InfoBarSeverity.Informational);
+        SetEditorStatus(
+            L("Loc.Profiles.Status.GuidedEnabled", "초보자 모드로 전환했습니다."),
+            InfoBarSeverity.Informational);
     }
 
     [RelayCommand(CanExecute = nameof(CanEdit))]
@@ -606,7 +711,9 @@ public partial class ProfilesViewModel : ObservableObject
             OnPropertyChanged(nameof(IsGuidedMode));
             OnPropertyChanged(nameof(IsExpertMode));
             SetEditorStatus(
-                "경로 템플릿 오류를 먼저 수정한 뒤 전문가 모드로 전환하세요.",
+                L(
+                    "Loc.Profiles.Status.FixTemplate",
+                    "경로 템플릿 오류를 먼저 수정한 뒤 전문가 모드로 전환하세요."),
                 InfoBarSeverity.Warning);
             return;
         }
@@ -615,7 +722,9 @@ public partial class ProfilesViewModel : ObservableObject
         EditorMode = ProfileEditorMode.Expert;
         CanUseGuidedMode = true;
         SetEditorStatus(
-            "전문가 모드로 전환했습니다. 정규식을 직접 바꾸면 초보자 모드로 돌아갈 수 없습니다.",
+            L(
+                "Loc.Profiles.Status.ExpertEnabled",
+                "전문가 모드로 전환했습니다. 정규식을 직접 바꾸면 초보자 모드로 돌아갈 수 없습니다."),
             InfoBarSeverity.Informational);
     }
 
@@ -625,7 +734,7 @@ public partial class ProfilesViewModel : ObservableObject
         var number = NextFieldNumber();
         AddFieldRow(new ProfileFieldDraftViewModel
         {
-            Header = $"결과 값 {number}",
+            Header = F("Loc.Profiles.New.FieldName", "결과 값 {0}", number),
             FieldId = $"field-{number}",
             GroupName = $"field{number}",
             Required = true,
@@ -675,7 +784,10 @@ public partial class ProfilesViewModel : ObservableObject
         if (DraftRules.Count >= ProfileManifestLimits.MaximumRegexRuleCount)
         {
             SetEditorStatus(
-                $"경로 정규식 규칙은 최대 {ProfileManifestLimits.MaximumRegexRuleCount}개까지 추가할 수 있습니다.",
+                F(
+                    "Loc.Profiles.Error.RuleLimit",
+                    "경로 정규식 규칙은 최대 {0}개까지 추가할 수 있습니다.",
+                    ProfileManifestLimits.MaximumRegexRuleCount),
                 InfoBarSeverity.Warning);
             return;
         }
@@ -756,7 +868,7 @@ public partial class ProfilesViewModel : ObservableObject
             .Max() + 10;
         AddTextFileFieldRow(new ProfileTextFileFieldDraftViewModel
         {
-            Header = "텍스트 파일 내용",
+            Header = L("Loc.Profiles.New.TextFileField", "텍스트 파일 내용"),
             FieldId = fieldId,
             Order = nextOrder,
             FileNamePattern = @".*\.txt",
@@ -803,112 +915,21 @@ public partial class ProfilesViewModel : ObservableObject
         try
         {
             var review = _authoringService.Validate(BuildManifest());
-            ApplyReview(review, "검증을 통과했습니다. 저장하거나 예제 경로를 시험할 수 있습니다.");
+            ApplyReview(
+                review,
+                L(
+                    "Loc.Profiles.Status.ValidationPassed",
+                    "검증을 통과했습니다. 이제 프로필을 저장하세요."));
         }
         catch (InvalidOperationException exception)
         {
-            SetEditorStatus(exception.Message, InfoBarSeverity.Error);
+            _logger.LogWarning(exception, "Could not validate the profile draft.");
+            SetEditorStatus(
+                L(
+                    "Loc.Profiles.Error.ValidationFailed",
+                    "프로필 설정을 검증할 수 없습니다. 필수 입력값과 규칙을 확인하세요."),
+                InfoBarSeverity.Error);
         }
-    }
-
-    [RelayCommand(CanExecute = nameof(CanTestDraft))]
-    private async Task TestDraftAsync()
-    {
-        await RunEditorOperationAsync(async () =>
-        {
-            TestRows = [];
-            ClearRegexDebugResults();
-            TestSummary = "절대 경로와 정규식 규칙을 확인하고 있습니다.";
-            SetEditorStatus("예제 경로를 시험하고 있습니다.", InfoBarSeverity.Informational);
-
-            ProfileDefinitionTestResult result;
-            try
-            {
-                var manifest = BuildManifest();
-                var samplePath = SamplePath.Trim();
-                var evaluation = await Task.Run(() =>
-                {
-                    var canonicalSamplePath = _pathCanonicalizer.Canonicalize(samplePath);
-                    var debugRules = ProfileRegexDebugBuilder.Build(
-                        canonicalSamplePath,
-                        manifest.Rules ?? []);
-                    var directoryName = GetDirectoryLeafName(canonicalSamplePath);
-                    var directoryExclusionRules = manifest.ExcludedDirectoryNameRules ?? [];
-                    var directoryExclusionDebugRules = string.IsNullOrEmpty(directoryName)
-                        ? Array.Empty<ProfileRegexDebugRuleViewModel>()
-                        : ProfileRegexDebugBuilder.BuildDirectoryName(
-                            directoryName,
-                            directoryExclusionRules);
-                    var definitionResult = _authoringService.Test(
-                        manifest,
-                        canonicalSamplePath);
-                    var directoryExclusionResult = BuildDirectoryExclusionTestResult(
-                        directoryName,
-                        directoryExclusionRules.Count,
-                        definitionResult.Review.Profile);
-                    return (
-                        canonicalSamplePath,
-                        debugRules,
-                        directoryExclusionDebugRules,
-                        directoryExclusionResult,
-                        definitionResult);
-                }).ConfigureAwait(true);
-
-                RegexDebugInputPath = evaluation.canonicalSamplePath;
-                RegexDebugRules = evaluation.debugRules;
-                DirectoryExclusionTestResult =
-                    evaluation.directoryExclusionResult;
-                DirectoryExclusionRegexDebugRules =
-                    evaluation.directoryExclusionDebugRules;
-                result = evaluation.definitionResult;
-            }
-            catch
-            {
-                TestRows = [];
-                ClearRegexDebugResults();
-                TestSummary = "예제 경로 시험을 완료하지 못했습니다.";
-                throw;
-            }
-
-            if (!result.Review.IsValid || result.Mapping is null)
-            {
-                ApplyReview(result.Review, string.Empty);
-                TestRows = [];
-                TestSummary = "프로필 정의 오류를 먼저 수정하세요.";
-                return;
-            }
-
-            var mapping = result.Mapping;
-            switch (mapping.Status)
-            {
-                case ProfileMapStatus.NoMatch:
-                    TestRows = [];
-                    TestSummary = "어떤 규칙에도 일치하지 않습니다. 입력한 절대 경로와 정규식을 확인하세요.";
-                    SetEditorStatus(TestSummary, InfoBarSeverity.Warning);
-                    break;
-                case ProfileMapStatus.Invalid:
-                    TestRows = mapping.Issues
-                        .Select(issue => new ProfileTestResultViewModel(
-                            issue.FieldId ?? "규칙",
-                            null,
-                            issue.Message))
-                        .ToArray();
-                    TestSummary = "경로는 일치했지만 값을 변환할 수 없습니다.";
-                    SetEditorStatus(TestSummary, InfoBarSeverity.Error);
-                    break;
-                case ProfileMapStatus.Success when mapping.Item is not null:
-                    var profile = result.Review.Profile!;
-                    TestRows = profile.Descriptor.Fields
-                        .Select(field => new ProfileTestResultViewModel(
-                            field.Header,
-                            FormatValue(mapping.Item.Values[field.FieldId], field.DisplayFormat),
-                            BuildTestStatus(field, mapping.Item.Values[field.FieldId])))
-                        .ToArray();
-                    TestSummary = $"규칙 '{mapping.Item.MatchedRuleId}'에 일치했고 {TestRows.Count:N0}개 값을 변환했습니다.";
-                    SetEditorStatus("예제 경로 시험을 통과했습니다.", InfoBarSeverity.Success);
-                    break;
-            }
-        }).ConfigureAwait(true);
     }
 
     [RelayCommand(CanExecute = nameof(CanEdit))]
@@ -917,7 +938,9 @@ public partial class ProfilesViewModel : ObservableObject
         if (_operationCoordinator.IsRunning)
         {
             SetEditorStatus(
-                "인덱싱 또는 불러오기가 끝난 뒤 프로필을 저장하세요.",
+                L(
+                    "Loc.Profiles.Status.WaitToSave",
+                    "인덱싱 또는 불러오기가 끝난 뒤 프로필을 저장하세요."),
                 InfoBarSeverity.Warning);
             return;
         }
@@ -941,14 +964,18 @@ public partial class ProfilesViewModel : ObservableObject
             catch (InvalidOperationException) when (_operationCoordinator.IsRunning)
             {
                 SetEditorStatus(
-                    "인덱싱 또는 불러오기가 끝난 뒤 프로필을 저장하세요.",
+                    L(
+                        "Loc.Profiles.Status.WaitToSave",
+                        "인덱싱 또는 불러오기가 끝난 뒤 프로필을 저장하세요."),
                     InfoBarSeverity.Warning);
                 return;
             }
 
             if (result is null)
             {
-                throw new InvalidOperationException("프로필 저장 결과를 받지 못했습니다.");
+                throw new InvalidOperationException(L(
+                    "Loc.Profiles.Error.NoSaveResult",
+                    "프로필 저장 결과를 받지 못했습니다."));
             }
 
             if (!result.Review.IsValid)
@@ -965,12 +992,15 @@ public partial class ProfilesViewModel : ObservableObject
                         DraftId.Trim(),
                         StringComparison.OrdinalIgnoreCase))
                     .SelectMany(static report => report.Diagnostics)
-                    .Select(static diagnostic => diagnostic.Message)
+                    .Select(diagnostic =>
+                        ProfileDiagnosticLocalizer.Translate(_localizer, diagnostic))
                     .Distinct()
                     .ToArray() ?? [];
                 SetEditorStatus(
                     reloadMessages.Length == 0
-                        ? "파일은 저장했지만 프로필을 적용하지 못했습니다. 로드 결과의 진단을 확인하세요."
+                        ? L(
+                            "Loc.Profiles.Error.SavedNotApplied",
+                            "파일은 저장했지만 프로필을 적용하지 못했습니다. 로드 결과의 진단을 확인하세요.")
                         : string.Join(Environment.NewLine, reloadMessages),
                     InfoBarSeverity.Error);
                 return;
@@ -978,6 +1008,9 @@ public partial class ProfilesViewModel : ObservableObject
 
             _originalProfileId = result.Review.Profile!.Descriptor.Id;
             CanEditDraftId = false;
+            IsDraftDirty = false;
+            OpenSavedProfileInPlaygroundCommand.NotifyCanExecuteChanged();
+            OnPropertyChanged(nameof(CanOpenSavedProfileInPlayground));
             if (result.Snapshot is not null)
             {
                 ApplySnapshot(result.Snapshot, _originalProfileId);
@@ -985,15 +1018,31 @@ public partial class ProfilesViewModel : ObservableObject
 
             await RefreshEditableProfilesAsync(_originalProfileId).ConfigureAwait(true);
             SetEditorStatus(
-                "프로필을 저장하고 카탈로그에 즉시 적용했습니다.",
+                L(
+                    "Loc.Profiles.Status.SavedApplied",
+                    "프로필을 저장하고 카탈로그에 즉시 적용했습니다."),
                 InfoBarSeverity.Success);
             _snackbarService.Show(
-                "프로필 저장 완료",
-                $"'{result.Review.Profile.Descriptor.DisplayName}' 프로필을 바로 사용할 수 있습니다.",
+                L("Loc.Profiles.Save.Completed", "프로필 저장 완료"),
+                F(
+                    "Loc.Profiles.Save.Completed.Message",
+                    "'{0}' 프로필을 바로 사용할 수 있습니다.",
+                    result.Review.Profile.Descriptor.DisplayName),
                 ControlAppearance.Success,
                 null,
                 TimeSpan.FromSeconds(4));
         }).ConfigureAwait(true);
+    }
+
+    [RelayCommand(CanExecute = nameof(CanOpenSavedProfile))]
+    private void OpenSavedProfileInPlayground()
+    {
+        if (_originalProfileId is null)
+        {
+            return;
+        }
+
+        _ = _playgroundNavigator.Navigate(_originalProfileId);
     }
 
     [RelayCommand]
@@ -1015,7 +1064,7 @@ public partial class ProfilesViewModel : ObservableObject
 
     private bool CanLoadDraft() => !IsEditorBusy && SelectedEditableProfile is not null;
 
-    private bool CanTestDraft() => !IsEditorBusy && !string.IsNullOrWhiteSpace(SamplePath);
+    private bool CanOpenSavedProfile() => CanOpenSavedProfileInPlayground;
 
     private bool CanSwitchToGuided() => !IsEditorBusy && CanUseGuidedMode;
 
@@ -1122,6 +1171,7 @@ public partial class ProfilesViewModel : ObservableObject
         {
             DetachRows();
             _originalProfileId = manifest.Id?.Trim();
+            CurrentEditorStep = ProfileEditorStep.Profile;
             _draftVersion = string.IsNullOrWhiteSpace(manifest.Version)
                 ? "1.0.0"
                 : manifest.Version.Trim();
@@ -1176,14 +1226,13 @@ public partial class ProfilesViewModel : ObservableObject
                 EditorMode = ProfileEditorMode.Expert;
                 CanUseGuidedMode = false;
                 GeneratedPatternPreview = string.Empty;
-                TemplateStatusMessage = "이 프로필은 고급 정규식 기능을 사용하므로 전문가 모드로 열었습니다.";
+                TemplateStatusMessage = L(
+                    "Loc.Profiles.Status.OpenedExpert",
+                    "이 프로필은 고급 정규식 기능을 사용하므로 전문가 모드로 열었습니다.");
                 TemplateStatusSeverity = InfoBarSeverity.Informational;
             }
 
             SamplePath = string.Empty;
-            TestRows = [];
-            ClearRegexDebugResults();
-            TestSummary = "실제 경로를 입력해 저장 전에 결과를 확인하세요.";
         }
         finally
         {
@@ -1194,6 +1243,10 @@ public partial class ProfilesViewModel : ObservableObject
         {
             RefreshTemplatePreview();
         }
+
+        IsDraftDirty = false;
+        OpenSavedProfileInPlaygroundCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(CanOpenSavedProfileInPlayground));
     }
 
     private void ApplyReview(ProfileDefinitionReview review, string successMessage)
@@ -1210,8 +1263,14 @@ public partial class ProfilesViewModel : ObservableObject
         SetEditorStatus(
             string.Join(
                 Environment.NewLine,
-                errors.Take(6).Select(static diagnostic => $"• {diagnostic.Message}"))
-            + (errors.Length > 6 ? $"{Environment.NewLine}• 그 외 {errors.Length - 6:N0}개 오류" : string.Empty),
+                errors.Take(6).Select(diagnostic =>
+                    $"• {ProfileDiagnosticLocalizer.Translate(_localizer, diagnostic)}"))
+            + (errors.Length > 6
+                ? Environment.NewLine + F(
+                    "Loc.Profiles.Validation.MoreErrors",
+                    "• 그 외 {0:N0}개 오류",
+                    errors.Length - 6)
+                : string.Empty),
             InfoBarSeverity.Error);
     }
 
@@ -1229,7 +1288,11 @@ public partial class ProfilesViewModel : ObservableObject
         catch (Exception exception)
         {
             _logger.LogWarning(exception, "Could not enumerate editable profiles.");
-            SetEditorStatus(exception.Message, InfoBarSeverity.Error);
+            SetEditorStatus(
+                L(
+                    "Loc.Profiles.Error.ListFailed",
+                    "편집 가능한 프로필 목록을 불러오지 못했습니다."),
+                InfoBarSeverity.Error);
         }
     }
 
@@ -1248,7 +1311,11 @@ public partial class ProfilesViewModel : ObservableObject
         catch (Exception exception)
         {
             _logger.LogError(exception, "Profile editor operation failed.");
-            SetEditorStatus(exception.Message, InfoBarSeverity.Error);
+            SetEditorStatus(
+                L(
+                    "Loc.Profiles.Error.OperationFailed",
+                    "프로필 작업을 완료하지 못했습니다. 입력값을 확인하고 다시 시도하세요."),
+                InfoBarSeverity.Error);
         }
         finally
         {
@@ -1275,17 +1342,19 @@ public partial class ProfilesViewModel : ObservableObject
     private void ApplySnapshot(ProfileCatalogSnapshot snapshot, string? preferredProfileId)
     {
         Profiles = snapshot.Profiles
-            .Select(static profile => new ProfileSummaryViewModel(profile.Descriptor))
+            .Select(profile => new ProfileSummaryViewModel(profile.Descriptor, _localizer))
             .OrderBy(static profile => profile.DisplayName, StringComparer.CurrentCultureIgnoreCase)
             .ToArray();
         Reports = snapshot.Reports
-            .Select(static report => new PluginReportViewModel(report))
+            .Select(report => new PluginReportViewModel(report, _localizer))
             .OrderBy(static report => report.Status)
             .ThenBy(static report => report.DisplayName, StringComparer.CurrentCultureIgnoreCase)
             .ToArray();
         SelectedProfile = Profiles.FirstOrDefault(profile =>
                 string.Equals(profile.Id, preferredProfileId, StringComparison.OrdinalIgnoreCase))
             ?? Profiles.FirstOrDefault();
+        OpenSavedProfileInPlaygroundCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(CanOpenSavedProfileInPlayground));
     }
 
     private void AddFieldRow(ProfileFieldDraftViewModel field)
@@ -1416,123 +1485,46 @@ public partial class ProfilesViewModel : ObservableObject
             CanUseGuidedMode = TryResolveGuidedTemplate(out _);
         }
 
-        TestRows = [];
-        ClearRegexDebugResults();
-        TestSummary = "초안이 변경되었습니다. 예제 경로를 다시 시험하세요.";
-        SetEditorStatus("변경 사항이 있습니다. 검증 후 저장하세요.", InfoBarSeverity.Informational);
-    }
-
-    private void ClearRegexDebugResults()
-    {
-        RegexDebugRules = [];
-        RegexDebugInputPath = string.Empty;
-        DirectoryExclusionRegexDebugRules = [];
-        DirectoryExclusionTestResult = null;
-    }
-
-    internal static string GetDirectoryLeafName(string canonicalPath)
-    {
-        var root = Path.GetPathRoot(canonicalPath);
-        if (!string.IsNullOrEmpty(root)
-            && string.Equals(
-                Path.TrimEndingDirectorySeparator(canonicalPath),
-                Path.TrimEndingDirectorySeparator(root),
-                OperatingSystem.IsWindows()
-                    ? StringComparison.OrdinalIgnoreCase
-                    : StringComparison.Ordinal))
-        {
-            return string.Empty;
-        }
-
-        return Path.GetFileName(Path.TrimEndingDirectorySeparator(canonicalPath));
-    }
-
-    internal static ProfileDirectoryExclusionTestResultViewModel
-        BuildDirectoryExclusionTestResult(
-            string directoryName,
-            int ruleCount,
-            ILoadedProfile? profile)
-    {
-        const string directScanScope =
-            "이 판정은 구조화 보기의 ‘프로필로 빠르게 불러오기’에서 검색 루트 아래 폴더에만 적용됩니다. "
-            + "입력 경로 자체를 검색 루트로 선택한 경우에는 명시적 루트 예외로 제외하지 않으며, "
-            + "파일 인덱싱과 기존 인덱스 불러오기에도 적용하지 않습니다.";
-
-        if (string.IsNullOrEmpty(directoryName))
-        {
-            return new ProfileDirectoryExclusionTestResultViewModel(
-                "(드라이브 또는 공유 루트)",
-                "leaf 폴더 이름이 없어 제외 판정을 생략했습니다.",
-                directScanScope,
-                InfoBarSeverity.Informational);
-        }
-
-        if (ruleCount == 0)
-        {
-            return new ProfileDirectoryExclusionTestResultViewModel(
-                directoryName,
-                "제외 규칙이 없어 이 폴더를 계속 탐색합니다.",
-                directScanScope,
-                InfoBarSeverity.Informational);
-        }
-
-        if (profile is null)
-        {
-            return new ProfileDirectoryExclusionTestResultViewModel(
-                directoryName,
-                "프로필 정의 오류로 제외 여부를 판정할 수 없습니다.",
-                "아래 색상 디버깅과 검증 메시지에서 잘못된 정규식을 확인하세요. "
-                + directScanScope,
-                InfoBarSeverity.Error);
-        }
-
-        var evaluation = profile.EvaluateDirectoryName(directoryName);
-        if (evaluation.IsExcluded)
-        {
-            return new ProfileDirectoryExclusionTestResultViewModel(
-                directoryName,
-                $"규칙 ‘{evaluation.MatchedRuleId}’과 일치해 현재 폴더와 하위를 건너뜁니다.",
-                "같은 부모의 다음 폴더 탐색은 계속합니다. " + directScanScope,
-                InfoBarSeverity.Success);
-        }
-
-        if (evaluation.Issues.Count > 0)
-        {
-            return new ProfileDirectoryExclusionTestResultViewModel(
-                directoryName,
-                "제외 규칙을 안전하게 판정하지 못해 이 폴더를 계속 탐색합니다.",
-                string.Join(
-                    Environment.NewLine,
-                    evaluation.Issues.Select(static issue => $"• {issue.Message}"))
-                + Environment.NewLine
-                + directScanScope,
-                InfoBarSeverity.Warning);
-        }
-
-        return new ProfileDirectoryExclusionTestResultViewModel(
-            directoryName,
-            "어떤 제외 규칙에도 일치하지 않아 이 폴더를 계속 탐색합니다.",
-            directScanScope,
+        IsDraftDirty = true;
+        SetEditorStatus(
+            L(
+                "Loc.Profiles.Status.Dirty",
+                "변경 사항이 있습니다. 검증 후 저장하세요."),
             InfoBarSeverity.Informational);
     }
 
     private List<ProfileFieldManifest> BuildFieldManifests() =>
-        DraftFields.Select(static (field, index) =>
+        DraftFields.Select(BuildFieldManifest).ToList();
+
+    internal static ProfileFieldManifest BuildFieldManifest(
+        ProfileFieldDraftViewModel field,
+        int index)
+    {
+        ArgumentNullException.ThrowIfNull(field);
+        ArgumentOutOfRangeException.ThrowIfNegative(index);
+
+        var groupNames = ProfileFieldDraftViewModel.ParseGroupNames(field.GroupNamesText);
+        return new ProfileFieldManifest
         {
-            var groupNames = ProfileFieldDraftViewModel.ParseGroupNames(field.GroupNamesText);
-            return new ProfileFieldManifest
-            {
-                FieldId = field.FieldId.Trim(),
-                GroupName = NormalizeOptional(field.GroupName),
-                GroupNames = groupNames.Count == 0 ? null : groupNames,
-                Header = field.Header.Trim(),
-                Order = (index + 1) * 10,
-                Required = field.Required,
-                Kind = field.Kind,
-                ParseFormat = NormalizeOptional(field.ParseFormat),
-                DisplayFormat = NormalizeOptional(field.DisplayFormat),
-            };
-        }).ToList();
+            FieldId = field.FieldId.Trim(),
+            GroupName = NormalizeOptional(field.GroupName),
+            GroupNames = groupNames.Count == 0 ? null : groupNames,
+            Header = field.Header.Trim(),
+            Order = (index + 1) * 10,
+            Required = field.Required,
+            Kind = field.Kind,
+            ParseFormat = NormalizeOptional(field.ParseFormat),
+            DisplayFormat = NormalizeOptional(field.DisplayFormat),
+            ValueMappings = field.ValueMappings.Count == 0
+                ? null
+                : field.ValueMappings.Select(static mapping =>
+                    new ProfileValueMappingManifest
+                    {
+                        Source = mapping.Source,
+                        Display = mapping.Display,
+                    }).ToList(),
+        };
+    }
 
     private bool TryCompileTemplate(out ProfilePathTemplateCompileResult result)
     {
@@ -1550,7 +1542,9 @@ public partial class ProfilesViewModel : ObservableObject
         }
 
         GeneratedPatternPreview = result.Pattern!;
-        TemplateStatusMessage = "경로 규칙이 준비되었습니다. 아래에서 같은 경로를 시험해 보세요.";
+        TemplateStatusMessage = L(
+            "Loc.Profiles.Status.TemplateReady",
+            "경로 규칙이 준비되었습니다. 아래에서 같은 경로를 시험해 보세요.");
         TemplateStatusSeverity = InfoBarSeverity.Success;
     }
 
@@ -1560,16 +1554,17 @@ public partial class ProfilesViewModel : ObservableObject
         TemplateStatusSeverity = InfoBarSeverity.Warning;
     }
 
-    private static string BuildTemplateErrorMessage(ProfilePathTemplateCompileResult result)
+    private string BuildTemplateErrorMessage(ProfilePathTemplateCompileResult result)
     {
         if (result.Diagnostics.Count == 0)
         {
-            return "경로 규칙을 완성하세요.";
+            return L("Loc.Profiles.Status.CompleteRule", "경로 규칙을 완성하세요.");
         }
 
         return string.Join(
             Environment.NewLine,
-            result.Diagnostics.Take(4).Select(static diagnostic => $"• {diagnostic.Message}"));
+            result.Diagnostics.Take(4).Select(diagnostic =>
+                $"• {ProfileDiagnosticLocalizer.Translate(_localizer, diagnostic)}"));
     }
 
     private bool TryResolveGuidedTemplate(out string template)
@@ -1676,7 +1671,9 @@ public partial class ProfilesViewModel : ObservableObject
 
         if (!HasAnalyzedPath)
         {
-            TemplateStatusMessage = "먼저 실제 경로를 붙여 넣고 ‘경로 분석’을 누르세요.";
+            TemplateStatusMessage = L(
+                "Loc.Profiles.Status.AnalyzeFirst",
+                "먼저 실제 경로를 붙여 넣고 ‘경로 분석’을 누르세요.");
             TemplateStatusSeverity = InfoBarSeverity.Warning;
             return;
         }
@@ -1689,9 +1686,14 @@ public partial class ProfilesViewModel : ObservableObject
         _activeAssignmentField = field;
         _activeAssignmentPart = part;
         IsAssignmentPickerOpen = true;
-        AssignmentPickerTitle =
-            $"‘{field.Header}’의 {GuidedPathAssignmentViewModel.SourcePartDisplayName(part)}으로 사용할 조각을 선택하세요.";
-        TemplateStatusMessage = "폴더명 전체 또는 아래의 세부 조각 버튼을 클릭하세요.";
+        AssignmentPickerTitle = F(
+            "Loc.Profiles.Status.SelectPart",
+            "‘{0}’의 {1}으로 사용할 조각을 선택하세요.",
+            field.Header,
+            LocalizeSourcePart(part));
+        TemplateStatusMessage = L(
+            "Loc.Profiles.Status.ClickSegment",
+            "폴더명 전체 또는 아래의 세부 조각 버튼을 클릭하세요.");
         TemplateStatusSeverity = InfoBarSeverity.Informational;
         AssignmentPickerRequested?.Invoke(this, EventArgs.Empty);
     }
@@ -1747,7 +1749,7 @@ public partial class ProfilesViewModel : ObservableObject
                 match.Length,
                 value,
                 value,
-                $"‘{value}’ 폴더 전체",
+                F("Loc.Profiles.Path.WholeFolder", "‘{0}’ 폴더 전체", value),
                 IsWholeSegment: true);
             var partMatches = Regex.Matches(
                 value,
@@ -1763,7 +1765,11 @@ public partial class ProfilesViewModel : ObservableObject
                         part.Length,
                         part.Value,
                         part.Value,
-                        $"‘{value}’의 ‘{part.Value}’ 부분",
+                        F(
+                            "Loc.Profiles.Path.Part",
+                            "‘{0}’의 ‘{1}’ 부분",
+                            value,
+                            part.Value),
                         IsWholeSegment: false))
                     .ToArray()
                 : [];
@@ -1857,28 +1863,6 @@ public partial class ProfilesViewModel : ObservableObject
         }
     }
 
-    private string BuildTestStatus(ProfileFieldDescriptor field, object? value)
-    {
-        var draft = DraftFields.FirstOrDefault(candidate =>
-            string.Equals(candidate.FieldId, field.FieldId, StringComparison.OrdinalIgnoreCase));
-        if (draft is null || draft.GuidedAssignments.Count <= 1)
-        {
-            return field.Required ? "필수" : "선택";
-        }
-
-        var sourceValues = draft.EffectiveGroupNames
-            .Select(groupName => draft.GuidedAssignments.FirstOrDefault(assignment =>
-                string.Equals(assignment.GroupName, groupName, StringComparison.Ordinal))?.Choice.Value)
-            .Where(static source => !string.IsNullOrEmpty(source))
-            .ToArray();
-        if (sourceValues.Length <= 1)
-        {
-            return field.Required ? "필수" : "선택";
-        }
-
-        return $"{string.Join(" + ", sourceValues)} → {string.Concat(sourceValues)} → {FormatValue(value, field.DisplayFormat)}";
-    }
-
     private static List<string>? ParseNameList(string? value)
     {
         var groupNames = ProfileFieldDraftViewModel.ParseGroupNames(value);
@@ -1904,6 +1888,21 @@ public partial class ProfilesViewModel : ObservableObject
         EditorStatusSeverity = severity;
     }
 
+    private string LocalizeSourcePart(GuidedSourcePart part) => part switch
+    {
+        GuidedSourcePart.Year => L("Loc.Profiles.SourcePart.Year", "연도"),
+        GuidedSourcePart.MonthDay => L("Loc.Profiles.SourcePart.MonthDay", "월일"),
+        GuidedSourcePart.Month => L("Loc.Profiles.SourcePart.Month", "월"),
+        GuidedSourcePart.Day => L("Loc.Profiles.SourcePart.Day", "일"),
+        _ => L("Loc.Profiles.SourcePart.Value", "값"),
+    };
+
+    private string L(string key, string koreanFallback) =>
+        _localizer.Get(key, koreanFallback);
+
+    private string F(string key, string koreanFallback, params object?[] arguments) =>
+        _localizer.Format(key, koreanFallback, arguments);
+
     private static bool Move<T>(ObservableCollection<T> items, T? item, int offset)
         where T : class
     {
@@ -1923,45 +1922,13 @@ public partial class ProfilesViewModel : ObservableObject
         return false;
     }
 
-    private static string FormatValue(object? value, string? displayFormat)
-    {
-        if (value is null)
-        {
-            return "—";
-        }
-
-        try
-        {
-            return value is IFormattable formattable
-                ? formattable.ToString(displayFormat, CultureInfo.CurrentCulture) ?? string.Empty
-                : Convert.ToString(value, CultureInfo.CurrentCulture) ?? string.Empty;
-        }
-        catch (FormatException)
-        {
-            return Convert.ToString(value, CultureInfo.CurrentCulture) ?? string.Empty;
-        }
-    }
-
     private static string? NormalizeOptional(string value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }
 
-public sealed class ProfileDirectoryExclusionTestResultViewModel(
-    string leafName,
-    string title,
-    string message,
-    InfoBarSeverity severity)
-{
-    public string LeafName { get; } = leafName;
-
-    public string Title { get; } = title;
-
-    public string Message { get; } = message;
-
-    public InfoBarSeverity Severity { get; } = severity;
-}
-
-public sealed class ProfileSummaryViewModel(ProfileDescriptor descriptor)
+public sealed class ProfileSummaryViewModel(
+    ProfileDescriptor descriptor,
+    IAppLocalizer? localizer = null)
 {
     public ProfileDescriptor Descriptor { get; } = descriptor;
 
@@ -1971,10 +1938,12 @@ public sealed class ProfileSummaryViewModel(ProfileDescriptor descriptor)
 
     public string Version => Descriptor.Version;
 
-    public string Kind => Descriptor.Kind == ProfileKind.Declarative ? "GUI 정의" : "DLL 플러그인";
+    public string Kind => Descriptor.Kind == ProfileKind.Declarative
+        ? Get("Loc.Profiles.Summary.Gui", "GUI 정의")
+        : Get("Loc.Profiles.Summary.Plugin", "DLL 플러그인");
 
     public string CandidateKind => Descriptor.CandidateKind == ProfileCandidateKind.Directory
-        ? "폴더"
+        ? Get("Loc.Files.Kind.Folder", "폴더")
         : Descriptor.CandidateKind.ToString();
 
     public int FieldCount => Descriptor.Fields.Count;
@@ -1982,9 +1951,14 @@ public sealed class ProfileSummaryViewModel(ProfileDescriptor descriptor)
     public int ExcludedDirectoryRuleCount => Descriptor.ExcludedDirectoryNameRules.Count;
 
     public int TextFileFieldCount => Descriptor.TextFileFields.Count;
+
+    private string Get(string key, string koreanFallback) =>
+        localizer?.Get(key, koreanFallback) ?? koreanFallback;
 }
 
-public sealed class ProfileFieldInspectionViewModel(ProfileFieldDescriptor descriptor)
+public sealed class ProfileFieldInspectionViewModel(
+    ProfileFieldDescriptor descriptor,
+    IAppLocalizer? localizer = null)
 {
     public int Order => descriptor.Order;
 
@@ -1993,12 +1967,12 @@ public sealed class ProfileFieldInspectionViewModel(ProfileFieldDescriptor descr
     public string FieldId => descriptor.FieldId;
 
     public string CaptureGroups => descriptor.SourceKind == ProfileFieldSourceKind.TextFileContent
-        ? "텍스트 파일 내용"
+        ? Get("Loc.Profiles.Field.TextFileContent", "텍스트 파일 내용")
         : string.Join(" → ", descriptor.EffectiveGroupNames);
 
     public string Source => descriptor.SourceKind == ProfileFieldSourceKind.TextFileContent
-        ? "텍스트 파일"
-        : "경로 정규식";
+        ? Get("Loc.Profile.Source.TextFile", "텍스트 파일")
+        : Get("Loc.Profiles.Field.PathRegex", "경로 정규식");
 
     public ProfileFieldValueKind Kind => descriptor.Kind;
 
@@ -2009,6 +1983,17 @@ public sealed class ProfileFieldInspectionViewModel(ProfileFieldDescriptor descr
     public string? ParseFormat => descriptor.ParseFormat;
 
     public string? DisplayFormat => descriptor.DisplayFormat;
+
+    public string ValueMappings => descriptor.ValueMappings.Count == 0
+        ? "—"
+        : localizer?.Format(
+            "Loc.Profiles.Field.MappingCount",
+            "{0:N0}개",
+            descriptor.ValueMappings.Count)
+          ?? $"{descriptor.ValueMappings.Count:N0}개";
+
+    private string Get(string key, string koreanFallback) =>
+        localizer?.Get(key, koreanFallback) ?? koreanFallback;
 }
 
 public sealed class ProfileTextFileFieldInspectionViewModel(
@@ -2033,7 +2018,9 @@ public sealed class ProfileTextFileFieldInspectionViewModel(
     public long MaxBytes => descriptor.MaxBytes;
 }
 
-public sealed class ProfileRuleInspectionViewModel(ProfileRegexRuleDescriptor descriptor)
+public sealed class ProfileRuleInspectionViewModel(
+    ProfileRegexRuleDescriptor descriptor,
+    IAppLocalizer? localizer = null)
 {
     public int Order => descriptor.Order;
 
@@ -2048,7 +2035,9 @@ public sealed class ProfileRuleInspectionViewModel(ProfileRegexRuleDescriptor de
     public string Pattern => descriptor.Pattern;
 
     public string StopTraversalGroups => descriptor.StopTraversalWhenCapturedGroups.Count == 0
-        ? "없음 · 계속 탐색"
+        ? localizer?.Get(
+            "Loc.Profiles.Rule.NoTraversalStop",
+            "없음 · 계속 탐색") ?? "없음 · 계속 탐색"
         : string.Join(" + ", descriptor.StopTraversalWhenCapturedGroups);
 }
 
@@ -2068,24 +2057,31 @@ public sealed class ProfileDirectoryNameExclusionRuleInspectionViewModel(
     public string Pattern => descriptor.Pattern;
 }
 
-public sealed class PluginReportViewModel(ProfilePluginReport report)
+public sealed class PluginReportViewModel(
+    ProfilePluginReport report,
+    IAppLocalizer? localizer = null)
 {
     public string SourceDirectory { get; } = report.SourceDirectory;
 
     public string ProfileId { get; } = report.ProfileId ?? "—";
 
-    public string DisplayName { get; } = report.DisplayName ?? "알 수 없는 프로필";
+    public string DisplayName { get; } = report.DisplayName
+        ?? localizer?.Get("Loc.Profiles.Report.Unknown", "알 수 없는 프로필")
+        ?? "알 수 없는 프로필";
 
     public ProfilePluginStatus Status { get; } = report.Status;
 
-    public string StatusText => Status == ProfilePluginStatus.Loaded ? "사용 가능" : "사용 불가";
+    public string StatusText => Status == ProfilePluginStatus.Loaded
+        ? localizer?.Get("Loc.Profiles.Report.Available", "사용 가능") ?? "사용 가능"
+        : localizer?.Get("Loc.Profiles.Report.Unavailable", "사용 불가") ?? "사용 불가";
 
     public string Diagnostics { get; } = report.Diagnostics.Count == 0
-        ? "문제 없음"
+        ? localizer?.Get("Loc.Profiles.Report.NoIssues", "문제 없음") ?? "문제 없음"
         : string.Join(
             Environment.NewLine,
-            report.Diagnostics.Select(static diagnostic =>
-                $"[{diagnostic.Severity}] {diagnostic.Code}: {diagnostic.Message}"
+            report.Diagnostics.Select(diagnostic =>
+                $"[{diagnostic.Severity}] {diagnostic.Code}: "
+                + ProfileDiagnosticLocalizer.Translate(localizer, diagnostic)
                 + (string.IsNullOrWhiteSpace(diagnostic.Detail)
                     ? string.Empty
                     : $" ({diagnostic.Detail})")));

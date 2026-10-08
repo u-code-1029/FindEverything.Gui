@@ -28,6 +28,12 @@ public static class ProfileManifestLimits
 
     public const int MaximumTextFileNamePatternLength = 4096;
 
+    public const int MaximumValueMappingCount = 512;
+
+    public const int MaximumValueMappingSourceLength = 256;
+
+    public const int MaximumValueMappingDisplayLength = 1024;
+
     public const long DefaultTextFileMaximumBytes = 256 * 1024;
 
     public const long MaximumTextFileMaximumBytes = 4 * 1024 * 1024;
@@ -126,6 +132,19 @@ public sealed class ProfileFieldManifest
     public string? ParseFormat { get; set; }
 
     public string? DisplayFormat { get; set; }
+
+    /// <summary>
+    /// Optional exact-value replacements used only for presentation. The parsed
+    /// value and the generated profile model always retain the original capture.
+    /// </summary>
+    public List<ProfileValueMappingManifest>? ValueMappings { get; set; }
+}
+
+public sealed class ProfileValueMappingManifest
+{
+    public string? Source { get; set; }
+
+    public string? Display { get; set; }
 }
 
 public sealed class ProfileRegexRuleManifest

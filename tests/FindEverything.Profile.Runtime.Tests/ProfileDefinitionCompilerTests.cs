@@ -697,6 +697,101 @@ public sealed class ProfileDefinitionCompilerTests
             diagnostic => diagnostic.Code == expectedCode);
     }
 
+    [Fact]
+    public void Value_mapping_keeps_the_raw_model_and_exposes_a_mapped_display_value()
+    {
+        using var provider = BuildProvider();
+        var manifest = CompositeDateManifest();
+        var nameField = manifest.Fields![1];
+        nameField.GroupName = "alias";
+        nameField.ValueMappings =
+        [
+            new ProfileValueMappingManifest { Source = " A", Display = " 홍길동 " },
+        ];
+        manifest.Rules![0].Pattern =
+            @".*[\\/](?<year>\d{4})[\\/](?<monthDay>\d{4})_(?<alias>[^\\/]+)";
+        var profile = Compile(provider, manifest);
+
+        var result = profile.Map(new ProfilePathCandidate(
+            AbsolutePath("2026/0521_ A")));
+
+        Assert.Equal(ProfileMapStatus.Success, result.Status);
+        Assert.Equal(" A", result.Item!.Values["name"]);
+        Assert.Equal(" 홍길동 ", result.Item.DisplayValues["name"]);
+        Assert.Equal(
+            " A",
+            Assert.IsAssignableFrom<IReadOnlyDictionary<string, object?>>(result.Item.Model)["name"]);
+        var descriptor = Assert.Single(
+            profile.Descriptor.Fields,
+            static field => field.FieldId == "name");
+        Assert.Equal(" 홍길동 ", descriptor.ValueMappings[" A"]);
+    }
+
+    [Theory]
+    [InlineData(ProfileFieldValueKind.Int32, "capture_value_mapping_kind_unsupported")]
+    [InlineData(ProfileFieldValueKind.String, "capture_value_mapping_source_duplicate")]
+    public void Validation_rejects_invalid_value_mapping_contracts(
+        ProfileFieldValueKind kind,
+        string expectedCode)
+    {
+        using var provider = BuildProvider();
+        var manifest = CompositeDateManifest();
+        var nameField = manifest.Fields![1];
+        nameField.Kind = kind;
+        nameField.ValueMappings =
+        [
+            new ProfileValueMappingManifest { Source = "A", Display = "First" },
+            new ProfileValueMappingManifest { Source = "A", Display = "Second" },
+        ];
+
+        var review = provider
+            .GetRequiredService<IProfileDefinitionCompiler>()
+            .Validate(manifest);
+
+        Assert.False(review.IsValid);
+        Assert.Contains(review.Diagnostics, diagnostic => diagnostic.Code == expectedCode);
+    }
+
+    [Fact]
+    public void Validation_reports_a_null_value_mapping_entry_instead_of_throwing()
+    {
+        using var provider = BuildProvider();
+        var manifest = CompositeDateManifest();
+        manifest.Fields![1].ValueMappings = [null!];
+
+        var review = provider
+            .GetRequiredService<IProfileDefinitionCompiler>()
+            .Validate(manifest);
+
+        Assert.False(review.IsValid);
+        Assert.Contains(
+            review.Diagnostics,
+            diagnostic => diagnostic.Code == "capture_value_mapping_missing");
+    }
+
+    [Theory]
+    [InlineData("   ", "Display", "capture_value_mapping_source_missing")]
+    [InlineData("A", "   ", "capture_value_mapping_display_missing")]
+    public void Validation_rejects_whitespace_only_value_mapping_parts(
+        string source,
+        string display,
+        string expectedCode)
+    {
+        using var provider = BuildProvider();
+        var manifest = CompositeDateManifest();
+        manifest.Fields![1].ValueMappings =
+        [
+            new ProfileValueMappingManifest { Source = source, Display = display },
+        ];
+
+        var review = provider
+            .GetRequiredService<IProfileDefinitionCompiler>()
+            .Validate(manifest);
+
+        Assert.False(review.IsValid);
+        Assert.Contains(review.Diagnostics, diagnostic => diagnostic.Code == expectedCode);
+    }
+
     private static ServiceProvider BuildProvider()
     {
         var services = new ServiceCollection();

@@ -111,6 +111,7 @@ internal sealed class ProfileModelCompiler
                     field.DisplayFormat)
                 {
                     GroupNames = field.GroupNames,
+                    ValueMappings = field.ValueMappings,
                 },
                 static (_, _) => { }))
             .ToList();

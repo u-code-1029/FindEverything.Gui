@@ -1,6 +1,7 @@
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Documents;
 using System.Windows.Media;
 using System.Windows.Shell;
@@ -13,6 +14,7 @@ using FindEverything.Desktop;
 using FindEverything.Desktop.Appearance;
 using FindEverything.Desktop.Behaviors;
 using FindEverything.Desktop.Configuration;
+using FindEverything.Desktop.Localization;
 using FindEverything.Desktop.Services;
 using FindEverything.Desktop.ViewModels;
 using FindEverything.Desktop.Views;
@@ -79,6 +81,7 @@ public sealed class DesktopCompositionSmokeTests
             {
                 ["Appearance:Theme"] = "System",
                 ["Appearance:Backdrop"] = "Auto",
+                ["Localization:CultureName"] = LocalizationOptions.KoreanCultureName,
             });
             var services = new ServiceCollection();
             var blockingCatalogService = new BlockingCatalogService();
@@ -111,6 +114,8 @@ public sealed class DesktopCompositionSmokeTests
             Assert.NotNull(catalogPage);
             var profilesPage = provider.GetRequiredService<ProfilesPage>();
             Assert.NotNull(profilesPage);
+            var profilePlaygroundPage = provider.GetRequiredService<ProfilePlaygroundPage>();
+            Assert.NotNull(profilePlaygroundPage);
             var outputFormatsPage = provider.GetRequiredService<OutputFormatsPage>();
             Assert.NotNull(outputFormatsPage);
             var settingsPage = provider.GetRequiredService<SettingsPage>();
@@ -145,6 +150,8 @@ public sealed class DesktopCompositionSmokeTests
             Assert.True(navigation.Navigate(typeof(CatalogPage)));
             Assert.True(navigation.Navigate(typeof(ProfilesPage)));
             VerifyProfilesScrolling(window, profilesPage);
+            Assert.True(navigation.Navigate(typeof(ProfilePlaygroundPage)));
+            VerifyProfilePlaygroundLayout(window, profilePlaygroundPage);
             Assert.True(navigation.Navigate(typeof(OutputFormatsPage)));
             Assert.NotNull(outputFormatsPage.FindName("OutputFormatsScrollViewer"));
             Assert.True(navigation.Navigate(typeof(SettingsPage)));
@@ -197,6 +204,12 @@ public sealed class DesktopCompositionSmokeTests
         });
         application.Resources["BooleanToVisibilityConverter"] =
             new BooleanToVisibilityConverter();
+        LocalizationBootstrapper.Apply(
+            application,
+            new LocalizationOptions
+            {
+                CultureName = LocalizationOptions.KoreanCultureName,
+            });
         return application;
     }
 
@@ -222,6 +235,9 @@ public sealed class DesktopCompositionSmokeTests
         var catalogToolbar = Assert.IsType<Border>(catalogPage.FindName("SelectionToolbar"));
         Assert.Equal(Visibility.Collapsed, filesToolbar.Visibility);
         Assert.Equal(Visibility.Collapsed, catalogToolbar.Visibility);
+        var exportButton = Assert.IsType<Wpf.Ui.Controls.Button>(
+            catalogPage.FindName("ExportSelectionButton"));
+        Assert.NotNull(exportButton.Command);
     }
 
     private static void VerifyScanConsole(
@@ -589,6 +605,9 @@ public sealed class DesktopCompositionSmokeTests
         Assert.Equal(HorizontalAlignment.Stretch, tabControl.HorizontalContentAlignment);
         Assert.Equal(VerticalAlignment.Stretch, tabControl.VerticalContentAlignment);
         var viewModel = Assert.IsType<ProfilesViewModel>(page.DataContext);
+        Assert.Equal(ProfileEditorStep.Profile, viewModel.CurrentEditorStep);
+        Assert.False(viewModel.PreviousEditorStepCommand.CanExecute(null));
+        Assert.True(viewModel.NextEditorStepCommand.CanExecute(null));
         Assert.True(viewModel.IsGuidedMode);
         Assert.NotEmpty(viewModel.GeneratedPatternPreview);
         var templateBox = Assert.IsType<Wpf.Ui.Controls.TextBox>(
@@ -596,14 +615,29 @@ public sealed class DesktopCompositionSmokeTests
         Assert.True(templateBox.IsReadOnly);
         Assert.IsType<Border>(page.FindName("AssignmentPickerPanel"));
         Assert.NotEmpty(viewModel.GuidedPathSegments);
-        VerifyGuidedPathButtonAuthoring(window, page, viewModel);
+        VerifyGuidedPathButtonAuthoring(window, viewModel);
 
         PumpLayout(window, page);
         VerifyProfilesFluentControls(page);
         var editorScrollViewer = Assert.IsType<ScrollViewer>(
             page.FindName("ProfileEditorScrollViewer"));
         Assert.Equal(new Thickness(0, 0, 16, 0), editorScrollViewer.Padding);
-        VerifyScrollable(window, page, editorScrollViewer);
+        Assert.IsType<Border>(page.FindName("ProfileEditorStepRail"));
+        Assert.IsType<Wpf.Ui.Controls.Button>(page.FindName("PreviousProfileStepButton"));
+        Assert.IsType<Wpf.Ui.Controls.Button>(page.FindName("NextProfileStepButton"));
+
+        viewModel.NextEditorStepCommand.Execute(null);
+        PumpDispatcherFor(window.Dispatcher, TimeSpan.FromMilliseconds(20));
+        Assert.Equal(ProfileEditorStep.PathAndFields, viewModel.CurrentEditorStep);
+        Assert.True(viewModel.IsPathAndFieldsStep);
+        Assert.Equal(0, editorScrollViewer.VerticalOffset);
+
+        viewModel.GoToEditorStepCommand.Execute(ProfileEditorStep.Review);
+        PumpDispatcherFor(window.Dispatcher, TimeSpan.FromMilliseconds(20));
+        Assert.True(viewModel.IsReviewStep);
+        Assert.Equal(
+            Visibility.Visible,
+            Assert.IsType<Border>(page.FindName("ProfileReviewPanel")).Visibility);
 
         tabControl.SelectedIndex = 1;
         PumpLayout(window, page);
@@ -650,7 +684,6 @@ public sealed class DesktopCompositionSmokeTests
 
     private static void VerifyGuidedPathButtonAuthoring(
         Window window,
-        ProfilesPage page,
         ProfilesViewModel viewModel)
     {
         var nameField = Assert.Single(viewModel.DraftFields);
@@ -730,49 +763,27 @@ public sealed class DesktopCompositionSmokeTests
         var exclusion = Assert.Single(viewModel.DraftExcludedDirectoryNameRules);
         exclusion.Pattern = @"(?<excludedLeaf>0521_Project-A)";
         Assert.Equal(ProfileRegexMatchMode.Full, exclusion.MatchMode);
+    }
 
-        var testTask = viewModel.TestDraftCommand.ExecuteAsync(null);
-        PumpDispatcherUntil(
-            window.Dispatcher,
-            () => testTask.IsCompleted,
-            TimeSpan.FromSeconds(5));
-        testTask.GetAwaiter().GetResult();
-        PumpDispatcherFor(window.Dispatcher, TimeSpan.FromMilliseconds(20));
+    private static void VerifyProfilePlaygroundLayout(
+        Window window,
+        ProfilePlaygroundPage page)
+    {
+        Assert.False(ScrollViewer.GetCanContentScroll(page));
+        PumpLayout(window, page);
 
-        Assert.Equal(2, viewModel.TestRows.Count);
-        Assert.True(viewModel.HasRegexDebugRules);
-        Assert.Single(viewModel.RegexDebugRules);
-        Assert.Equal(Path.GetFullPath(viewModel.SamplePath), viewModel.RegexDebugInputPath);
-        Assert.True(viewModel.HasDirectoryExclusionTestResult);
-        Assert.Equal(
-            "0521_Project-A",
-            Assert.IsType<ProfileDirectoryExclusionTestResultViewModel>(
-                viewModel.DirectoryExclusionTestResult).LeafName);
-        Assert.Contains(
-            "exclude-1",
-            viewModel.DirectoryExclusionTestResult.Title,
-            StringComparison.Ordinal);
-        Assert.True(viewModel.HasDirectoryExclusionRegexDebugRules);
-        var exclusionDebug = Assert.Single(viewModel.DirectoryExclusionRegexDebugRules);
-        Assert.Equal(["패턴", "excludedLeaf"], exclusionDebug.Lanes.Select(static lane => lane.Label));
-
-        window.UpdateLayout();
-        Assert.Equal(
-            Visibility.Visible,
-            Assert.IsType<Border>(page.FindName("PathRegexDebugPanel")).Visibility);
-        Assert.Equal(
-            Visibility.Visible,
-            Assert.IsType<Border>(page.FindName("DirectoryExclusionResultPanel")).Visibility);
-        Assert.Equal(
-            Visibility.Visible,
-            Assert.IsType<Border>(page.FindName("DirectoryExclusionRegexDebugPanel")).Visibility);
-
-        viewModel.SamplePath += "-changed";
-        Assert.Empty(viewModel.TestRows);
-        Assert.False(viewModel.HasRegexDebugRules);
-        Assert.False(viewModel.HasDirectoryExclusionTestResult);
-        Assert.False(viewModel.HasDirectoryExclusionRegexDebugRules);
-        Assert.Contains("다시 시험", viewModel.EditorStatusMessage, StringComparison.Ordinal);
+        var scrollViewer = Assert.IsType<ScrollViewer>(
+            page.FindName("ProfilePlaygroundScrollViewer"));
+        Assert.Equal(new Thickness(0, 0, 16, 0), scrollViewer.Padding);
+        var inputPanel = Assert.IsType<Grid>(page.FindName("PlaygroundInputPanel"));
+        var enabledBinding = BindingOperations.GetBinding(
+            inputPanel,
+            UIElement.IsEnabledProperty);
+        Assert.NotNull(enabledBinding);
+        Assert.Equal(nameof(ProfilePlaygroundViewModel.IsReady), enabledBinding.Path.Path);
+        Assert.NotNull(page.FindName("PlaygroundRegexDebugExpander"));
+        Assert.NotNull(page.FindName("PlaygroundDirectoryExclusionResultPanel"));
+        Assert.IsType<ProfilePlaygroundViewModel>(page.DataContext);
     }
 
     private static void VerifySettingsLayout(Window window, SettingsPage page)
@@ -848,7 +859,13 @@ public sealed class DesktopCompositionSmokeTests
             ProfileFieldValueKind.String,
             IsNullable: false,
             ParseFormat: null,
-            DisplayFormat: null);
+            DisplayFormat: null)
+        {
+            ValueMappings = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["Apollo"] = "아폴로",
+            },
+        };
         var item = new CatalogItemViewModel(
             new CatalogItem(
                 @"C:\Archive\Apollo",
@@ -857,7 +874,8 @@ public sealed class DesktopCompositionSmokeTests
                 new object(),
                 new Dictionary<string, object?> { ["client"] = "Apollo" },
                 CoveragePending: false),
-            [field]);
+            [field],
+            new TestAppLocalizer());
         var grid = new System.Windows.Controls.DataGrid
         {
             AutoGenerateColumns = false,
@@ -867,7 +885,21 @@ public sealed class DesktopCompositionSmokeTests
             ItemsSource = new[] { item },
             DataContext = new FilterContext(string.Empty),
         };
+        DynamicProfileGrid.SetLocalizer(
+            grid,
+            new TestAppLocalizer(
+                "en-US",
+                new Dictionary<string, string>
+                {
+                    ["Loc.Catalog.Column.Status"] = "Status",
+                    ["Loc.Catalog.Column.FolderPath"] = "Folder path",
+                    ["Loc.Catalog.Selection.Item"] = "Select item",
+                }));
         DynamicProfileGrid.SetFields(grid, new[] { field });
+        DynamicProfileGrid.SetLayoutStore(
+            grid,
+            new StubGridLayoutStore(new GridColumnLayout("client", 1, 180)));
+        DynamicProfileGrid.SetProfileId(grid, "selection-test");
 
         var host = new Window
         {
@@ -884,11 +916,39 @@ public sealed class DesktopCompositionSmokeTests
             grid.UpdateLayout();
             host.Dispatcher.Invoke(static () => { }, DispatcherPriority.DataBind);
 
+            var selectionColumn = grid.Columns[0];
+            Assert.Equal(0, selectionColumn.DisplayIndex);
+            Assert.False(selectionColumn.CanUserReorder);
+            Assert.False(selectionColumn.CanUserResize);
+            Assert.False(selectionColumn.CanUserSort);
+            Assert.Equal(1, grid.FrozenColumnCount);
+            Assert.Contains(grid.Columns, column => Equals(column.Header, "Status"));
+            Assert.Contains(grid.Columns, column => Equals(column.Header, "Folder path"));
+            var clientColumn = Assert.Single(grid.Columns, column => Equals(column.Header, "고객"));
+            Assert.Equal(2, clientColumn.DisplayIndex);
+            Assert.Equal(180, clientColumn.Width.Value);
+            var row = Assert.IsType<System.Windows.Controls.DataGridRow>(
+                grid.ItemContainerGenerator.ContainerFromItem(item));
+            var selector = Assert.Single(
+                FindVisualChildren<System.Windows.Controls.CheckBox>(row));
+            Assert.Equal("Select item", selector.ToolTip);
+            Assert.False(selector.IsChecked);
+            row.IsSelected = true;
+            host.Dispatcher.Invoke(static () => { }, DispatcherPriority.DataBind);
+            Assert.True(selector.IsChecked);
+            selector.IsChecked = false;
+            host.Dispatcher.Invoke(static () => { }, DispatcherPriority.DataBind);
+            Assert.False(row.IsSelected);
+
             var textBlock = Assert.Single(
                 FindVisualChildren<System.Windows.Controls.TextBlock>(grid),
-                block => TextHighlighting.GetDisplayText(block) == "Apollo");
-            Assert.Equal("Apollo", string.Concat(
+                block => TextHighlighting.GetDisplayText(block) == "아폴로");
+            Assert.Equal("아폴로", string.Concat(
                 textBlock.Inlines.OfType<Run>().Select(static run => run.Text)));
+
+            item.SetShowOriginalValues(true);
+            host.Dispatcher.Invoke(static () => { }, DispatcherPriority.DataBind);
+            Assert.Equal("Apollo", TextHighlighting.GetDisplayText(textBlock));
 
             grid.DataContext = new FilterContext("  POL  ");
             host.Dispatcher.Invoke(static () => { }, DispatcherPriority.DataBind);
@@ -1057,6 +1117,19 @@ public sealed class DesktopCompositionSmokeTests
         public List<ScanCompletionNotice> Notices { get; } = [];
 
         public void Notify(ScanCompletionNotice notice) => Notices.Add(notice);
+    }
+
+    private sealed class StubGridLayoutStore(params GridColumnLayout[] layouts) : IGridLayoutStore
+    {
+        private readonly IReadOnlyDictionary<string, GridColumnLayout> _layouts = layouts.ToDictionary(
+            static layout => layout.FieldId,
+            StringComparer.OrdinalIgnoreCase);
+
+        public IReadOnlyDictionary<string, GridColumnLayout> Get(string profileId) => _layouts;
+
+        public void Save(string profileId, IEnumerable<GridColumnLayout> columns)
+        {
+        }
     }
 
     private sealed class DispatcherSynchronizationContextScope : IDisposable

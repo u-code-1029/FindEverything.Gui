@@ -3,12 +3,12 @@
   "kind": "Declarative",
   "id": "text-file-metadata",
   "version": "1.0.0",
-  "displayName": "텍스트 파일 메타데이터 예제",
+  "displayName": "Text-file metadata sample",
   "fields": [
     {
       "fieldId": "project",
       "groupName": "project",
-      "header": "프로젝트",
+      "header": "Project",
       "order": 10,
       "required": true,
       "kind": "String"
@@ -17,7 +17,7 @@
   "textFileFields": [
     {
       "fieldId": "description",
-      "header": "설명",
+      "header": "Description",
       "order": 20,
       "required": false,
       "fileNamePattern": "^description\\.txt$",

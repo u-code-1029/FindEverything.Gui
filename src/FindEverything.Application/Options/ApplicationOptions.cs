@@ -48,3 +48,37 @@ public sealed class AppearanceOptions
 
     public BackdropPreference Backdrop { get; set; } = BackdropPreference.Auto;
 }
+
+public sealed class LocalizationOptions
+{
+    public const string SectionName = "Localization";
+
+    public const string KoreanCultureName = "ko-KR";
+
+    public const string EnglishCultureName = "en-US";
+
+    public string CultureName { get; set; } = KoreanCultureName;
+
+    public static bool IsSupported(string? cultureName) =>
+        string.Equals(cultureName, KoreanCultureName, StringComparison.OrdinalIgnoreCase)
+        || string.Equals(cultureName, EnglishCultureName, StringComparison.OrdinalIgnoreCase);
+
+    public static string Normalize(string cultureName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(cultureName);
+        if (string.Equals(cultureName, KoreanCultureName, StringComparison.OrdinalIgnoreCase))
+        {
+            return KoreanCultureName;
+        }
+
+        if (string.Equals(cultureName, EnglishCultureName, StringComparison.OrdinalIgnoreCase))
+        {
+            return EnglishCultureName;
+        }
+
+        throw new ArgumentOutOfRangeException(
+            nameof(cultureName),
+            cultureName,
+            "Only ko-KR and en-US are supported.");
+    }
+}

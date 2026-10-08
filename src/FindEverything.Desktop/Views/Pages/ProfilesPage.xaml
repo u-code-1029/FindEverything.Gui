@@ -4,10 +4,13 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:localization="clr-namespace:FindEverything.Desktop.Localization"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+    xmlns:viewModels="clr-namespace:FindEverything.Desktop.ViewModels"
     Title="프로필"
     Background="Transparent"
     Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+    localization:LocalizationScope.IsEnabled="True"
     ScrollViewer.CanContentScroll="False"
     mc:Ignorable="d">
     <Page.Resources>
@@ -30,17 +33,25 @@
         <Style x:Key="GuidedEditorSectionStyle" BasedOn="{StaticResource EditorSectionStyle}" TargetType="Border">
             <Setter Property="Visibility" Value="Collapsed" />
             <Style.Triggers>
-                <DataTrigger Binding="{Binding IsGuidedMode}" Value="True">
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding IsGuidedMode}" Value="True" />
+                        <Condition Binding="{Binding IsPathAndFieldsStep}" Value="True" />
+                    </MultiDataTrigger.Conditions>
                     <Setter Property="Visibility" Value="Visible" />
-                </DataTrigger>
+                </MultiDataTrigger>
             </Style.Triggers>
         </Style>
         <Style x:Key="ExpertEditorSectionStyle" BasedOn="{StaticResource EditorSectionStyle}" TargetType="Border">
             <Setter Property="Visibility" Value="Collapsed" />
             <Style.Triggers>
-                <DataTrigger Binding="{Binding IsExpertMode}" Value="True">
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding IsExpertMode}" Value="True" />
+                        <Condition Binding="{Binding IsPathAndFieldsStep}" Value="True" />
+                    </MultiDataTrigger.Conditions>
                     <Setter Property="Visibility" Value="Visible" />
-                </DataTrigger>
+                </MultiDataTrigger>
             </Style.Triggers>
         </Style>
         <Style
@@ -59,103 +70,6 @@
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="CornerRadius" Value="8" />
         </Style>
-        <Style x:Key="RegexDebugItemsControlStyle" TargetType="ItemsControl">
-            <Setter Property="ItemTemplate">
-                <Setter.Value>
-                    <DataTemplate>
-                        <Border
-                            Margin="0,0,0,12"
-                            Padding="14"
-                            Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
-                            BorderBrush="{Binding AccentBrush}"
-                            BorderThickness="3,1,1,1"
-                            CornerRadius="7">
-                            <StackPanel>
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock FontWeight="SemiBold" Text="{Binding RuleId}" />
-                                    <TextBlock
-                                        Grid.Column="1"
-                                        Margin="12,0,0,0"
-                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                        Text="{Binding MatchMode}" />
-                                </Grid>
-                                <TextBlock
-                                    Margin="0,5,0,0"
-                                    FontFamily="Consolas"
-                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                    Text="{Binding Pattern}"
-                                    TextWrapping="Wrap" />
-                                <TextBlock
-                                    Margin="0,5,0,10"
-                                    FontWeight="SemiBold"
-                                    Text="{Binding Status}"
-                                    TextWrapping="Wrap" />
-                                <ItemsControl ItemsSource="{Binding Lanes}">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <Grid Margin="0,0,0,8">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="150" />
-                                                    <ColumnDefinition Width="*" />
-                                                </Grid.ColumnDefinitions>
-                                                <StackPanel Margin="0,1,12,0">
-                                                    <StackPanel Orientation="Horizontal">
-                                                        <Border
-                                                            Width="10"
-                                                            Height="10"
-                                                            Margin="0,0,7,0"
-                                                            VerticalAlignment="Center"
-                                                            Background="{Binding MarkerBrush}"
-                                                            CornerRadius="2" />
-                                                        <TextBlock
-                                                            FontWeight="SemiBold"
-                                                            Text="{Binding Label}"
-                                                            TextTrimming="CharacterEllipsis"
-                                                            ToolTip="{Binding Label}" />
-                                                    </StackPanel>
-                                                    <TextBlock
-                                                        Margin="17,2,0,0"
-                                                        FontSize="11"
-                                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                        Text="{Binding Detail}" />
-                                                </StackPanel>
-                                                <ScrollViewer
-                                                    Grid.Column="1"
-                                                    HorizontalScrollBarVisibility="Auto"
-                                                    VerticalScrollBarVisibility="Disabled">
-                                                    <ItemsControl ItemsSource="{Binding Segments}">
-                                                        <ItemsControl.ItemsPanel>
-                                                            <ItemsPanelTemplate>
-                                                                <StackPanel Orientation="Horizontal" />
-                                                            </ItemsPanelTemplate>
-                                                        </ItemsControl.ItemsPanel>
-                                                        <ItemsControl.ItemTemplate>
-                                                            <DataTemplate>
-                                                                <Border Background="{Binding BackgroundBrush}">
-                                                                    <TextBlock
-                                                                        Padding="1,3"
-                                                                        FontFamily="Consolas"
-                                                                        Text="{Binding Text}"
-                                                                        ToolTip="{Binding ToolTip}" />
-                                                                </Border>
-                                                            </DataTemplate>
-                                                        </ItemsControl.ItemTemplate>
-                                                    </ItemsControl>
-                                                </ScrollViewer>
-                                            </Grid>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                            </StackPanel>
-                        </Border>
-                    </DataTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
     </Page.Resources>
 
     <Grid Margin="24,0,24,24">
@@ -169,7 +83,7 @@
             <TextBlock
                 Margin="0,4,0,0"
                 Style="{StaticResource PageSubtitleTextStyle}"
-                Text="경로에서 어떤 정보를 읽을지 화면에서 정의하고, 저장 전에 실제 경로로 결과를 확인합니다." />
+                Text="네 단계로 경로와 결과 구조를 정의하고 저장합니다. 실제 경로 테스트는 저장 후 Playground에서 진행합니다." />
         </StackPanel>
 
         <TabControl
@@ -180,16 +94,71 @@
             <TabItem Header="프로필 편집">
                 <Grid>
                     <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
+                    <Border
+                        x:Name="ProfileEditorStepRail"
+                        Grid.Row="0"
+                        Margin="8,12,8,0"
+                        Padding="12"
+                        AutomationProperties.ItemStatus="{Binding EditorStepStatus}"
+                        AutomationProperties.Name="프로필 설정 단계"
+                        IsEnabled="{Binding IsEditorReady}"
+                        Style="{StaticResource FluentToolbarSurfaceStyle}">
+                        <UniformGrid Columns="4">
+                            <RadioButton
+                                Margin="0,0,8,0"
+                                Padding="10,8"
+                                AutomationProperties.HelpText="프로필 선택과 기본 정보를 설정합니다."
+                                AutomationProperties.Name="1단계 프로필 정보"
+                                Command="{Binding GoToEditorStepCommand}"
+                                CommandParameter="{x:Static viewModels:ProfileEditorStep.Profile}"
+                                Content="1  프로필 정보"
+                                GroupName="ProfileEditorSteps"
+                                IsChecked="{Binding IsProfileStep, Mode=OneWay}" />
+                            <RadioButton
+                                Margin="0,0,8,0"
+                                Padding="10,8"
+                                AutomationProperties.HelpText="실제 경로 또는 정규식으로 결과 컬럼을 정의합니다."
+                                AutomationProperties.Name="2단계 경로와 컬럼"
+                                Command="{Binding GoToEditorStepCommand}"
+                                CommandParameter="{x:Static viewModels:ProfileEditorStep.PathAndFields}"
+                                Content="2  경로와 컬럼"
+                                GroupName="ProfileEditorSteps"
+                                IsChecked="{Binding IsPathAndFieldsStep, Mode=OneWay}" />
+                            <RadioButton
+                                Margin="0,0,8,0"
+                                Padding="10,8"
+                                AutomationProperties.HelpText="제외 폴더와 텍스트 파일 값을 설정합니다."
+                                AutomationProperties.Name="3단계 탐색 옵션"
+                                Command="{Binding GoToEditorStepCommand}"
+                                CommandParameter="{x:Static viewModels:ProfileEditorStep.ScanOptions}"
+                                Content="3  탐색 옵션"
+                                GroupName="ProfileEditorSteps"
+                                IsChecked="{Binding IsScanOptionsStep, Mode=OneWay}" />
+                            <RadioButton
+                                Padding="10,8"
+                                AutomationProperties.HelpText="프로필을 검증하고 저장한 뒤 Playground로 이동합니다."
+                                AutomationProperties.Name="4단계 검토와 저장"
+                                Command="{Binding GoToEditorStepCommand}"
+                                CommandParameter="{x:Static viewModels:ProfileEditorStep.Review}"
+                                Content="4  검토와 저장"
+                                GroupName="ProfileEditorSteps"
+                                IsChecked="{Binding IsReviewStep, Mode=OneWay}" />
+                        </UniformGrid>
+                    </Border>
+
                     <ScrollViewer
                         x:Name="ProfileEditorScrollViewer"
-                        Grid.Row="0"
+                        Grid.Row="1"
                         Style="{StaticResource FluentGutteredScrollViewerStyle}">
                         <StackPanel Margin="8,16,0,0">
-                            <Border Style="{StaticResource EditorSectionStyle}">
+                            <Border
+                                Style="{StaticResource EditorSectionStyle}"
+                                Visibility="{Binding IsProfileStep, Converter={StaticResource BooleanToVisibilityConverter}}">
                                 <Grid>
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto" />
@@ -238,7 +207,111 @@
                                 </Grid>
                             </Border>
 
-                            <Border IsEnabled="{Binding IsEditorReady}" Style="{StaticResource EditorSectionStyle}">
+                            <Border
+                                IsEnabled="{Binding IsEditorReady}"
+                                Style="{StaticResource EditorSectionStyle}"
+                                Visibility="{Binding IsScanOptionsStep, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <StackPanel>
+                                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="표시 값 매핑" />
+                                    <TextBlock
+                                        Margin="0,4,0,12"
+                                        Style="{StaticResource CaptionTextStyle}"
+                                        Text="경로에서 읽은 짧은 코드를 사람이 읽기 쉬운 이름으로 보여줍니다. 실제 모델과 원본 값은 바꾸지 않습니다."
+                                        TextWrapping="Wrap" />
+                                    <ItemsControl ItemsSource="{Binding DraftFields}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border
+                                                    Style="{StaticResource FieldCardStyle}"
+                                                    Visibility="{Binding ShowValueMappingEditor, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                    <StackPanel>
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <StackPanel>
+                                                                <TextBlock FontSize="15" FontWeight="SemiBold" Text="{Binding Header}" />
+                                                                <TextBlock
+                                                                    Margin="0,3,0,0"
+                                                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                                    Text="{Binding ValueMappingDescription}"
+                                                                    TextWrapping="Wrap" />
+                                                            </StackPanel>
+                                                            <Border
+                                                                Grid.Column="1"
+                                                                Margin="12,0,0,0"
+                                                                Padding="8,3"
+                                                                VerticalAlignment="Top"
+                                                                Background="{DynamicResource ControlFillColorSecondaryBrush}"
+                                                                CornerRadius="10"
+                                                                Visibility="{Binding HasAliasGroup, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                                <TextBlock FontFamily="Consolas" FontSize="12" FontWeight="SemiBold" Text="alias" />
+                                                            </Border>
+                                                        </Grid>
+
+                                                        <ItemsControl Margin="0,12,0,0" ItemsSource="{Binding ValueMappings}">
+                                                            <ItemsControl.ItemTemplate>
+                                                                <DataTemplate>
+                                                                    <Grid Margin="0,0,0,8">
+                                                                        <Grid.ColumnDefinitions>
+                                                                            <ColumnDefinition Width="*" />
+                                                                            <ColumnDefinition Width="Auto" />
+                                                                            <ColumnDefinition Width="*" />
+                                                                            <ColumnDefinition Width="Auto" />
+                                                                        </Grid.ColumnDefinitions>
+                                                                        <ui:TextBox
+                                                                            AutomationProperties.Name="매핑 원본 값"
+                                                                            PlaceholderText="원본 값 (예: A)"
+                                                                            Text="{Binding Source, UpdateSourceTrigger=PropertyChanged}" />
+                                                                        <ui:SymbolIcon
+                                                                            Grid.Column="1"
+                                                                            Margin="10,0"
+                                                                            VerticalAlignment="Center"
+                                                                            Symbol="ArrowRight16" />
+                                                                        <ui:TextBox
+                                                                            Grid.Column="2"
+                                                                            AutomationProperties.Name="매핑 표시 값"
+                                                                            PlaceholderText="표시 값 (예: 홍길동)"
+                                                                            Text="{Binding Display, UpdateSourceTrigger=PropertyChanged}" />
+                                                                        <ui:Button
+                                                                            Grid.Column="3"
+                                                                            Width="34"
+                                                                            Height="32"
+                                                                            Margin="8,0,0,0"
+                                                                            Appearance="Caution"
+                                                                            AutomationProperties.Name="값 매핑 삭제"
+                                                                            Command="{Binding DataContext.RemoveValueMappingCommand, RelativeSource={RelativeSource AncestorType={x:Type ItemsControl}}}"
+                                                                            CommandParameter="{Binding}"
+                                                                            Icon="{ui:SymbolIcon Symbol=Delete12}"
+                                                                            Style="{StaticResource IconOnlyButtonStyle}"
+                                                                            ToolTip="매핑 삭제" />
+                                                                    </Grid>
+                                                                </DataTemplate>
+                                                            </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+                                                        <ui:Button
+                                                            HorizontalAlignment="Left"
+                                                            AutomationProperties.Name="값 매핑 추가"
+                                                            Command="{Binding AddValueMappingCommand}"
+                                                            Content="원본 → 표시 값 추가"
+                                                            Icon="{ui:SymbolIcon Symbol=AddSquare20}" />
+                                                    </StackPanel>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <TextBlock
+                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                        Text="텍스트 필드만 매핑할 수 있으며 원본 값은 대소문자를 구분해 정확히 비교합니다. 구조화 보기에서 언제든 원본 값으로 전환할 수 있습니다."
+                                        TextWrapping="Wrap" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border
+                                IsEnabled="{Binding IsEditorReady}"
+                                Style="{StaticResource EditorSectionStyle}"
+                                Visibility="{Binding IsProfileStep, Converter={StaticResource BooleanToVisibilityConverter}}">
                                 <StackPanel>
                                     <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="편집 방법" />
                                     <TextBlock
@@ -270,7 +343,10 @@
                                 </StackPanel>
                             </Border>
 
-                            <Border IsEnabled="{Binding IsEditorReady}" Style="{StaticResource EditorSectionStyle}">
+                            <Border
+                                IsEnabled="{Binding IsEditorReady}"
+                                Style="{StaticResource EditorSectionStyle}"
+                                Visibility="{Binding IsProfileStep, Converter={StaticResource BooleanToVisibilityConverter}}">
                                 <StackPanel>
                                     <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="1. 기본 정보" />
                                     <TextBlock
@@ -308,7 +384,10 @@
                                 </StackPanel>
                             </Border>
 
-                            <Border IsEnabled="{Binding IsEditorReady}" Style="{StaticResource EditorSectionStyle}">
+                            <Border
+                                IsEnabled="{Binding IsEditorReady}"
+                                Style="{StaticResource EditorSectionStyle}"
+                                Visibility="{Binding IsScanOptionsStep, Converter={StaticResource BooleanToVisibilityConverter}}">
                                 <StackPanel>
                                     <Grid>
                                         <Grid.ColumnDefinitions>
@@ -442,7 +521,10 @@
                                 </StackPanel>
                             </Border>
 
-                            <Border IsEnabled="{Binding IsEditorReady}" Style="{StaticResource EditorSectionStyle}">
+                            <Border
+                                IsEnabled="{Binding IsEditorReady}"
+                                Style="{StaticResource EditorSectionStyle}"
+                                Visibility="{Binding IsScanOptionsStep, Converter={StaticResource BooleanToVisibilityConverter}}">
                                 <StackPanel>
                                     <Grid>
                                         <Grid.ColumnDefinitions>
@@ -1135,233 +1217,58 @@
                                 </StackPanel>
                             </Border>
 
-                            <Border IsEnabled="{Binding IsEditorReady}" Style="{StaticResource EditorSectionStyle}">
+                            <Border
+                                x:Name="ProfileReviewPanel"
+                                IsEnabled="{Binding IsEditorReady}"
+                                Style="{StaticResource EditorSectionStyle}"
+                                Visibility="{Binding IsReviewStep, Converter={StaticResource BooleanToVisibilityConverter}}">
                                 <StackPanel>
-                                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="3. 실제 경로로 결과 확인" />
+                                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="4. 검토하고 저장하기" />
                                     <TextBlock
-                                        Margin="0,4,0,12"
+                                        Margin="0,4,0,16"
                                         Style="{StaticResource CaptionTextStyle}"
-                                        Text="저장하기 전에 같은 경로를 시험해 각 값이 예상대로 보이는지 확인하세요."
+                                        Text="설정한 내용을 확인한 뒤 검증하고 저장하세요. 실제 경로 테스트는 저장 후 별도 Playground에서 현재 앱에 적용된 프로필로 실행합니다."
                                         TextWrapping="Wrap" />
-                                    <ui:TextBox
-                                        AutomationProperties.Name="시험할 예제 경로"
-                                        ClearButtonEnabled="True"
-                                        PlaceholderText="예: C:\Archive\고객사\프로젝트\2026\Rev-3"
-                                        Text="{Binding SamplePath, UpdateSourceTrigger=PropertyChanged}" />
-                                    <ui:Button
-                                        Margin="0,8,0,0"
-                                        HorizontalAlignment="Stretch"
-                                        Command="{Binding TestDraftCommand}"
-                                        Content="이 경로로 결과 확인"
-                                        Icon="{ui:SymbolIcon Symbol=CheckmarkCircle20}" />
-                                    <TextBlock
-                                        Margin="0,12,0,8"
-                                        FontWeight="SemiBold"
-                                        Text="{Binding TestSummary}"
-                                        TextWrapping="Wrap" />
-                                    <Border
-                                        x:Name="DirectoryExclusionResultPanel"
-                                        Margin="0,4,0,12"
-                                        Padding="16"
-                                        AutomationProperties.Name="폴더 이름 제외 판정 결과"
-                                        Background="{DynamicResource ControlFillColorSecondaryBrush}"
-                                        CornerRadius="8"
-                                        Visibility="{Binding HasDirectoryExclusionTestResult, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                        <StackPanel>
-                                            <TextBlock FontSize="15" FontWeight="SemiBold" Text="폴더 이름 제외 판정" />
-                                            <TextBlock
-                                                Margin="0,4,0,10"
-                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                Text="전체 경로가 아니라 canonical 경로의 마지막 폴더 이름 하나만 실제 컴파일된 프로필에 전달합니다."
-                                                TextWrapping="Wrap" />
-                                            <Grid Margin="0,0,0,10">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="Auto" />
-                                                    <ColumnDefinition Width="*" />
-                                                </Grid.ColumnDefinitions>
-                                                <TextBlock FontWeight="SemiBold" Text="입력 leaf" />
-                                                <TextBlock
-                                                    Grid.Column="1"
-                                                    Margin="12,0,0,0"
-                                                    FontFamily="Consolas"
-                                                    Text="{Binding DirectoryExclusionTestResult.LeafName}"
-                                                    TextTrimming="CharacterEllipsis"
-                                                    ToolTip="{Binding DirectoryExclusionTestResult.LeafName}" />
-                                            </Grid>
-                                            <ui:InfoBar
-                                                AutomationProperties.LiveSetting="Polite"
-                                                IsClosable="False"
-                                                IsOpen="True"
-                                                Message="{Binding DirectoryExclusionTestResult.Message}"
-                                                Severity="{Binding DirectoryExclusionTestResult.Severity}"
-                                                Title="{Binding DirectoryExclusionTestResult.Title}" />
-                                        </StackPanel>
-                                    </Border>
-                                    <Border
-                                        x:Name="DirectoryExclusionRegexDebugPanel"
-                                        Margin="0,4,0,12"
-                                        Padding="16"
-                                        AutomationProperties.Name="폴더 제외 정규식 색상 디버깅"
-                                        Background="{DynamicResource ControlFillColorSecondaryBrush}"
-                                        CornerRadius="8"
-                                        Visibility="{Binding HasDirectoryExclusionRegexDebugRules, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                        <StackPanel>
-                                            <TextBlock FontSize="15" FontWeight="SemiBold" Text="폴더 제외 정규식 색상 디버깅" />
-                                            <TextBlock
-                                                Margin="0,4,0,4"
-                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                Text="각 제외 pattern의 원본 부분 후보와 named group을 색상별 행으로 표시합니다. Full 규칙은 폴더 이름 전체 일치 여부를 별도로 확인합니다."
-                                                TextWrapping="Wrap" />
-                                            <TextBlock
-                                                Margin="0,0,0,12"
-                                                FontFamily="Consolas"
-                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                Text="{Binding DirectoryExclusionTestResult.LeafName}"
-                                                TextTrimming="CharacterEllipsis"
-                                                ToolTip="{Binding DirectoryExclusionTestResult.LeafName}" />
-                                            <ItemsControl
-                                                ItemsSource="{Binding DirectoryExclusionRegexDebugRules}"
-                                                Style="{StaticResource RegexDebugItemsControlStyle}" />
-                                        </StackPanel>
-                                    </Border>
-                                    <Border
-                                        x:Name="PathRegexDebugPanel"
-                                        Margin="0,4,0,12"
-                                        Padding="16"
-                                        AutomationProperties.Name="정규식 색상 디버깅"
-                                        Background="{DynamicResource ControlFillColorSecondaryBrush}"
-                                        CornerRadius="8"
-                                        Visibility="{Binding HasRegexDebugRules, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                        <StackPanel>
-                                            <TextBlock FontSize="15" FontWeight="SemiBold" Text="정규식 색상 디버깅" />
-                                            <TextBlock
-                                                Margin="0,4,0,4"
-                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                Text="전체 일치 규칙도 원본 pattern의 부분 후보를 보여줍니다. 패턴과 named group은 별도 색상 행이며, 색상 미리보기는 최대 2초 동안 앞 32개 규칙을 표시합니다."
-                                                TextWrapping="Wrap" />
-                                            <TextBlock
-                                                Margin="0,0,0,12"
-                                                FontFamily="Consolas"
-                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                Text="{Binding RegexDebugInputPath}"
-                                                TextTrimming="CharacterEllipsis"
-                                                ToolTip="{Binding RegexDebugInputPath}" />
-                                            <ItemsControl ItemsSource="{Binding RegexDebugRules}">
-                                                <ItemsControl.ItemTemplate>
-                                                    <DataTemplate>
-                                                        <Border
-                                                            Margin="0,0,0,12"
-                                                            Padding="14"
-                                                            Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
-                                                            BorderBrush="{Binding AccentBrush}"
-                                                            BorderThickness="3,1,1,1"
-                                                            CornerRadius="7">
-                                                            <StackPanel>
-                                                                <Grid>
-                                                                    <Grid.ColumnDefinitions>
-                                                                        <ColumnDefinition Width="*" />
-                                                                        <ColumnDefinition Width="Auto" />
-                                                                    </Grid.ColumnDefinitions>
-                                                                    <TextBlock FontWeight="SemiBold" Text="{Binding RuleId}" />
-                                                                    <TextBlock
-                                                                        Grid.Column="1"
-                                                                        Margin="12,0,0,0"
-                                                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                                        Text="{Binding MatchMode}" />
-                                                                </Grid>
-                                                                <TextBlock
-                                                                    Margin="0,5,0,0"
-                                                                    FontFamily="Consolas"
-                                                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                                    Text="{Binding Pattern}"
-                                                                    TextWrapping="Wrap" />
-                                                                <TextBlock
-                                                                    Margin="0,5,0,10"
-                                                                    FontWeight="SemiBold"
-                                                                    Text="{Binding Status}"
-                                                                    TextWrapping="Wrap" />
-                                                                <ItemsControl ItemsSource="{Binding Lanes}">
-                                                                    <ItemsControl.ItemTemplate>
-                                                                        <DataTemplate>
-                                                                            <Grid Margin="0,0,0,8">
-                                                                                <Grid.ColumnDefinitions>
-                                                                                    <ColumnDefinition Width="150" />
-                                                                                    <ColumnDefinition Width="*" />
-                                                                                </Grid.ColumnDefinitions>
-                                                                                <StackPanel Margin="0,1,12,0">
-                                                                                    <StackPanel Orientation="Horizontal">
-                                                                                        <Border
-                                                                                            Width="10"
-                                                                                            Height="10"
-                                                                                            Margin="0,0,7,0"
-                                                                                            VerticalAlignment="Center"
-                                                                                            Background="{Binding MarkerBrush}"
-                                                                                            CornerRadius="2" />
-                                                                                        <TextBlock
-                                                                                            FontWeight="SemiBold"
-                                                                                            Text="{Binding Label}"
-                                                                                            TextTrimming="CharacterEllipsis"
-                                                                                            ToolTip="{Binding Label}" />
-                                                                                    </StackPanel>
-                                                                                    <TextBlock
-                                                                                        Margin="17,2,0,0"
-                                                                                        FontSize="11"
-                                                                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                                                        Text="{Binding Detail}" />
-                                                                                </StackPanel>
-                                                                                <ScrollViewer
-                                                                                    Grid.Column="1"
-                                                                                    HorizontalScrollBarVisibility="Auto"
-                                                                                    VerticalScrollBarVisibility="Disabled">
-                                                                                    <ItemsControl ItemsSource="{Binding Segments}">
-                                                                                        <ItemsControl.ItemsPanel>
-                                                                                            <ItemsPanelTemplate>
-                                                                                                <StackPanel Orientation="Horizontal" />
-                                                                                            </ItemsPanelTemplate>
-                                                                                        </ItemsControl.ItemsPanel>
-                                                                                        <ItemsControl.ItemTemplate>
-                                                                                            <DataTemplate>
-                                                                                                <Border Background="{Binding BackgroundBrush}">
-                                                                                                    <TextBlock
-                                                                                                        Padding="1,3"
-                                                                                                        FontFamily="Consolas"
-                                                                                                        Text="{Binding Text}"
-                                                                                                        ToolTip="{Binding ToolTip}" />
-                                                                                                </Border>
-                                                                                            </DataTemplate>
-                                                                                        </ItemsControl.ItemTemplate>
-                                                                                    </ItemsControl>
-                                                                                </ScrollViewer>
-                                                                            </Grid>
-                                                                        </DataTemplate>
-                                                                    </ItemsControl.ItemTemplate>
-                                                                </ItemsControl>
-                                                            </StackPanel>
-                                                        </Border>
-                                                    </DataTemplate>
-                                                </ItemsControl.ItemTemplate>
-                                            </ItemsControl>
-                                        </StackPanel>
-                                    </Border>
-                                    <ItemsControl ItemsSource="{Binding TestRows}">
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate>
-                                                <Border Style="{StaticResource FieldCardStyle}">
-                                                    <StackPanel>
-                                                        <Grid>
-                                                            <Grid.ColumnDefinitions>
-                                                                <ColumnDefinition Width="*" />
-                                                                <ColumnDefinition Width="Auto" />
-                                                            </Grid.ColumnDefinitions>
-                                                            <TextBlock FontWeight="SemiBold" Text="{Binding FieldName}" />
-                                                            <TextBlock Grid.Column="1" Margin="12,0,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding Status}" />
-                                                        </Grid>
-                                                        <TextBlock Margin="0,6,0,0" FontSize="15" Text="{Binding Value}" TextWrapping="Wrap" />
-                                                    </StackPanel>
-                                                </Border>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
+
+                                    <UniformGrid Columns="2" Rows="2">
+                                        <Border Margin="0,0,8,8" Style="{StaticResource FieldCardStyle}">
+                                            <StackPanel>
+                                                <TextBlock Style="{StaticResource CaptionTextStyle}" Text="프로필" />
+                                                <TextBlock Margin="0,4,0,0" FontSize="16" FontWeight="SemiBold" Text="{Binding DraftDisplayName}" />
+                                                <TextBlock Margin="0,2,0,0" FontFamily="Consolas" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding DraftId}" />
+                                            </StackPanel>
+                                        </Border>
+                                        <Border Margin="8,0,0,8" Style="{StaticResource FieldCardStyle}">
+                                            <StackPanel>
+                                                <TextBlock Style="{StaticResource CaptionTextStyle}" Text="편집 방식" />
+                                                <TextBlock Margin="0,4,0,0" FontSize="16" FontWeight="SemiBold" Text="{Binding EditorModeDisplay}" />
+                                                <TextBlock Margin="0,2,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="경로 규칙과 결과 컬럼" />
+                                            </StackPanel>
+                                        </Border>
+                                        <Border Margin="0,8,8,0" Style="{StaticResource FieldCardStyle}">
+                                            <StackPanel>
+                                                <TextBlock Style="{StaticResource CaptionTextStyle}" Text="구조화된 결과" />
+                                                <TextBlock Margin="0,4,0,0" FontSize="16" FontWeight="SemiBold" Text="{Binding DraftFields.Count, StringFormat={StaticResource Loc.Profiles.PathColumnCountFormat}}" />
+                                                <TextBlock Margin="0,2,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding DraftTextFileFields.Count, StringFormat={StaticResource Loc.Profiles.TextFileColumnCountFormat}}" />
+                                            </StackPanel>
+                                        </Border>
+                                        <Border Margin="8,8,0,0" Style="{StaticResource FieldCardStyle}">
+                                            <StackPanel>
+                                                <TextBlock Style="{StaticResource CaptionTextStyle}" Text="탐색 동작" />
+                                                <TextBlock Margin="0,4,0,0" FontSize="16" FontWeight="SemiBold" Text="{Binding DraftRules.Count, StringFormat={StaticResource Loc.Profiles.PathRuleCountFormat}}" />
+                                                <TextBlock Margin="0,2,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding DraftExcludedDirectoryNameRules.Count, StringFormat={StaticResource Loc.Profiles.ExclusionRuleCountFormat}}" />
+                                            </StackPanel>
+                                        </Border>
+                                    </UniformGrid>
+
+                                    <ui:InfoBar
+                                        Margin="0,16,0,0"
+                                        AutomationProperties.Name="프로필 저장과 Playground 안내"
+                                        IsClosable="False"
+                                        IsOpen="True"
+                                        Message="아래에서 검증 오류를 확인한 뒤 저장하세요. 저장이 완료되면 ‘Playground에서 테스트’ 버튼이 활성화됩니다. 수정 후에는 다시 저장해야 최신 내용으로 테스트할 수 있습니다."
+                                        Severity="Informational"
+                                        Title="저장된 버전을 실제 경로에서 테스트" />
                                 </StackPanel>
                             </Border>
                         </StackPanel>
@@ -1369,7 +1276,7 @@
 
                     <Border
                         x:Name="EditorFooter"
-                        Grid.Row="1"
+                        Grid.Row="2"
                         Margin="8,12,8,8"
                         Style="{StaticResource FluentToolbarSurfaceStyle}">
                         <Grid>
@@ -1379,11 +1286,22 @@
                             </Grid.RowDefinitions>
                             <Grid>
                                 <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
+                                <ui:Button
+                                    x:Name="PreviousProfileStepButton"
+                                    MinWidth="88"
+                                    Margin="0,0,12,0"
+                                    AutomationProperties.HelpText="이전 프로필 설정 단계로 이동합니다."
+                                    AutomationProperties.Name="이전 단계"
+                                    Command="{Binding PreviousEditorStepCommand}"
+                                    Content="이전"
+                                    Icon="{ui:SymbolIcon Symbol=ArrowLeft20}" />
                                 <TextBlock
                                     x:Name="EditorFooterStatusText"
+                                    Grid.Column="1"
                                     Margin="0,0,16,0"
                                     VerticalAlignment="Center"
                                     AutomationProperties.LiveSetting="Polite"
@@ -1391,7 +1309,30 @@
                                     Text="{Binding EditorStatusMessage}"
                                     TextTrimming="CharacterEllipsis"
                                     ToolTip="{Binding EditorStatusMessage}" />
-                                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                <ui:Button
+                                    x:Name="NextProfileStepButton"
+                                    Grid.Column="2"
+                                    MinWidth="104"
+                                    Appearance="Primary"
+                                    AutomationProperties.HelpText="다음 프로필 설정 단계로 이동합니다."
+                                    AutomationProperties.Name="다음 단계"
+                                    Command="{Binding NextEditorStepCommand}"
+                                    Content="다음"
+                                    Icon="{ui:SymbolIcon Symbol=ArrowRight20}">
+                                    <ui:Button.Style>
+                                        <Style BasedOn="{StaticResource {x:Type ui:Button}}" TargetType="{x:Type ui:Button}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsReviewStep}" Value="True">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </ui:Button.Style>
+                                </ui:Button>
+                                <StackPanel
+                                    Grid.Column="2"
+                                    Orientation="Horizontal"
+                                    Visibility="{Binding IsReviewStep, Converter={StaticResource BooleanToVisibilityConverter}}">
                                     <ui:Button
                                         MinWidth="96"
                                         Margin="0,0,8,0"
@@ -1404,6 +1345,14 @@
                                         Command="{Binding SaveDraftCommand}"
                                         Content="검증 후 저장"
                                         Icon="{ui:SymbolIcon Symbol=Save16}" />
+                                    <ui:Button
+                                        MinWidth="160"
+                                        Margin="8,0,0,0"
+                                        AutomationProperties.HelpText="마지막으로 저장되어 현재 앱에 적용된 프로필을 Playground에서 엽니다. 저장하지 않은 변경 사항이 있으면 비활성화됩니다."
+                                        AutomationProperties.Name="저장된 프로필을 Playground에서 테스트"
+                                        Command="{Binding OpenSavedProfileInPlaygroundCommand}"
+                                        Content="Playground에서 테스트"
+                                        Icon="{ui:SymbolIcon Symbol=DocumentSearch20}" />
                                 </StackPanel>
                             </Grid>
                             <ProgressBar
@@ -1472,7 +1421,7 @@
                                         <TextBlock
                                             Margin="0,4,0,12"
                                             Style="{StaticResource CaptionTextStyle}"
-                                            Text="{Binding SelectedProfile.Id, StringFormat='프로필 ID: {0}'}"
+                                            Text="{Binding SelectedProfile.Id, StringFormat={StaticResource Loc.Profiles.ProfileIdFormat}}"
                                             TextTrimming="CharacterEllipsis" />
                                         <WrapPanel>
                                             <StackPanel MinWidth="120" Margin="0,0,16,8">
@@ -1528,6 +1477,7 @@
                                                 <DataGridCheckBoxColumn Width="75" Binding="{Binding IsNullable}" Header="Nullable" />
                                                 <DataGridTextColumn Width="100" Binding="{Binding ParseFormat}" Header="입력 형식" />
                                                 <DataGridTextColumn Width="100" Binding="{Binding DisplayFormat}" Header="표시 형식" />
+                                                <DataGridTextColumn Width="90" Binding="{Binding ValueMappings}" Header="값 매핑" />
                                             </DataGrid.Columns>
                                         </DataGrid>
                                     </Grid>

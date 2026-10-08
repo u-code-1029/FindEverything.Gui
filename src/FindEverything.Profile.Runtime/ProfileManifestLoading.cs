@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -28,7 +29,8 @@ internal sealed record ValidatedProfileField(
     ProfileFieldValueKind Kind,
     bool IsNullable,
     string? ParseFormat,
-    string? DisplayFormat);
+    string? DisplayFormat,
+    IReadOnlyDictionary<string, string> ValueMappings);
 
 internal sealed record ValidatedTextFileField(
     string FieldId,
@@ -461,6 +463,12 @@ internal sealed class ProfileManifestValidator
                 valid = false;
             }
 
+            var valueMappings = ValidateValueMappings(
+                source,
+                displayId,
+                diagnostics,
+                ref valid);
+
             if (!valid)
             {
                 continue;
@@ -475,7 +483,8 @@ internal sealed class ProfileManifestValidator
                 source.Kind,
                 IsNullable: !source.Required,
                 parseFormat,
-                displayFormat));
+                displayFormat,
+                valueMappings));
         }
 
         validated.Sort(static (left, right) =>
@@ -487,6 +496,98 @@ internal sealed class ProfileManifestValidator
         });
 
         return validated;
+    }
+
+    private static IReadOnlyDictionary<string, string> ValidateValueMappings(
+        ProfileFieldManifest source,
+        string displayId,
+        ICollection<ProfileDiagnostic> diagnostics,
+        ref bool valid)
+    {
+        if (source.ValueMappings is null || source.ValueMappings.Count == 0)
+        {
+            return new ReadOnlyDictionary<string, string>(
+                new Dictionary<string, string>(StringComparer.Ordinal));
+        }
+
+        if (source.Kind != ProfileFieldValueKind.String)
+        {
+            diagnostics.Add(Error(
+                "capture_value_mapping_kind_unsupported",
+                $"필드 '{displayId}'의 값 매핑은 텍스트 필드에서만 사용할 수 있습니다."));
+            valid = false;
+        }
+
+        if (source.ValueMappings.Count > ProfileManifestLimits.MaximumValueMappingCount)
+        {
+            diagnostics.Add(Error(
+                "capture_value_mapping_limit_exceeded",
+                $"필드 '{displayId}'의 값 매핑은 최대 {ProfileManifestLimits.MaximumValueMappingCount:N0}개까지 사용할 수 있습니다."));
+            valid = false;
+        }
+
+        var mappings = new Dictionary<string, string>(StringComparer.Ordinal);
+        for (var index = 0; index < source.ValueMappings.Count; index++)
+        {
+            var mapping = source.ValueMappings[index];
+            var valueId = $"{displayId} #{index + 1}";
+            if (mapping is null)
+            {
+                diagnostics.Add(Error(
+                    "capture_value_mapping_missing",
+                    $"필드 '{valueId}' 값 매핑 항목이 비어 있습니다."));
+                valid = false;
+                continue;
+            }
+
+            var rawSource = mapping.Source;
+            var display = mapping.Display;
+            if (string.IsNullOrWhiteSpace(rawSource))
+            {
+                diagnostics.Add(Error(
+                    "capture_value_mapping_source_missing",
+                    $"필드 '{valueId}' 값 매핑의 원본 값이 비어 있습니다."));
+                valid = false;
+                continue;
+            }
+
+            if (rawSource.Length > ProfileManifestLimits.MaximumValueMappingSourceLength)
+            {
+                diagnostics.Add(Error(
+                    "capture_value_mapping_source_too_long",
+                    $"필드 '{valueId}' 값 매핑의 원본 값은 최대 {ProfileManifestLimits.MaximumValueMappingSourceLength:N0}자까지 사용할 수 있습니다."));
+                valid = false;
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(display))
+            {
+                diagnostics.Add(Error(
+                    "capture_value_mapping_display_missing",
+                    $"필드 '{valueId}' 값 매핑의 표시 값이 비어 있습니다."));
+                valid = false;
+                continue;
+            }
+
+            if (display.Length > ProfileManifestLimits.MaximumValueMappingDisplayLength)
+            {
+                diagnostics.Add(Error(
+                    "capture_value_mapping_display_too_long",
+                    $"필드 '{valueId}' 값 매핑의 표시 값은 최대 {ProfileManifestLimits.MaximumValueMappingDisplayLength:N0}자까지 사용할 수 있습니다."));
+                valid = false;
+                continue;
+            }
+
+            if (!mappings.TryAdd(rawSource, display))
+            {
+                diagnostics.Add(Error(
+                    "capture_value_mapping_source_duplicate",
+                    $"필드 '{displayId}'의 값 매핑에 같은 원본 값이 두 번 있습니다: {rawSource}"));
+                valid = false;
+            }
+        }
+
+        return new ReadOnlyDictionary<string, string>(mappings);
     }
 
     private static List<ValidatedTextFileField> ValidateTextFileFields(

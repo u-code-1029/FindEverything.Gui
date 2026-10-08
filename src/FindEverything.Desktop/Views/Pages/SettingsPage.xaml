@@ -4,10 +4,12 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:localization="clr-namespace:FindEverything.Desktop.Localization"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
     Title="설정"
     Background="Transparent"
     Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+    localization:LocalizationScope.IsEnabled="True"
     ScrollViewer.CanContentScroll="False"
     mc:Ignorable="d">
     <Page.Resources>
@@ -121,6 +123,13 @@
                             DisplayMemberPath="DisplayName"
                             ItemsSource="{Binding BackdropChoices}"
                             SelectedItem="{Binding SelectedBackdrop}" />
+                        <ui:InfoBar
+                            Margin="0,16,0,0"
+                            IsClosable="False"
+                            IsOpen="True"
+                            Message="언어는 제목 표시줄의 KO/EN 버튼에서 바꿀 수 있으며, 모든 화면과 진행 상태를 일관되게 적용하기 위해 앱이 다시 시작됩니다."
+                            Severity="Informational"
+                            Title="언어 변경" />
                     </StackPanel>
                 </Border>
 

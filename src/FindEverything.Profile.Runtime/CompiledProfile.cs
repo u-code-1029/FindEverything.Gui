@@ -234,13 +234,36 @@ internal sealed class CompiledProfile : ILoadedProfile
             var readOnlyValues = new ReadOnlyDictionary<string, object?>(values);
             var model = _createModel(readOnlyValues);
 
+            IReadOnlyDictionary<string, object?> displayValues = readOnlyValues;
+            if (_fields.Any(static field => field.Descriptor.HasValueMappings))
+            {
+                var mappedValues = new Dictionary<string, object?>(
+                    values,
+                    StringComparer.OrdinalIgnoreCase);
+                foreach (var field in _fields)
+                {
+                    if (values[field.Descriptor.FieldId] is string rawValue
+                        && field.Descriptor.ValueMappings.TryGetValue(
+                            rawValue,
+                            out var mappedValue))
+                    {
+                        mappedValues[field.Descriptor.FieldId] = mappedValue;
+                    }
+                }
+
+                displayValues = new ReadOnlyDictionary<string, object?>(mappedValues);
+            }
+
             return ProfileMapResult.Success(
                 new MappedProfileItem(
                     Descriptor.Id,
                     candidate.AbsolutePath,
                     rule.Id,
                     model,
-                    readOnlyValues),
+                    readOnlyValues)
+                {
+                    DisplayValues = displayValues,
+                },
                 shouldPruneDescendants);
         }
         catch (Exception exception)
