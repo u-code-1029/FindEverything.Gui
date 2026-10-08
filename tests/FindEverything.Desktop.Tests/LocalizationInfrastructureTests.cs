@@ -46,6 +46,14 @@ public sealed class LocalizationInfrastructureTests
     public void Literal_localization_includes_infobar_messages() =>
         Assert.True(LocalizationScope.IsLocalizable(InfoBar.MessageProperty));
 
+    [Fact]
+    public void Literal_localization_ignores_a_null_tree_target() =>
+        LocalizationScope.TranslateObject(null);
+
+    [Fact]
+    public void Literal_localization_ignores_a_null_dependency_property() =>
+        Assert.False(LocalizationScope.IsLocalizable(null));
+
     [Theory]
     [InlineData("ko-KR", "ko-KR", false)]
     [InlineData("ko-KR", "en-US", true)]

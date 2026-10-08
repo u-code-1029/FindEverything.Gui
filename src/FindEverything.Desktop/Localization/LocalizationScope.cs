@@ -65,14 +65,16 @@ public static class LocalizationScope
         }
     }
 
-    private static void TranslateTree(DependencyObject root) =>
+    private static void TranslateTree(DependencyObject? root) =>
         TranslateTree(root, new HashSet<DependencyObject>(ReferenceEqualityComparer.Instance));
 
     private static void TranslateTree(
-        DependencyObject root,
+        DependencyObject? root,
         ISet<DependencyObject> visited)
     {
-        if (!visited.Add(root))
+        // Literal localization is best effort. A malformed or transient tree
+        // branch must not abort construction of the containing page.
+        if (root is null || !visited.Add(root))
         {
             return;
         }
@@ -118,8 +120,13 @@ public static class LocalizationScope
         }
     }
 
-    private static void TranslateObject(DependencyObject target)
+    internal static void TranslateObject(DependencyObject? target)
     {
+        if (target is null)
+        {
+            return;
+        }
+
         var values = target.GetLocalValueEnumerator();
         var replacements = new List<(DependencyProperty Property, string Value)>();
         while (values.MoveNext())
@@ -145,8 +152,13 @@ public static class LocalizationScope
         }
     }
 
-    internal static bool IsLocalizable(DependencyProperty property)
+    internal static bool IsLocalizable(DependencyProperty? property)
     {
+        if (property is null)
+        {
+            return false;
+        }
+
         if (property == AutomationProperties.NameProperty)
         {
             return true;
