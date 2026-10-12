@@ -1172,7 +1172,8 @@ public sealed class DesktopCompositionSmokeTests
                 var container = Assert.IsType<System.Windows.Controls.DataGridRow>(
                     grid.ItemContainerGenerator.ContainerFromIndex(index));
                 var text = FindVisualChildren<System.Windows.Controls.TextBlock>(container)
-                    .First(block => !string.IsNullOrEmpty(block.Text));
+                    .First(block => !string.IsNullOrEmpty(block.Text)
+                        && !ResultGridInput.IsInteractiveOrigin(block));
                 InvokePointer("OnResultsGridPreviewMouseLeftButtonDown", text);
                 InvokePointer("OnResultsGridPreviewMouseLeftButtonUp", text);
                 PumpLayout(host, page);
