@@ -27,7 +27,8 @@ public sealed class AppLocalizer : IAppLocalizer
             void Collect(ResourceDictionary dictionary)
             {
                 foreach (var merged in dictionary.MergedDictionaries) Collect(merged);
-                foreach (var key in dictionary.Keys.OfType<string>())
+                foreach (var key in dictionary.Keys.OfType<string>()
+                             .Where(key => key.StartsWith("Loc.", StringComparison.Ordinal)))
                     if (dictionary[key] is string value) messages[key] = value;
             }
             Collect(application.Resources);

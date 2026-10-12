@@ -125,6 +125,9 @@ public sealed class CatalogItemViewModel : ObservableObject
                         OnPropertyChanged(nameof(DisplayValues));
                         OnPropertyChanged(nameof(OutputValues));
                         OnPropertyChanged(nameof(ExportDisplayValues));
+                        // In-memory consumers have no asynchronous persistence
+                        // or focused editor to protect; update them immediately.
+                        if (persistUserInput is null) userInputChanged?.Invoke();
                     },
                     userInputChanged);
                 userInputValues[field.FieldId] = input;

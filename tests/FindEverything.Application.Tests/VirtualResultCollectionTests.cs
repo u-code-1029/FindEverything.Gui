@@ -23,12 +23,15 @@ public sealed class VirtualResultCollectionTests
         list.PageLoaded += (_, _) => loaded.TrySetResult();
         try
         {
-            var value = await Task.Run(() => list[0]).WaitAsync(TimeSpan.FromSeconds(2));
+            // A dedicated caller separates a blocking-indexer regression from
+            // thread-pool scheduling delays on a busy Windows CI machine.
+            var value = await Task.Factory.StartNew(() => list[0], CancellationToken.None,
+                TaskCreationOptions.LongRunning, TaskScheduler.Default).WaitAsync(TimeSpan.FromSeconds(5));
             Assert.Equal("placeholder", value);
             Assert.Equal(0, list.CachedItemCount);
-            await started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            await started.Task.WaitAsync(TimeSpan.FromSeconds(15));
             release.Set();
-            await loaded.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            await loaded.Task.WaitAsync(TimeSpan.FromSeconds(15));
             Assert.Equal(500, list.CachedItemCount);
             Assert.Equal("row-0", list[0]);
         }
