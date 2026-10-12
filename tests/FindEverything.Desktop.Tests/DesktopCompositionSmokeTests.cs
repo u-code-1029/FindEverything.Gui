@@ -345,15 +345,7 @@ public sealed class DesktopCompositionSmokeTests
                 Id = "project-folders", Pattern = @".*[\\/](?<client>Apollo)[\\/](?<year>\d{4})[\\/](?<monthDay>\d{4})_(?<project>[^\\/]+)$",
                 MatchMode = ProfileRegexMatchMode.Full, TimeoutMilliseconds = 100,
             } };
-            var choice = new { Description = "프로젝트 폴더" };
-            Capture(playground, new
-            {
-                IsReady = true, IsBusy = false, InputPath = input, Profiles = new[] { choice }, SelectedProfile = choice,
-                Summary = "규칙에 일치했습니다. 추출한 값과 캡처 그룹을 확인하세요.",
-                Rows = new[] { new ProfileTestResultViewModel("고객", "Apollo", "완료"), new ProfileTestResultViewModel("프로젝트", "Project", "완료"), new ProfileTestResultViewModel("기준일", "2026-05-21", "완료") },
-                HasRegexDebugRules = true, HasDirectoryExclusionTestResult = false, HasDirectoryExclusionRegexDebugRules = false,
-                RegexDebugInputPath = input, RegexDebugRules = ProfileRegexDebugBuilder.Build(input, rules),
-            }, "playground-light.png");
+            Capture(playground, new PlaygroundLayoutFixture(input, ProfileRegexDebugBuilder.Build(input, rules)), "playground-light.png");
             Capture(outputFormats, null, "output-formats-light.png");
             Capture(settings, null, "settings-light.png");
         }
@@ -396,6 +388,14 @@ public sealed class DesktopCompositionSmokeTests
         var width = Math.Max(1, checked((int)Math.Ceiling(visual.ActualWidth)));
         var height = Math.Max(1, checked((int)Math.Ceiling(visual.ActualHeight)));
         var bitmap = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
+        var background = visual.TryFindResource("ApplicationBackgroundBrush") as Brush
+            ?? visual.TryFindResource("SolidBackgroundFillColorBaseBrush") as Brush
+            ?? new SolidColorBrush(fileName.Contains("-dark", StringComparison.OrdinalIgnoreCase)
+                ? Color.FromRgb(32, 32, 32) : Color.FromRgb(243, 243, 243));
+        var backdrop = new DrawingVisual();
+        using (var drawing = backdrop.RenderOpen())
+            drawing.DrawRectangle(background, null, new Rect(0, 0, width, height));
+        bitmap.Render(backdrop);
         bitmap.Render(visual);
         var encoder = new PngBitmapEncoder();
         encoder.Frames.Add(BitmapFrame.Create(bitmap));
@@ -1566,6 +1566,7 @@ public sealed class DesktopCompositionSmokeTests
         private readonly object _profile = new { Id = "layout-sample", DisplayName = "프로젝트 폴더" };
         public WorkspaceLayoutFixture(bool isCatalog)
         {
+            SelectedProfile = _profile;
             var fields = new ProfileFieldDescriptor[]
             {
                 new("client", "client", "고객", 0, true, ProfileFieldValueKind.String, false, null, null),
@@ -1599,17 +1600,63 @@ public sealed class DesktopCompositionSmokeTests
         public bool HasValueMappings => false;
         public bool UsesQuerySelection => false;
         public int SelectedCount => 1000000;
-        public string RootPath => @"C:\Archive\Projects";
+        public string RootPath { get; set; } = @"C:\Archive\Projects";
         public string DetailsButtonText => "자세히";
         public string ResultSummary => "1,000,000개 항목";
         public string FilterSummary => "100,000개 항목";
         public string StatusMessage => "준비됨";
         public string ProgressMessage => string.Empty;
         public object[] Profiles => [_profile];
-        public object SelectedProfile => _profile;
+        public object? SelectedProfile { get; set; }
+        public object? SelectedItem { get; set; }
+        public object? SelectedOutputFormat { get; set; }
+        public string SearchText { get; set; } = string.Empty;
+        public string FilterText { get; set; } = string.Empty;
+        public string DatabasePath { get; set; } = @"C:\Indexes\metadata.db";
+        public string RefreshScopePath { get; set; } = string.Empty;
+        public bool IsFilterOpen { get; set; }
+        public bool ShowOriginalValues { get; set; }
+        public object? SelectedKind { get; set; }
+        public object? SelectedSort { get; set; }
+        public object? SelectedCreatedDateFilter { get; set; }
+        public object? SelectedModifiedDateFilter { get; set; }
+        public double MinimumSizeStep { get; set; }
+        public double MaximumSizeStep { get; set; } = 11;
+        public DateTime? CreatedFromDate { get; set; }
+        public DateTime? CreatedToDate { get; set; }
+        public DateTime? ModifiedFromDate { get; set; }
+        public DateTime? ModifiedToDate { get; set; }
+        public object[] KindChoices => [];
+        public object[] SortChoices => [];
+        public object[] DateFilterChoices => [];
         public object[] Items { get; }
         public ProfileFieldDescriptor[] Fields { get; }
         public object[] OutputFormats => [];
+    }
+
+    private sealed class PlaygroundLayoutFixture
+    {
+        private readonly object _profile = new { Description = "프로젝트 폴더" };
+        public PlaygroundLayoutFixture(string inputPath, IReadOnlyList<ProfileRegexDebugRuleViewModel> debugRules)
+        {
+            InputPath = inputPath;
+            RegexDebugInputPath = inputPath;
+            SelectedProfile = _profile;
+            RegexDebugRules = debugRules;
+        }
+        public bool IsReady => true;
+        public bool IsBusy => false;
+        public string InputPath { get; set; }
+        public object[] Profiles => [_profile];
+        public object? SelectedProfile { get; set; }
+        public string Summary => "규칙에 일치했습니다. 추출한 값과 캡처 그룹을 확인하세요.";
+        public ProfileTestResultViewModel[] Rows =>
+        [new("고객", "Apollo", "완료"), new("프로젝트", "Project", "완료"), new("기준일", "2026-05-21", "완료")];
+        public bool HasRegexDebugRules => true;
+        public bool HasDirectoryExclusionTestResult => false;
+        public bool HasDirectoryExclusionRegexDebugRules => false;
+        public string RegexDebugInputPath { get; }
+        public IReadOnlyList<ProfileRegexDebugRuleViewModel> RegexDebugRules { get; }
     }
 
     private sealed class DiscardDraftPrompt : IDraftDecisionPrompt

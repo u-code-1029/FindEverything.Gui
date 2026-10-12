@@ -16,6 +16,14 @@
     ScrollViewer.CanContentScroll="False"
     SizeChanged="OnWorkspaceSizeChanged"
     mc:Ignorable="d">
+    <Page.Resources>
+        <Style x:Key="FileMetadataCellTextStyle" TargetType="TextBlock">
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="TextWrapping" Value="NoWrap" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+            <Setter Property="ToolTip" Value="{Binding Text, RelativeSource={RelativeSource Self}}" />
+        </Style>
+    </Page.Resources>
     <controls:WorkspacePageFrame x:Name="FilePageLayout">
         <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
         <controls:PageHeader Title="{DynamicResource Loc.Shell.Nav.Files}" Description="{DynamicResource Loc.Workspace.Files.Description}" />
@@ -81,7 +89,7 @@
                 SelectionChanged="OnResultsGridSelectionChanged"
                 SelectionMode="Extended"
                 SelectionUnit="FullRow"
-                ScrollViewer.HorizontalScrollBarVisibility="Visible"
+                ScrollViewer.HorizontalScrollBarVisibility="Auto"
                 ScrollViewer.PanningMode="Both"
                 ScrollViewer.VerticalScrollBarVisibility="Auto"
                 Sorting="OnResultsGridSorting"
@@ -111,7 +119,7 @@
                         <DataGridTemplateColumn.Header><ui:Button Width="32" Height="28" Padding="0" Appearance="Transparent" Icon="{ui:SymbolIcon Symbol=CheckboxChecked20}" Command="{Binding DataContext.SelectAllCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" AutomationProperties.Name="{DynamicResource Loc.Selection.All}" ToolTip="{DynamicResource Loc.Selection.All.ToolTip}" /></DataGridTemplateColumn.Header>
                         <DataGridTemplateColumn.CellTemplate><DataTemplate><CheckBox HorizontalAlignment="Center" VerticalAlignment="Center" IsChecked="{Binding IsSelected, Mode=OneWay}" AutomationProperties.Name="{DynamicResource Loc.Catalog.Selection.Item}" PreviewMouseLeftButtonDown="OnSelectionCheckBoxPreviewMouseLeftButtonDown" PreviewKeyDown="OnSelectionCheckBoxPreviewKeyDown" Checked="OnSelectionCheckBoxStateChanged" Unchecked="OnSelectionCheckBoxStateChanged" /></DataTemplate></DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
-                    <DataGridTemplateColumn Width="220" Header="{DynamicResource Loc.Profiles.New.DefaultField}" SortMemberPath="Name">
+                    <DataGridTemplateColumn Width="180" MinWidth="160" Header="{DynamicResource Loc.Profiles.New.DefaultField}" SortMemberPath="Name">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
                                 <TextBlock
@@ -138,11 +146,11 @@
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
-                    <DataGridTextColumn Width="120" Binding="{Binding KindText}" Header="{DynamicResource Loc.Files.Sort.Kind}" SortMemberPath="FileType" />
-                    <DataGridTextColumn Width="110" Binding="{Binding SizeText}" Header="{DynamicResource Loc.Files.Sort.Size}" SortMemberPath="Size" />
-                    <DataGridTextColumn Width="150" Binding="{Binding ModifiedLocal, StringFormat={}{0:g}}" Header="{DynamicResource Loc.Files.Sort.Modified}" SortMemberPath="Modified" />
-                    <DataGridTextColumn Width="150" Binding="{Binding CreatedLocal, StringFormat={}{0:g}}" Header="{DynamicResource Loc.Files.Sort.Created}" SortMemberPath="Created" />
-                    <DataGridTextColumn Width="90" Binding="{Binding StatusText}" Header="{DynamicResource Loc.Catalog.Column.Status}" CanUserSort="False" />
+                    <DataGridTextColumn Width="120" ElementStyle="{StaticResource FileMetadataCellTextStyle}" Binding="{Binding KindText}" Header="{DynamicResource Loc.Files.Sort.Kind}" SortMemberPath="FileType" />
+                    <DataGridTextColumn Width="110" ElementStyle="{StaticResource FileMetadataCellTextStyle}" Binding="{Binding SizeText}" Header="{DynamicResource Loc.Files.Sort.Size}" SortMemberPath="Size" />
+                    <DataGridTextColumn Width="150" ElementStyle="{StaticResource FileMetadataCellTextStyle}" Binding="{Binding ModifiedLocal, StringFormat={}{0:g}}" Header="{DynamicResource Loc.Files.Sort.Modified}" SortMemberPath="Modified" />
+                    <DataGridTextColumn Width="150" ElementStyle="{StaticResource FileMetadataCellTextStyle}" Binding="{Binding CreatedLocal, StringFormat={}{0:g}}" Header="{DynamicResource Loc.Files.Sort.Created}" SortMemberPath="Created" />
+                    <DataGridTextColumn Width="90" ElementStyle="{StaticResource FileMetadataCellTextStyle}" Binding="{Binding StatusText}" Header="{DynamicResource Loc.Catalog.Column.Status}" CanUserSort="False" />
                 </DataGrid.Columns>
             </DataGrid>
 
