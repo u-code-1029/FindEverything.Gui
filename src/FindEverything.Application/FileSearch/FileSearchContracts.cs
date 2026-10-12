@@ -1,4 +1,5 @@
 using FindEverything.Application.Indexing;
+using FindEverything.Application.Results;
 
 namespace FindEverything.Application.FileSearch;
 
@@ -24,6 +25,11 @@ public sealed class FileSearchIndexUnavailableException : InvalidOperationExcept
 
 public interface IFileSearchService
 {
+    Task<IResultQuerySession<IndexedPathEntry>> OpenQueryAsync(
+        FileSearchScope scope, EntrySearchRequest query,
+        CancellationToken cancellationToken = default) =>
+        FileSearchQuerySession.OpenAsync(this, scope, query, cancellationToken);
+
     Task<IndexScanReport> ScanAsync(
         FileSearchScope scope,
         IProgress<IndexScanProgress>? progress = null,

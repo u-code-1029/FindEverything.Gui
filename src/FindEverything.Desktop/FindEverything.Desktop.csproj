@@ -28,6 +28,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="FindEverything.Desktop.Tests" />
     <ProjectReference Include="../FindEverything.Application/FindEverything.Application.csproj" />
+    <ProjectReference Include="../FindEverything.Infrastructure.Persistence/FindEverything.Infrastructure.Persistence.csproj" />
     <ProjectReference Include="../FindEverything.Infrastructure.FindEverything/FindEverything.Infrastructure.FindEverything.csproj" />
     <ProjectReference Include="../FindEverything.Profile.Runtime/FindEverything.Profile.Runtime.csproj" />
     <ProjectReference Include="../../samples/FindEverything.Profiles.SampleProjects/FindEverything.Profiles.SampleProjects.csproj"

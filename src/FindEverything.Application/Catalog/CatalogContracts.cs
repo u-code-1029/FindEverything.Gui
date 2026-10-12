@@ -22,12 +22,26 @@ public sealed record CatalogOperationProgress(
     /// Consumers may render it immediately instead of waiting for the final result.
     /// </summary>
     public CatalogItem? MatchedItem { get; init; }
+    public int MatchedCount { get; init; }
+
+    /// <summary>True when a changed index requires discarding a previous mapping attempt.</summary>
+    public bool AttemptReset { get; init; }
+
+    /// <summary>Consumers ignore late item batches from earlier attempts.</summary>
+    public int AttemptId { get; init; } = 1;
 }
 
 public sealed record CatalogRequest(
     string ProfileId,
     string RootPath,
-    string DatabasePath);
+    string DatabasePath)
+{
+    /// <summary>Compatibility default. Large callers persist rows without retaining all models.</summary>
+    public bool RetainItems { get; init; } = true;
+
+    /// <summary>Receives mapped rows synchronously; ownership stays with the caller.</summary>
+    public ICatalogProjectionWriter? ResultWriter { get; init; }
+}
 
 public sealed record CatalogInvalidItem(
     string FullPath,
@@ -56,6 +70,12 @@ public sealed record CatalogResult(
     bool HasPendingScopes,
     IndexScanReport? ScanReport)
 {
+    public int MatchedCount { get; init; } = Items.Count;
+
+    public int InvalidCount { get; init; } = InvalidItems.Count;
+
+    public int DirectoryExclusionIssueCount { get; init; }
+
     public DirectoryDiscoveryReport? DiscoveryReport { get; init; }
 
     public int ExcludedDirectoryCount { get; init; }

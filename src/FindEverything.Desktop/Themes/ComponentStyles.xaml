@@ -1,7 +1,8 @@
 <ResourceDictionary
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml">
+    xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+    xmlns:controls="clr-namespace:FindEverything.Desktop.Views.Controls">
 
     <Style x:Key="FluentSurfaceStyle" TargetType="Border">
         <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
@@ -67,4 +68,53 @@
         <Setter Property="VerticalScrollBarVisibility" Value="Auto" />
         <Setter Property="Padding" Value="0,0,16,0" />
     </Style>
+    <Style x:Key="WorkspacePageHeaderStyle" TargetType="controls:PageHeader">
+        <Setter Property="Margin" Value="0,4,0,4" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="controls:PageHeader">
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Style="{StaticResource PageTitleTextStyle}" Text="{TemplateBinding Title}" AutomationProperties.HeadingLevel="Level1" />
+                            <ui:Button x:Name="HelpButton" Margin="8,0,0,0" Width="28" Height="28" Padding="0" Appearance="Transparent" Icon="{ui:SymbolIcon Symbol=QuestionCircle20}"
+                                AutomationProperties.Name="{TemplateBinding Description}" ToolTip="{TemplateBinding Description}" ToolTipService.ShowOnDisabled="True" />
+                        </StackPanel>
+                        <ContentPresenter Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center" Content="{TemplateBinding Content}" />
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+    <Style x:Key="WorkspaceCommandStripStyle" BasedOn="{StaticResource FluentToolbarSurfaceStyle}" TargetType="controls:CommandStrip">
+        <Setter Property="Padding" Value="8" /><Setter Property="Margin" Value="0,0,0,8" />
+    </Style>
+    <Style x:Key="WorkspaceSettingRowStyle" TargetType="controls:SettingRowCard">
+        <Setter Property="Margin" Value="0,0,0,8" /><Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="controls:SettingRowCard">
+                    <Border Style="{StaticResource FluentSurfaceStyle}">
+                        <Grid>
+                            <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="0.45*" /><ColumnDefinition Width="0.55*" /></Grid.ColumnDefinitions>
+                            <StackPanel x:Name="DescriptionPanel" Margin="0,0,24,0" VerticalAlignment="Center">
+                                <TextBlock Text="{TemplateBinding Title}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                <TextBlock Margin="0,4,0,0" Text="{TemplateBinding Description}" Style="{StaticResource CaptionTextStyle}" />
+                            </StackPanel>
+                            <ContentPresenter x:Name="Editor" Grid.Column="1" VerticalAlignment="Center" Content="{TemplateBinding Content}" HorizontalAlignment="Stretch" />
+                        </Grid>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsCompact" Value="True">
+                            <Setter TargetName="DescriptionPanel" Property="Grid.ColumnSpan" Value="2" /><Setter TargetName="DescriptionPanel" Property="Margin" Value="0,0,0,12" />
+                            <Setter TargetName="Editor" Property="Grid.Column" Value="0" /><Setter TargetName="Editor" Property="Grid.Row" Value="1" /><Setter TargetName="Editor" Property="Grid.ColumnSpan" Value="2" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
 </ResourceDictionary>

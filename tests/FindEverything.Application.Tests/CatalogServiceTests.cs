@@ -397,6 +397,52 @@ public sealed class CatalogServiceTests
     }
 
     [Fact]
+    public async Task LoadExisting_streams_matches_to_writer_without_retaining_models()
+    {
+        var root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "catalog-streamed-models"));
+        var services = new ServiceCollection();
+        services.AddFindEverythingApplication(new ConfigurationBuilder().Build());
+        services.AddSingleton<IIndexSessionFactory>(new FakeSessionFactory([
+            new IndexedDirectory(Path.Combine(root, "good"), "good", root, DateTimeOffset.MinValue, DateTimeOffset.MinValue, false),
+            new IndexedDirectory(Path.Combine(root, "excluded"), "excluded", root, DateTimeOffset.MinValue, DateTimeOffset.MinValue, false),
+        ]));
+        services.AddSingleton<IDirectoryDiscoveryService, UnsupportedDiscoveryService>();
+        services.AddSingleton<IProfileResolver>(new FakeProfileResolver(new FakeProfile()));
+        await using var provider = services.BuildServiceProvider();
+        using var writer = new RecordingProjectionWriter();
+
+        var result = await provider.GetRequiredService<ICatalogService>().LoadExistingAsync(
+            new CatalogRequest("test", root, "index.db") { RetainItems = false, ResultWriter = writer });
+
+        Assert.Empty(result.Items);
+        Assert.Equal(2, result.MatchedCount);
+        Assert.Equal(2, writer.Count);
+        Assert.False(writer.IsDisposed);
+    }
+
+    [Fact]
+    public async Task LoadExisting_caps_error_details_while_preserving_total_invalid_count()
+    {
+        var root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "catalog-bounded-errors"));
+        var directories = Enumerable.Range(0, 5001).Select(index =>
+            new IndexedDirectory(Path.Combine(root, index.ToString(), "bad"), "bad", root,
+                DateTimeOffset.MinValue, DateTimeOffset.MinValue, false)).ToArray();
+        var services = new ServiceCollection();
+        services.AddFindEverythingApplication(new ConfigurationBuilder().Build());
+        services.AddSingleton<IIndexSessionFactory>(new FakeSessionFactory(directories));
+        services.AddSingleton<IDirectoryDiscoveryService, UnsupportedDiscoveryService>();
+        services.AddSingleton<IProfileResolver>(new FakeProfileResolver(new FakeProfile()));
+        await using var provider = services.BuildServiceProvider();
+
+        var result = await provider.GetRequiredService<ICatalogService>().LoadExistingAsync(
+            new CatalogRequest("test", root, "index.db") { RetainItems = false });
+
+        Assert.Equal(5001, result.InvalidCount);
+        Assert.Equal(5000, result.InvalidItems.Count);
+        Assert.Empty(result.Items);
+    }
+
+    [Fact]
     public async Task LoadExisting_retries_with_a_fresh_accumulator_when_the_snapshot_changes()
     {
         var root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "catalog-snapshot-retry"));
@@ -424,14 +470,22 @@ public sealed class CatalogServiceTests
         services.AddSingleton<IProfileResolver>(new FakeProfileResolver(new FakeProfile()));
 
         await using var provider = services.BuildServiceProvider();
+        using var writer = new RecordingProjectionWriter();
+        var reported = new List<CatalogOperationProgress>();
         var result = await provider.GetRequiredService<ICatalogService>().LoadExistingAsync(
-            new CatalogRequest("test", root, "index.db"));
+            new CatalogRequest("test", root, "index.db") { ResultWriter = writer },
+            new InlineProgress<CatalogOperationProgress>(reported.Add));
 
         Assert.Equal(2, sessionFactory.SearchCalls);
         Assert.Equal(freshPath, Assert.Single(result.Items).FullPath);
         Assert.DoesNotContain(result.Items, item => item.FullPath == stalePath);
         Assert.Equal(2, result.CandidateCount);
         Assert.True(result.HasPendingScopes);
+        Assert.Equal(1, writer.ResetCount);
+        Assert.Equal(freshPath, Assert.Single(writer.Items).FullPath);
+        var reset = Assert.Single(reported, value => value.AttemptReset);
+        Assert.Equal(2, reset.AttemptId);
+        Assert.Equal([1, 2], reported.Where(value => value.MatchedItem is not null).Select(value => value.AttemptId).ToArray());
     }
 
     [Fact]
@@ -1330,6 +1384,20 @@ public sealed class CatalogServiceTests
                 ? Path.Combine(canonicalRoot, absolutePath[prefix.Length..])
                 : absolutePath;
         }
+    }
+
+    private sealed class RecordingProjectionWriter : ICatalogProjectionWriter
+    {
+        public List<CatalogItem> Items { get; } = [];
+        public string Generation => "test-generation";
+        public int Count => Items.Count;
+        public int ResetCount { get; private set; }
+        public bool IsDisposed { get; private set; }
+        public void Append(CatalogItem item) => Items.Add(item);
+        public void Flush() { }
+        public void Reset() { Items.Clear(); ResetCount++; }
+        public CatalogProjectionSnapshot Publish(CatalogProjectionSummary summary, CatalogProjectionScope? publishedScope = null) => throw new NotSupportedException();
+        public void Dispose() => IsDisposed = true;
     }
 
     private sealed class FakeProfile : ILoadedProfile

@@ -1,4 +1,5 @@
 using System.Globalization;
+using CommunityToolkit.Mvvm.ComponentModel;
 using FindEverything.Application.Indexing;
 using FindEverything.Desktop.Localization;
 
@@ -6,8 +7,11 @@ namespace FindEverything.Desktop.ViewModels;
 
 public sealed class FileSearchItemViewModel(
     IndexedPathEntry entry,
-    IAppLocalizer? localizer = null)
+    IAppLocalizer? localizer = null) : ObservableObject
 {
+    private bool _isSelected;
+    public bool IsSelected { get => _isSelected; set => SetProperty(ref _isSelected, value); }
+    public bool IsPlaceholder { get; init; }
     public IndexedPathEntry Entry { get; } = entry;
 
     public string FullPath => Entry.FullPath;

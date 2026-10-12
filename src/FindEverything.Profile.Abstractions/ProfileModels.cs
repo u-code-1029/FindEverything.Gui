@@ -1,6 +1,8 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics.CodeAnalysis;
 
+// The namespace is retained for source compatibility; these contracts belong to
+// the dependency-free Abstractions assembly, not the runtime implementation.
 namespace FindEverything.Profile.Runtime;
 
 public enum ProfileFieldValueKind
@@ -257,11 +259,32 @@ public sealed record ProfilePluginReport(
     ProfilePluginStatus Status,
     IReadOnlyList<ProfileDiagnostic> Diagnostics);
 
+/// <summary>The outcome of reading one text column without mapping other fields.</summary>
+public sealed record ProfileTextColumnReadResult(
+    string? Value,
+    IReadOnlyList<ProfileMappingIssue> Issues);
+
 public interface ILoadedProfile
 {
     ProfileDescriptor Descriptor { get; }
 
+    /// <summary>Identifies implementation code used by cached parsing results.</summary>
+    string CacheIdentity => GetType().FullName + "|" + GetType().Module.ModuleVersionId.ToString("N");
+
     ProfileMapResult Map(ProfilePathCandidate candidate);
+
+    /// <summary>
+    /// Reads only the requested immediate text-file field. It must not remap the
+    /// path, evaluate other columns, or visit descendant folders.
+    /// </summary>
+    ProfileTextColumnReadResult ReadTextColumn(string fullPath, string fieldId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(fullPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(fieldId);
+        return new(null, [new ProfileMappingIssue(
+            "text_column_refresh_unsupported", fieldId,
+            "이 프로필은 텍스트 컬럼만 다시 읽는 기능을 지원하지 않습니다.")]);
+    }
 
     /// <summary>
     /// Evaluates only one directory's leaf name. Callers must not pass a full path.

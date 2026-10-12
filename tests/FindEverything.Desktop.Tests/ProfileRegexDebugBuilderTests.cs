@@ -240,9 +240,9 @@ public sealed class ProfileRegexDebugBuilderTests
         Assert.Contains("skip-name", result.Title, StringComparison.Ordinal);
         Assert.Contains("현재 폴더와 하위", result.Title, StringComparison.Ordinal);
         Assert.Contains("다음 폴더", result.Message, StringComparison.Ordinal);
-        Assert.Contains("빠르게 불러오기", result.Message, StringComparison.Ordinal);
+        Assert.Contains("기존 DB 불러오기", result.Message, StringComparison.Ordinal);
         Assert.Contains("검색 루트", result.Message, StringComparison.Ordinal);
-        Assert.Contains("기존 인덱스", result.Message, StringComparison.Ordinal);
+        Assert.Contains("저장된 인덱스", result.Message, StringComparison.Ordinal);
     }
 
     [Fact]

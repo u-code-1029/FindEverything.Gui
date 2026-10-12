@@ -33,7 +33,7 @@ public sealed record OutputFormatTokenChoice(
     string Token,
     string Description);
 
-public partial class OutputFormatsViewModel : ObservableObject
+public partial class OutputFormatsViewModel : ObservableObject, IDraftParticipant
 {
     private readonly ISelectionOutputFormatStore _formatStore;
     private readonly ISelectionOutputFormatter _formatter;
@@ -45,6 +45,24 @@ public partial class OutputFormatsViewModel : ObservableObject
     private string _draftId = string.Empty;
     private bool _isPopulatingDraft;
     private bool _isDraftDirty;
+    private readonly IDraftProtectionService? _draftProtection;
+    private OutputFormatSummaryViewModel? _loadedFormat;
+    private readonly IUiScheduler _uiScheduler;
+
+    [ObservableProperty]
+    private bool _isSaving;
+
+    [ObservableProperty]
+    private bool _isTransitioning;
+
+    [ObservableProperty]
+    private string _previewText = string.Empty;
+
+    [ObservableProperty]
+    private string _previewValidationMessage = string.Empty;
+
+    [ObservableProperty]
+    private bool _isPreviewValid;
 
     [ObservableProperty]
     private IReadOnlyList<OutputFormatSummaryViewModel> _formats = [];
@@ -86,7 +104,9 @@ public partial class OutputFormatsViewModel : ObservableObject
         ISnackbarService snackbarService,
         IContentDialogService contentDialogService,
         IAppLocalizer localizer,
-        ILogger<OutputFormatsViewModel> logger)
+        ILogger<OutputFormatsViewModel> logger,
+        IDraftProtectionService? draftProtection = null,
+        IUiScheduler? uiScheduler = null)
     {
         _formatStore = formatStore;
         _formatter = formatter;
@@ -95,6 +115,9 @@ public partial class OutputFormatsViewModel : ObservableObject
         _contentDialogService = contentDialogService;
         _localizer = localizer;
         _logger = logger;
+        _draftProtection = draftProtection;
+        _uiScheduler = uiScheduler ?? ImmediateUiScheduler.Instance;
+        _draftProtection?.Register(this);
         StatusMessage = L(
             "Loc.Output.Status.Initial",
             "기본 포맷을 그대로 사용하거나 새 출력 포맷을 만드세요.");
@@ -108,6 +131,21 @@ public partial class OutputFormatsViewModel : ObservableObject
     public bool IsDeleteAvailable => CanEdit && SelectedFormat is not null;
 
     public bool HasProfileTokens => TokenChoices.Count > 3;
+
+    public bool IsEditorReady => !IsSaving && !IsTransitioning;
+
+    public string DraftTitle => DraftDisplayName;
+
+    public bool HasUnsavedChanges => _isDraftDirty;
+
+    public Task<bool> SaveChangesAsync()
+    {
+        if (IsSaving || !CanEdit) return Task.FromResult(false);
+        Save();
+        return Task.FromResult(!_isDraftDirty);
+    }
+
+    public void DiscardChanges() => _isDraftDirty = false;
 
     partial void OnSelectedFormatChanged(OutputFormatSummaryViewModel? value)
     {
@@ -123,12 +161,23 @@ public partial class OutputFormatsViewModel : ObservableObject
             return;
         }
 
+        if (_isDraftDirty && _draftProtection is not null)
+        {
+            _isPopulatingDraft = true;
+            SelectedFormat = _loadedFormat;
+            _isPopulatingDraft = false;
+            _ = SwitchFormatAsync(value);
+            return;
+        }
+
+        _loadedFormat = value;
         PopulateDraft(value.Definition);
     }
 
     partial void OnSelectedProfileChoiceChanged(OutputFormatProfileChoice? value)
     {
         RefreshTokenChoices(value);
+        RefreshPreview();
         if (!_isPopulatingDraft)
         {
             SetDraftChangedStatus();
@@ -137,9 +186,21 @@ public partial class OutputFormatsViewModel : ObservableObject
 
     partial void OnDraftDisplayNameChanged(string value) => SetDraftChangedStatus();
 
-    partial void OnDraftTemplateChanged(string value) => SetDraftChangedStatus();
+    partial void OnDraftTemplateChanged(string value)
+    {
+        SetDraftChangedStatus();
+        RefreshPreview();
+    }
 
-    partial void OnDraftItemSeparatorChanged(string value) => SetDraftChangedStatus();
+    partial void OnDraftItemSeparatorChanged(string value)
+    {
+        SetDraftChangedStatus();
+        RefreshPreview();
+    }
+
+    partial void OnIsSavingChanged(bool value) => NotifyEditorAvailability();
+
+    partial void OnIsTransitioningChanged(bool value) => NotifyEditorAvailability();
 
     partial void OnCanEditChanged(bool value)
     {
@@ -149,13 +210,21 @@ public partial class OutputFormatsViewModel : ObservableObject
         OnPropertyChanged(nameof(IsDeleteAvailable));
     }
 
-    [RelayCommand]
-    private void NewFormat()
+    [RelayCommand(CanExecute = nameof(CanStartTransition))]
+    private async Task NewFormatAsync()
     {
+        IsTransitioning = true;
+        try
+        {
+            if (_draftProtection is not null
+                && !await _draftProtection.ConfirmAsync(this).ConfigureAwait(true)) return;
+        }
+        finally { IsTransitioning = false; }
         _isPopulatingDraft = true;
         try
         {
             SelectedFormat = null;
+            _loadedFormat = null;
             _draftId = $"format.{Guid.NewGuid():N}";
             CanEdit = true;
             DraftDisplayName = L("Loc.Output.New.DefaultName", "새 출력 포맷");
@@ -174,6 +243,7 @@ public partial class OutputFormatsViewModel : ObservableObject
             "Loc.Output.New.Instruction",
             "이름과 템플릿을 정한 뒤 저장하세요.");
         _isDraftDirty = true;
+        RefreshPreview();
     }
 
     [RelayCommand(CanExecute = nameof(CanModify))]
@@ -190,6 +260,8 @@ public partial class OutputFormatsViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanModify))]
     private void Save()
     {
+        if (IsSaving) return;
+        IsSaving = true;
         try
         {
             var displayName = DraftDisplayName.Trim();
@@ -238,6 +310,10 @@ public partial class OutputFormatsViewModel : ObservableObject
         {
             _logger.LogError(exception, "Could not save selection output format {FormatId}.", _draftId);
             SetError(exception.Message);
+        }
+        finally
+        {
+            IsSaving = false;
         }
     }
 
@@ -295,9 +371,48 @@ public partial class OutputFormatsViewModel : ObservableObject
         }
     }
 
-    private bool CanModify() => CanEdit;
+    private bool CanModify() => CanEdit && IsEditorReady;
 
-    private bool CanDeleteFormat() => IsDeleteAvailable;
+    private bool CanDeleteFormat() => IsDeleteAvailable && IsEditorReady;
+
+    private bool CanStartTransition() => IsEditorReady;
+
+    private void NotifyEditorAvailability()
+    {
+        OnPropertyChanged(nameof(IsEditorReady));
+        SaveCommand.NotifyCanExecuteChanged();
+        DeleteCommand.NotifyCanExecuteChanged();
+        InsertTokenCommand.NotifyCanExecuteChanged();
+        NewFormatCommand.NotifyCanExecuteChanged();
+    }
+
+    private async Task SwitchFormatAsync(OutputFormatSummaryViewModel value)
+    {
+        if (IsTransitioning || IsSaving) return;
+        IsTransitioning = true;
+        try
+        {
+            if (!await _draftProtection!.ConfirmAsync(this).ConfigureAwait(true)) return;
+            var currentValue = Formats.FirstOrDefault(format =>
+                string.Equals(format.Definition.Id, value.Definition.Id, StringComparison.OrdinalIgnoreCase));
+            if (currentValue is null)
+            {
+                SetError(L("Loc.Output.Error.TargetMissing", "선택한 포맷이 더 이상 없습니다. 현재 초안을 유지합니다."));
+                return;
+            }
+            _isPopulatingDraft = true;
+            SelectedFormat = currentValue;
+            _isPopulatingDraft = false;
+            _loadedFormat = currentValue;
+            PopulateDraft(currentValue.Definition);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Could not leave output format draft.");
+            SetError(L("Loc.Output.Error.LeaveFailed", "변경 사항을 확인하지 못했습니다. 현재 초안을 유지합니다."));
+        }
+        finally { IsTransitioning = false; }
+    }
 
     private void PopulateDraft(SelectionOutputFormatDefinition definition)
     {
@@ -322,6 +437,7 @@ public partial class OutputFormatsViewModel : ObservableObject
         }
 
         _isDraftDirty = false;
+        RefreshPreview();
 
         StatusSeverity = InfoBarSeverity.Informational;
         StatusMessage = definition.IsBuiltIn
@@ -361,6 +477,7 @@ public partial class OutputFormatsViewModel : ObservableObject
             try
             {
                 SelectedFormat = preferred;
+                _loadedFormat = preferred;
             }
             finally
             {
@@ -429,6 +546,37 @@ public partial class OutputFormatsViewModel : ObservableObject
         OnPropertyChanged(nameof(HasProfileTokens));
     }
 
+    private void RefreshPreview()
+    {
+        var fields = SelectedProfileChoice?.Fields ?? [];
+        var validation = _formatter.ValidateTemplate(DraftTemplate, fields.Select(static field => field.FieldId));
+        IsPreviewValid = validation.IsValid;
+        PreviewValidationMessage = string.Join(Environment.NewLine, validation.Errors);
+        if (!validation.IsValid)
+        {
+            PreviewText = string.Empty;
+            return;
+        }
+
+        var items = Enumerable.Range(1, 2).Select(index => SelectionOutputItem.FromPath(
+            $@"C:\Example\Project-{index}",
+            $@"C:\Example\Project-{index}",
+            fields.ToDictionary(static field => field.FieldId,
+                field => (object?)$"{field.Header} {index}", StringComparer.OrdinalIgnoreCase)));
+        try
+        {
+            PreviewText = _formatter.Format(new SelectionOutputFormatDefinition(
+                "preview", DraftDisplayName, DraftTemplate, DecodeSeparator(DraftItemSeparator),
+                SelectedProfileChoice?.ProfileId), items);
+        }
+        catch (Exception exception) when (exception is FormatException or ArgumentException)
+        {
+            IsPreviewValid = false;
+            PreviewValidationMessage = exception.Message;
+            PreviewText = string.Empty;
+        }
+    }
+
     private void OnFormatStoreChanged(object? sender, EventArgs e) =>
         RunOnDispatcher(() => RefreshFormats(_draftId));
 
@@ -449,20 +597,7 @@ public partial class OutputFormatsViewModel : ObservableObject
             RefreshFormats(SelectedFormat?.Definition.Id);
         });
 
-    private static void RunOnDispatcher(Action action)
-    {
-        var dispatcher = System.Windows.Application.Current?.Dispatcher;
-        if (dispatcher is null || dispatcher.CheckAccess())
-        {
-            action();
-            return;
-        }
-
-        if (!dispatcher.HasShutdownStarted && !dispatcher.HasShutdownFinished)
-        {
-            _ = dispatcher.BeginInvoke(action);
-        }
-    }
+    private void RunOnDispatcher(Action action) => _uiScheduler.Post(action);
 
     private void SetDraftChangedStatus()
     {

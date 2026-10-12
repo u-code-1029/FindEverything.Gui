@@ -12,6 +12,61 @@ namespace FindEverything.Desktop.Tests;
 public sealed class ProfilesViewModelDirtyStateTests
 {
     [Fact]
+    public async Task Analyzing_the_same_canonical_path_keeps_guided_assignments()
+    {
+        var vm = CreateFreshDraft(DraftLeaveDecision.Cancel);
+        var template = vm.DraftPathTemplate;
+        var assignments = vm.DraftFields[0].GuidedAssignments.ToArray();
+
+        await vm.BuildTemplateFromSampleCommand.ExecuteAsync(null);
+
+        Assert.Equal(template, vm.DraftPathTemplate);
+        Assert.Equal(assignments, vm.DraftFields[0].GuidedAssignments.ToArray());
+        Assert.False(vm.HasUnsavedChanges);
+    }
+
+    [Fact]
+    public async Task Cancelled_new_profile_preserves_user_changes()
+    {
+        var vm = CreateFreshDraft(DraftLeaveDecision.Cancel);
+        var id = vm.DraftId;
+        vm.DraftDisplayName = "My unfinished profile";
+
+        await vm.NewDraftCommand.ExecuteAsync(null);
+
+        Assert.Equal(id, vm.DraftId);
+        Assert.Equal("My unfinished profile", vm.DraftDisplayName);
+        Assert.True(vm.HasUnsavedChanges);
+    }
+
+    [Fact]
+    public async Task Invalid_numeric_row_blocks_validation_save_and_save_on_leave()
+    {
+        var vm = CreateFreshDraft(DraftLeaveDecision.Save);
+        vm.DraftRules[0].TimeoutMillisecondsText = "bad-input";
+
+        Assert.True(vm.HasNumericValidationError);
+        Assert.False(vm.ValidateDraftCommand.CanExecute(null));
+        Assert.False(vm.SaveDraftCommand.CanExecute(null));
+        Assert.False(await vm.SaveChangesAsync());
+        Assert.Equal("bad-input", vm.DraftRules[0].TimeoutMillisecondsText);
+        Assert.True(vm.HasUnsavedChanges);
+    }
+
+    private static ProfilesViewModel CreateFreshDraft(DraftLeaveDecision decision) => new(
+        new StubProfileCatalog(ProfileCatalogSnapshot.Empty),
+        new StubProfileAuthoringService(new ProfileManifest()),
+        new ProfilePathTemplateCompiler(), new FixedPathCanonicalizer(@"C:\Example"),
+        null!, null!, null!, null!, null!, new TestAppLocalizer(),
+        NullLogger<ProfilesViewModel>.Instance,
+        new DraftProtectionService(new FixedPrompt(decision), ImmediateUiScheduler.Instance));
+
+    private sealed class FixedPrompt(DraftLeaveDecision decision) : IDraftDecisionPrompt
+    {
+        public Task<DraftLeaveDecision> ChooseAsync(string draftTitle) => Task.FromResult(decision);
+    }
+
+    [Fact]
     public async Task Analyze_path_marks_a_loaded_profile_dirty_once_and_disables_playground()
     {
         const string pathTemplate = "{name@name}";

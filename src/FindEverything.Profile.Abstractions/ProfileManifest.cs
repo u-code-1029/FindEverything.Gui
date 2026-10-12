@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
+// Definition DTOs are shared contracts, independent of the compiler and loader.
 namespace FindEverything.Profile.Runtime;
 
 public static class ProfileManifestLimits

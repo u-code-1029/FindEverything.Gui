@@ -4,6 +4,7 @@ using FindEverything.Application.Options;
 using FindEverything.Desktop.Appearance;
 using FindEverything.Desktop.Hosting;
 using FindEverything.Desktop.Localization;
+using FindEverything.Desktop.Services;
 using FindEverything.Profile.Runtime;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
@@ -37,6 +38,7 @@ public sealed class SettingsReloadDiagnostics :
     private readonly IAppLocalizer _localizer;
     private readonly IApplicationRestartCoordinator _restartCoordinator;
     private readonly ILogger<SettingsReloadDiagnostics> _logger;
+    private readonly IDraftProtectionService? _draftProtection;
     private readonly SemaphoreSlim _reloadGate = new(1, 1);
     private readonly object _sync = new();
     private FileSystemWatcher? _watcher;
@@ -59,7 +61,8 @@ public sealed class SettingsReloadDiagnostics :
         IAppearanceService appearanceService,
         IAppLocalizer localizer,
         IApplicationRestartCoordinator restartCoordinator,
-        ILogger<SettingsReloadDiagnostics> logger)
+        ILogger<SettingsReloadDiagnostics> logger,
+        IDraftProtectionService? draftProtection = null)
     {
         _paths = paths;
         _settingsFilePath = Path.GetFullPath(paths.UserSettingsFile);
@@ -73,6 +76,7 @@ public sealed class SettingsReloadDiagnostics :
         _localizer = localizer;
         _restartCoordinator = restartCoordinator;
         _logger = logger;
+        _draftProtection = draftProtection;
     }
 
     public string? LastError => Volatile.Read(ref _lastError);
@@ -333,7 +337,10 @@ public sealed class SettingsReloadDiagnostics :
                 _hasPersistedLocaleBaseline = true;
             }
 
-            SetError(null);
+            // A successful reload is also a state change even if there was no
+            // preceding error. Editors use this notification to refresh fields
+            // that the user has not modified.
+            SetError(null, forceNotify: true);
             if (RequiresRestart(_localizer.Culture.Name, localization.CultureName))
             {
                 QueueRestartRequest();
@@ -549,10 +556,12 @@ public sealed class SettingsReloadDiagnostics :
         // RequestRestart synchronously marshals WPF shutdown to the UI thread. It
         // must not run inside _pendingReloadTask because App.OnExit stops the host
         // and waits for that same task. A separate worker removes that wait cycle.
-        _ = Task.Run(() =>
+        _ = Task.Run(async () =>
         {
             try
             {
+                if (_draftProtection is not null
+                    && !await _draftProtection.ConfirmAllAsync().ConfigureAwait(false)) return;
                 _restartCoordinator.RequestRestart();
             }
             catch (Exception exception)
@@ -562,10 +571,10 @@ public sealed class SettingsReloadDiagnostics :
         });
     }
 
-    private void SetError(string? message)
+    private void SetError(string? message, bool forceNotify = false)
     {
         var previous = Interlocked.Exchange(ref _lastError, message);
-        if (string.Equals(previous, message, StringComparison.Ordinal))
+        if (!forceNotify && string.Equals(previous, message, StringComparison.Ordinal))
         {
             return;
         }

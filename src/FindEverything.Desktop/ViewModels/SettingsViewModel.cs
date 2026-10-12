@@ -4,6 +4,8 @@ using FindEverything.Application.Options;
 using FindEverything.Desktop.Appearance;
 using FindEverything.Desktop.Configuration;
 using FindEverything.Desktop.Localization;
+using FindEverything.Desktop.Services;
+using System.Globalization;
 using Microsoft.Extensions.Logging;
 using Wpf.Ui;
 using Wpf.Ui.Controls;
@@ -20,6 +22,15 @@ public partial class SettingsViewModel : ObservableObject
     private readonly IAppLocalizer _localizer;
     private readonly ILogger<SettingsViewModel> _logger;
     private bool _isShowingReloadError;
+    private readonly IValidatedSettingsState<IndexingOptions> _indexingSettings;
+    private readonly IValidatedSettingsState<AppearanceOptions> _appearanceSettings;
+    private readonly IUiScheduler _uiScheduler;
+    private bool _isRefreshing;
+    private string _savedSearchPageSize = string.Empty;
+    private string _savedMaxEntriesPerSecond = string.Empty;
+    private string _savedDirectoryDelay = string.Empty;
+    private ThemePreference _savedTheme;
+    private BackdropPreference _savedBackdrop;
 
     public SettingsViewModel(
         IValidatedSettingsState<IndexingOptions> indexingSettings,
@@ -31,7 +42,8 @@ public partial class SettingsViewModel : ObservableObject
         ISettingsReloadDiagnostics reloadDiagnostics,
         IAppLocalizer localizer,
         AppPaths paths,
-        ILogger<SettingsViewModel> logger)
+        ILogger<SettingsViewModel> logger,
+        IUiScheduler? uiScheduler = null)
     {
         _settingsWriter = settingsWriter;
         _appearanceService = appearanceService;
@@ -40,6 +52,9 @@ public partial class SettingsViewModel : ObservableObject
         _reloadDiagnostics = reloadDiagnostics;
         _localizer = localizer;
         _logger = logger;
+        _indexingSettings = indexingSettings;
+        _appearanceSettings = appearanceSettings;
+        _uiScheduler = uiScheduler ?? ImmediateUiScheduler.Instance;
 
         ThemeChoices =
         [
@@ -61,6 +76,7 @@ public partial class SettingsViewModel : ObservableObject
         var appearance = appearanceSettings.Current;
         SelectedTheme = ThemeChoices.First(choice => choice.Value == appearance.Theme);
         SelectedBackdrop = BackdropChoices.First(choice => choice.Value == appearance.Backdrop);
+        RefreshFromSavedSettings(force: true);
         UserSettingsFile = paths.UserSettingsFile;
         StatusMessage = L(
             "Loc.Settings.Status.Initial",
@@ -86,6 +102,43 @@ public partial class SettingsViewModel : ObservableObject
     private int _directoryDelayMilliseconds;
 
     [ObservableProperty]
+    private string _searchPageSizeText = string.Empty;
+
+    [ObservableProperty]
+    private string _maxEntriesPerSecondText = string.Empty;
+
+    [ObservableProperty]
+    private string _directoryDelayMillisecondsText = string.Empty;
+
+    [ObservableProperty]
+    private string _numericValidationMessage = string.Empty;
+
+    public bool HasNumericValidationError => NumericValidationMessage.Length > 0;
+
+    public bool IsEditable => !IsSaving;
+
+    public bool IsSaveAvailable => IsEditable && !HasNumericValidationError;
+
+    partial void OnSearchPageSizeTextChanged(string value) => ValidateNumericDrafts();
+    partial void OnMaxEntriesPerSecondTextChanged(string value) => ValidateNumericDrafts();
+    partial void OnDirectoryDelayMillisecondsTextChanged(string value) => ValidateNumericDrafts();
+
+    partial void OnSearchPageSizeChanged(int value)
+    {
+        if (!_isRefreshing) SearchPageSizeText = value.ToString(CultureInfo.InvariantCulture);
+    }
+
+    partial void OnMaxEntriesPerSecondChanged(int value)
+    {
+        if (!_isRefreshing) MaxEntriesPerSecondText = value.ToString(CultureInfo.InvariantCulture);
+    }
+
+    partial void OnDirectoryDelayMillisecondsChanged(int value)
+    {
+        if (!_isRefreshing) DirectoryDelayMillisecondsText = value.ToString(CultureInfo.InvariantCulture);
+    }
+
+    [ObservableProperty]
     private SettingChoice<ThemePreference> _selectedTheme = null!;
 
     [ObservableProperty]
@@ -104,9 +157,11 @@ public partial class SettingsViewModel : ObservableObject
     {
         SaveCommand.NotifyCanExecuteChanged();
         ResetCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(IsEditable));
+        OnPropertyChanged(nameof(IsSaveAvailable));
     }
 
-    [RelayCommand(CanExecute = nameof(CanChangeSettings))]
+    [RelayCommand(CanExecute = nameof(CanSaveSettings))]
     private Task SaveAsync() => SaveCoreAsync(showResetMessage: false);
 
     [RelayCommand(CanExecute = nameof(CanChangeSettings))]
@@ -135,6 +190,9 @@ public partial class SettingsViewModel : ObservableObject
         SearchPageSize = indexing.SearchPageSize;
         MaxEntriesPerSecond = indexing.MaxEntriesPerSecond;
         DirectoryDelayMilliseconds = indexing.DirectoryDelayMilliseconds;
+        SearchPageSizeText = indexing.SearchPageSize.ToString(CultureInfo.InvariantCulture);
+        MaxEntriesPerSecondText = indexing.MaxEntriesPerSecond.ToString(CultureInfo.InvariantCulture);
+        DirectoryDelayMillisecondsText = indexing.DirectoryDelayMilliseconds.ToString(CultureInfo.InvariantCulture);
         SelectedTheme = ThemeChoices.First(choice => choice.Value == ThemePreference.System);
         SelectedBackdrop = BackdropChoices.First(choice => choice.Value == BackdropPreference.Auto);
         await SaveCoreAsync(showResetMessage: true).ConfigureAwait(true);
@@ -142,28 +200,11 @@ public partial class SettingsViewModel : ObservableObject
 
     private bool CanChangeSettings() => !IsSaving;
 
+    private bool CanSaveSettings() => IsSaveAvailable;
+
     private void OnReloadDiagnosticsChanged(object? sender, EventArgs e)
     {
-        var dispatcher = System.Windows.Application.Current?.Dispatcher;
-        if (dispatcher is null || dispatcher.CheckAccess())
-        {
-            ApplyReloadDiagnostics();
-            return;
-        }
-
-        if (dispatcher.HasShutdownStarted || dispatcher.HasShutdownFinished)
-        {
-            return;
-        }
-
-        try
-        {
-            _ = dispatcher.BeginInvoke(ApplyReloadDiagnostics);
-        }
-        catch (InvalidOperationException exception)
-        {
-            _logger.LogDebug(exception, "Ignored a settings reload notification during dispatcher shutdown.");
-        }
+        _uiScheduler.Post(ApplyReloadDiagnostics);
     }
 
     private void ApplyReloadDiagnostics()
@@ -185,10 +226,20 @@ public partial class SettingsViewModel : ObservableObject
                 "Loc.Settings.Status.Reloaded",
                 "사용자 설정 파일 변경을 적용했습니다.");
         }
+
+        if (!IsSaving) RefreshFromSavedSettings(force: false);
     }
 
     private async Task SaveCoreAsync(bool showResetMessage)
     {
+        if (!TryReadNumericDrafts(out var indexing))
+        {
+            ValidateNumericDrafts();
+            StatusSeverity = InfoBarSeverity.Error;
+            StatusMessage = NumericValidationMessage;
+            return;
+        }
+
         IsSaving = true;
         try
         {
@@ -199,18 +250,16 @@ public partial class SettingsViewModel : ObservableObject
             };
             await _settingsWriter.SaveAsync(
                 new UserSettingsUpdate(
-                    Indexing: new IndexingOptions
-                    {
-                        SearchPageSize = SearchPageSize,
-                        MaxEntriesPerSecond = MaxEntriesPerSecond,
-                        DirectoryDelayMilliseconds = DirectoryDelayMilliseconds,
-                    },
+                    Indexing: indexing,
                     Appearance: appearance)).ConfigureAwait(true);
 
-            if (System.Windows.Application.Current.MainWindow is FluentWindow window)
-            {
-                _appearanceService.Apply(window, appearance);
-            }
+            _appearanceService.ApplyToAttachedWindow(appearance);
+
+            _savedSearchPageSize = indexing.SearchPageSize.ToString(CultureInfo.InvariantCulture);
+            _savedMaxEntriesPerSecond = indexing.MaxEntriesPerSecond.ToString(CultureInfo.InvariantCulture);
+            _savedDirectoryDelay = indexing.DirectoryDelayMilliseconds.ToString(CultureInfo.InvariantCulture);
+            _savedTheme = appearance.Theme;
+            _savedBackdrop = appearance.Backdrop;
 
             StatusSeverity = InfoBarSeverity.Success;
             StatusMessage = showResetMessage
@@ -243,6 +292,69 @@ public partial class SettingsViewModel : ObservableObject
         {
             IsSaving = false;
         }
+    }
+
+    private bool TryReadNumericDrafts(out IndexingOptions indexing)
+    {
+        indexing = new IndexingOptions();
+        if (!int.TryParse(SearchPageSizeText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var pageSize)
+            || pageSize is < 1 or > 1000
+            || !int.TryParse(MaxEntriesPerSecondText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var maxEntries)
+            || maxEntries < 1
+            || !int.TryParse(DirectoryDelayMillisecondsText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var delay)
+            || delay < 0) return false;
+
+        indexing.SearchPageSize = pageSize;
+        indexing.MaxEntriesPerSecond = maxEntries;
+        indexing.DirectoryDelayMilliseconds = delay;
+        return true;
+    }
+
+    private void ValidateNumericDrafts()
+    {
+        NumericValidationMessage = TryReadNumericDrafts(out _)
+            ? string.Empty
+            : L("Loc.Settings.Validation.Numeric", "검색 페이지 크기는 1–1,000, 초당 최대 항목 수는 1 이상, 폴더 지연은 0 이상인 정수를 입력하세요.");
+        OnPropertyChanged(nameof(HasNumericValidationError));
+        OnPropertyChanged(nameof(IsSaveAvailable));
+        SaveCommand.NotifyCanExecuteChanged();
+    }
+
+    private void RefreshFromSavedSettings(bool force)
+    {
+        var indexing = _indexingSettings.Current;
+        var appearance = _appearanceSettings.Current;
+        _isRefreshing = true;
+        try
+        {
+            if (force || SearchPageSizeText == _savedSearchPageSize)
+            {
+                SearchPageSize = indexing.SearchPageSize;
+                SearchPageSizeText = indexing.SearchPageSize.ToString(CultureInfo.InvariantCulture);
+            }
+            if (force || MaxEntriesPerSecondText == _savedMaxEntriesPerSecond)
+            {
+                MaxEntriesPerSecond = indexing.MaxEntriesPerSecond;
+                MaxEntriesPerSecondText = indexing.MaxEntriesPerSecond.ToString(CultureInfo.InvariantCulture);
+            }
+            if (force || DirectoryDelayMillisecondsText == _savedDirectoryDelay)
+            {
+                DirectoryDelayMilliseconds = indexing.DirectoryDelayMilliseconds;
+                DirectoryDelayMillisecondsText = indexing.DirectoryDelayMilliseconds.ToString(CultureInfo.InvariantCulture);
+            }
+            if (force || SelectedTheme.Value == _savedTheme)
+                SelectedTheme = ThemeChoices.First(choice => choice.Value == appearance.Theme);
+            if (force || SelectedBackdrop.Value == _savedBackdrop)
+                SelectedBackdrop = BackdropChoices.First(choice => choice.Value == appearance.Backdrop);
+
+            _savedSearchPageSize = indexing.SearchPageSize.ToString(CultureInfo.InvariantCulture);
+            _savedMaxEntriesPerSecond = indexing.MaxEntriesPerSecond.ToString(CultureInfo.InvariantCulture);
+            _savedDirectoryDelay = indexing.DirectoryDelayMilliseconds.ToString(CultureInfo.InvariantCulture);
+            _savedTheme = appearance.Theme;
+            _savedBackdrop = appearance.Backdrop;
+        }
+        finally { _isRefreshing = false; }
+        ValidateNumericDrafts();
     }
 
     private string L(string key, string koreanFallback) =>

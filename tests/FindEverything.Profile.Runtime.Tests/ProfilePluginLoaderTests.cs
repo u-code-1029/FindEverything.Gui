@@ -35,6 +35,7 @@ public sealed class ProfilePluginLoaderTests
 
         var profile = Assert.Single(snapshot.Profiles);
         Assert.Equal("sample-projects", profile.Descriptor.Id);
+        Assert.Contains(typeof(SampleProjectItem).Module.ModuleVersionId.ToString("N"), profile.CacheIdentity, StringComparison.Ordinal);
         var suffix = Path.Combine(
             "Clients",
             "Acme",
@@ -80,6 +81,7 @@ public sealed class ProfilePluginLoaderTests
         var profile = Assert.Single(snapshot.Profiles);
         Assert.Equal("valid-profile", profile.Descriptor.Id);
         Assert.Equal(ProfileKind.Assembly, profile.Descriptor.Kind);
+        Assert.Contains(typeof(TestProfileModel).Module.ModuleVersionId.ToString("N"), profile.CacheIdentity, StringComparison.Ordinal);
         Assert.Equal(
             new[] { "name", "year", "revision", "captured-on", "approved", "amount" },
             profile.Descriptor.Fields.Select(static field => field.FieldId));

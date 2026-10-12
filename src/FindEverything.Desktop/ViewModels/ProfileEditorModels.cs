@@ -21,6 +21,29 @@ internal static class ProfileEditorText
         string.Format(CultureInfo.CurrentCulture, Get(key, koreanFallback), arguments);
 }
 
+internal static class ProfileNumericInput
+{
+    public static bool TryInt(string text, int minimum, int maximum, out int value) =>
+        int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out value)
+        && value >= minimum && value <= maximum;
+
+    public static bool TryLong(string text, long minimum, long maximum, out long value) =>
+        long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out value)
+        && value >= minimum && value <= maximum;
+
+    public static string TimeoutError(string text) => TryInt(text, 1, 10_000, out _)
+        ? string.Empty
+        : ProfileEditorText.Get("Loc.Profiles.Numeric.Timeout", "검사 제한 시간은 1–10,000ms인 정수를 입력하세요.");
+
+    public static string OrderError(string text) => TryInt(text, int.MinValue, int.MaxValue, out _)
+        ? string.Empty
+        : ProfileEditorText.Get("Loc.Profiles.Numeric.Order", "표시 순서는 정수를 입력하세요.");
+
+    public static string SizeError(string text) => TryLong(text, 1, ProfileManifestLimits.MaximumTextFileMaximumBytes, out _)
+        ? string.Empty
+        : ProfileEditorText.Format("Loc.Profiles.Numeric.MaxBytes", "읽기 크기는 1–{0:N0}바이트인 정수를 입력하세요.", ProfileManifestLimits.MaximumTextFileMaximumBytes);
+}
+
 public enum ProfileEditorMode
 {
     Guided,
@@ -893,6 +916,20 @@ public partial class ProfileRuleDraftViewModel : ObservableObject
     private int _timeoutMilliseconds = 100;
 
     [ObservableProperty]
+    private string _timeoutMillisecondsText = "100";
+
+    public string NumericValidationMessage => ProfileNumericInput.TimeoutError(TimeoutMillisecondsText);
+    public bool HasNumericValidationError => NumericValidationMessage.Length > 0;
+
+    partial void OnTimeoutMillisecondsChanged(int value) => TimeoutMillisecondsText = value.ToString(CultureInfo.InvariantCulture);
+    partial void OnTimeoutMillisecondsTextChanged(string value)
+    {
+        if (ProfileNumericInput.TryInt(value, 1, 10_000, out var parsed)) TimeoutMilliseconds = parsed;
+        OnPropertyChanged(nameof(NumericValidationMessage));
+        OnPropertyChanged(nameof(HasNumericValidationError));
+    }
+
+    [ObservableProperty]
     private string _pattern = string.Empty;
 
     [ObservableProperty]
@@ -949,6 +986,20 @@ public partial class ProfileDirectoryNameExclusionRuleDraftViewModel : Observabl
 
     [ObservableProperty]
     private int _timeoutMilliseconds = 100;
+
+    [ObservableProperty]
+    private string _timeoutMillisecondsText = "100";
+
+    public string NumericValidationMessage => ProfileNumericInput.TimeoutError(TimeoutMillisecondsText);
+    public bool HasNumericValidationError => NumericValidationMessage.Length > 0;
+
+    partial void OnTimeoutMillisecondsChanged(int value) => TimeoutMillisecondsText = value.ToString(CultureInfo.InvariantCulture);
+    partial void OnTimeoutMillisecondsTextChanged(string value)
+    {
+        if (ProfileNumericInput.TryInt(value, 1, 10_000, out var parsed)) TimeoutMilliseconds = parsed;
+        OnPropertyChanged(nameof(NumericValidationMessage));
+        OnPropertyChanged(nameof(HasNumericValidationError));
+    }
 
     public string MatchModeDisplayName => MatchMode switch
     {
@@ -1010,6 +1061,52 @@ public partial class ProfileTextFileFieldDraftViewModel : ObservableObject
     [ObservableProperty]
     private long _maxBytes = ProfileManifestLimits.DefaultTextFileMaximumBytes;
 
+    [ObservableProperty]
+    private string _timeoutMillisecondsText = "100";
+
+    [ObservableProperty]
+    private string _maxBytesText = ProfileManifestLimits.DefaultTextFileMaximumBytes.ToString(CultureInfo.InvariantCulture);
+
+    [ObservableProperty]
+    private string _orderText = "0";
+
+    public string NumericValidationMessage => string.Join(" ", new[]
+    {
+        ProfileNumericInput.TimeoutError(TimeoutMillisecondsText),
+        ProfileNumericInput.SizeError(MaxBytesText),
+        ProfileNumericInput.OrderError(OrderText),
+    }.Where(static error => error.Length > 0));
+
+    public bool HasNumericValidationError => NumericValidationMessage.Length > 0;
+
+    partial void OnTimeoutMillisecondsChanged(int value) => TimeoutMillisecondsText = value.ToString(CultureInfo.InvariantCulture);
+    partial void OnMaxBytesChanged(long value) => MaxBytesText = value.ToString(CultureInfo.InvariantCulture);
+    partial void OnOrderChanged(int value) => OrderText = value.ToString(CultureInfo.InvariantCulture);
+
+    partial void OnTimeoutMillisecondsTextChanged(string value)
+    {
+        if (ProfileNumericInput.TryInt(value, 1, 10_000, out var parsed)) TimeoutMilliseconds = parsed;
+        NotifyNumericValidation();
+    }
+
+    partial void OnMaxBytesTextChanged(string value)
+    {
+        if (ProfileNumericInput.TryLong(value, 1, ProfileManifestLimits.MaximumTextFileMaximumBytes, out var parsed)) MaxBytes = parsed;
+        NotifyNumericValidation();
+    }
+
+    partial void OnOrderTextChanged(string value)
+    {
+        if (ProfileNumericInput.TryInt(value, int.MinValue, int.MaxValue, out var parsed)) Order = parsed;
+        NotifyNumericValidation();
+    }
+
+    private void NotifyNumericValidation()
+    {
+        OnPropertyChanged(nameof(NumericValidationMessage));
+        OnPropertyChanged(nameof(HasNumericValidationError));
+    }
+
     public string MatchModeDisplayName => MatchMode switch
     {
         ProfileRegexMatchMode.Full => ProfileEditorText.Get("Loc.Profiles.Match.FileFull", "파일 이름 전체 일치"),
@@ -1054,6 +1151,20 @@ public partial class ProfileUserInputFieldDraftViewModel : ObservableObject
 
     [ObservableProperty]
     private int _order;
+
+    [ObservableProperty]
+    private string _orderText = "0";
+
+    public string NumericValidationMessage => ProfileNumericInput.OrderError(OrderText);
+    public bool HasNumericValidationError => NumericValidationMessage.Length > 0;
+
+    partial void OnOrderChanged(int value) => OrderText = value.ToString(CultureInfo.InvariantCulture);
+    partial void OnOrderTextChanged(string value)
+    {
+        if (ProfileNumericInput.TryInt(value, int.MinValue, int.MaxValue, out var parsed)) Order = parsed;
+        OnPropertyChanged(nameof(NumericValidationMessage));
+        OnPropertyChanged(nameof(HasNumericValidationError));
+    }
 
     [ObservableProperty]
     private string _placeholder = string.Empty;

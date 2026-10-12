@@ -83,7 +83,8 @@ internal sealed class ProfileModelCompiler
             };
         }
 
-        return CompileProfile(manifest, fields, createModel, diagnostics);
+        return CompileProfile(manifest, fields, createModel, diagnostics,
+            modelType.AssemblyQualifiedName + "|" + modelType.Module.ModuleVersionId.ToString("N"));
     }
 
     public ProfileCompilationResult Compile(ValidatedProfileManifest manifest)
@@ -127,7 +128,8 @@ internal sealed class ProfileModelCompiler
         ValidatedProfileManifest manifest,
         IReadOnlyList<CompiledField> fields,
         Func<IReadOnlyDictionary<string, object?>, object>? createModel,
-        List<ProfileDiagnostic> diagnostics)
+        List<ProfileDiagnostic> diagnostics,
+        string? modelCacheIdentity = null)
     {
         var rules = CompileRules(manifest.Rules, fields, diagnostics);
         var excludedDirectoryNameRules = CompileExcludedDirectoryNameRules(
@@ -246,7 +248,8 @@ internal sealed class ProfileModelCompiler
             fields.ToArray(),
             rules.ToArray(),
             excludedDirectoryNameRules.ToArray(),
-            textFileFields.ToArray());
+            textFileFields.ToArray(),
+            modelCacheIdentity);
 
         return new ProfileCompilationResult(
             profile,

@@ -8,7 +8,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:localization="clr-namespace:FindEverything.Desktop.Localization"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
-    Title="구조화 보기"
+    Title="{DynamicResource Loc.Home.Catalog.Title}"
     Background="Transparent"
     Foreground="{DynamicResource TextFillColorPrimaryBrush}"
     Loaded="OnPageLoaded"
@@ -17,268 +17,35 @@
     ScrollViewer.CanContentScroll="False"
     Unloaded="OnPageUnloaded"
     mc:Ignorable="d">
-    <Page.Resources>
-        <Style x:Key="FieldLabelStyle" TargetType="TextBlock">
-            <Setter Property="Margin" Value="0,0,0,4" />
-            <Setter Property="FontSize" Value="12" />
-            <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
-        </Style>
-        <Style x:Key="NeutralActionableMessageStyle" TargetType="Border">
-            <Setter Property="Visibility" Value="Collapsed" />
-            <Style.Triggers>
-                <MultiDataTrigger>
-                    <MultiDataTrigger.Conditions>
-                        <Condition Binding="{Binding IsStatusOpen}" Value="True" />
-                        <Condition Binding="{Binding StatusSeverity}" Value="{x:Static ui:InfoBarSeverity.Warning}" />
-                    </MultiDataTrigger.Conditions>
-                    <Setter Property="Visibility" Value="Visible" />
-                </MultiDataTrigger>
-                <MultiDataTrigger>
-                    <MultiDataTrigger.Conditions>
-                        <Condition Binding="{Binding IsStatusOpen}" Value="True" />
-                        <Condition Binding="{Binding StatusSeverity}" Value="{x:Static ui:InfoBarSeverity.Error}" />
-                    </MultiDataTrigger.Conditions>
-                    <Setter Property="Visibility" Value="Visible" />
-                </MultiDataTrigger>
-            </Style.Triggers>
-        </Style>
-    </Page.Resources>
-
-    <Grid x:Name="CatalogPageLayout">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="*" />
-            <RowDefinition Height="Auto" />
-        </Grid.RowDefinitions>
-
-        <Grid x:Name="CatalogPageContent" Grid.Row="0" Margin="24,0,24,24">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="*" />
-            </Grid.RowDefinitions>
-
-        <StackPanel Grid.Row="0" Margin="0,12,0,12">
-            <TextBlock AutomationProperties.HeadingLevel="Level1" Style="{StaticResource PageTitleTextStyle}" Text="구조화 보기" />
-            <TextBlock
-                Margin="0,4,0,0"
-                Style="{StaticResource PageSubtitleTextStyle}"
-                Text="폴더 경로의 정보를 프로필 규칙으로 추출하고, 일치 항목을 찾는 즉시 목록에 표시합니다." />
-        </StackPanel>
-
-        <Border Grid.Row="1" Margin="0,0,0,12" Style="{StaticResource FluentSurfaceStyle}">
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
-
+    <Grid x:Name="CatalogPageLayout" SizeChanged="OnWorkspaceSizeChanged">
+        <Grid.RowDefinitions><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+        <controls:WorkspacePageFrame x:Name="CatalogPageContent" Grid.Row="0">
+            <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+            <controls:PageHeader Title="{DynamicResource Loc.Shell.Nav.Catalog}" Description="{DynamicResource Loc.Workspace.Catalog.Description}">
+                <StackPanel Orientation="Horizontal" Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <ui:ProgressRing Width="18" Height="18" Margin="0,0,8,0" IsIndeterminate="True" />
+                    <TextBlock MaxWidth="240" VerticalAlignment="Center" Text="{Binding ProgressMessage}" Style="{StaticResource CaptionTextStyle}" TextTrimming="CharacterEllipsis" ToolTip="{Binding ProgressMessage}" />
+                </StackPanel>
+            </controls:PageHeader>
+            <controls:CommandStrip Grid.Row="1">
                 <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <StackPanel>
-                        <TextBlock FontWeight="SemiBold" Text="검색 조건" />
-                        <TextBlock
-                            Margin="0,2,0,0"
-                            Style="{StaticResource CaptionTextStyle}"
-                            Text="프로필과 검색 위치를 선택한 뒤 스캔하세요." />
-                    </StackPanel>
-                    <ui:Button
-                        Grid.Column="1"
-                        MinWidth="84"
-                        Margin="12,0,0,0"
-                        Command="{Binding ToggleDetailsCommand}"
-                        Content="{Binding DetailsButtonText}"
-                        Icon="{ui:SymbolIcon Symbol=Settings20}" />
-                </Grid>
-
-                <Grid Grid.Row="1" Margin="0,12,0,0" IsEnabled="{Binding CanEditWorkspace}">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="220" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-
-                    <StackPanel Grid.Column="0" Margin="0,0,16,0">
-                        <TextBlock Style="{StaticResource FieldLabelStyle}" Text="프로필" />
-                        <ComboBox
-                            MinWidth="180"
-                            AutomationProperties.Name="구조화 프로필"
-                            DisplayMemberPath="DisplayName"
-                            ItemsSource="{Binding Profiles}"
-                            SelectedItem="{Binding SelectedProfile}" />
-                    </StackPanel>
-
-                    <StackPanel Grid.Column="1" Margin="0,0,12,0">
-                        <TextBlock Style="{StaticResource FieldLabelStyle}" Text="검색 위치" />
-                        <TextBlock
-                            Height="32"
-                            VerticalAlignment="Center"
-                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="{Binding RootPath, TargetNullValue={StaticResource Loc.Catalog.Root.None}}"
-                            TextTrimming="CharacterEllipsis"
-                            ToolTip="{Binding RootPath}" />
-                    </StackPanel>
-
-                    <ui:Button
-                        Grid.Column="2"
-                        MinWidth="104"
-                        Margin="0,20,0,0"
-                        VerticalAlignment="Top"
-                        Command="{Binding BrowseRootCommand}"
-                        Content="위치 변경"
-                        Icon="{ui:SymbolIcon Symbol=FolderOpen20}" />
-                </Grid>
-
-                <Expander
-                    Grid.Row="2"
-                    Margin="0,12,0,0"
-                    Header="고급: 인덱스 DB 선택 및 기존 데이터 불러오기"
-                    IsEnabled="{Binding CanEditWorkspace}"
-                    Visibility="{Binding IsDetailsOpen, Converter={StaticResource BooleanToVisibilityConverter}}">
-                    <Grid Margin="0,8,0,0">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <ui:TextBox
-                            AutomationProperties.Name="인덱스 데이터베이스 경로"
-                            ClearButtonEnabled="True"
-                            LostKeyboardFocus="OnWorkspacePathLostKeyboardFocus"
-                            PlaceholderText="인덱스 데이터베이스 경로"
-                            Text="{Binding DatabasePath, UpdateSourceTrigger=PropertyChanged}" />
-                        <ui:Button
-                            Grid.Column="1"
-                            MinWidth="96"
-                            Margin="8,0,0,0"
-                            Command="{Binding BrowseDatabaseCommand}"
-                            Content="찾아보기" />
-                        <ui:Button
-                            Grid.Row="1"
-                            Grid.ColumnSpan="2"
-                            MinWidth="180"
-                            Margin="0,8,0,0"
-                            HorizontalAlignment="Right"
-                            Command="{Binding LoadCommand}"
-                            Content="기존 인덱스에서 불러오기"
-                            Icon="{ui:SymbolIcon Symbol=DatabaseSearch20}" />
-                        <TextBlock
-                            Grid.Row="2"
-                            Grid.ColumnSpan="2"
-                            Margin="0,8,0,0"
-                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="별도 경로를 지정하지 않으면 프로필별 기본 DB를 사용합니다."
-                            TextWrapping="Wrap" />
-                    </Grid>
-                </Expander>
-
-                <Grid Grid.Row="3" Margin="0,12,0,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
-                        <ui:ProgressRing
-                            Width="20"
-                            Height="20"
-                            Margin="0,0,8,0"
-                            IsIndeterminate="True"
-                            Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                        <TextBlock
-                            VerticalAlignment="Center"
-                            AutomationProperties.LiveSetting="Polite"
-                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="{Binding ProgressMessage}"
-                            TextTrimming="CharacterEllipsis" />
-                    </StackPanel>
-                    <WrapPanel Grid.Column="1" Margin="12,0,0,0">
-                        <ui:Button
-                            MinWidth="120"
-                            Appearance="Primary"
-                            Command="{Binding ScanCommand}"
-                            Content="스캔 시작"
-                            Icon="{ui:SymbolIcon Symbol=Search20}"
-                            ToolTip="검색 결과를 표시하고 프로필별 인덱스 DB에 저장합니다." />
-                        <ui:Button
-                            MinWidth="72"
-                            Margin="8,0,0,0"
-                            Appearance="Caution"
-                            Command="{Binding CancelCommand}"
-                            Content="취소"
-                            Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="180" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <ComboBox AutomationProperties.Name="{DynamicResource Loc.Workspace.Profile}" ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}" DisplayMemberPath="DisplayName" IsEnabled="{Binding CanEditWorkspace}" ToolTip="{DynamicResource Loc.Workspace.Catalog.Profile.Help}" />
+                    <TextBlock Grid.Column="1" Margin="12,0" VerticalAlignment="Center" Text="{Binding RootPath, TargetNullValue={StaticResource Loc.Catalog.Root.None}}" TextTrimming="CharacterEllipsis" ToolTip="{Binding RootPath}" />
+                    <WrapPanel Grid.Column="2">
+                        <ui:Button MinWidth="76" Margin="0,0,8,0" Command="{Binding BrowseRootCommand}" Content="{DynamicResource Loc.Workspace.Location.Change}" Icon="{ui:SymbolIcon Symbol=FolderOpen20}" ToolTip="{DynamicResource Loc.Workspace.Location.Change.Help}" ToolTipService.ShowOnDisabled="True" />
+                        <ui:Button MinWidth="92" Margin="0,0,8,0" Appearance="Primary" Command="{Binding ScanCommand}" Content="{DynamicResource Loc.Workspace.Scan}" Icon="{ui:SymbolIcon Symbol=Search20}" ToolTip="{DynamicResource Loc.Workspace.Scan.Catalog.Help}" ToolTipService.ShowOnDisabled="True" />
+                        <ui:Button Command="{Binding ToggleDetailsCommand}" Content="{Binding DetailsButtonText}" ToolTip="{DynamicResource Loc.Workspace.Details.Help}" />
+                        <ui:Button Margin="8,0,0,0" Command="{Binding CancelCommand}" Content="{DynamicResource Loc.Workspace.Cancel}" Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}" ToolTip="{DynamicResource Loc.Workspace.Cancel.Help}" />
                     </WrapPanel>
                 </Grid>
-
-                <Border
-                    Grid.Row="4"
-                    Margin="0,12,0,0"
-                    Padding="12,8"
-                    Background="{DynamicResource ControlFillColorSecondaryBrush}"
-                    CornerRadius="6">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock FontWeight="SemiBold" Text="{Binding StatusTitle}" />
-                        <TextBlock
-                            Grid.Column="1"
-                            Margin="12,0,0,0"
-                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="{Binding StatusMessage}"
-                            TextTrimming="CharacterEllipsis"
-                            ToolTip="{Binding StatusMessage}" />
-                    </Grid>
-                </Border>
-            </Grid>
-        </Border>
-
-        <Border
-            Grid.Row="2"
-            Margin="0,0,0,16"
-            Padding="12,9"
-            Background="{DynamicResource ControlFillColorSecondaryBrush}"
-            BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
-            BorderThickness="1"
-            CornerRadius="6"
-            Style="{StaticResource NeutralActionableMessageStyle}">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
-                <TextBlock
-                    VerticalAlignment="Center"
-                    FontWeight="SemiBold"
-                    Text="{Binding StatusTitle}" />
-                <TextBlock
-                    Grid.Column="1"
-                    Margin="12,0,0,0"
-                    VerticalAlignment="Center"
-                    AutomationProperties.LiveSetting="Polite"
-                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                    Text="{Binding StatusMessage}"
-                    TextTrimming="CharacterEllipsis"
-                    ToolTip="{Binding StatusMessage}" />
-            </Grid>
-        </Border>
-
-        <Grid Grid.Row="3">
+            </controls:CommandStrip>
+        <Grid x:Name="CatalogResultsWorkspace" Grid.Row="2">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
             <Border
@@ -293,24 +60,30 @@
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock
-                        VerticalAlignment="Center"
-                        FontWeight="SemiBold"
-                        Text="구조화 결과" />
+            <ui:TextBox
+                x:Name="SearchBox"
+                Grid.Column="0"
+                Margin="0,0,12,0"
+                AutomationProperties.Name="{DynamicResource Loc.View.Catalog.AutomationName.FilterAllResultColumns}"
+                ClearButtonEnabled="True"
+                Icon="{ui:SymbolIcon Symbol=Search12}"
+                PlaceholderText="{DynamicResource Loc.View.Catalog.PlaceholderText.SearchAllColumnsAndFolderPaths}"
+                Text="{Binding FilterText, UpdateSourceTrigger=PropertyChanged, Delay=200}"
+                Visibility="{Binding HasLoadedItems, Converter={StaticResource BooleanToVisibilityConverter}}" />
                     <ui:ToggleSwitch
                         Grid.Column="1"
                         Margin="16,0"
                         VerticalAlignment="Center"
-                        AutomationProperties.HelpText="↔ 표시가 있는 값은 프로필의 매핑표로 치환되었습니다. 켜면 저장된 원본 값을 표시하고 검색·복사·내보내기에도 같은 기준을 사용합니다."
-                        AutomationProperties.Name="원본 값 보기"
+                        AutomationProperties.HelpText="{DynamicResource Loc.View.Catalog.AutomationHelpText.ValuesMarkedWereReplacedUsingTheProfile}"
+                        AutomationProperties.Name="{DynamicResource Loc.View.Catalog.AutomationName.ShowOriginalValues}"
                         IsChecked="{Binding ShowOriginalValues}"
-                        OffContent="치환 값 표시"
-                        OnContent="원본 값 표시"
-                        ToolTip="↔ 표시는 원본 코드가 사람이 읽기 쉬운 값으로 치환되었음을 뜻합니다."
+                        OffContent="{DynamicResource Loc.View.Catalog.OffContent.ShowMappedValues}"
+                        OnContent="{DynamicResource Loc.View.Catalog.OnContent.ShowOriginalValues}"
+                        ToolTip="{DynamicResource Loc.View.Catalog.ToolTip.IndicatesThatAnOriginalCodeWasReplaced}"
                         Visibility="{Binding HasValueMappings, Converter={StaticResource BooleanToVisibilityConverter}}" />
                     <TextBlock
                         Grid.Column="2"
-                        MinWidth="120"
+                        MinWidth="72"
                         VerticalAlignment="Center"
                         AutomationProperties.LiveSetting="Polite"
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
@@ -319,15 +92,7 @@
                 </Grid>
             </Border>
 
-            <ui:TextBox
-                Grid.Row="1"
-                Margin="0,0,0,8"
-                AutomationProperties.Name="모든 결과 컬럼 필터"
-                ClearButtonEnabled="True"
-                Icon="{ui:SymbolIcon Symbol=Search12}"
-                PlaceholderText="모든 컬럼과 폴더 경로에서 검색"
-                Text="{Binding FilterText, UpdateSourceTrigger=PropertyChanged, Delay=200}"
-                Visibility="{Binding HasLoadedItems, Converter={StaticResource BooleanToVisibilityConverter}}" />
+
 
             <DataGrid
                 x:Name="ResultsGrid"
@@ -352,75 +117,89 @@
                 ScrollViewer.HorizontalScrollBarVisibility="Visible"
                 ScrollViewer.PanningMode="Both"
                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                Sorting="OnResultsGridSorting"
                 Style="{StaticResource FluentDataGridStyle}"
                 Visibility="{Binding HasLoadedItems, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <DataGrid.RowStyle>
+                    <Style BasedOn="{StaticResource {x:Type DataGridRow}}" TargetType="DataGridRow">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsPlaceholder}" Value="True"><Setter Property="IsEnabled" Value="False" /><Setter Property="Opacity" Value="0.45" /></DataTrigger>
+                            <MultiDataTrigger><MultiDataTrigger.Conditions><Condition Binding="{Binding DataContext.UsesQuerySelection, RelativeSource={RelativeSource AncestorType=DataGrid}}" Value="True" /><Condition Binding="{Binding IsSelected}" Value="True" /></MultiDataTrigger.Conditions><Setter Property="Background" Value="{DynamicResource AccentFillColorSecondaryBrush}" /></MultiDataTrigger>
+                            <MultiDataTrigger><MultiDataTrigger.Conditions><Condition Binding="{Binding DataContext.UsesQuerySelection, RelativeSource={RelativeSource AncestorType=DataGrid}}" Value="True" /><Condition Binding="{Binding IsSelected}" Value="False" /></MultiDataTrigger.Conditions><Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" /></MultiDataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </DataGrid.RowStyle>
                 <DataGrid.ContextMenu>
                     <ContextMenu DataContext="{Binding PlacementTarget, RelativeSource={RelativeSource Self}}">
-                        <MenuItem Command="{Binding DataContext.OpenItemCommand}" CommandParameter="{Binding CurrentItem}" Header="폴더 경로 열기" />
-                        <MenuItem Command="{Binding DataContext.CopyItemFolderPathCommand}" CommandParameter="{Binding CurrentItem}" Header="폴더 경로 복사" />
+                        <MenuItem Command="{Binding DataContext.OpenItemCommand}" CommandParameter="{Binding CurrentItem}" Header="{DynamicResource Loc.View.Files.Header.OpenFolder}" />
+                        <MenuItem Command="{Binding DataContext.CopyItemFolderPathCommand}" CommandParameter="{Binding CurrentItem}" Header="{DynamicResource Loc.View.Files.Header.CopyFolderPath}" />
                         <Separator />
-                        <MenuItem Command="{Binding DataContext.CopySelectionCommand}" Header="선택 항목을 현재 출력 형식으로 복사" />
+                        <MenuItem Command="{Binding DataContext.CopySelectionCommand}" Header="{DynamicResource Loc.View.Files.Header.CopySelectionUsingCurrentOutputFormat}" />
                     </ContextMenu>
                 </DataGrid.ContextMenu>
             </DataGrid>
 
             <Border
                 x:Name="SelectionToolbar"
-                Grid.Row="2"
-                Margin="8,0,8,28"
-                Padding="10,8"
+                Grid.Row="3"
+                Margin="0,8,0,0"
+                Padding="8,4"
                 HorizontalAlignment="Stretch"
-                VerticalAlignment="Bottom"
-                Panel.ZIndex="5"
+                VerticalAlignment="Stretch"
+
                 Style="{StaticResource FluentToolbarSurfaceStyle}"
                 Visibility="{Binding HasSelection, Converter={StaticResource BooleanToVisibilityConverter}}">
                 <WrapPanel HorizontalAlignment="Right" VerticalAlignment="Center">
-                    <StackPanel Margin="0,4,0,4" Orientation="Horizontal">
+                    <StackPanel Margin="0,0,0,0" Orientation="Horizontal">
                         <TextBlock
                             Margin="4,0,12,0"
                             VerticalAlignment="Center"
                             FontWeight="SemiBold"
                             Text="{Binding SelectedCount, StringFormat={StaticResource Loc.Common.SelectedCountFormat}}" />
                         <ComboBox
-                            Width="180"
+                            Width="140"
                             Margin="0,0,8,0"
-                            AutomationProperties.Name="선택 항목 출력 형식"
+                            AutomationProperties.Name="{DynamicResource Loc.View.Files.AutomationName.SelectionOutputFormat}"
                             DisplayMemberPath="DisplayName"
                             ItemsSource="{Binding OutputFormats}"
                             SelectedItem="{Binding SelectedOutputFormat}" />
                     </StackPanel>
                     <ui:Button
-                        Margin="0,4,6,4"
+                        Margin="0,0,6,0"
                         Appearance="Primary"
                         Command="{Binding CopySelectionCommand}"
-                        Content="복사"
+                        Content="{DynamicResource Loc.Workspace.Selection.Copy}"
+                        ToolTip="{DynamicResource Loc.Workspace.Selection.Copy.Help}"
                         Icon="{ui:SymbolIcon Symbol=Copy20}" />
                     <ui:Button
                         x:Name="ExportSelectionButton"
-                        Margin="0,4,12,4"
+                        Margin="0,0,12,0"
                         Command="{Binding ExportSelectionCommand}"
-                        Content="내보내기"
+                        Content="{DynamicResource Loc.Workspace.Selection.Export}"
                         Icon="{ui:SymbolIcon Symbol=ArrowExportUp20}"
-                        ToolTip="선택한 구조화 결과를 Excel 또는 CSV 파일로 저장합니다." />
+                        ToolTip="{DynamicResource Loc.View.Catalog.ToolTip.SaveSelectedStructuredResultsToAnExcel}" />
                     <ui:Button
-                        Margin="0,4,12,4"
+                        Margin="0,0,12,0"
                         Command="{Binding OpenSelectedCommand}"
-                        Content="선택 폴더 열기"
+                        ToolTip="{DynamicResource Loc.Workspace.Selection.Open.Help}"
+                        ToolTipService.ShowOnDisabled="True"
+                        Width="28" Padding="0" AutomationProperties.Name="{DynamicResource Loc.Workspace.Selection.Open}"
                         Icon="{ui:SymbolIcon Symbol=FolderOpen20}" />
+
                     <ui:Button
-                        Margin="0,4,6,4"
-                        Click="OnSelectAllClick"
-                        Content="전체 선택"
-                        ToolTip="현재 필터에 표시된 항목을 모두 선택합니다." />
+                        Margin="0,0,6,0"
+                        Command="{Binding ClearSelectionCommand}"
+                        Width="28" Padding="0"
+                        Icon="{ui:SymbolIcon Symbol=CheckboxUnchecked20}"
+                        AutomationProperties.Name="{DynamicResource Loc.Workspace.Selection.Clear}"
+                        ToolTip="{DynamicResource Loc.Workspace.Selection.Clear}" />
                     <ui:Button
-                        Margin="0,4,6,4"
-                        Click="OnClearSelectionClick"
-                        Content="선택 해제" />
-                    <ui:Button
-                        Margin="0,4,0,4"
-                        Click="OnInvertSelectionClick"
-                        Content="선택 반전"
-                        ToolTip="현재 필터에 표시된 항목의 선택을 반전합니다." />
+                        Margin="0,0,0,0"
+                        Command="{Binding InvertSelectionCommand}"
+                        Width="28" Padding="0"
+                        Icon="{ui:SymbolIcon Symbol=ArrowSwap20}"
+                        AutomationProperties.Name="{DynamicResource Loc.Workspace.Selection.Invert}"
+                        ToolTip="{DynamicResource Loc.Selection.Invert.ToolTip}" />
                 </WrapPanel>
             </Border>
 
@@ -445,26 +224,39 @@
                         HorizontalAlignment="Center"
                         FontSize="20"
                         FontWeight="SemiBold"
-                        Text="아직 불러온 구조화 결과가 없습니다" />
+                        Text="{DynamicResource Loc.View.Catalog.Text.NoStructuredResultsLoadedYet}" />
                     <TextBlock
                         MaxWidth="520"
                         Margin="0,8,0,0"
                         HorizontalAlignment="Center"
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                        Text="프로필과 검색 위치를 선택한 뒤 '스캔 시작'을 눌러 보세요. 결과는 화면에 표시되고 프로필별 DB에도 저장됩니다."
+                        Text="{DynamicResource Loc.View.Catalog.Text.ChooseAProfileAndSearchLocationThen}"
                         TextAlignment="Center"
                         TextWrapping="Wrap" />
                 </StackPanel>
             </Border>
         </Grid>
-        </Grid>
-
-        <controls:ScanConsolePanel
-            x:Name="ScanConsolePanel"
-            Grid.Row="1"
-            Height="300"
-            Margin="24,0,24,24"
-            DataContext="{x:Null}"
-            Visibility="{Binding IsPanelOpen, Converter={StaticResource BooleanToVisibilityConverter}}" />
+            <Border Grid.Row="3" Padding="0,4" Background="Transparent">
+                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <TextBlock Text="{Binding StatusMessage}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" ToolTip="{Binding StatusMessage}" AutomationProperties.LiveSetting="Polite" />
+                    <TextBlock Grid.Column="1" MaxWidth="260" Margin="12,0,0,0" Text="{Binding ResultSourceDescription}" Style="{StaticResource CaptionTextStyle}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" ToolTip="{Binding ResultSourceDescription}" AutomationProperties.Name="{DynamicResource Loc.Workspace.ResultSource}" />
+                </Grid>
+            </Border>
+            <Border x:Name="CatalogDetailsPanel" Grid.Row="2" Width="340" HorizontalAlignment="Right" Panel.ZIndex="8" Style="{StaticResource FluentSurfaceStyle}" Visibility="{Binding IsDetailsOpen, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <ScrollViewer Style="{StaticResource FluentGutteredScrollViewerStyle}">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.Workspace.Details}" />
+                        <TextBlock Margin="0,4,0,12" Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.Workspace.Catalog.Database.Help}" />
+                        <ui:TextBox AutomationProperties.Name="{DynamicResource Loc.Workspace.Database.Path}" LostKeyboardFocus="OnWorkspacePathLostKeyboardFocus" PlaceholderText="{DynamicResource Loc.Workspace.Database.Path}" Text="{Binding DatabasePath, UpdateSourceTrigger=PropertyChanged}" />
+                        <WrapPanel Margin="0,8,0,0">
+                            <ui:Button Margin="0,0,8,8" Command="{Binding BrowseDatabaseCommand}" Content="{DynamicResource Loc.Workspace.Database.Choose}" />
+                            <ui:Button Margin="0,0,0,8" Command="{Binding LoadCommand}" Content="{DynamicResource Loc.Workspace.Database.Load}" ToolTip="{DynamicResource Loc.Workspace.Database.Load.Help}" ToolTipService.ShowOnDisabled="True" />
+                        </WrapPanel>
+                        <TextBlock Style="{StaticResource CaptionTextStyle}" Text="{Binding DatabasePath}" TextWrapping="Wrap" />
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </controls:WorkspacePageFrame>
+        <controls:ScanConsolePanel x:Name="ScanConsolePanel" Grid.Row="1" Height="220" Margin="24,0,24,16" DataContext="{x:Null}" Visibility="{Binding IsPanelOpen, Converter={StaticResource BooleanToVisibilityConverter}}" />
     </Grid>
 </Page>

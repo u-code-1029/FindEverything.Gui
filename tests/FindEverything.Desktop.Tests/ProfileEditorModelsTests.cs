@@ -7,6 +7,38 @@ namespace FindEverything.Desktop.Tests;
 public sealed class ProfileEditorModelsTests
 {
     [Fact]
+    public void Regex_timeout_draft_preserves_invalid_text_until_it_is_corrected()
+    {
+        var row = new ProfileRuleDraftViewModel { TimeoutMilliseconds = 250 };
+        Assert.Equal("250", row.TimeoutMillisecondsText);
+
+        row.TimeoutMillisecondsText = "not-a-number";
+        Assert.True(row.HasNumericValidationError);
+        Assert.Equal("not-a-number", row.TimeoutMillisecondsText);
+
+        row.TimeoutMillisecondsText = "500";
+        Assert.False(row.HasNumericValidationError);
+        Assert.Equal(500, row.TimeoutMilliseconds);
+    }
+
+    [Fact]
+    public void Text_file_size_and_order_drafts_reject_overflow_and_out_of_range_values()
+    {
+        var row = new ProfileTextFileFieldDraftViewModel
+        {
+            MaxBytesText = "0",
+            OrderText = "2147483648",
+        };
+        Assert.True(row.HasNumericValidationError);
+
+        row.MaxBytesText = "4096";
+        row.OrderText = "-10";
+        Assert.False(row.HasNumericValidationError);
+        Assert.Equal(4096L, row.MaxBytes);
+        Assert.Equal(-10, row.Order);
+    }
+
+    [Fact]
     public void Directory_name_exclusion_draft_preserves_regex_options()
     {
         var draft = new ProfileDirectoryNameExclusionRuleDraftViewModel(

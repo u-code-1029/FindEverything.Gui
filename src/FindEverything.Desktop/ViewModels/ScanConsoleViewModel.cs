@@ -697,7 +697,7 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
                 }
 
                 first = false;
-                builder.Append(pair.Key).Append('=').Append(Escape(FormatValue(pair.Value)));
+                builder.Append(pair.Key).Append('=').Append(Escape(PreviewValue(pair.Value)));
             }
 
             builder.Append('}');
@@ -729,6 +729,16 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
 
         builder.Append(" | full=\"").Append(Escape(value.FullPath)).Append('"');
         return tone;
+    }
+
+    private static string PreviewValue(object? value)
+    {
+        var text = FormatValue(value);
+        if (text.Length <= 256) return text;
+        var length = char.IsHighSurrogate(text[255]) ? 255 : 256;
+        // Diagnostic logs identify matches; complete text content belongs in
+        // the projection/export, not in thousands of retained log messages.
+        return text[..length] + "… [preview]";
     }
 
     private static ScanConsoleLineTone AppendDirectoryExclusion(

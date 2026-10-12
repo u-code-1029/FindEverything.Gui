@@ -3,6 +3,7 @@
     <Project Path="src/FindEverything.Profile.Abstractions/FindEverything.Profile.Abstractions.csproj" />
     <Project Path="src/FindEverything.Profile.Runtime/FindEverything.Profile.Runtime.csproj" />
     <Project Path="src/FindEverything.Application/FindEverything.Application.csproj" />
+    <Project Path="src/FindEverything.Infrastructure.Persistence/FindEverything.Infrastructure.Persistence.csproj" />
     <Project Path="src/FindEverything.Infrastructure.FindEverything/FindEverything.Infrastructure.FindEverything.csproj" />
     <Project Path="src/FindEverything.Desktop/FindEverything.Desktop.csproj" />
   </Folder>
@@ -16,6 +17,7 @@
     <Project Path="tests/FindEverything.Profile.Runtime.Tests/FindEverything.Profile.Runtime.Tests.csproj" />
     <Project Path="tests/FindEverything.Application.Tests/FindEverything.Application.Tests.csproj" />
     <Project Path="tests/FindEverything.Infrastructure.FindEverything.Tests/FindEverything.Infrastructure.FindEverything.Tests.csproj" />
+    <Project Path="tests/FindEverything.Persistence.Tests/FindEverything.Persistence.Tests.csproj" />
     <Project Path="tests/FindEverything.Desktop.Tests/FindEverything.Desktop.Tests.csproj" />
   </Folder>
 </Solution>

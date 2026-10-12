@@ -1,230 +1,58 @@
-<Page
-    x:Class="FindEverything.Desktop.Views.Pages.OutputFormatsPage"
-    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    xmlns:localization="clr-namespace:FindEverything.Desktop.Localization"
-    xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
-    Title="출력 포맷"
-    Background="Transparent"
-    Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-    localization:LocalizationScope.IsEnabled="True"
-    mc:Ignorable="d">
-    <Page.Resources>
-        <Style x:Key="OutputFieldLabelStyle" TargetType="TextBlock">
-            <Setter Property="Margin" Value="0,0,0,5" />
-            <Setter Property="FontSize" Value="14" />
-            <Setter Property="FontWeight" Value="SemiBold" />
-        </Style>
-        <Style x:Key="OutputSectionStyle" BasedOn="{StaticResource FluentSurfaceStyle}" TargetType="Border">
-            <Setter Property="Margin" Value="0,0,0,16" />
-        </Style>
-    </Page.Resources>
-
-    <Grid Margin="24,0,24,24">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
-
-        <Grid Margin="0,20,0,16">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <StackPanel>
-                <TextBlock
-                    AutomationProperties.HeadingLevel="Level1"
-                    Style="{StaticResource PageTitleTextStyle}"
-                    Text="출력 포맷" />
-                <TextBlock
-                    Margin="0,4,0,0"
-                    Style="{StaticResource PageSubtitleTextStyle}"
-                    Text="선택한 파일과 구조화 항목을 Ctrl+C로 복사할 모양을 정의합니다." />
-            </StackPanel>
-            <ui:Button
-                Grid.Column="1"
-                MinWidth="112"
-                Margin="16,0,0,0"
-                VerticalAlignment="Center"
-                Appearance="Primary"
-                Command="{Binding NewFormatCommand}"
-                Content="새 포맷"
-                Icon="{ui:SymbolIcon Symbol=AddSquare20}" />
-        </Grid>
-
-        <ui:InfoBar
-            Grid.Row="1"
-            Margin="0,0,0,16"
-            IsClosable="False"
-            IsOpen="True"
-            Message="{Binding StatusMessage}"
-            Severity="{Binding StatusSeverity}"
-            Title="출력 포맷" />
-
-        <Grid Grid.Row="2">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="280" />
-                <ColumnDefinition Width="16" />
-                <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
-
-            <Border Style="{StaticResource OutputSectionStyle}">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                    </Grid.RowDefinitions>
-                    <StackPanel Margin="0,0,0,12">
-                        <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="저장된 포맷" />
-                        <TextBlock
-                            Margin="0,4,0,0"
-                            Style="{StaticResource CaptionTextStyle}"
-                            Text="결과 페이지 아래에서 사용할 포맷입니다." />
-                    </StackPanel>
-                    <ListBox
-                        Grid.Row="1"
-                        HorizontalContentAlignment="Stretch"
-                        BorderThickness="0"
-                        ItemsSource="{Binding Formats}"
-                        SelectedItem="{Binding SelectedFormat}">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <StackPanel Margin="4,7">
-                                    <TextBlock FontWeight="SemiBold" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
-                                    <TextBlock
-                                        Margin="0,2,0,0"
-                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                        Text="{Binding Detail}"
-                                        TextTrimming="CharacterEllipsis" />
-                                </StackPanel>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
-                </Grid>
-            </Border>
-
-            <ScrollViewer
-                x:Name="OutputFormatsScrollViewer"
-                Grid.Column="2"
-                Style="{StaticResource FluentGutteredScrollViewerStyle}">
-                <StackPanel HorizontalAlignment="Stretch">
-                    <Border Style="{StaticResource OutputSectionStyle}">
-                        <StackPanel>
-                            <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="기본 정보" />
-                            <TextBlock
-                                Margin="0,4,0,16"
-                                Style="{StaticResource CaptionTextStyle}"
-                                Text="프로필을 선택하면 그 프로필의 구조화 필드를 템플릿에 넣을 수 있습니다." />
-
-                            <TextBlock Style="{StaticResource OutputFieldLabelStyle}" Text="포맷 이름" />
-                            <TextBox
-                                Margin="0,0,0,14"
-                                HorizontalAlignment="Stretch"
-                                AutomationProperties.Name="출력 포맷 이름"
-                                IsEnabled="{Binding CanEdit}"
-                                Text="{Binding DraftDisplayName, UpdateSourceTrigger=PropertyChanged}" />
-
-                            <TextBlock Style="{StaticResource OutputFieldLabelStyle}" Text="사용할 프로필" />
-                            <ComboBox
-                                HorizontalAlignment="Stretch"
-                                AutomationProperties.Name="출력 포맷에 연결할 프로필"
-                                DisplayMemberPath="DisplayName"
-                                IsEnabled="{Binding CanEdit}"
-                                ItemsSource="{Binding ProfileChoices}"
-                                SelectedItem="{Binding SelectedProfileChoice}" />
-                        </StackPanel>
-                    </Border>
-
-                    <Border Style="{StaticResource OutputSectionStyle}">
-                        <StackPanel>
-                            <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="복사 템플릿" />
-                            <TextBlock
-                                Margin="0,4,0,12"
-                                Style="{StaticResource CaptionTextStyle}"
-                                Text="토큰 버튼을 누르면 템플릿 끝에 추가됩니다. 일반 문자는 그대로 출력됩니다." />
-
+<Page x:Class="FindEverything.Desktop.Views.Pages.OutputFormatsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="clr-namespace:FindEverything.Desktop.Views.Controls" xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+    Title="{DynamicResource Loc.Shell.Nav.OutputFormats}" Background="Transparent" Foreground="{DynamicResource TextFillColorPrimaryBrush}">
+    <controls:WorkspacePageFrame>
+        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+        <controls:PageHeader Title="{DynamicResource Loc.Shell.Nav.OutputFormats}" Description="{DynamicResource Loc.Workspace.Output.Description}">
+            <ui:Button Command="{Binding NewFormatCommand}" Content="{DynamicResource Loc.Workspace.Output.New}" Icon="{ui:SymbolIcon Symbol=AddSquare20}" ToolTip="{DynamicResource Loc.Workspace.Output.New.Help}" ToolTipService.ShowOnDisabled="True" />
+        </controls:PageHeader>
+        <controls:CommandStrip Grid.Row="1">
+            <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <ComboBox HorizontalAlignment="Stretch" IsEnabled="{Binding IsEditorReady}" ItemsSource="{Binding Formats}" SelectedItem="{Binding SelectedFormat}" DisplayMemberPath="DisplayName" AutomationProperties.Name="{DynamicResource Loc.Workspace.Output.Choose}" ToolTip="{DynamicResource Loc.Workspace.Output.Choose.Help}" />
+                <ui:Button Grid.Column="1" Margin="8,0,0,0" Command="{Binding DeleteCommand}" Content="{DynamicResource Loc.Workspace.Output.Delete}" Icon="{ui:SymbolIcon Symbol=Delete12}" ToolTip="{DynamicResource Loc.Workspace.Output.Delete.Help}" ToolTipService.ShowOnDisabled="True" />
+            </Grid>
+        </controls:CommandStrip>
+        <controls:SplitWorkspace x:Name="OutputWorkspace" Grid.Row="2" PrimaryRatio="0.6" PrimaryTitle="{DynamicResource Loc.Workspace.Output.Edit}" SecondaryTitle="{DynamicResource Loc.Workspace.Output.Preview}">
+            <controls:SplitWorkspace.PrimaryContent>
+                <ScrollViewer x:Name="OutputFormatsScrollViewer" IsEnabled="{Binding IsEditorReady}" Style="{StaticResource FluentGutteredScrollViewerStyle}">
+                    <Grid IsEnabled="{Binding CanEdit}">
+                        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                        <Border Style="{StaticResource FluentToolbarSurfaceStyle}" Margin="0,0,0,8">
+                            <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                <StackPanel Margin="0,0,8,0"><TextBlock Margin="0,0,0,4" FontWeight="SemiBold" Text="{DynamicResource Loc.Workspace.Output.Name}" /><ui:TextBox Text="{Binding DraftDisplayName, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{DynamicResource Loc.Workspace.Output.Name}" /></StackPanel>
+                                <StackPanel Grid.Column="1"><TextBlock Margin="0,0,0,4" FontWeight="SemiBold" Text="{DynamicResource Loc.Workspace.Output.Profile}" /><ComboBox HorizontalAlignment="Stretch" DisplayMemberPath="DisplayName" ItemsSource="{Binding ProfileChoices}" SelectedItem="{Binding SelectedProfileChoice}" AutomationProperties.Name="{DynamicResource Loc.Workspace.Output.Profile}" /></StackPanel>
+                            </Grid>
+                        </Border>
+                        <TextBlock Grid.Row="1" Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.Workspace.Output.Tokens.Help}" />
+                        <ScrollViewer Grid.Row="2" MaxHeight="128" Margin="0,8,0,8" Style="{StaticResource FluentGutteredScrollViewerStyle}">
                             <ItemsControl ItemsSource="{Binding TokenChoices}">
-                                <ItemsControl.ItemsPanel>
-                                    <ItemsPanelTemplate>
-                                        <WrapPanel />
-                                    </ItemsPanelTemplate>
-                                </ItemsControl.ItemsPanel>
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <ui:Button
-                                            Margin="0,0,8,8"
-                                            Appearance="Secondary"
-                                            Command="{Binding DataContext.InsertTokenCommand, RelativeSource={RelativeSource AncestorType={x:Type Page}}}"
-                                            CommandParameter="{Binding}"
-                                            Content="{Binding DisplayName}"
-                                            IsEnabled="{Binding DataContext.CanEdit, RelativeSource={RelativeSource AncestorType={x:Type Page}}}"
-                                            ToolTip="{Binding Description}" />
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
+                                <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate><DataTemplate><ui:Button Margin="0,0,8,8" Command="{Binding DataContext.InsertTokenCommand, RelativeSource={RelativeSource AncestorType=Page}}" CommandParameter="{Binding}" Content="{Binding DisplayName}" ToolTip="{Binding Description}" /></DataTemplate></ItemsControl.ItemTemplate>
                             </ItemsControl>
-
-                            <TextBox
-                                x:Name="TemplateTextBox"
-                                MinHeight="136"
-                                Margin="0,4,0,14"
-                                Padding="10"
-                                HorizontalAlignment="Stretch"
-                                AcceptsReturn="True"
-                                AutomationProperties.Name="선택 항목 복사 템플릿"
-                                FontFamily="Consolas"
-                                IsEnabled="{Binding CanEdit}"
-                                Text="{Binding DraftTemplate, UpdateSourceTrigger=PropertyChanged}"
-                                TextWrapping="Wrap"
-                                VerticalScrollBarVisibility="Auto" />
-
-                            <TextBlock Style="{StaticResource OutputFieldLabelStyle}" Text="항목 사이 구분자" />
-                            <TextBlock
-                                Margin="0,0,0,5"
-                                Style="{StaticResource CaptionTextStyle}"
-                                Text="줄 바꿈은 \r\n, 탭은 \t처럼 입력하세요. 예: 쉼표로 구분하려면 , 를 입력합니다." />
-                            <TextBox
-                                HorizontalAlignment="Stretch"
-                                AutomationProperties.Name="출력 항목 사이 구분자"
-                                FontFamily="Consolas"
-                                IsEnabled="{Binding CanEdit}"
-                                Text="{Binding DraftItemSeparator, UpdateSourceTrigger=PropertyChanged}" />
-                        </StackPanel>
-                    </Border>
-
-                    <Border Style="{StaticResource FluentToolbarSurfaceStyle}">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock
-                                Margin="0,0,16,0"
-                                VerticalAlignment="Center"
-                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Text="중괄호를 그대로 출력하려면 {{ 또는 }}를 사용하세요."
-                                TextWrapping="Wrap" />
-                            <StackPanel Grid.Column="1" Orientation="Horizontal">
-                                <ui:Button
-                                    MinWidth="88"
-                                    Margin="0,0,8,0"
-                                    Appearance="Danger"
-                                    Command="{Binding DeleteCommand}"
-                                    Content="삭제"
-                                    Icon="{ui:SymbolIcon Symbol=Delete12}" />
-                                <ui:Button
-                                    MinWidth="96"
-                                    Appearance="Primary"
-                                    Command="{Binding SaveCommand}"
-                                    Content="저장"
-                                    Icon="{ui:SymbolIcon Symbol=Save16}" />
-                            </StackPanel>
-                        </Grid>
-                    </Border>
-                </StackPanel>
-            </ScrollViewer>
-        </Grid>
-    </Grid>
+                        </ScrollViewer>
+                        <ui:TextBox x:Name="TemplateTextBox" Grid.Row="3" MinHeight="260" HorizontalAlignment="Stretch" AcceptsReturn="True" FontFamily="Consolas" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Text="{Binding DraftTemplate, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{DynamicResource Loc.Workspace.Output.Template}" ToolTip="{DynamicResource Loc.Workspace.Output.Template.Help}" />
+                        <controls:SettingRowCard Grid.Row="4" Margin="0,8,0,0" Title="{DynamicResource Loc.Workspace.Output.Separator}" Description="{DynamicResource Loc.Workspace.Output.Separator.Help}">
+                            <ui:TextBox Text="{Binding DraftItemSeparator, UpdateSourceTrigger=PropertyChanged}" HorizontalAlignment="Stretch" FontFamily="Consolas" AutomationProperties.Name="{DynamicResource Loc.Workspace.Output.Separator}" />
+                        </controls:SettingRowCard>
+                    </Grid>
+                </ScrollViewer>
+            </controls:SplitWorkspace.PrimaryContent>
+            <controls:SplitWorkspace.SecondaryContent>
+                <Border Style="{StaticResource FluentSurfaceStyle}">
+                    <Grid><Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                        <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.Workspace.Output.Preview}" />
+                        <TextBlock Grid.Row="1" Margin="0,4,0,12" Text="{Binding PreviewValidationMessage}" Style="{StaticResource CaptionTextStyle}" AutomationProperties.LiveSetting="Polite" />
+                        <ui:TextBox Grid.Row="2" Text="{Binding PreviewText, Mode=OneWay}" IsReadOnly="True" AcceptsReturn="True" FontFamily="Consolas" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" AutomationProperties.Name="{DynamicResource Loc.Workspace.Output.Preview}" ToolTip="{DynamicResource Loc.Workspace.Output.Preview.Help}" />
+                    </Grid>
+                </Border>
+            </controls:SplitWorkspace.SecondaryContent>
+        </controls:SplitWorkspace>
+        <controls:CommandStrip Grid.Row="3" Margin="0,8,0,0">
+            <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <TextBlock Margin="0,0,12,0" VerticalAlignment="Center" Text="{Binding StatusMessage}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" ToolTip="{Binding StatusMessage}" AutomationProperties.LiveSetting="Polite" />
+                <ui:Button Grid.Column="1" MinWidth="112" Appearance="Primary" Command="{Binding SaveCommand}" Content="{DynamicResource Loc.Workspace.Output.Save}" ToolTip="{DynamicResource Loc.Workspace.Output.Save.Help}" ToolTipService.ShowOnDisabled="True" Icon="{ui:SymbolIcon Symbol=Save16}" />
+            </Grid>
+        </controls:CommandStrip>
+    </controls:WorkspacePageFrame>
 </Page>

@@ -21,11 +21,50 @@ public partial class CatalogPage
         InitializeComponent();
         ScanConsolePanel.DataContext = scanConsoleViewModel;
         DynamicProfileGrid.SetLayoutStore(ResultsGrid, gridLayoutStore);
+        viewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(CatalogViewModel.IsDetailsOpen)) ApplyWorkspaceLayout();
+        };
     }
 
-    private void OnPagePreviewKeyDown(object sender, KeyEventArgs e)
+    private void OnWorkspaceSizeChanged(object sender, System.Windows.SizeChangedEventArgs e) => ApplyWorkspaceLayout();
+
+    private void ApplyWorkspaceLayout()
     {
-        if (e.Key == Key.C
+        if (ScanConsolePanel is null || CatalogResultsWorkspace is null) return;
+        ScanConsolePanel.Height = Math.Max(120, CatalogPageLayout.ActualHeight * 0.3);
+        ScanConsolePanel.MaxHeight = Math.Max(120, CatalogPageLayout.ActualHeight * 0.45);
+        var reserveDetails = _viewModel.IsDetailsOpen && CatalogPageContent.ActualWidth >= 900;
+        CatalogResultsWorkspace.Margin = new System.Windows.Thickness(0, 0, reserveDetails ? 348 : 0, 0);
+        CatalogDetailsPanel.Width = Math.Min(340, Math.Max(200, CatalogPageContent.ActualWidth));
+    }
+
+    private async void OnPagePreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (ResultsGrid.IsKeyboardFocusWithin && Keyboard.FocusedElement is System.Windows.DependencyObject focused
+            && !ResultGridInput.IsInteractiveOrigin(focused)
+            && ResultsGrid.CurrentItem is CatalogItemViewModel { IsPlaceholder: false } current)
+        {
+            if (_viewModel.UsesQuerySelection && e.Key == Key.Space)
+            {
+                e.Handled = true;
+                await _viewModel.SelectRowAsync(current, additive: true, range: Keyboard.Modifiers.HasFlag(ModifierKeys.Shift));
+                return;
+            }
+            if (e.Key == Key.Enter && _viewModel.OpenItemCommand.CanExecute(current))
+            {
+                e.Handled = true;
+                _viewModel.OpenItemCommand.Execute(current);
+                return;
+            }
+        }
+        if (e.Key == Key.A && Keyboard.Modifiers.HasFlag(ModifierKeys.Control)
+            && Keyboard.FocusedElement is not TextBoxBase && Keyboard.FocusedElement is not System.Windows.Controls.PasswordBox)
+        {
+            _viewModel.SelectAllCommand.Execute(null);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.C
             && Keyboard.Modifiers.HasFlag(ModifierKeys.Control)
             && Keyboard.FocusedElement is not TextBoxBase
             && Keyboard.FocusedElement is not System.Windows.Controls.PasswordBox
@@ -33,6 +72,14 @@ public partial class CatalogPage
         {
             _viewModel.CopySelectionCommand.Execute(null);
             e.Handled = true;
+        }
+        else if (e.Key == Key.F && Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
+        {
+            SearchBox.Focus(); SearchBox.SelectAll(); e.Handled = true;
+        }
+        else if (e.Key == Key.F5 && _viewModel.ScanCommand.CanExecute(null))
+        {
+            _viewModel.ScanCommand.Execute(null); e.Handled = true;
         }
     }
 
@@ -55,7 +102,7 @@ public partial class CatalogPage
     private void OnResultsGridMouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
         if (e.OriginalSource is not System.Windows.DependencyObject source
-            || FindAncestor<TextBoxBase>(source) is not null
+            || ResultGridInput.IsInteractiveOrigin(source)
             || System.Windows.Controls.ItemsControl.ContainerFromElement(ResultsGrid, source)
                 is not System.Windows.Controls.DataGridRow row
             || row.Item is not CatalogItemViewModel item)
@@ -70,8 +117,20 @@ public partial class CatalogPage
         }
     }
 
-    private void OnResultsGridPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    private async void OnResultsGridPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
+        if (_viewModel.UsesQuerySelection && e.OriginalSource is System.Windows.DependencyObject querySource
+            && !ResultGridInput.IsInteractiveOrigin(querySource)
+            && System.Windows.Controls.ItemsControl.ContainerFromElement(ResultsGrid, querySource) is System.Windows.Controls.DataGridRow row)
+        {
+            e.Handled = true;
+            if (row.Item is not CatalogItemViewModel { IsPlaceholder: false } item) return;
+            ResultsGrid.SelectedItem = item;
+            ResultsGrid.CurrentItem = item;
+            row.Focus();
+            await _viewModel.SelectRowAsync(item, Keyboard.Modifiers.HasFlag(ModifierKeys.Control), Keyboard.Modifiers.HasFlag(ModifierKeys.Shift));
+            return;
+        }
         if (e.OriginalSource is not System.Windows.DependencyObject source
             || FindAncestor<TextBoxBase>(source) is null)
         {
@@ -126,7 +185,7 @@ public partial class CatalogPage
         System.Windows.Controls.SelectionChangedEventArgs e) =>
         UpdateSelectionSnapshot();
 
-    private void OnResultsGridPreviewMouseRightButtonDown(
+    private async void OnResultsGridPreviewMouseRightButtonDown(
         object sender,
         MouseButtonEventArgs e)
     {
@@ -139,6 +198,15 @@ public partial class CatalogPage
         }
 
         _pointerContextItem = row.Item as CatalogItemViewModel;
+        if (_pointerContextItem?.IsPlaceholder != false) { _pointerContextItem = null; return; }
+        if (_viewModel.UsesQuerySelection)
+        {
+            ResultsGrid.CurrentItem = row.Item;
+            row.Focus();
+            if (!_pointerContextItem.IsSelected) await _viewModel.SelectRowAsync(_pointerContextItem, additive: false, range: false);
+            return;
+        }
+
         if (!row.IsSelected)
         {
             ResultsGrid.SelectedItems.Clear();
@@ -159,7 +227,7 @@ public partial class CatalogPage
         if (e.CursorLeft < 0)
         {
             // Keyboard invocation uses the DataGrid's current row.
-            e.Handled = ResultsGrid.CurrentItem is not CatalogItemViewModel;
+            e.Handled = ResultsGrid.CurrentItem is not CatalogItemViewModel { IsPlaceholder: false };
             return;
         }
 
@@ -168,39 +236,22 @@ public partial class CatalogPage
         e.Handled = _pointerContextItem is null;
     }
 
-    private void OnSelectAllClick(object sender, System.Windows.RoutedEventArgs e) =>
-        ResultsGrid.SelectAll();
-
-    private void OnClearSelectionClick(object sender, System.Windows.RoutedEventArgs e) =>
-        ResultsGrid.UnselectAll();
-
-    private void OnInvertSelectionClick(object sender, System.Windows.RoutedEventArgs e)
-    {
-        var selected = ResultsGrid.SelectedItems.Cast<object>().ToHashSet();
-        ResultsGrid.SelectionChanged -= OnResultsGridSelectionChanged;
-        try
-        {
-            ResultsGrid.SelectedItems.Clear();
-            foreach (var item in ResultsGrid.Items.Cast<object>())
-            {
-                if (!selected.Contains(item))
-                {
-                    ResultsGrid.SelectedItems.Add(item);
-                }
-            }
-        }
-        finally
-        {
-            ResultsGrid.SelectionChanged += OnResultsGridSelectionChanged;
-            UpdateSelectionSnapshot();
-        }
-    }
-
     private void UpdateSelectionSnapshot()
     {
-        var selected = ResultsGrid.SelectedItems.Cast<object>().ToHashSet();
-        _viewModel.SetSelection(ResultsGrid.Items
-            .Cast<CatalogItemViewModel>()
-            .Where(selected.Contains));
+        if (_viewModel.UsesQuerySelection) return;
+        _viewModel.SetSelection(ResultsGrid.SelectedItems.OfType<CatalogItemViewModel>());
+    }
+
+    private void OnResultsGridSorting(object sender, System.Windows.Controls.DataGridSortingEventArgs e)
+    {
+        if (!_viewModel.UsesQuerySelection) return;
+        e.Handled = true;
+        var direction = e.Column.SortDirection == System.ComponentModel.ListSortDirection.Ascending
+            ? FindEverything.Application.Indexing.EntrySortDirection.Descending
+            : FindEverything.Application.Indexing.EntrySortDirection.Ascending;
+        foreach (var column in ResultsGrid.Columns) column.SortDirection = null;
+        e.Column.SortDirection = direction == FindEverything.Application.Indexing.EntrySortDirection.Ascending
+            ? System.ComponentModel.ListSortDirection.Ascending : System.ComponentModel.ListSortDirection.Descending;
+        _viewModel.ApplySort(e.Column.SortMemberPath, direction);
     }
 }

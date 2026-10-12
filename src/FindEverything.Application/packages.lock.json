@@ -82,16 +82,6 @@
       },
       "findeverything.profile.abstractions": {
         "type": "Project"
-      },
-      "findeverything.profile.runtime": {
-        "type": "Project",
-        "dependencies": {
-          "FindEverything.Profile.Abstractions": "[1.0.0, )",
-          "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
-          "Microsoft.Extensions.Logging.Abstractions": "[10.0.12, )",
-          "Microsoft.Extensions.Options.ConfigurationExtensions": "[10.0.12, )",
-          "Microsoft.Extensions.Options.DataAnnotations": "[10.0.12, )"
-        }
       }
     }
   }

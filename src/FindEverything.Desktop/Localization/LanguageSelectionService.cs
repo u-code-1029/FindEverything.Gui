@@ -1,5 +1,6 @@
 using FindEverything.Application.Options;
 using FindEverything.Desktop.Hosting;
+using FindEverything.Desktop.Services;
 
 namespace FindEverything.Desktop.Localization;
 
@@ -15,7 +16,8 @@ public interface ILanguageSelectionService
 public sealed class LanguageSelectionService(
     IAppLocalizer localizer,
     IUserSettingsWriter settingsWriter,
-    IApplicationRestartCoordinator restartCoordinator) : ILanguageSelectionService
+    IApplicationRestartCoordinator restartCoordinator,
+    IDraftProtectionService? draftProtection = null) : ILanguageSelectionService
 {
     private readonly SemaphoreSlim _changeGate = new(1, 1);
 
@@ -42,6 +44,12 @@ public sealed class LanguageSelectionService(
                     normalizedCultureName,
                     CurrentCultureName,
                     StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            if (draftProtection is not null
+                && !await draftProtection.ConfirmAllAsync().ConfigureAwait(false))
             {
                 return false;
             }

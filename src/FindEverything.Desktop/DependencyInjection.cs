@@ -1,5 +1,6 @@
 using FindEverything.Application.Catalog;
 using FindEverything.Application.Options;
+using FindEverything.Infrastructure.Persistence;
 using FindEverything.Desktop.Appearance;
 using FindEverything.Desktop.Configuration;
 using FindEverything.Desktop.Hosting;
@@ -72,6 +73,12 @@ public static class DependencyInjection
         services.AddSingleton<IApplicationRestartCoordinator>(
             static provider => provider.GetRequiredService<ApplicationRestartCoordinator>());
         services.AddSingleton<IAppLocalizer, AppLocalizer>();
+        services.AddSingleton<IUiScheduler, WpfUiScheduler>();
+        services.AddSingleton<IDraftDecisionPrompt, ContentDialogDraftDecisionPrompt>();
+        services.AddSingleton<IDraftProtectionService, DraftProtectionService>();
+        services.AddSingleton(_ => new SqliteCatalogProjectionStore(paths.ResultsDatabaseFile));
+        services.AddSingleton<ICatalogProjectionStore>(provider => provider.GetRequiredService<SqliteCatalogProjectionStore>());
+        services.AddSingleton<IUserInputStore>(provider => provider.GetRequiredService<SqliteCatalogProjectionStore>());
         services.AddSingleton<ILanguageSelectionService, LanguageSelectionService>();
         services.AddSingleton<IIndexDatabasePathResolver, IndexDatabasePathResolver>();
         services.AddSingleton<IWorkspaceContext, WorkspaceContext>();

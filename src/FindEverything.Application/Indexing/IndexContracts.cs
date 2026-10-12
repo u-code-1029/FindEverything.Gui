@@ -234,7 +234,8 @@ public enum EntrySortField
     Kind,
     Size,
     Created,
-    Modified
+    Modified,
+    FileType
 }
 
 public enum EntrySortDirection
@@ -249,6 +250,9 @@ public enum EntrySortDirection
 /// </summary>
 public sealed record EntrySearchRequest(string RootPath)
 {
+    /// <summary>Optional exact absolute-path restriction, at most 1000 paths per request.</summary>
+    public IReadOnlyList<string> FullPaths { get; init; } = [];
+
     /// <summary>
     /// Case-insensitive, whitespace-delimited literal terms; every term must occur in the name or full path.
     /// </summary>
@@ -275,6 +279,12 @@ public sealed record EntrySearchRequest(string RootPath)
     public int Limit { get; init; } = 250;
 
     public int Offset { get; init; }
+
+    public bool IncludeTotalCount { get; init; } = true;
+
+    public Guid? ExpectedScanId { get; init; }
+
+    public string? AfterCursor { get; init; }
 }
 
 public sealed record IndexedPathEntry(
@@ -291,7 +301,14 @@ public sealed record EntrySearchResult(
     IReadOnlyList<IndexedPathEntry> Entries,
     long TotalCount,
     bool HasMore,
-    bool HasPendingScopes);
+    bool HasPendingScopes)
+{
+    public bool TotalCountIncluded { get; init; } = true;
+
+    public Guid? LastScanId { get; init; }
+
+    public string? NextCursor { get; init; }
+}
 
 public enum IndexRootAvailability
 {

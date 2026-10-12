@@ -1,3 +1,4 @@
+// The default path policy is platform independent; Windows mapping is injected.
 namespace FindEverything.Profile.Runtime;
 
 /// <summary>

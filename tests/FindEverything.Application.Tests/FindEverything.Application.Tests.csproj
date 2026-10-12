@@ -4,7 +4,11 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
+    <!-- The virtual list has no WPF dependencies; verify its bounds on every OS. -->
+    <Compile Include="../../src/FindEverything.Desktop/Results/VirtualResultCollection.cs" Link="Desktop/VirtualResultCollection.cs" />
     <ProjectReference Include="../../src/FindEverything.Application/FindEverything.Application.csproj" />
+    <!-- Tests exercise the real compiler without making Application depend on it. -->
+    <ProjectReference Include="../../src/FindEverything.Profile.Runtime/FindEverything.Profile.Runtime.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />

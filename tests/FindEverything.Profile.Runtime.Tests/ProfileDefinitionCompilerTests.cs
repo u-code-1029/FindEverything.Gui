@@ -849,6 +849,55 @@ public sealed class ProfileDefinitionCompilerTests
             diagnostic.Code == "user_input_field_id_duplicate");
     }
 
+    [Fact]
+    public void Text_column_refresh_reads_only_requested_field_without_remapping_path()
+    {
+        using var provider = BuildProvider();
+        var manifest = CompositeDateManifest();
+        manifest.TextFileFields =
+        [
+            new ProfileTextFileFieldManifest { FieldId = "notes", Header = "메모", FileNamePattern = "notes\\.txt", Required = false },
+            new ProfileTextFileFieldManifest { FieldId = "required-other", Header = "다른 필수 파일", FileNamePattern = "missing\\.txt", Required = true },
+        ];
+        var profile = Compile(provider, manifest);
+        var root = Path.Combine(Path.GetTempPath(), $"findeverything-text-column-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            File.WriteAllText(Path.Combine(root, "notes.txt"), "Updated notes");
+            Assert.Equal(ProfileMapStatus.NoMatch, profile.Map(new ProfilePathCandidate(root)).Status);
+            var result = profile.ReadTextColumn(root, "notes");
+            Assert.Equal("Updated notes", result.Value);
+            Assert.Empty(result.Issues);
+            var other = profile.ReadTextColumn(root, "required-other");
+            Assert.Equal("required_text_file_missing", Assert.Single(other.Issues).Code);
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public void Text_column_refresh_does_not_descend_and_optional_missing_is_null()
+    {
+        using var provider = BuildProvider();
+        var manifest = CompositeDateManifest();
+        manifest.TextFileFields =
+        [new ProfileTextFileFieldManifest { FieldId = "notes", Header = "메모", FileNamePattern = "notes\\.txt", Required = false }];
+        var profile = Compile(provider, manifest);
+        var root = Path.Combine(Path.GetTempPath(), $"findeverything-text-column-{Guid.NewGuid():N}");
+        var child = Path.Combine(root, "child");
+        Directory.CreateDirectory(child);
+        try
+        {
+            File.WriteAllText(Path.Combine(child, "notes.txt"), "Must not be read");
+            var result = profile.ReadTextColumn(root, "notes");
+            Assert.Null(result.Value);
+            Assert.Empty(result.Issues);
+            var unknown = profile.ReadTextColumn(root, "name");
+            Assert.Equal("text_column_not_found", Assert.Single(unknown.Issues).Code);
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
     private static ServiceProvider BuildProvider()
     {
         var services = new ServiceCollection();

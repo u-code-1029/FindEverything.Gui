@@ -61,7 +61,7 @@ internal sealed class FindEverythingIndexSession : IIndexSession
                 ? new List<IndexedDirectory>()
                 : null;
             var hasPendingScopes = false;
-            var offset = 0;
+            string? cursor = null;
             var snapshot = await _store.GetRootStatusAsync(
                 request.RootPath,
                 cancellationToken).ConfigureAwait(false);
@@ -74,7 +74,9 @@ internal sealed class FindEverythingIndexSession : IIndexSession
                     RootPath = request.RootPath,
                     Kind = Engine.EntryKind.Directory,
                     Limit = request.PageSize,
-                    Offset = offset
+                    IncludeTotalCount = false,
+                    ExpectedScanId = snapshot?.LastScanId,
+                    AfterCursor = cursor
                 }, cancellationToken).ConfigureAwait(false);
 
                 hasPendingScopes |= page.HasPendingScopes;
@@ -100,13 +102,12 @@ internal sealed class FindEverythingIndexSession : IIndexSession
                 if (page.Entries.Count == 0)
                     throw new InvalidDataException("The index returned an empty page with more results available.");
 
-                offset = checked(offset + page.Entries.Count);
+                cursor = page.NextCursor
+                    ?? throw new InvalidDataException("The index returned more results without a sequential cursor.");
             }
 
-            // GetRootStatus includes the root entry count. Checking it after every
-            // page would turn a large paged read into repeated full-root counts.
-            // A before/after generation fence still detects every publish that can
-            // shift offset boundaries; the caller discards the whole attempt.
+            // Each page checks its generation in the row read transaction. This
+            // final fence also notices publication during the last consumer call.
             await EnsureSnapshotUnchangedAsync(
                 request.RootPath,
                 snapshot,
@@ -147,6 +148,7 @@ internal sealed class FindEverythingIndexSession : IIndexSession
             var result = await _store.SearchAsync(new Engine.SearchQuery
             {
                 RootPath = request.RootPath,
+                FullPaths = request.FullPaths,
                 SearchText = request.Keyword,
                 Kind = request.Kind is null ? null : ToEngineKind(request.Kind.Value),
                 MinSizeBytes = request.MinSizeBytes,
@@ -158,14 +160,22 @@ internal sealed class FindEverythingIndexSession : IIndexSession
                 SortBy = ToEngineSortField(request.SortBy),
                 SortDirection = ToEngineSortDirection(request.SortDirection),
                 Limit = request.Limit,
-                Offset = request.Offset
+                Offset = request.Offset,
+                IncludeTotalCount = request.IncludeTotalCount,
+                ExpectedScanId = request.ExpectedScanId,
+                AfterCursor = request.AfterCursor
             }, cancellationToken).ConfigureAwait(false);
 
             return new EntrySearchResult(
                 result.Entries.Select(ToApplicationEntry).ToArray(),
                 result.TotalCount,
                 result.HasMore,
-                result.HasPendingScopes);
+                result.HasPendingScopes)
+            {
+                TotalCountIncluded = result.TotalCountIncluded,
+                LastScanId = result.LastScanId,
+                NextCursor = result.NextCursor,
+            };
         }, cancellationToken);
     }
 
@@ -230,8 +240,11 @@ internal sealed class FindEverythingIndexSession : IIndexSession
         try
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            using var processLease = await ProcessIndexOperationGate.EnterAsync(cancellationToken).ConfigureAwait(false);
             return await operation().ConfigureAwait(false);
+        }
+        catch (Engine.PublishedIndexChangedException error)
+        {
+            throw new IndexSnapshotChangedException(error.RootPath, error.ExpectedScanId, error.ActualScanId);
         }
         finally
         {
@@ -391,6 +404,7 @@ internal sealed class FindEverythingIndexSession : IIndexSession
         EntrySortField.Size => Engine.EntrySortField.Size,
         EntrySortField.Created => Engine.EntrySortField.Created,
         EntrySortField.Modified => Engine.EntrySortField.Modified,
+        EntrySortField.FileType => Engine.EntrySortField.FileType,
         _ => throw new ArgumentOutOfRangeException(nameof(sortField), sortField, "Unknown sort field.")
     };
 
@@ -408,6 +422,9 @@ internal sealed class FindEverythingIndexSession : IIndexSession
     private static void ValidateEntrySearchRequest(EntrySearchRequest request)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(request.RootPath);
+        ArgumentNullException.ThrowIfNull(request.FullPaths);
+        if (request.FullPaths.Count > 1000 || request.FullPaths.Any(path => string.IsNullOrWhiteSpace(path) || !Path.IsPathFullyQualified(path)))
+            throw new ArgumentException("Exact path searches require at most 1000 absolute paths.", nameof(request));
         if (request.Limit is < 1 or > 1000)
             throw new ArgumentOutOfRangeException(nameof(request), "Limit must be between 1 and 1000.");
         if (request.Offset < 0)

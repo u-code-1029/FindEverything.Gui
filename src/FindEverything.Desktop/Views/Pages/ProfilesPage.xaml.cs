@@ -15,6 +15,25 @@ public partial class ProfilesPage
         viewModel.EditorStepChanged += OnEditorStepChanged;
     }
 
+    private void OnProfileWorkspaceSizeChanged(object sender, System.Windows.SizeChangedEventArgs e) => ApplyWorkspaceLayout();
+
+    private void OnAssignmentPickerVisibilityChanged(object sender, System.Windows.DependencyPropertyChangedEventArgs e) => ApplyWorkspaceLayout();
+
+    private void ApplyWorkspaceLayout()
+    {
+        if (ProfileStepButtons is null || GuidedWorkspace is null || AssignmentPickerPanel is null) return;
+        var compact = ProfilePageLayout.ActualWidth < 900;
+        ProfileStepButtons.Columns = compact ? 2 : 4;
+        var showPicker = AssignmentPickerPanel.Visibility == System.Windows.Visibility.Visible;
+        System.Windows.Controls.Grid.SetColumn(AssignmentPickerPanel, compact ? 0 : 2);
+        System.Windows.Controls.Grid.SetRow(AssignmentPickerPanel, compact ? 1 : 0);
+        System.Windows.Controls.Grid.SetColumnSpan(AssignmentPickerPanel, compact ? 3 : 1);
+        GuidedEditorColumn.Width = new System.Windows.GridLength(showPicker && !compact ? 0.65 : 1, System.Windows.GridUnitType.Star);
+        GuidedGapColumn.Width = new System.Windows.GridLength(showPicker && !compact ? 16 : 0);
+        GuidedChoicesColumn.Width = new System.Windows.GridLength(showPicker && !compact ? 0.35 : 0, System.Windows.GridUnitType.Star);
+        AssignmentPickerPanel.Margin = compact ? new System.Windows.Thickness(0, 12, 0, 0) : new System.Windows.Thickness(0);
+    }
+
     private void OnEditorStepChanged(object? sender, EventArgs e)
     {
         if (Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished)

@@ -4,6 +4,8 @@ public sealed record AppPaths(
     string LocalDataDirectory,
     string UserSettingsFile)
 {
+    public string ResultsDatabaseFile => Path.Combine(LocalDataDirectory, "results.db");
+
     public string GridLayoutFile => Path.Combine(LocalDataDirectory, "grid-layout.json");
 
     public string SelectionOutputFormatsFile =>

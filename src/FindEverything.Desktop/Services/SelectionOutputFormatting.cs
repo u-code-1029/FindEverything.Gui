@@ -48,12 +48,72 @@ public interface ISelectionOutputFormatter
     string Format(
         Configuration.SelectionOutputFormatDefinition format,
         IEnumerable<SelectionOutputItem> items);
+
+    async Task<string> FormatAsync(Configuration.SelectionOutputFormatDefinition format,
+        IAsyncEnumerable<SelectionOutputItem> items, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var builder = new StringBuilder();
+        var first = true;
+        await foreach (var item in items.WithCancellation(cancellationToken).ConfigureAwait(false))
+        {
+            if (!first) builder.Append(format.ItemSeparator);
+            first = false;
+            builder.Append(Format(format with { ItemSeparator = string.Empty }, [item]));
+            if (builder.Length > 32 * 1024 * 1024) throw new InvalidOperationException("Clipboard output exceeds 32 Mi characters.");
+        }
+        return builder.ToString();
+    }
 }
 
 public sealed class SelectionOutputFormatter(IAppLocalizer? localizer = null) : ISelectionOutputFormatter
 {
     private const int MaximumTemplateCharacters = 16_384;
     private const int MaximumOutputCharacters = 32 * 1024 * 1024;
+
+    public async Task<string> FormatAsync(Configuration.SelectionOutputFormatDefinition format,
+        IAsyncEnumerable<SelectionOutputItem> items, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        ArgumentNullException.ThrowIfNull(format);
+        ArgumentNullException.ThrowIfNull(items);
+        var template = format.Template ?? throw new FormatException(L(
+            "Loc.Output.Validation.TemplateRequired", "출력 템플릿을 입력하세요."));
+        if (template.Length > MaximumTemplateCharacters) throw new FormatException(L(
+            "Loc.Output.Validation.TemplateTooLong", "출력 템플릿은 16,384자 이하여야 합니다."));
+        var errors = new List<string>();
+        var segments = Parse(template, errors);
+        if (segments.Count == 0 && errors.Count == 0) errors.Add(L(
+            "Loc.Output.Validation.TemplateRequired", "출력 템플릿을 입력하세요."));
+        if (errors.Count > 0) throw new FormatException(string.Join(Environment.NewLine, errors));
+
+        var builder = new StringBuilder();
+        var first = true;
+        await foreach (var item in items.WithCancellation(cancellationToken).ConfigureAwait(false))
+        {
+            ArgumentNullException.ThrowIfNull(item);
+            ArgumentNullException.ThrowIfNull(item.Fields);
+            if (!first) AppendChecked(builder, format.ItemSeparator ?? string.Empty);
+            first = false;
+            foreach (var segment in segments)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var value = segment.Kind switch
+                {
+                    SegmentKind.Literal => segment.Value,
+                    SegmentKind.FullPath => item.FullPath,
+                    SegmentKind.FolderPath => item.FolderPath,
+                    SegmentKind.Name => item.Name,
+                    SegmentKind.Field => FormatField(item.Fields, segment.Value),
+                    _ => throw new InvalidOperationException(L(
+                        "Loc.Output.Validation.UnsupportedSegment", "지원되지 않는 출력 템플릿 조각입니다.")),
+                };
+                AppendChecked(builder, value ?? string.Empty);
+            }
+        }
+        cancellationToken.ThrowIfCancellationRequested();
+        return builder.ToString();
+    }
 
     public SelectionOutputTemplateValidation ValidateTemplate(
         string template,

@@ -15,6 +15,7 @@ public partial class HomeViewModel : ObservableObject, IDisposable
     private readonly IApplicationOperationCoordinator _operationCoordinator;
     private readonly IHomeNavigationService _navigationService;
     private readonly IAppLocalizer _localizer;
+    private readonly IUiScheduler _uiScheduler;
     private bool _disposed;
 
     [ObservableProperty]
@@ -80,7 +81,8 @@ public partial class HomeViewModel : ObservableObject, IDisposable
         IIndexDatabasePathResolver databasePathResolver,
         IApplicationOperationCoordinator operationCoordinator,
         IHomeNavigationService navigationService,
-        IAppLocalizer localizer)
+        IAppLocalizer localizer,
+        IUiScheduler? uiScheduler = null)
     {
         _workspaceContext = workspaceContext;
         _profileCatalog = profileCatalog;
@@ -88,6 +90,7 @@ public partial class HomeViewModel : ObservableObject, IDisposable
         _operationCoordinator = operationCoordinator;
         _navigationService = navigationService;
         _localizer = localizer;
+        _uiScheduler = uiScheduler ?? ImmediateUiScheduler.Instance;
 
         _workspaceContext.Changed += OnWorkspaceChanged;
         _profileCatalog.Changed += OnProfileCatalogChanged;
@@ -255,20 +258,10 @@ public partial class HomeViewModel : ObservableObject, IDisposable
             string.Equals(pair.Key, profileId, StringComparison.OrdinalIgnoreCase)
             && !string.IsNullOrWhiteSpace(pair.Value)) == true;
 
-    private void Dispatch(Action action)
+    private void Dispatch(Action action) => _uiScheduler.Post(() =>
     {
-        var dispatcher = System.Windows.Application.Current?.Dispatcher;
-        if (dispatcher is null || dispatcher.CheckAccess())
-        {
-            action();
-            return;
-        }
-
-        if (!dispatcher.HasShutdownStarted && !dispatcher.HasShutdownFinished)
-        {
-            _ = dispatcher.BeginInvoke(action);
-        }
-    }
+        if (!_disposed) action();
+    });
 
     private string L(string key, string koreanFallback) =>
         _localizer.Get(key, koreanFallback);

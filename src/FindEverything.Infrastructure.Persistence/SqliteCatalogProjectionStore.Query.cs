@@ -1,0 +1,404 @@
+using System.Globalization;
+using System.Runtime.CompilerServices;
+using FindEverything.Application.Catalog;
+using FindEverything.Application.Results;
+using FindEverything.Profile.Runtime;
+using Microsoft.Data.Sqlite;
+
+namespace FindEverything.Infrastructure.Persistence;
+
+public sealed partial class SqliteCatalogProjectionStore
+{
+    private sealed class ProjectionQuery : IResultQuerySession<CatalogProjectionRow>
+    {
+        private readonly SqliteCatalogProjectionStore _owner;
+        private readonly string _generation;
+        private readonly CatalogProjectionScope _scope;
+        private readonly IReadOnlyList<ProfileFieldDescriptor> _inputFields;
+        private readonly IReadOnlyList<string> _textFieldIds;
+        private readonly CatalogProjectionQuery _query;
+        private readonly ProfileFieldDescriptor? _sortField;
+        private readonly bool _building;
+        private readonly string[] _terms;
+        private readonly long _buildingRevision;
+        private readonly long _notesRevision;
+        private int _disposed;
+
+        public ProjectionQuery(SqliteCatalogProjectionStore owner, string generation,
+            CatalogProjectionScope scope, IReadOnlyList<ProfileFieldDescriptor> fields,
+            CatalogProjectionQuery query, bool building)
+        {
+            ArgumentNullException.ThrowIfNull(query);
+            if (query.TextPreviewCharacters < 0)
+                throw new ArgumentOutOfRangeException(nameof(query), "A text preview limit cannot be negative.");
+            _owner = owner;
+            _generation = generation;
+            _scope = scope;
+            _inputFields = fields.Where(field => field.SourceKind == ProfileFieldSourceKind.UserInput).ToArray();
+            _textFieldIds = fields.Where(field => field.SourceKind == ProfileFieldSourceKind.TextFileContent)
+                .Select(field => field.FieldId.ToLowerInvariant()).ToArray();
+            _query = query;
+            _building = building;
+            _sortField = query.SortFieldId is "FullPath" or "CoveragePending" ? null
+                : fields.FirstOrDefault(field => string.Equals(field.FieldId, query.SortFieldId, StringComparison.OrdinalIgnoreCase));
+            if (!string.IsNullOrWhiteSpace(query.SortFieldId) && _sortField is null
+                && query.SortFieldId is not "FullPath" and not "fullPath" and not "CoveragePending")
+                throw new ArgumentException("The sort field is not defined by the profile.", nameof(query));
+            _terms = (query.Keyword ?? string.Empty).Split((char[]?)null,
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(term => term.ToLowerInvariant()).Distinct(StringComparer.Ordinal).ToArray();
+            _owner._leases.AddOrUpdate(generation, 1, static (_, value) => value + 1);
+            try
+            {
+                using var connection = _owner.OpenConnection();
+                using var transaction = connection.BeginTransaction(deferred: true);
+                _notesRevision = NotesRevision(connection, transaction, _scope.ProfileId);
+                if (_building)
+                {
+                    using var revision = connection.CreateCommand();
+                    revision.Transaction = transaction;
+                    revision.CommandText = "SELECT revision FROM projection_generations WHERE generation=$generation;";
+                    revision.Parameters.AddWithValue("$generation", _generation);
+                    _buildingRevision = Convert.ToInt64(revision.ExecuteScalar(), CultureInfo.InvariantCulture);
+                }
+                EnsureGeneration(connection, transaction);
+            }
+            catch
+            {
+                ReleaseLease();
+                throw;
+            }
+        }
+
+        public string Identity => _building ? _generation + ":" + _buildingRevision : _generation;
+
+        public async Task<long> CountAsync(CancellationToken cancellationToken = default)
+        {
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+            cancellationToken.ThrowIfCancellationRequested();
+            using var connection = _owner.OpenConnection();
+            using var transaction = connection.BeginTransaction(deferred: true);
+            EnsureGeneration(connection, transaction);
+            if (_terms.Length == 0)
+            {
+                using var count = connection.CreateCommand();
+                count.Transaction = transaction;
+                count.CommandText = "SELECT row_count FROM projection_generations WHERE generation=$generation;";
+                count.Parameters.AddWithValue("$generation", _generation);
+                return Convert.ToInt64(await count.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false), CultureInfo.InvariantCulture);
+            }
+            using var command = BuildCommand(connection, transaction, "user_inputs", null, null, null);
+            command.CommandText = "SELECT COUNT(*) " + command.CommandText;
+            return Convert.ToInt64(await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false), CultureInfo.InvariantCulture);
+        }
+
+        public async Task<ResultPage<CatalogProjectionRow>> ReadRangeAsync(int offset, int limit,
+            CancellationToken cancellationToken = default)
+        {
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+            ValidateRange(offset, limit);
+            using var connection = _owner.OpenConnection();
+            return await ReadPageAsync(connection, "user_inputs", null, offset, limit,
+                checkPublication: true, previewCharacters: _query.TextPreviewCharacters, cancellationToken).ConfigureAwait(false);
+        }
+
+        public async IAsyncEnumerable<CatalogProjectionRow> EnumerateSelectionAsync(QuerySelection selection,
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+            ArgumentNullException.ThrowIfNull(selection);
+            var captured = selection.Capture();
+            // Retain the immutable projection independently of the UI query lifetime.
+            _owner._leases.AddOrUpdate(_generation, 1, static (_, value) => value + 1);
+            try
+            {
+                using var connection = _owner.OpenConnection();
+                using (var transaction = connection.BeginTransaction(deferred: true))
+                {
+                    EnsureGeneration(connection, transaction);
+                    using var capture = connection.CreateCommand();
+                    capture.Transaction = transaction;
+                    capture.CommandText = """
+                        CREATE TEMP TABLE captured_notes AS SELECT * FROM user_inputs WHERE profile_key=$profile;
+                        CREATE INDEX captured_notes_key ON captured_notes(profile_key, path_key, field_id);
+                        CREATE TEMP TABLE selection_keys(path_key TEXT PRIMARY KEY COLLATE BINARY) WITHOUT ROWID;
+                        """;
+                    capture.Parameters.AddWithValue("$profile", ProfileKey(_scope.ProfileId));
+                    await capture.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+                    capture.CommandText = "INSERT OR IGNORE INTO selection_keys(path_key) VALUES($path);";
+                    capture.Parameters.Clear();
+                    var key = capture.Parameters.Add("$path", SqliteType.Text);
+                    capture.Prepare();
+                    foreach (var selectedKey in captured.Keys)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        key.Value = PathKey(selectedKey);
+                        await capture.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+                    }
+                    transaction.Commit();
+                }
+                var offset = 0;
+                while (true)
+                {
+                    var page = await ReadPageAsync(connection, "captured_notes", captured,
+                        offset, BatchSize, checkPublication: false, previewCharacters: 0, cancellationToken).ConfigureAwait(false);
+                    foreach (var row in page.Items)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        yield return row;
+                    }
+                    if (!page.HasMore) break;
+                    offset = checked(offset + page.Items.Count);
+                }
+            }
+            finally { ReleaseLease(); }
+        }
+
+        private async Task<ResultPage<CatalogProjectionRow>> ReadPageAsync(SqliteConnection connection,
+            string notesTable, QuerySelection? selection, int offset, int limit,
+            bool checkPublication, int previewCharacters, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var rows = new List<CatalogProjectionRow>(limit + 1);
+            var hasMore = false;
+            var bufferedBytes = 0L;
+            using (var transaction = connection.BeginTransaction(deferred: true))
+            {
+                EnsureGeneration(connection, transaction, checkPublication);
+                using var command = BuildCommand(connection, transaction, notesTable, selection, offset, limit);
+                var (valuesJson, previewFields) = PreviewSql(command, previewCharacters);
+                command.CommandText = $"SELECT r.full_path, r.relative_path, r.rule_id, {valuesJson}, r.coverage, r.errors_json, r.path_key, {previewFields} " + command.CommandText;
+                using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+                while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                {
+                    if (rows.Count == limit) { hasMore = true; break; }
+                    var serializedValues = reader.GetString(3);
+                    if (previewCharacters == 0 && rows.Count > 0
+                        && bufferedBytes + 2L * serializedValues.Length > 8L * 1024 * 1024)
+                    {
+                        hasMore = true;
+                        break;
+                    }
+                    rows.Add(new CatalogProjectionRow(reader.GetString(0), reader.GetString(1), reader.GetString(2),
+                        DeserializeValues(serializedValues), reader.GetBoolean(4),
+                        Deserialize<Dictionary<string, string>>(reader.GetString(5)))
+                    { PreviewFields = Deserialize<string[]>(reader.GetString(7)) });
+                    bufferedBytes += 2L * serializedValues.Length;
+                    if (previewCharacters == 0 && bufferedBytes >= 8L * 1024 * 1024)
+                    {
+                        hasMore = await reader.ReadAsync(cancellationToken).ConfigureAwait(false);
+                        break;
+                    }
+                }
+                reader.Close();
+                // Bounded per-page note lookup uses the same read transaction as rows.
+                var notesByPath = new Dictionary<string, Dictionary<string, string>>(StringComparer.Ordinal);
+                if (_inputFields.Count > 0 && rows.Count > 0)
+                {
+                    using var notes = connection.CreateCommand();
+                    notes.Transaction = transaction;
+                    var parameters = new List<string>(rows.Count);
+                    notes.Parameters.AddWithValue("$profile", ProfileKey(_scope.ProfileId));
+                    for (var index = 0; index < rows.Count; index++)
+                    {
+                        var parameter = "$path" + index;
+                        parameters.Add(parameter);
+                        notes.Parameters.AddWithValue(parameter, PathKey(rows[index].FullPath));
+                    }
+                    notes.CommandText = $"SELECT path_key, field_id, value FROM {notesTable} WHERE profile_key=$profile AND path_key IN ({string.Join(',', parameters)});";
+                    using var noteReader = await notes.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+                    while (await noteReader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                    {
+                        var path = noteReader.GetString(0);
+                        if (!notesByPath.TryGetValue(path, out var rowNotes))
+                            notesByPath[path] = rowNotes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                        rowNotes[noteReader.GetString(1)] = noteReader.GetString(2);
+                    }
+                }
+                if (_inputFields.Count > 0)
+                    for (var rowIndex = 0; rowIndex < rows.Count; rowIndex++)
+                    {
+                        var row = rows[rowIndex];
+                        var values = row.Values.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
+                        notesByPath.TryGetValue(PathKey(row.FullPath), out var rowNotes);
+                        foreach (var field in _inputFields)
+                            values[field.FieldId] = rowNotes is not null && rowNotes.TryGetValue(field.FieldId, out var note)
+                                ? note : field.DefaultValue ?? string.Empty;
+                        rows[rowIndex] = row with { Values = values };
+                    }
+                if (previewCharacters == 0)
+                {
+                    var returnedBytes = 0L;
+                    for (var index = 0; index < rows.Count; index++)
+                    {
+                        var valueBytes = rows[index].Values.Sum(pair => pair.Value is string text ? 2L * text.Length : 64L);
+                        if (index > 0 && returnedBytes + valueBytes > 8L * 1024 * 1024)
+                        {
+                            rows.RemoveRange(index, rows.Count - index);
+                            hasMore = true;
+                            break;
+                        }
+                        returnedBytes += valueBytes;
+                    }
+                }
+            }
+            return new ResultPage<CatalogProjectionRow>(rows, offset, hasMore);
+        }
+
+        private (string Values, string Fields) PreviewSql(SqliteCommand command, int characters)
+        {
+            if (characters == 0 || _textFieldIds.Count == 0) return ("r.values_json", "'[]'");
+            var parameters = new List<string>(_textFieldIds.Count);
+            for (var index = 0; index < _textFieldIds.Count; index++)
+            {
+                var name = "$previewField" + index;
+                parameters.Add(name);
+                command.Parameters.AddWithValue(name, _textFieldIds[index]);
+            }
+            command.Parameters.AddWithValue("$previewCharacters", characters);
+            var truncated = $"lower(j.key) IN ({string.Join(',', parameters)}) AND json_extract(j.value,'$.Type')='string' AND length(json_extract(j.value,'$.Text'))>$previewCharacters";
+            // SQLite truncates the encoded string before allocating managed JSON.
+            // Numeric/date/null tags and all non-text-file values remain unchanged.
+            return ($"""
+                (SELECT json_group_object(j.key, json(CASE WHEN {truncated}
+                    THEN json_object('Type','string','Text',substr(json_extract(j.value,'$.Text'),1,$previewCharacters))
+                    ELSE j.value END)) FROM json_each(r.values_json) j)
+                """, $"(SELECT json_group_array(j.key) FROM json_each(r.values_json) j WHERE {truncated})");
+        }
+
+        private SqliteCommand BuildCommand(SqliteConnection connection, SqliteTransaction transaction,
+            string notesTable, QuerySelection? selection, int? offset, int? limit)
+        {
+            var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.Parameters.AddWithValue("$generation", _generation);
+            command.Parameters.AddWithValue("$profile", ProfileKey(_scope.ProfileId));
+            var joins = string.Empty;
+            var order = _query.SortFieldId == "CoveragePending" ? "r.coverage" : "r.path_key COLLATE BINARY";
+            if (_sortField is not null)
+            {
+                joins = $"""
+                    LEFT JOIN projection_cells s ON s.generation=r.generation AND s.path_key=r.path_key AND s.field_id=$sortField
+                    LEFT JOIN {notesTable} sn ON s.is_user_input=1 AND sn.profile_key=$profile AND sn.path_key=r.path_key AND sn.field_id=s.field_id
+                    """;
+                command.Parameters.AddWithValue("$sortField", _sortField.FieldId.ToLowerInvariant());
+                order = _sortField.SourceKind == ProfileFieldSourceKind.UserInput
+                    ? "COALESCE(sn.value_search, s.raw_sort) COLLATE BINARY"
+                    : _sortField.Kind switch
+                    {
+                        ProfileFieldValueKind.Int32 or ProfileFieldValueKind.Decimal or ProfileFieldValueKind.Boolean => "s.sort_numeric COLLATE BINARY",
+                        ProfileFieldValueKind.DateTime => "s.sort_ticks",
+                        _ => (_query.ShowOriginalValues ? "s.raw_sort" : "s.mapped_sort") + " COLLATE BINARY"
+                    };
+            }
+            var predicates = new List<string> { "r.generation=$generation" };
+            for (var index = 0; index < _terms.Length; index++)
+            {
+                var term = "$term" + index;
+                command.Parameters.AddWithValue(term, _terms[index]);
+                var column = _query.ShowOriginalValues ? "c.raw_search" : "c.mapped_search";
+                predicates.Add($"""
+                    (instr(r.path_search,{term})>0 OR instr(CASE WHEN r.coverage=1 THEN $pending ELSE $completed END,{term})>0
+                    OR EXISTS(SELECT 1 FROM projection_cells c LEFT JOIN {notesTable} n
+                        ON c.is_user_input=1 AND n.profile_key=$profile AND n.path_key=c.path_key AND n.field_id=c.field_id
+                        WHERE c.generation=r.generation AND c.path_key=r.path_key
+                        AND instr(CASE WHEN c.is_user_input=1 THEN COALESCE(n.value_search,c.raw_search) ELSE {column} END,{term})>0))
+                    """);
+            }
+            if (_terms.Length > 0)
+            {
+                var korean = _scope.CultureName.StartsWith("ko", StringComparison.OrdinalIgnoreCase);
+                command.Parameters.AddWithValue("$pending", korean ? "대기 범위" : "pending scope");
+                command.Parameters.AddWithValue("$completed", korean ? "완료" : "completed");
+            }
+            if (selection is not null)
+                predicates.Add($"{(selection.AllMatching ? "NOT " : string.Empty)}EXISTS(SELECT 1 FROM selection_keys k WHERE k.path_key=r.path_key)");
+            command.CommandText = $"FROM projection_rows r {joins} WHERE " + string.Join(" AND ", predicates);
+            if (offset is not null && limit is not null)
+            {
+                command.CommandText += $" ORDER BY ({order} IS NULL) ASC, {order} {(_query.Descending ? "DESC" : "ASC")}, r.path_key COLLATE BINARY ASC LIMIT $limit OFFSET $offset;";
+                command.Parameters.AddWithValue("$limit", limit.Value + 1);
+                command.Parameters.AddWithValue("$offset", offset.Value);
+            }
+            return command;
+        }
+
+        private void EnsureGeneration(SqliteConnection connection, SqliteTransaction transaction,
+            bool checkPublication = true)
+        {
+            using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = "SELECT state, revision FROM projection_generations WHERE generation=$generation;";
+            command.Parameters.AddWithValue("$generation", _generation);
+            long state;
+            long revision;
+            using (var reader = command.ExecuteReader())
+            {
+                if (!reader.Read()) throw new ResultQueryChangedException(Identity, CurrentGeneration(connection, transaction, _scope.Key));
+                state = reader.GetInt64(0);
+                revision = reader.GetInt64(1);
+            }
+            if (_building && revision != _buildingRevision)
+                throw new ResultQueryChangedException(Identity, _generation + ":" + revision);
+            if (checkPublication && _building && state == 1)
+            {
+                var actual = CurrentGeneration(connection, transaction, _scope.Key);
+                if (actual != _generation) throw new ResultQueryChangedException(Identity, actual);
+            }
+            if (checkPublication && !_building)
+            {
+                var actual = CurrentGeneration(connection, transaction, _scope.Key);
+                if (actual != _generation) throw new ResultQueryChangedException(_generation, actual);
+            }
+            if (checkPublication)
+            {
+                var actualNotesRevision = NotesRevision(connection, transaction, _scope.ProfileId);
+                if (actualNotesRevision != _notesRevision)
+                    throw new ResultQueryChangedException(Identity + ":notes:" + _notesRevision,
+                        Identity + ":notes:" + actualNotesRevision);
+            }
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+            ReleaseLease();
+            if (!_owner._disposed)
+            {
+                // Retired generations can contain hundreds of thousands of cells.
+                // Lifetime cleanup never performs this deletion on the UI thread.
+                await Task.Run(async () =>
+                {
+                    await _owner._writeGate.WaitAsync().ConfigureAwait(false);
+                    try
+                    {
+                        if (_owner._disposed) return;
+                        using var connection = _owner.OpenConnection();
+                        _owner.Prune(connection);
+                    }
+                    catch (ObjectDisposedException) when (_owner._disposed) { }
+                    catch (SqliteException) { /* A later Begin retries idle-generation cleanup. */ }
+                    finally { _owner._writeGate.Release(); }
+                }).ConfigureAwait(false);
+            }
+        }
+
+        private void ReleaseLease()
+        {
+            while (_owner._leases.TryGetValue(_generation, out var value))
+            {
+                if (value == 1)
+                {
+                    if (_owner._leases.TryRemove(new KeyValuePair<string, int>(_generation, value))) return;
+                }
+                else if (_owner._leases.TryUpdate(_generation, value - 1, value)) return;
+            }
+        }
+
+        private static void ValidateRange(int offset, int limit)
+        {
+            if (offset < 0 || limit is < 1 or > 1000)
+                throw new ArgumentOutOfRangeException(nameof(limit), "Offset must be nonnegative and limit must be 1–1000.");
+        }
+    }
+}

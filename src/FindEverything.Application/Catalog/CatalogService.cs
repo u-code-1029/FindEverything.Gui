@@ -125,6 +125,8 @@ internal sealed class CatalogService(
                 pathCanonicalizer,
                 progress,
                 applyDirectoryNameExclusions: true,
+                retainItems: request.RetainItems,
+                resultWriter: request.ResultWriter,
                 trace: trace);
             var operationSettings = indexingSettings.Current;
             var discoveryProgress = progress is null
@@ -245,6 +247,8 @@ internal sealed class CatalogService(
                 pathCanonicalizer,
                 progress,
                 applyDirectoryNameExclusions: true,
+                retainItems: request.RetainItems,
+                resultWriter: request.ResultWriter,
                 trace: trace);
             var scanProgress = progress is null
                 ? null
@@ -328,6 +332,14 @@ internal sealed class CatalogService(
         catch (IndexSnapshotChangedException)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            request.ResultWriter?.Reset();
+            progress?.Report(new CatalogOperationProgress(
+                CatalogOperationPhase.Preparing,
+                "인덱스가 변경되어 이전 시도의 결과를 지우고 다시 불러옵니다.")
+            {
+                AttemptReset = true,
+                AttemptId = 2,
+            });
             return await LoadFromIndexSessionAttemptAsync(
                 request,
                 profileRootPath,
@@ -337,7 +349,8 @@ internal sealed class CatalogService(
                 progress,
                 scanReport,
                 trace,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken,
+                attemptId: 2).ConfigureAwait(false);
         }
     }
 
@@ -350,7 +363,8 @@ internal sealed class CatalogService(
         IProgress<CatalogOperationProgress>? progress,
         IndexScanReport? scanReport,
         ScanTraceWriter? trace,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        int attemptId = 1)
     {
         var accumulator = new MappingAccumulator(
             profile,
@@ -359,6 +373,9 @@ internal sealed class CatalogService(
             pathCanonicalizer,
             progress,
             applyDirectoryNameExclusions: false,
+            retainItems: request.RetainItems,
+            resultWriter: request.ResultWriter,
+            attemptId: attemptId,
             trace: trace);
         // The index stores its root as metadata rather than as an entry row.
         // Synthesize it so an existing-index load evaluates the same path set as
@@ -366,7 +383,7 @@ internal sealed class CatalogService(
         accumulator.Visit(CreateRootCandidate(request.RootPath));
         progress?.Report(new CatalogOperationProgress(
             CatalogOperationPhase.Searching,
-            "인덱스에서 폴더를 조회하고 있습니다."));
+            "인덱스에서 폴더를 조회하고 있습니다.") { AttemptId = attemptId });
         var reportedDirectoryCount = 0;
         ValueTask ConsumePageAsync(
             IReadOnlyList<IndexedDirectory> directories,
@@ -448,15 +465,15 @@ internal sealed class CatalogService(
         var errorSummary = report.Progress.ErrorCount == report.Errors.Count
             ? $"오류 {report.Progress.ErrorCount:N0}개"
             : $"오류 {report.Progress.ErrorCount:N0}개(상세 {report.Errors.Count:N0}개 기록)";
-        return $"바로 스캔을 완료했습니다. 후보 {result.CandidateCount:N0}개, 제외 {result.ExcludedDirectoryCount:N0}개, 일치 {result.Items.Count:N0}개, 제외 규칙 경고 {result.DirectoryExclusionIssues.Count:N0}개, {errorSummary}를 확인했습니다. 소요 {CatalogElapsedTimeFormatter.Format(report.Progress.Elapsed)}";
+        return $"바로 스캔을 완료했습니다. 후보 {result.CandidateCount:N0}개, 제외 {result.ExcludedDirectoryCount:N0}개, 일치 {result.MatchedCount:N0}개, 파싱 오류 {result.InvalidCount:N0}개, 제외 규칙 경고 {result.DirectoryExclusionIssueCount:N0}개, {errorSummary}를 확인했습니다. 소요 {CatalogElapsedTimeFormatter.Format(report.Progress.Elapsed)}";
     }
 
     private static string CreateCompletionMessage(
         CatalogResult result,
         IndexScanReport report) =>
         $"스캔과 DB 저장을 완료했습니다. 후보 {result.CandidateCount:N0}개, "
-        + $"제외 {result.ExcludedDirectoryCount:N0}개, 일치 {result.Items.Count:N0}개, "
-        + $"제외 규칙 경고 {result.DirectoryExclusionIssues.Count:N0}개, "
+        + $"제외 {result.ExcludedDirectoryCount:N0}개, 일치 {result.MatchedCount:N0}개, 파싱 오류 {result.InvalidCount:N0}개, "
+        + $"제외 규칙 경고 {result.DirectoryExclusionIssueCount:N0}개, "
         + $"오류 {report.Errors.Count:N0}개를 확인했습니다. "
         + $"소요 {CatalogElapsedTimeFormatter.Format(report.Progress.Elapsed)}";
 
@@ -472,14 +489,21 @@ internal sealed class CatalogService(
         IProfilePathCanonicalizer pathCanonicalizer,
         IProgress<CatalogOperationProgress>? progress,
         bool applyDirectoryNameExclusions,
+        bool retainItems = true,
+        ICatalogProjectionWriter? resultWriter = null,
+        int attemptId = 1,
         ScanTraceWriter? trace = null)
     {
+        private const int MaximumDetailedIssues = 5000;
         private readonly List<CatalogItem> _items = [];
         private readonly List<CatalogInvalidItem> _invalidItems = [];
         private readonly List<CatalogDirectoryExclusionIssue> _directoryExclusionIssues = [];
         private int _candidateCount;
         private int _noMatchCount;
         private int _excludedDirectoryCount;
+        private int _matchedCount;
+        private int _invalidCount;
+        private int _directoryExclusionIssueCount;
         private bool _hasPendingCoverage;
 
         public DirectoryTraversalDecision Visit(DiscoveredDirectory directory) =>
@@ -498,10 +522,12 @@ internal sealed class CatalogService(
                 var exclusion = profile.EvaluateDirectoryName(directory.Name);
                 if (exclusion.Issues.Count > 0)
                 {
-                    _directoryExclusionIssues.Add(new CatalogDirectoryExclusionIssue(
-                        directory.FullPath,
-                        relativePath,
-                        exclusion.Issues));
+                    _directoryExclusionIssueCount++;
+                    if (_directoryExclusionIssues.Count < MaximumDetailedIssues)
+                        _directoryExclusionIssues.Add(new CatalogDirectoryExclusionIssue(
+                            directory.FullPath,
+                            relativePath,
+                            exclusion.Issues));
                     trace?.ReportDirectoryExclusionIssue(
                         directory.FullPath,
                         relativePath,
@@ -535,20 +561,26 @@ internal sealed class CatalogService(
                         mapping.Item.Model,
                         mapping.Item.Values,
                         coveragePending);
-                    _items.Add(item);
+                    resultWriter?.Append(item);
+                    _matchedCount++;
+                    if (retainItems) _items.Add(item);
                     progress?.Report(new CatalogOperationProgress(
                         CatalogOperationPhase.Mapping,
-                        $"일치 {_items.Count:N0}개 · 경로 {_candidateCount:N0}개를 판별했습니다.",
+                        $"일치 {_matchedCount:N0}개 · 경로 {_candidateCount:N0}개를 판별했습니다.",
                         _candidateCount)
                     {
                         MatchedItem = item,
+                        MatchedCount = _matchedCount,
+                        AttemptId = attemptId,
                     });
                     break;
                 case ProfileMapStatus.Invalid:
-                    _invalidItems.Add(new CatalogInvalidItem(
-                        absolutePath,
-                        relativePath,
-                        mapping.Issues));
+                    _invalidCount++;
+                    if (_invalidItems.Count < MaximumDetailedIssues)
+                        _invalidItems.Add(new CatalogInvalidItem(
+                            absolutePath,
+                            relativePath,
+                            mapping.Issues));
                     break;
                 case ProfileMapStatus.NoMatch:
                     _noMatchCount++;
@@ -557,10 +589,10 @@ internal sealed class CatalogService(
 
             if (_candidateCount == 1 || _candidateCount % 250 == 0)
             {
-                progress?.Report(new(
+                progress?.Report(new CatalogOperationProgress(
                     CatalogOperationPhase.Mapping,
                     $"경로 {_candidateCount:N0}개를 프로필 규칙으로 판별했습니다.",
-                    _candidateCount));
+                    _candidateCount) { AttemptId = attemptId, MatchedCount = _matchedCount });
             }
 
             var traversalDecision = mapping.ShouldPruneDescendants
@@ -608,6 +640,9 @@ internal sealed class CatalogService(
                 scanReport)
             {
                 ExcludedDirectoryCount = _excludedDirectoryCount,
+                MatchedCount = _matchedCount,
+                InvalidCount = _invalidCount,
+                DirectoryExclusionIssueCount = _directoryExclusionIssueCount,
                 DirectoryExclusionIssues = _directoryExclusionIssues.AsReadOnly(),
             };
     }

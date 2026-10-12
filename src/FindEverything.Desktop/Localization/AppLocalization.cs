@@ -14,22 +14,35 @@ public interface IAppLocalizer
     string Format(string key, string koreanFallback, params object?[] arguments);
 }
 
-public sealed class AppLocalizer(
-    IValidatedSettingsState<LocalizationOptions> localizationSettings) : IAppLocalizer
+public sealed class AppLocalizer : IAppLocalizer
 {
-    private readonly CultureInfo _culture = CultureInfo.GetCultureInfo(
-        LocalizationOptions.Normalize(localizationSettings.Current.CultureName));
-
+    private readonly CultureInfo _culture;
+    private readonly IReadOnlyDictionary<string, string> _messages;
+    public AppLocalizer(IValidatedSettingsState<LocalizationOptions> localizationSettings)
+    {
+        _culture = CultureInfo.GetCultureInfo(LocalizationOptions.Normalize(localizationSettings.Current.CultureName));
+        var messages = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (System.Windows.Application.Current is { } application)
+        {
+            void Collect(ResourceDictionary dictionary)
+            {
+                foreach (var merged in dictionary.MergedDictionaries) Collect(merged);
+                foreach (var key in dictionary.Keys.OfType<string>())
+                    if (dictionary[key] is string value) messages[key] = value;
+            }
+            Collect(application.Resources);
+        }
+        // Localization changes restart the app. A frozen snapshot also allows
+        // page formatting and exports without accessing WPF resources on workers.
+        _messages = messages;
+    }
     public CultureInfo Culture => _culture;
-
     public string Get(string key, string koreanFallback)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
         ArgumentNullException.ThrowIfNull(koreanFallback);
-        return System.Windows.Application.Current?.TryFindResource(key) as string
-            ?? koreanFallback;
+        return _messages.TryGetValue(key, out var value) ? value : koreanFallback;
     }
-
     public string Format(string key, string koreanFallback, params object?[] arguments) =>
         string.Format(Culture, Get(key, koreanFallback), arguments);
 }

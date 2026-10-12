@@ -29,6 +29,7 @@ public partial class App : System.Windows.Application
                 .GetRequiredService<IOptions<LocalizationOptions>>()
                 .Value;
             _ = LocalizationBootstrapper.Apply(this, localization);
+            _ = _host.Services.GetRequiredService<IAppLocalizer>();
             await _host.StartAsync().ConfigureAwait(true);
         }
         catch (Exception exception)

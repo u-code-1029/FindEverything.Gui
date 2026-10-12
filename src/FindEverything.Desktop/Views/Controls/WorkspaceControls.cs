@@ -1,0 +1,143 @@
+using System.Windows;
+using System.Windows.Controls;
+
+namespace FindEverything.Desktop.Views.Controls;
+
+/// <summary>A shared page heading; detailed guidance is available without occupying the workspace.</summary>
+public sealed class PageHeader : ContentControl
+{
+    public static readonly DependencyProperty TitleProperty = DependencyProperty.Register(
+        nameof(Title), typeof(string), typeof(PageHeader), new PropertyMetadata(string.Empty));
+    public static readonly DependencyProperty DescriptionProperty = DependencyProperty.Register(
+        nameof(Description), typeof(string), typeof(PageHeader), new PropertyMetadata(string.Empty));
+
+    public PageHeader() => SetResourceReference(StyleProperty, "WorkspacePageHeaderStyle");
+    public string Title { get => (string)GetValue(TitleProperty); set => SetValue(TitleProperty, value); }
+    public string Description { get => (string)GetValue(DescriptionProperty); set => SetValue(DescriptionProperty, value); }
+
+    public override void OnApplyTemplate()
+    {
+        base.OnApplyTemplate();
+        if (GetTemplateChild("HelpButton") is Wpf.Ui.Controls.Button button)
+        {
+            button.Click += (_, _) =>
+            {
+                var tip = new ToolTip
+                {
+                    Content = new TextBlock { Text = Description, TextWrapping = TextWrapping.Wrap, MaxWidth = 380 },
+                    PlacementTarget = button,
+                    StaysOpen = false,
+                };
+                button.ToolTip = tip;
+                tip.IsOpen = true;
+            };
+        }
+    }
+}
+
+/// <summary>The same compact command surface on every workspace.</summary>
+public sealed class CommandStrip : Border
+{
+    public CommandStrip() => SetResourceReference(StyleProperty, "WorkspaceCommandStripStyle");
+}
+
+/// <summary>A responsive PowerToys-style settings row with a stretching editor.</summary>
+public sealed class SettingRowCard : ContentControl
+{
+    public static readonly DependencyProperty TitleProperty = DependencyProperty.Register(
+        nameof(Title), typeof(string), typeof(SettingRowCard), new PropertyMetadata(string.Empty));
+    public static readonly DependencyProperty DescriptionProperty = DependencyProperty.Register(
+        nameof(Description), typeof(string), typeof(SettingRowCard), new PropertyMetadata(string.Empty));
+    public static readonly DependencyProperty IsCompactProperty = DependencyProperty.Register(
+        nameof(IsCompact), typeof(bool), typeof(SettingRowCard), new PropertyMetadata(false));
+
+    public SettingRowCard() => SetResourceReference(StyleProperty, "WorkspaceSettingRowStyle");
+    public string Title { get => (string)GetValue(TitleProperty); set => SetValue(TitleProperty, value); }
+    public string Description { get => (string)GetValue(DescriptionProperty); set => SetValue(DescriptionProperty, value); }
+    public bool IsCompact { get => (bool)GetValue(IsCompactProperty); private set => SetValue(IsCompactProperty, value); }
+
+    protected override void OnRenderSizeChanged(SizeChangedInfo sizeInfo)
+    {
+        base.OnRenderSizeChanged(sizeInfo);
+        IsCompact = sizeInfo.NewSize.Width < 900;
+    }
+}
+
+/// <summary>Page gutters adapt to the actual workspace, independently of the navigation pane.</summary>
+public sealed class WorkspacePageFrame : Grid
+{
+    public WorkspacePageFrame()
+    {
+        Margin = new Thickness(24, 0, 24, 16);
+        SizeChanged += (_, _) =>
+        {
+            var inset = ActualWidth < 900 ? 16 : 24;
+            if (Margin.Left != inset)
+            {
+                Margin = new Thickness(inset, 0, inset, 16);
+            }
+        };
+    }
+}
+
+/// <summary>Two useful work areas become keyboard-accessible tabs in narrow windows.</summary>
+public sealed class SplitWorkspace : Grid
+{
+    public static readonly DependencyProperty PrimaryContentProperty = DependencyProperty.Register(
+        nameof(PrimaryContent), typeof(FrameworkElement), typeof(SplitWorkspace), new PropertyMetadata(null, OnContentChanged));
+    public static readonly DependencyProperty SecondaryContentProperty = DependencyProperty.Register(
+        nameof(SecondaryContent), typeof(FrameworkElement), typeof(SplitWorkspace), new PropertyMetadata(null, OnContentChanged));
+    public static readonly DependencyProperty PrimaryTitleProperty = DependencyProperty.Register(
+        nameof(PrimaryTitle), typeof(string), typeof(SplitWorkspace), new PropertyMetadata(string.Empty, OnContentChanged));
+    public static readonly DependencyProperty SecondaryTitleProperty = DependencyProperty.Register(
+        nameof(SecondaryTitle), typeof(string), typeof(SplitWorkspace), new PropertyMetadata(string.Empty, OnContentChanged));
+    public static readonly DependencyProperty PrimaryRatioProperty = DependencyProperty.Register(
+        nameof(PrimaryRatio), typeof(double), typeof(SplitWorkspace), new PropertyMetadata(0.6, OnContentChanged));
+    private bool? _compact;
+    private TabItem? _primaryTab;
+    private TabItem? _secondaryTab;
+
+    public FrameworkElement? PrimaryContent { get => (FrameworkElement?)GetValue(PrimaryContentProperty); set => SetValue(PrimaryContentProperty, value); }
+    public FrameworkElement? SecondaryContent { get => (FrameworkElement?)GetValue(SecondaryContentProperty); set => SetValue(SecondaryContentProperty, value); }
+    public string PrimaryTitle { get => (string)GetValue(PrimaryTitleProperty); set => SetValue(PrimaryTitleProperty, value); }
+    public string SecondaryTitle { get => (string)GetValue(SecondaryTitleProperty); set => SetValue(SecondaryTitleProperty, value); }
+    public double PrimaryRatio { get => (double)GetValue(PrimaryRatioProperty); set => SetValue(PrimaryRatioProperty, value); }
+
+    protected override void OnRenderSizeChanged(SizeChangedInfo sizeInfo)
+    {
+        base.OnRenderSizeChanged(sizeInfo);
+        var compact = sizeInfo.NewSize.Width < 900;
+        if (_compact != compact) Rebuild(compact);
+    }
+
+    private static void OnContentChanged(DependencyObject source, DependencyPropertyChangedEventArgs _) =>
+        ((SplitWorkspace)source).Rebuild(((SplitWorkspace)source).ActualWidth < 900);
+
+    private void Rebuild(bool compact)
+    {
+        _compact = compact;
+        if (_primaryTab is not null) _primaryTab.Content = null;
+        if (_secondaryTab is not null) _secondaryTab.Content = null;
+        Children.Clear();
+        ColumnDefinitions.Clear();
+        _primaryTab = null;
+        _secondaryTab = null;
+        if (compact)
+        {
+            _primaryTab = new TabItem { Header = PrimaryTitle, Content = PrimaryContent };
+            _secondaryTab = new TabItem { Header = SecondaryTitle, Content = SecondaryContent };
+            var tabs = new TabControl { HorizontalContentAlignment = HorizontalAlignment.Stretch, VerticalContentAlignment = VerticalAlignment.Stretch };
+            tabs.Items.Add(_primaryTab);
+            tabs.Items.Add(_secondaryTab);
+            Children.Add(tabs);
+            return;
+        }
+
+        var ratio = Math.Clamp(PrimaryRatio, 0.1, 0.9);
+        ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(ratio, GridUnitType.Star) });
+        ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(16) });
+        ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1 - ratio, GridUnitType.Star) });
+        if (PrimaryContent is not null) { SetColumn(PrimaryContent, 0); Children.Add(PrimaryContent); }
+        if (SecondaryContent is not null) { SetColumn(SecondaryContent, 2); Children.Add(SecondaryContent); }
+    }
+}

@@ -307,6 +307,29 @@ public sealed class LocalizationInfrastructureTests
     }
 
     [Fact]
+    public async Task Cancelling_a_dirty_draft_does_not_save_locale_or_restart()
+    {
+        var events = new List<string>();
+        var writer = new RecordingSettingsWriter(events);
+        var restart = new RecordingRestartCoordinator(events);
+        var service = new LanguageSelectionService(
+            new TestAppLocalizer(LocalizationOptions.KoreanCultureName),
+            writer, restart, new RejectingDraftProtection());
+
+        Assert.False(await service.ChangeAsync(LocalizationOptions.EnglishCultureName));
+        Assert.Empty(events);
+        Assert.Null(writer.Update);
+        Assert.False(restart.IsRestartRequested);
+    }
+
+    private sealed class RejectingDraftProtection : IDraftProtectionService
+    {
+        public void Register(IDraftParticipant participant) { }
+        public Task<bool> ConfirmAsync(IDraftParticipant participant) => Task.FromResult(false);
+        public Task<bool> ConfirmAllAsync() => Task.FromResult(false);
+    }
+
+    [Fact]
     public void Replacement_process_preserves_arguments_and_appends_selected_locale_last()
     {
         var context = new ApplicationLaunchContext(

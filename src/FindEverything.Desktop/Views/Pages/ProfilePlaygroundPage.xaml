@@ -5,6 +5,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:localization="clr-namespace:FindEverything.Desktop.Localization"
+    xmlns:controls="clr-namespace:FindEverything.Desktop.Views.Controls"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
     Title="프로필 Playground"
     Background="Transparent"
@@ -120,116 +121,28 @@
         </Style>
     </Page.Resources>
 
-    <Grid Margin="24,0,24,24">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
-
-        <StackPanel Margin="0,20,0,16">
-            <TextBlock
-                AutomationProperties.HeadingLevel="Level1"
-                Style="{StaticResource PageTitleTextStyle}"
-                Text="프로필 Playground" />
-            <TextBlock
-                Margin="0,4,0,0"
-                Style="{StaticResource PageSubtitleTextStyle}"
-                Text="저장되어 현재 앱에 적용된 프로필을 실제 절대 경로에 실행해 보고, 값과 정규식 판정을 함께 확인합니다."
-                TextWrapping="Wrap" />
-        </StackPanel>
-
-        <ScrollViewer
-            x:Name="ProfilePlaygroundScrollViewer"
-            Grid.Row="1"
-            Style="{StaticResource FluentGutteredScrollViewerStyle}">
-            <StackPanel Margin="8,0,0,24">
-                <Border Style="{StaticResource FluentSurfaceStyle}">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
-
-                        <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="테스트할 프로필과 경로" />
-                        <TextBlock
-                            Grid.Row="1"
-                            Margin="0,4,0,14"
-                            Style="{StaticResource CaptionTextStyle}"
-                            Text="편집 중인 초안이 아니라 마지막으로 저장되어 적용된 프로필을 사용합니다. 드라이브 또는 UNC 루트를 포함한 전체 경로를 입력하세요."
-                            TextWrapping="Wrap" />
-
-                        <Grid
-                            x:Name="PlaygroundInputPanel"
-                            Grid.Row="2"
-                            IsEnabled="{Binding IsReady}">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="0.8*" MinWidth="220" />
-                                <ColumnDefinition Width="16" />
-                                <ColumnDefinition Width="1.4*" MinWidth="320" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel>
-                                <TextBlock Margin="0,0,0,4" FontWeight="SemiBold" Text="프로필" />
-                                <ComboBox
-                                    AutomationProperties.Name="테스트할 저장된 프로필"
-                                    DisplayMemberPath="Description"
-                                    ItemsSource="{Binding Profiles}"
-                                    SelectedItem="{Binding SelectedProfile}" />
-                            </StackPanel>
-                            <StackPanel Grid.Column="2">
-                                <TextBlock Margin="0,0,0,4" FontWeight="SemiBold" Text="실제 절대 경로" />
-                                <ui:TextBox
-                                    AutomationProperties.Name="Playground 절대 경로"
-                                    ClearButtonEnabled="True"
-                                    PlaceholderText="예: C:\Archive\고객사\프로젝트\2026\Rev-3"
-                                    Text="{Binding InputPath, UpdateSourceTrigger=PropertyChanged}" />
-                            </StackPanel>
-                            <ui:Button
-                                Grid.Column="3"
-                                Margin="8,23,0,0"
-                                VerticalAlignment="Top"
-                                AutomationProperties.Name="테스트 경로 찾아보기"
-                                Command="{Binding BrowsePathCommand}"
-                                Content="찾아보기"
-                                Icon="{ui:SymbolIcon Symbol=FolderOpen20}" />
-                        </Grid>
-
-                        <ui:Button
-                            Grid.Row="3"
-                            Margin="0,14,0,0"
-                            HorizontalAlignment="Stretch"
-                            Appearance="Primary"
-                            AutomationProperties.Name="저장된 프로필 테스트 실행"
-                            Command="{Binding EvaluateCommand}"
-                            Content="이 경로에서 프로필 실행"
-                            Icon="{ui:SymbolIcon Symbol=Play20}" />
-                    </Grid>
-                </Border>
-
-                <ProgressBar
-                    Height="3"
-                    Margin="0,10,0,0"
-                    IsIndeterminate="True"
-                    Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}" />
-
-                <ui:InfoBar
-                    Margin="0,16,0,0"
-                    AutomationProperties.LiveSetting="Polite"
-                    IsClosable="False"
-                    IsOpen="True"
-                    Message="{Binding Summary}"
-                    Severity="{Binding SummarySeverity}"
-                    Title="Playground 결과" />
-
-                <Border Margin="0,16,0,0" Style="{StaticResource FluentSurfaceStyle}">
+    <controls:WorkspacePageFrame>
+        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+        <controls:PageHeader Title="{DynamicResource Loc.Shell.Nav.Playground}" Description="{DynamicResource Loc.Workspace.Playground.Description}" />
+        <controls:CommandStrip Grid.Row="1">
+            <Grid x:Name="PlaygroundInputPanel" IsEnabled="{Binding IsReady}">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="180" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <ComboBox ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}" DisplayMemberPath="Description" AutomationProperties.Name="{DynamicResource Loc.Workspace.Playground.Profile}" ToolTip="{DynamicResource Loc.Workspace.Playground.Profile.Help}" />
+                <ui:TextBox Grid.Column="1" Margin="8,0" ClearButtonEnabled="True" PlaceholderText="{DynamicResource Loc.Workspace.Playground.Path}" Text="{Binding InputPath, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{DynamicResource Loc.Workspace.Playground.Path}" ToolTip="{DynamicResource Loc.Workspace.Playground.Path.Help}" />
+                <ui:Button Grid.Column="2" Width="36" Padding="0" Command="{Binding BrowsePathCommand}" Icon="{ui:SymbolIcon Symbol=FolderOpen20}" AutomationProperties.Name="{DynamicResource Loc.Workspace.Playground.Browse}" ToolTip="{DynamicResource Loc.Workspace.Playground.Browse}" />
+                <ui:Button Grid.Column="3" Margin="8,0,0,0" Appearance="Primary" Command="{Binding EvaluateCommand}" Content="{DynamicResource Loc.Workspace.Playground.Run}" Icon="{ui:SymbolIcon Symbol=Play20}" ToolTip="{DynamicResource Loc.Workspace.Playground.Run.Help}" ToolTipService.ShowOnDisabled="True" />
+            </Grid>
+        </controls:CommandStrip>
+        <controls:SplitWorkspace x:Name="PlaygroundWorkspace" Grid.Row="2" PrimaryRatio="0.35" PrimaryTitle="{DynamicResource Loc.Workspace.Playground.Values}" SecondaryTitle="{DynamicResource Loc.Workspace.Playground.Debug}">
+            <controls:SplitWorkspace.PrimaryContent>
+                <ScrollViewer x:Name="ProfilePlaygroundScrollViewer" Style="{StaticResource FluentGutteredScrollViewerStyle}">
+                    <StackPanel>                <Border Margin="0" Style="{StaticResource FluentSurfaceStyle}">
                     <StackPanel>
-                        <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="구조화된 값" />
+                        <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.ProfilePlayground.Text.StructuredValues}" />
                         <TextBlock
                             Margin="0,4,0,12"
                             Style="{StaticResource CaptionTextStyle}"
-                            Text="실제 구조화 보기와 같은 프로필 매퍼가 반환한 값입니다."
+                            Text="{DynamicResource Loc.View.ProfilePlayground.Text.TheseValuesComeFromTheSameProfile}"
                             TextWrapping="Wrap" />
                         <ItemsControl ItemsSource="{Binding Rows}">
                             <ItemsControl.ItemTemplate>
@@ -241,7 +154,7 @@
                                                 <RowDefinition Height="Auto" />
                                             </Grid.RowDefinitions>
                                             <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="180" />
+                                                <ColumnDefinition Width="0.4*" />
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="Auto" />
                                             </Grid.ColumnDefinitions>
@@ -269,27 +182,25 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
                     </StackPanel>
-                </Border>
-
-                <Border
+                </Border>                <Border
                     x:Name="PlaygroundDirectoryExclusionResultPanel"
                     Margin="0,16,0,0"
-                    AutomationProperties.Name="Playground 폴더 이름 제외 판정 결과"
+                    AutomationProperties.Name="{DynamicResource Loc.View.ProfilePlayground.AutomationName.PlaygroundFolderNameExclusionResult}"
                     Style="{StaticResource FluentSurfaceStyle}"
                     Visibility="{Binding HasDirectoryExclusionTestResult, Converter={StaticResource BooleanToVisibilityConverter}}">
                     <StackPanel>
-                        <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="폴더 이름 제외 판정" />
+                        <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.ProfilePlayground.Text.FolderNameExclusionDecision}" />
                         <TextBlock
                             Margin="0,4,0,10"
                             Style="{StaticResource CaptionTextStyle}"
-                            Text="전체 경로가 아니라 canonical 경로의 마지막 폴더 이름 하나만 실제 컴파일된 프로필에 전달합니다."
+                            Text="{DynamicResource Loc.View.ProfilePlayground.Text.OnlyTheFinalFolderNameOfThe}"
                             TextWrapping="Wrap" />
                         <Grid Margin="0,0,0,10">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
-                            <TextBlock FontWeight="SemiBold" Text="입력 leaf" />
+                            <TextBlock FontWeight="SemiBold" Text="{DynamicResource Loc.View.ProfilePlayground.Text.InputLeaf}" />
                             <TextBlock
                                 Grid.Column="1"
                                 Margin="12,0,0,0"
@@ -305,20 +216,23 @@
                             Severity="{Binding DirectoryExclusionTestResult.Severity}"
                             Title="{Binding DirectoryExclusionTestResult.Title}" />
                     </StackPanel>
-                </Border>
-
-                <Expander
+                </Border></StackPanel>
+                </ScrollViewer>
+            </controls:SplitWorkspace.PrimaryContent>
+            <controls:SplitWorkspace.SecondaryContent>
+                <ScrollViewer x:Name="PlaygroundDebugScrollViewer" Style="{StaticResource FluentGutteredScrollViewerStyle}">
+                    <StackPanel>                <Expander
                     x:Name="PlaygroundRegexDebugExpander"
-                    Margin="0,16,0,0"
-                    AutomationProperties.Name="경로 정규식 색상 디버깅"
-                    Header="경로 정규식 색상 디버깅"
+                    Margin="0"
+                    AutomationProperties.Name="{DynamicResource Loc.View.ProfilePlayground.AutomationName.PathRegexColorDebugger}"
+                    Header="{DynamicResource Loc.View.ProfilePlayground.AutomationName.PathRegexColorDebugger}"
                     IsExpanded="True"
                     Visibility="{Binding HasRegexDebugRules, Converter={StaticResource BooleanToVisibilityConverter}}">
                     <Border Margin="0,8,0,0" Style="{StaticResource FluentSurfaceStyle}">
                         <StackPanel>
                             <TextBlock
                                 Style="{StaticResource CaptionTextStyle}"
-                                Text="전체 일치 여부와 별개로 원본 pattern의 부분 후보와 named group을 색상별 행으로 표시합니다."
+                                Text="{DynamicResource Loc.View.ProfilePlayground.Text.ShowsPartialCandidatesAndNamedGroupsFrom}"
                                 TextWrapping="Wrap" />
                             <TextBlock
                                 Margin="0,8,0,12"
@@ -332,19 +246,17 @@
                                 Style="{StaticResource PlaygroundRegexDebugItemsStyle}" />
                         </StackPanel>
                     </Border>
-                </Expander>
-
-                <Expander
+                </Expander>                <Expander
                     x:Name="PlaygroundDirectoryExclusionRegexDebugExpander"
                     Margin="0,12,0,0"
-                    AutomationProperties.Name="폴더 제외 정규식 색상 디버깅"
-                    Header="폴더 제외 정규식 색상 디버깅"
+                    AutomationProperties.Name="{DynamicResource Loc.View.ProfilePlayground.AutomationName.FolderExclusionRegexColorDebugger}"
+                    Header="{DynamicResource Loc.View.ProfilePlayground.AutomationName.FolderExclusionRegexColorDebugger}"
                     Visibility="{Binding HasDirectoryExclusionRegexDebugRules, Converter={StaticResource BooleanToVisibilityConverter}}">
                     <Border Margin="0,8,0,0" Style="{StaticResource FluentSurfaceStyle}">
                         <StackPanel>
                             <TextBlock
                                 Style="{StaticResource CaptionTextStyle}"
-                                Text="마지막 폴더 이름에 대해 각 제외 pattern과 named group의 부분 후보를 표시합니다."
+                                Text="{DynamicResource Loc.View.ProfilePlayground.Text.ShowsPartialCandidatesForEachExclusionPattern}"
                                 TextWrapping="Wrap" />
                             <ItemsControl
                                 Margin="0,12,0,0"
@@ -352,8 +264,15 @@
                                 Style="{StaticResource PlaygroundRegexDebugItemsStyle}" />
                         </StackPanel>
                     </Border>
-                </Expander>
+                </Expander></StackPanel>
+                </ScrollViewer>
+            </controls:SplitWorkspace.SecondaryContent>
+        </controls:SplitWorkspace>
+        <Border Grid.Row="3" Padding="0,8" Background="Transparent">
+            <StackPanel Orientation="Horizontal">
+                <ui:ProgressRing Width="18" Height="18" Margin="0,0,8,0" IsIndeterminate="True" Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                <TextBlock Text="{Binding Summary}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Summary}" AutomationProperties.LiveSetting="Polite" />
             </StackPanel>
-        </ScrollViewer>
-    </Grid>
+        </Border>
+    </controls:WorkspacePageFrame>
 </Page>

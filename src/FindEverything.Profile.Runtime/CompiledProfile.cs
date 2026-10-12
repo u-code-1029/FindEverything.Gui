@@ -19,7 +19,8 @@ internal sealed class CompiledProfile : ILoadedProfile
         CompiledField[] fields,
         CompiledRegexRule[] rules,
         CompiledDirectoryNameExclusionRule[] excludedDirectoryNameRules,
-        CompiledTextFileField[] textFileFields)
+        CompiledTextFileField[] textFileFields,
+        string? modelCacheIdentity = null)
     {
         Descriptor = descriptor;
         _createModel = createModel;
@@ -27,9 +28,38 @@ internal sealed class CompiledProfile : ILoadedProfile
         _rules = rules;
         _excludedDirectoryNameRules = excludedDirectoryNameRules;
         _textFileFields = textFileFields;
+        CacheIdentity = typeof(CompiledProfile).Module.ModuleVersionId.ToString("N")
+            + "|" + (modelCacheIdentity ?? "declarative");
     }
 
     public ProfileDescriptor Descriptor { get; }
+
+    public string CacheIdentity { get; }
+
+    public ProfileTextColumnReadResult ReadTextColumn(string fullPath, string fieldId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(fullPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(fieldId);
+        var field = _textFileFields.FirstOrDefault(value =>
+            string.Equals(value.Descriptor.FieldId, fieldId, StringComparison.OrdinalIgnoreCase));
+        if (field is null)
+        {
+            return new(null, [new ProfileMappingIssue(
+                "text_column_not_found", fieldId,
+                "선택한 컬럼은 이 프로필의 텍스트 파일 컬럼이 아닙니다.")]);
+        }
+
+        if (!TryEnumerateImmediateFiles(fullPath, out var filePaths, out var error))
+        {
+            return new(null, [new ProfileMappingIssue(
+                "text_file_enumeration_failed", fieldId,
+                $"'{field.Descriptor.Header}' 값을 찾기 위해 폴더의 파일을 확인할 수 없습니다: {error}")]);
+        }
+
+        var issues = new List<ProfileMappingIssue>();
+        var value = ReadTextFileValue(filePaths, field, issues);
+        return new(value, issues.AsReadOnly());
+    }
 
     public ProfileDirectoryNameExclusionResult EvaluateDirectoryName(string directoryName)
     {

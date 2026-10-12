@@ -111,6 +111,8 @@ public sealed class ProfileAuthoringServiceTests
         catalog.Changed += (_, _) => changedCount++;
         var manifest = CreateValidManifest();
         manifest.Fields = [];
+        manifest.TextFileFields = [];
+        manifest.UserInputFields = [];
 
         var result = await service.SaveAndApplyAsync(manifest, originalProfileId: null);
 

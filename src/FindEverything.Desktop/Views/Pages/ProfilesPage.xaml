@@ -5,9 +5,10 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:localization="clr-namespace:FindEverything.Desktop.Localization"
+    xmlns:controls="clr-namespace:FindEverything.Desktop.Views.Controls"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
     xmlns:viewModels="clr-namespace:FindEverything.Desktop.ViewModels"
-    Title="프로필"
+    Title="{DynamicResource Loc.Shell.Nav.Profiles}"
     Background="Transparent"
     Foreground="{DynamicResource TextFillColorPrimaryBrush}"
     localization:LocalizationScope.IsEnabled="True"
@@ -72,26 +73,20 @@
         </Style>
     </Page.Resources>
 
-    <Grid Margin="24,0,24,24">
+    <controls:WorkspacePageFrame x:Name="ProfilePageLayout" SizeChanged="OnProfileWorkspaceSizeChanged">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <StackPanel Margin="0,20,0,16">
-            <TextBlock AutomationProperties.HeadingLevel="Level1" Style="{StaticResource PageTitleTextStyle}" Text="프로필" />
-            <TextBlock
-                Margin="0,4,0,0"
-                Style="{StaticResource PageSubtitleTextStyle}"
-                Text="네 단계로 경로와 결과 구조를 정의하고 저장합니다. 실제 경로 테스트는 저장 후 Playground에서 진행합니다." />
-        </StackPanel>
+        <controls:PageHeader Title="{DynamicResource Loc.Shell.Nav.Profiles}" Description="{DynamicResource Loc.Workspace.Profiles.Description}" />
 
         <TabControl
             x:Name="ProfilesTabControl"
             Grid.Row="1"
             HorizontalContentAlignment="Stretch"
             VerticalContentAlignment="Stretch">
-            <TabItem Header="프로필 편집">
+            <TabItem Header="{DynamicResource Loc.View.Profiles.Header.EditProfile}">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -102,50 +97,52 @@
                     <Border
                         x:Name="ProfileEditorStepRail"
                         Grid.Row="0"
-                        Margin="8,12,8,0"
+                        Margin="0,4,0,0"
                         Padding="12"
                         AutomationProperties.ItemStatus="{Binding EditorStepStatus}"
-                        AutomationProperties.Name="프로필 설정 단계"
+                        ToolTip="{Binding NumericValidationMessage}"
+                        ToolTipService.ShowOnDisabled="True"
+                        AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.ProfileSetupSteps}"
                         IsEnabled="{Binding IsEditorReady}"
                         Style="{StaticResource FluentToolbarSurfaceStyle}">
-                        <UniformGrid Columns="4">
+                        <UniformGrid x:Name="ProfileStepButtons" Columns="4">
                             <RadioButton
                                 Margin="0,0,8,0"
                                 Padding="10,8"
-                                AutomationProperties.HelpText="프로필 선택과 기본 정보를 설정합니다."
-                                AutomationProperties.Name="1단계 프로필 정보"
+                                AutomationProperties.HelpText="{DynamicResource Loc.View.Profiles.AutomationHelpText.ChooseAProfileAndSetItsBasic}"
+                                AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.Step1ProfileInformation}"
                                 Command="{Binding GoToEditorStepCommand}"
                                 CommandParameter="{x:Static viewModels:ProfileEditorStep.Profile}"
-                                Content="1  프로필 정보"
+                                Content="{DynamicResource Loc.View.Profiles.Content.1ProfileInformation}"
                                 GroupName="ProfileEditorSteps"
                                 IsChecked="{Binding IsProfileStep, Mode=OneWay}" />
                             <RadioButton
                                 Margin="0,0,8,0"
                                 Padding="10,8"
-                                AutomationProperties.HelpText="실제 경로 또는 정규식으로 결과 컬럼을 정의합니다."
-                                AutomationProperties.Name="2단계 경로와 컬럼"
+                                AutomationProperties.HelpText="{DynamicResource Loc.View.Profiles.AutomationHelpText.DefineResultColumnsFromARealPath}"
+                                AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.Step2PathAndColumns}"
                                 Command="{Binding GoToEditorStepCommand}"
                                 CommandParameter="{x:Static viewModels:ProfileEditorStep.PathAndFields}"
-                                Content="2  경로와 컬럼"
+                                Content="{DynamicResource Loc.View.Profiles.Content.2PathAndColumns}"
                                 GroupName="ProfileEditorSteps"
                                 IsChecked="{Binding IsPathAndFieldsStep, Mode=OneWay}" />
                             <RadioButton
                                 Margin="0,0,8,0"
                                 Padding="10,8"
-                                AutomationProperties.HelpText="제외 폴더와 텍스트 파일 값을 설정합니다."
-                                AutomationProperties.Name="3단계 탐색 옵션"
+                                AutomationProperties.HelpText="{DynamicResource Loc.View.Profiles.AutomationHelpText.ConfigureExcludedFoldersAndValuesReadFrom}"
+                                AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.Step3ScanOptions}"
                                 Command="{Binding GoToEditorStepCommand}"
                                 CommandParameter="{x:Static viewModels:ProfileEditorStep.ScanOptions}"
-                                Content="3  탐색 옵션"
+                                Content="{DynamicResource Loc.View.Profiles.Content.3ScanOptions}"
                                 GroupName="ProfileEditorSteps"
                                 IsChecked="{Binding IsScanOptionsStep, Mode=OneWay}" />
                             <RadioButton
                                 Padding="10,8"
-                                AutomationProperties.HelpText="프로필을 검증하고 저장한 뒤 Playground로 이동합니다."
-                                AutomationProperties.Name="4단계 검토와 저장"
+                                AutomationProperties.HelpText="{DynamicResource Loc.View.Profiles.AutomationHelpText.ValidateAndSaveTheProfileThenContinue}"
+                                AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.Step4ReviewAndSave}"
                                 Command="{Binding GoToEditorStepCommand}"
                                 CommandParameter="{x:Static viewModels:ProfileEditorStep.Review}"
-                                Content="4  검토와 저장"
+                                Content="{DynamicResource Loc.View.Profiles.Content.4ReviewAndSave}"
                                 GroupName="ProfileEditorSteps"
                                 IsChecked="{Binding IsReviewStep, Mode=OneWay}" />
                         </UniformGrid>
@@ -155,7 +152,7 @@
                         x:Name="ProfileEditorScrollViewer"
                         Grid.Row="1"
                         Style="{StaticResource FluentGutteredScrollViewerStyle}">
-                        <StackPanel Margin="8,16,0,0">
+                        <StackPanel Margin="0,8,0,0"><TextBlock Margin="0,0,0,8" Text="{Binding NumericValidationMessage}" TextWrapping="Wrap" Foreground="{DynamicResource SystemFillColorCriticalBrush}" Visibility="{Binding HasNumericValidationError, Converter={StaticResource BooleanToVisibilityConverter}}" AutomationProperties.LiveSetting="Polite" />
                             <Border
                                 Style="{StaticResource EditorSectionStyle}"
                                 Visibility="{Binding IsProfileStep, Converter={StaticResource BooleanToVisibilityConverter}}">
@@ -166,12 +163,12 @@
                                         <RowDefinition Height="Auto" />
                                     </Grid.RowDefinitions>
 
-                                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="내 프로필" />
+                                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.MyProfiles}" />
                                     <TextBlock
                                         Grid.Row="1"
                                         Margin="0,4,0,12"
                                         Style="{StaticResource CaptionTextStyle}"
-                                        Text="기존 프로필을 선택해 수정하거나 새 프로필을 만드세요." />
+                                        Text="{DynamicResource Loc.View.Profiles.Text.SelectAnExistingProfileToEditOr}" />
 
                                     <Grid Grid.Row="2">
                                         <Grid.RowDefinitions>
@@ -179,7 +176,7 @@
                                             <RowDefinition Height="Auto" />
                                         </Grid.RowDefinitions>
                                         <ComboBox
-                                            AutomationProperties.Name="편집할 프로필"
+                                            AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.ProfileToEdit}"
                                             DisplayMemberPath="DisplayName"
                                             ItemsSource="{Binding EditableProfiles}"
                                             SelectedItem="{Binding SelectedEditableProfile}" />
@@ -188,19 +185,19 @@
                                                 MinWidth="112"
                                                 Margin="0,0,8,8"
                                                 Command="{Binding LoadDraftCommand}"
-                                                Content="선택 항목 열기"
+                                                Content="{DynamicResource Loc.View.Profiles.Content.OpenSelectedProfile}"
                                                 Icon="{ui:SymbolIcon Symbol=DocumentEdit20}" />
                                             <ui:Button
                                                 MinWidth="112"
                                                 Margin="0,0,8,8"
                                                 Command="{Binding NewDraftCommand}"
-                                                Content="새로 만들기"
+                                                Content="{DynamicResource Loc.View.Profiles.Content.NewProfile}"
                                                 Icon="{ui:SymbolIcon Symbol=AddSquare20}" />
                                             <ui:Button
                                                 MinWidth="120"
                                                 Margin="0,0,0,8"
                                                 Command="{Binding OpenUserProfilesFolderCommand}"
-                                                Content="프로필 폴더 열기"
+                                                Content="{DynamicResource Loc.View.Profiles.Content.OpenProfilesFolder}"
                                                 Icon="{ui:SymbolIcon Symbol=FolderOpen20}" />
                                         </WrapPanel>
                                     </Grid>
@@ -212,11 +209,11 @@
                                 Style="{StaticResource EditorSectionStyle}"
                                 Visibility="{Binding IsScanOptionsStep, Converter={StaticResource BooleanToVisibilityConverter}}">
                                 <StackPanel>
-                                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="표시 값 매핑" />
+                                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.DisplayValueMappings}" />
                                     <TextBlock
                                         Margin="0,4,0,12"
                                         Style="{StaticResource CaptionTextStyle}"
-                                        Text="경로에서 읽은 짧은 코드를 사람이 읽기 쉬운 이름으로 보여줍니다. 실제 모델과 원본 값은 바꾸지 않습니다."
+                                        Text="{DynamicResource Loc.View.Profiles.Text.ShowShortCodesFromThePathAs}"
                                         TextWrapping="Wrap" />
                                     <ItemsControl ItemsSource="{Binding DraftFields}">
                                         <ItemsControl.ItemTemplate>
@@ -261,8 +258,8 @@
                                                                             <ColumnDefinition Width="Auto" />
                                                                         </Grid.ColumnDefinitions>
                                                                         <ui:TextBox
-                                                                            AutomationProperties.Name="매핑 원본 값"
-                                                                            PlaceholderText="원본 값 (예: A)"
+                                                                            AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.MappingOriginalValue}"
+                                                                            PlaceholderText="{DynamicResource Loc.View.Profiles.PlaceholderText.OriginalValueExampleA}"
                                                                             Text="{Binding Source, UpdateSourceTrigger=PropertyChanged}" />
                                                                         <ui:SymbolIcon
                                                                             Grid.Column="1"
@@ -271,8 +268,8 @@
                                                                             Symbol="ArrowRight16" />
                                                                         <ui:TextBox
                                                                             Grid.Column="2"
-                                                                            AutomationProperties.Name="매핑 표시 값"
-                                                                            PlaceholderText="표시 값 (예: 홍길동)"
+                                                                            AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.MappingDisplayValue}"
+                                                                            PlaceholderText="{DynamicResource Loc.View.Profiles.PlaceholderText.DisplayValueExampleAlexKim}"
                                                                             Text="{Binding Display, UpdateSourceTrigger=PropertyChanged}" />
                                                                         <ui:Button
                                                                             Grid.Column="3"
@@ -280,21 +277,21 @@
                                                                             Height="32"
                                                                             Margin="8,0,0,0"
                                                                             Appearance="Caution"
-                                                                            AutomationProperties.Name="값 매핑 삭제"
+                                                                            AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.DeleteValueMapping}"
                                                                             Command="{Binding DataContext.RemoveValueMappingCommand, RelativeSource={RelativeSource AncestorType={x:Type ItemsControl}}}"
                                                                             CommandParameter="{Binding}"
                                                                             Icon="{ui:SymbolIcon Symbol=Delete12}"
                                                                             Style="{StaticResource IconOnlyButtonStyle}"
-                                                                            ToolTip="매핑 삭제" />
+                                                                            ToolTip="{DynamicResource Loc.View.Profiles.ToolTip.DeleteMapping}" />
                                                                     </Grid>
                                                                 </DataTemplate>
                                                             </ItemsControl.ItemTemplate>
                                                         </ItemsControl>
                                                         <ui:Button
                                                             HorizontalAlignment="Left"
-                                                            AutomationProperties.Name="값 매핑 추가"
+                                                            AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.AddValueMapping}"
                                                             Command="{Binding AddValueMappingCommand}"
-                                                            Content="원본 → 표시 값 추가"
+                                                            Content="{DynamicResource Loc.View.Profiles.Content.AddOriginalDisplayValue}"
                                                             Icon="{ui:SymbolIcon Symbol=AddSquare20}" />
                                                     </StackPanel>
                                                 </Border>
@@ -303,7 +300,7 @@
                                     </ItemsControl>
                                     <TextBlock
                                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                        Text="텍스트 필드만 매핑할 수 있으며 원본 값은 대소문자를 구분해 정확히 비교합니다. 구조화 보기에서 언제든 원본 값으로 전환할 수 있습니다."
+                                        Text="{DynamicResource Loc.View.Profiles.Text.OnlyTextFieldsCanBeMappedOriginal}"
                                         TextWrapping="Wrap" />
                                 </StackPanel>
                             </Border>
@@ -313,32 +310,32 @@
                                 Style="{StaticResource EditorSectionStyle}"
                                 Visibility="{Binding IsProfileStep, Converter={StaticResource BooleanToVisibilityConverter}}">
                                 <StackPanel>
-                                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="편집 방법" />
+                                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.EditingMode}" />
                                     <TextBlock
                                         Margin="0,4,0,12"
                                         Style="{StaticResource CaptionTextStyle}"
-                                        Text="처음이라면 실제 경로에서 값을 고르는 초보자 모드를 사용하세요. 기존 정규식은 전문가 모드에서 그대로 유지됩니다."
+                                        Text="{DynamicResource Loc.View.Profiles.Text.IfYouAreNewToRegularExpressions}"
                                         TextWrapping="Wrap" />
                                     <WrapPanel>
                                         <RadioButton
-                                            AutomationProperties.Name="초보자 모드"
+                                            AutomationProperties.Name="{DynamicResource Loc.Profiles.EditorMode.Guided}"
                                             Command="{Binding UseGuidedModeCommand}"
-                                            Content="초보자 · 경로에서 값 고르기"
+                                            Content="{DynamicResource Loc.View.Profiles.Content.BeginnerPickValuesFromAPath}"
                                             GroupName="ProfileEditorMode"
                                             IsEnabled="{Binding CanUseGuidedMode}"
                                             IsChecked="{Binding IsGuidedMode, Mode=OneWay}"
                                             Style="{StaticResource GuidedModeChoiceStyle}" />
                                         <RadioButton
-                                            AutomationProperties.Name="전문가 모드"
+                                            AutomationProperties.Name="{DynamicResource Loc.Profiles.EditorMode.Expert}"
                                             Command="{Binding UseExpertModeCommand}"
-                                            Content="전문가 · 정규식 직접 입력"
+                                            Content="{DynamicResource Loc.View.Profiles.Content.ExpertEnterRegularExpressions}"
                                             GroupName="ProfileEditorMode"
                                             IsChecked="{Binding IsExpertMode, Mode=OneWay}"
                                             Style="{StaticResource GuidedModeChoiceStyle}" />
                                     </WrapPanel>
                                     <TextBlock
                                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                        Text="초보자 모드로 돌아가기 버튼이 비활성화되면, 현재 전문가 규칙을 단순한 경로 템플릿으로 손실 없이 바꿀 수 없다는 뜻입니다."
+                                        Text="{DynamicResource Loc.View.Profiles.Text.IfTheReturnToBeginnerButtonIs}"
                                         TextWrapping="Wrap" />
                                 </StackPanel>
                             </Border>
@@ -348,39 +345,39 @@
                                 Style="{StaticResource EditorSectionStyle}"
                                 Visibility="{Binding IsProfileStep, Converter={StaticResource BooleanToVisibilityConverter}}">
                                 <StackPanel>
-                                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="1. 기본 정보" />
+                                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.1BasicInformation}" />
                                     <TextBlock
                                         Margin="0,4,0,16"
                                         Style="{StaticResource CaptionTextStyle}"
-                                        Text="목록에 표시할 이름과 프로필을 식별할 ID를 정합니다." />
+                                        Text="{DynamicResource Loc.View.Profiles.Text.ChooseAListDisplayNameAndA}" />
 
-                                    <TextBlock Style="{StaticResource FieldLabelStyle}" Text="표시 이름 *" />
-                                    <TextBlock Style="{StaticResource CaptionTextStyle}" Text="사용자가 프로필 목록에서 보게 되는 이름입니다." />
+                                    <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.DisplayName}" />
+                                    <TextBlock Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.TheNameUsersSeeInTheProfile}" />
                                     <ui:TextBox
                                         Margin="0,4,0,12"
-                                        AutomationProperties.Name="프로필 표시 이름"
+                                        AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.ProfileDisplayName}"
                                         ClearButtonEnabled="True"
-                                        PlaceholderText="예: 프로젝트 폴더"
+                                        PlaceholderText="{DynamicResource Loc.View.Profiles.PlaceholderText.ExampleProjectFolders}"
                                         Text="{Binding DraftDisplayName, UpdateSourceTrigger=PropertyChanged}" />
 
-                                    <TextBlock Style="{StaticResource FieldLabelStyle}" Text="프로필 ID *" />
-                                    <TextBlock Style="{StaticResource CaptionTextStyle}" Text="소문자 영문 또는 숫자로 시작하고 점과 하이픈을 사용할 수 있습니다. 최대 64자입니다." />
+                                    <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.ProfileID}" />
+                                    <TextBlock Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.StartWithALowercaseLetterOrNumber}" />
                                     <ui:TextBox
                                         Margin="0,4,0,12"
-                                        AutomationProperties.Name="프로필 ID"
+                                        AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.ProfileID}"
                                         ClearButtonEnabled="True"
                                         IsEnabled="{Binding CanEditDraftId}"
-                                        PlaceholderText="예: my-projects"
+                                        PlaceholderText="{DynamicResource Loc.View.Profiles.PlaceholderText.ExampleMyProjects}"
                                         Text="{Binding DraftId, UpdateSourceTrigger=PropertyChanged}" />
 
                                     <ui:InfoBar
                                         Margin="0,4,0,0"
-                                        AutomationProperties.Name="절대 경로 입력 안내"
+                                        AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.AbsolutePathInputGuidance}"
                                         IsClosable="False"
                                         IsOpen="True"
                                         Message="규칙과 테스트에는 절대 경로만 전달됩니다. 매핑된 네트워크 드라이브는 실제 UNC 경로로 자동 변환됩니다."
                                         Severity="Informational"
-                                        Title="항상 절대 경로 사용" />
+                                        Title="{DynamicResource Loc.View.Profiles.Title.AlwaysUseAbsolutePaths}" />
                                 </StackPanel>
                             </Border>
 
@@ -395,20 +392,20 @@
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Margin="0,0,16,0">
-                                            <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="탐색 최적화 · 제외할 마지막 폴더 이름" />
+                                            <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.ScanOptimizationFinalFolderNamesToExclude}" />
                                             <TextBlock
                                                 x:Name="DirectoryExclusionScopeDescription"
                                                 Margin="0,4,0,0"
                                                 Style="{StaticResource CaptionTextStyle}"
-                                                Text="마지막 폴더 이름(leaf)은 절대경로에서 마지막 경로 구분자(\ 또는 /) 뒤에 있는 이름입니다. 이 제외 규칙에는 절대경로 전체가 아니라 그 이름 하나만 전달되며, 드라이브·UNC 주소와 상위 폴더는 비교하지 않습니다."
+                                                Text="{DynamicResource Loc.View.Profiles.Text.TheFinalFolderNameLeafIsThe}"
                                                 TextWrapping="Wrap" />
                                         </StackPanel>
                                         <ui:Button
                                             Grid.Column="1"
                                             VerticalAlignment="Top"
-                                            AutomationProperties.Name="폴더 이름 제외 규칙 추가"
+                                            AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.AddFolderNameExclusionRule}"
                                             Command="{Binding AddDirectoryExclusionRuleCommand}"
-                                            Content="규칙 추가"
+                                            Content="{DynamicResource Loc.View.Profiles.Content.AddRule}"
                                             Icon="{ui:SymbolIcon Symbol=AddSquare20}" />
                                     </Grid>
 
@@ -417,19 +414,19 @@
                                         Padding="12"
                                         Background="{DynamicResource ControlFillColorSecondaryBrush}"
                                         CornerRadius="6">
-                                        <StackPanel AutomationProperties.Name="폴더 이름 제외 규칙 적용 범위 안내">
+                                        <StackPanel AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.FolderNameExclusionRuleScope}">
                                             <TextBlock TextWrapping="Wrap">
-                                                <Run FontWeight="SemiBold" Text="입력 예시: " />
+                                                <Run FontWeight="SemiBold" Text="{DynamicResource Loc.View.Profiles.Text.InputExample}" />
                                                 <Run FontFamily="Consolas" Text="C:\abc\def\name" />
-                                                <Run Text=" → 정규식에 전달되는 값은 " />
+                                                <Run Text="{DynamicResource Loc.View.Profiles.Text.ValuePassedToTheRegularExpression}" />
                                                 <Run FontFamily="Consolas" FontWeight="SemiBold" Text="name" />
-                                                <Run Text="입니다." />
+                                                <Run Text="{DynamicResource Loc.View.Profiles.Text.Label}" />
                                             </TextBlock>
                                             <TextBlock Margin="0,6,0,0" TextWrapping="Wrap">
                                                 <Run FontFamily="Consolas" Text="Full + name" />
-                                                <Run Text="이면 마지막 폴더 이름 전체가 정확히 " />
+                                                <Run Text="{DynamicResource Loc.View.Profiles.Text.MatchesOnlyWhenTheEntireFinalFolder}" />
                                                 <Run FontFamily="Consolas" Text="name" />
-                                                <Run Text="일 때만 제외합니다. 일치하면 그 폴더 자체를 결과 후보에서 제외하고 하위 폴더로 들어가지 않지만, 같은 상위 경로의 다른 형제 폴더는 계속 탐색합니다." />
+                                                <Run Text="{DynamicResource Loc.View.Profiles.Text.AMatchRemovesThatFolderFromResult}" />
                                             </TextBlock>
                                         </StackPanel>
                                     </Border>
@@ -447,17 +444,17 @@
                                                                 <ColumnDefinition Width="Auto" />
                                                             </Grid.ColumnDefinitions>
                                                             <StackPanel>
-                                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="규칙 ID *" />
+                                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.RuleID}" />
                                                                 <ui:TextBox
-                                                                    AutomationProperties.Name="폴더 제외 규칙 ID"
-                                                                    PlaceholderText="예: skip-cache"
+                                                                    AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.FolderExclusionRuleID}"
+                                                                    PlaceholderText="{DynamicResource Loc.View.Profiles.PlaceholderText.ExampleSkipCache}"
                                                                     Text="{Binding Id, UpdateSourceTrigger=PropertyChanged}" />
                                                             </StackPanel>
                                                             <StackPanel Grid.Column="2">
-                                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="폴더 이름 정규식 *" />
+                                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.FolderNameRegularExpression}" />
                                                                 <ui:TextBox
-                                                                    AutomationProperties.Name="제외할 폴더 이름 정규식"
-                                                                    PlaceholderText="예: name 또는 temp|cache"
+                                                                    AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.ExcludedFolderNameRegularExpression}"
+                                                                    PlaceholderText="{DynamicResource Loc.View.Profiles.PlaceholderText.ExampleNameOrTempCache}"
                                                                     Text="{Binding Pattern, UpdateSourceTrigger=PropertyChanged}" />
                                                             </StackPanel>
                                                             <ui:Button
@@ -467,12 +464,12 @@
                                                                 Margin="10,22,0,0"
                                                                 VerticalAlignment="Top"
                                                                 Appearance="Caution"
-                                                                AutomationProperties.Name="폴더 이름 제외 규칙 삭제"
+                                                                AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.DeleteFolderNameExclusionRule}"
                                                                 Command="{Binding DataContext.RemoveDirectoryExclusionRuleCommand, RelativeSource={RelativeSource AncestorType={x:Type Page}}}"
                                                                 CommandParameter="{Binding}"
                                                                 Icon="{ui:SymbolIcon Symbol=Delete12}"
                                                                 Style="{StaticResource IconOnlyButtonStyle}"
-                                                                ToolTip="규칙 삭제" />
+                                                                ToolTip="{DynamicResource Loc.View.Profiles.ToolTip.DeleteRule}" />
                                                         </Grid>
 
                                                         <Grid Margin="0,12,0,0">
@@ -483,25 +480,25 @@
                                                                 <ColumnDefinition Width="Auto" />
                                                             </Grid.ColumnDefinitions>
                                                             <StackPanel>
-                                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="비교 방식" />
+                                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.MatchMode}" />
                                                                 <ComboBox
-                                                                    AutomationProperties.Name="폴더 이름 제외 비교 방식"
+                                                                    AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.FolderNameExclusionMatchMode}"
                                                                     DisplayMemberPath="DisplayName"
                                                                     ItemsSource="{Binding DataContext.MatchModeChoices, RelativeSource={RelativeSource AncestorType={x:Type Page}}}"
                                                                     SelectedValue="{Binding MatchMode, UpdateSourceTrigger=PropertyChanged}"
                                                                     SelectedValuePath="Value" />
                                                             </StackPanel>
                                                             <StackPanel Grid.Column="2">
-                                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="시간 제한 (ms)" />
+                                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.TimeoutMs}" />
                                                                 <ui:TextBox
-                                                                    AutomationProperties.Name="폴더 제외 정규식 시간 제한"
-                                                                    Text="{Binding TimeoutMilliseconds, UpdateSourceTrigger=PropertyChanged}" />
+                                                                    AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.FolderExclusionRegularExpressionTimeout}"
+                                                                    Text="{Binding TimeoutMillisecondsText, UpdateSourceTrigger=PropertyChanged}" />
                                                             </StackPanel>
                                                             <CheckBox
                                                                 Grid.Column="3"
                                                                 Margin="16,25,0,0"
                                                                 VerticalAlignment="Top"
-                                                                Content="대소문자 무시"
+                                                                Content="{DynamicResource Loc.View.Profiles.Content.IgnoreCase}"
                                                                 IsChecked="{Binding IgnoreCase, UpdateSourceTrigger=PropertyChanged}" />
                                                         </Grid>
                                                         <TextBlock
@@ -516,7 +513,7 @@
                                     </ItemsControl>
                                     <TextBlock
                                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                        Text="규칙이 없으면 모든 폴더를 방문합니다. 최대 64개이며, 경로·폴더 제외·텍스트 파일 이름 규칙의 시간 제한 합계는 프로필당 10,000ms 이하여야 합니다. 검증 버튼으로 오류를 확인하세요."
+                                        Text="{DynamicResource Loc.View.Profiles.Text.WithoutExclusionRulesEveryFolderIsVisited}"
                                         TextWrapping="Wrap" />
                                 </StackPanel>
                             </Border>
@@ -532,30 +529,30 @@
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Margin="0,0,16,0">
-                                            <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="폴더 안 텍스트 파일에서 값 가져오기" />
+                                            <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.ReadValuesFromTextFilesInThe}" />
                                             <TextBlock
                                                 Margin="0,4,0,0"
                                                 Style="{StaticResource CaptionTextStyle}"
-                                                Text="경로 규칙과 일치한 각 폴더의 바로 아래 파일 중 이름 정규식과 일치하는 첫 번째 파일을 읽어 문자열 컬럼으로 만듭니다. 하위 폴더는 검색하지 않습니다."
+                                                Text="{DynamicResource Loc.View.Profiles.Text.ForEachFolderThatMatchesThePath}"
                                                 TextWrapping="Wrap" />
                                         </StackPanel>
                                         <ui:Button
                                             Grid.Column="1"
                                             VerticalAlignment="Top"
-                                            AutomationProperties.Name="텍스트 파일 필드 추가"
+                                            AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.AddTextFileField}"
                                             Command="{Binding AddTextFileFieldCommand}"
-                                            Content="파일 값 추가"
+                                            Content="{DynamicResource Loc.View.Profiles.Content.AddFileValue}"
                                             Icon="{ui:SymbolIcon Symbol=DocumentText20}" />
                                     </Grid>
 
                                     <ui:InfoBar
                                         Margin="0,12,0,12"
-                                        AutomationProperties.Name="텍스트 파일 값 읽기 안내"
+                                        AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.TextFileValueReadingGuidance}"
                                         IsClosable="False"
                                         IsOpen="True"
                                         Message="정규식에는 전체 경로가 아닌 파일 이름만 전달됩니다. 여러 파일이 맞으면 파일 이름을 대소문자 무시 오름차순으로 정렬해 첫 파일을 사용합니다. UTF-8을 기본으로 읽고 BOM이 있으면 해당 인코딩을 감지합니다."
                                         Severity="Informational"
-                                        Title="바로 아래의 첫 일치 파일" />
+                                        Title="{DynamicResource Loc.View.Profiles.Title.FirstMatchingDirectChildFile}" />
 
                                     <ItemsControl ItemsSource="{Binding DraftTextFileFields}">
                                         <ItemsControl.ItemTemplate>
@@ -570,17 +567,17 @@
                                                                 <ColumnDefinition Width="Auto" />
                                                             </Grid.ColumnDefinitions>
                                                             <StackPanel>
-                                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="표시 이름 *" />
+                                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.DisplayName}" />
                                                                 <ui:TextBox
-                                                                    AutomationProperties.Name="텍스트 파일 필드 표시 이름"
-                                                                    PlaceholderText="예: 설명"
+                                                                    AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.TextFileFieldDisplayName}"
+                                                                    PlaceholderText="{DynamicResource Loc.View.Profiles.PlaceholderText.ExampleDescription}"
                                                                     Text="{Binding Header, UpdateSourceTrigger=PropertyChanged}" />
                                                             </StackPanel>
                                                             <StackPanel Grid.Column="2">
                                                                 <TextBlock Style="{StaticResource FieldLabelStyle}" Text="Field ID *" />
                                                                 <ui:TextBox
-                                                                    AutomationProperties.Name="텍스트 파일 Field ID"
-                                                                    PlaceholderText="예: description"
+                                                                    AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.TextFileFieldID}"
+                                                                    PlaceholderText="{DynamicResource Loc.View.Profiles.PlaceholderText.ExampleDescription122}"
                                                                     Text="{Binding FieldId, UpdateSourceTrigger=PropertyChanged}" />
                                                             </StackPanel>
                                                             <ui:Button
@@ -590,18 +587,18 @@
                                                                 Margin="10,22,0,0"
                                                                 VerticalAlignment="Top"
                                                                 Appearance="Caution"
-                                                                AutomationProperties.Name="텍스트 파일 필드 삭제"
+                                                                AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.DeleteTextFileField}"
                                                                 Command="{Binding DataContext.RemoveTextFileFieldCommand, RelativeSource={RelativeSource AncestorType={x:Type Page}}}"
                                                                 CommandParameter="{Binding}"
                                                                 Icon="{ui:SymbolIcon Symbol=Delete12}"
                                                                 Style="{StaticResource IconOnlyButtonStyle}"
-                                                                ToolTip="파일 값 삭제" />
+                                                                ToolTip="{DynamicResource Loc.View.Profiles.ToolTip.DeleteFileValue}" />
                                                         </Grid>
 
-                                                        <TextBlock Margin="0,12,0,0" Style="{StaticResource FieldLabelStyle}" Text="파일 이름 정규식 *" />
+                                                        <TextBlock Margin="0,12,0,0" Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.FileNameRegularExpression}" />
                                                         <ui:TextBox
-                                                            AutomationProperties.Name="텍스트 파일 이름 정규식"
-                                                            PlaceholderText="예: ^metadata\.txt$ 또는 ^info-\d+\.txt$"
+                                                            AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.TextFileNameRegularExpression}"
+                                                            PlaceholderText="{DynamicResource Loc.View.Profiles.PlaceholderText.ExampleMetadataTxtOrInfoDTxt}"
                                                             Text="{Binding FileNamePattern, UpdateSourceTrigger=PropertyChanged}" />
 
                                                         <Grid Margin="0,12,0,0">
@@ -615,41 +612,41 @@
                                                                 <ColumnDefinition Width="*" />
                                                             </Grid.ColumnDefinitions>
                                                             <StackPanel>
-                                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="파일 이름 비교" />
+                                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.FileNameMatchMode}" />
                                                                 <ComboBox
-                                                                    AutomationProperties.Name="텍스트 파일 이름 비교 방식"
+                                                                    AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.TextFileNameMatchMode}"
                                                                     DisplayMemberPath="DisplayName"
                                                                     ItemsSource="{Binding DataContext.MatchModeChoices, RelativeSource={RelativeSource AncestorType={x:Type Page}}}"
                                                                     SelectedValue="{Binding MatchMode, UpdateSourceTrigger=PropertyChanged}"
                                                                     SelectedValuePath="Value" />
                                                             </StackPanel>
                                                             <StackPanel Grid.Column="2">
-                                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="읽기 제한 (bytes)" />
+                                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.ReadLimitBytes}" />
                                                                 <ui:TextBox
-                                                                    AutomationProperties.Name="텍스트 파일 읽기 바이트 제한"
-                                                                    Text="{Binding MaxBytes, UpdateSourceTrigger=PropertyChanged}" />
+                                                                    AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.TextFileReadByteLimit}"
+                                                                    Text="{Binding MaxBytesText, UpdateSourceTrigger=PropertyChanged}" />
                                                             </StackPanel>
                                                             <StackPanel Grid.Column="4">
-                                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="시간 제한 (ms)" />
+                                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.TimeoutMs}" />
                                                                 <ui:TextBox
-                                                                    AutomationProperties.Name="텍스트 파일 정규식 시간 제한"
-                                                                    Text="{Binding TimeoutMilliseconds, UpdateSourceTrigger=PropertyChanged}" />
+                                                                    AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.TextFileRegularExpressionTimeout}"
+                                                                    Text="{Binding TimeoutMillisecondsText, UpdateSourceTrigger=PropertyChanged}" />
                                                             </StackPanel>
                                                             <StackPanel Grid.Column="6">
-                                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="컬럼 순서" />
+                                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.ColumnOrder}" />
                                                                 <ui:TextBox
-                                                                    AutomationProperties.Name="텍스트 파일 컬럼 순서"
-                                                                    Text="{Binding Order, UpdateSourceTrigger=PropertyChanged}" />
+                                                                    AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.TextFileColumnOrder}"
+                                                                    Text="{Binding OrderText, UpdateSourceTrigger=PropertyChanged}" />
                                                             </StackPanel>
                                                         </Grid>
                                                         <WrapPanel Margin="0,12,0,0">
                                                             <CheckBox
                                                                 Margin="0,0,20,0"
-                                                                Content="필수 파일"
+                                                                Content="{DynamicResource Loc.View.Profiles.Content.RequiredFile}"
                                                                 IsChecked="{Binding Required, UpdateSourceTrigger=PropertyChanged}"
-                                                                ToolTip="일치하는 파일이 없으면 이 폴더를 유효하지 않은 항목으로 처리합니다." />
+                                                                ToolTip="{DynamicResource Loc.View.Profiles.ToolTip.TreatTheFolderAsInvalidWhenNo}" />
                                                             <CheckBox
-                                                                Content="대소문자 무시"
+                                                                Content="{DynamicResource Loc.View.Profiles.Content.IgnoreCase}"
                                                                 IsChecked="{Binding IgnoreCase, UpdateSourceTrigger=PropertyChanged}" />
                                                         </WrapPanel>
                                                     </StackPanel>
@@ -659,7 +656,7 @@
                                     </ItemsControl>
                                     <TextBlock
                                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                        Text="최대 16개, 필드당 기본 262,144바이트(256 KiB), 최대 4,194,304바이트(4 MiB)입니다. 선택 파일이 제한을 넘거나 읽을 수 없으면 해당 항목의 검증 오류로 표시됩니다."
+                                        Text="{DynamicResource Loc.View.Profiles.Text.UpTo16FieldsAreAllowedThe}"
                                         TextWrapping="Wrap" />
                                 </StackPanel>
                             </Border>
@@ -676,19 +673,19 @@
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Margin="0,0,16,0">
-                                            <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="행별 사용자 입력" />
+                                            <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.Profiles.Field.UserInput}" />
                                             <TextBlock
                                                 Margin="0,4,0,0"
                                                 Style="{StaticResource CaptionTextStyle}"
-                                                Text="구조화 결과의 각 행에 직접 입력하는 메모 컬럼입니다. 값은 프로필·절대 경로·Field ID별로 자동 저장되어 다시 스캔하거나 앱을 다시 열어도 유지됩니다."
+                                                Text="{DynamicResource Loc.View.Profiles.Text.EditableNoteColumnsForEachStructuredResult}"
                                                 TextWrapping="Wrap" />
                                         </StackPanel>
                                         <ui:Button
                                             Grid.Column="1"
                                             VerticalAlignment="Top"
-                                            AutomationProperties.Name="사용자 입력 필드 추가"
+                                            AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.AddUserInputField}"
                                             Command="{Binding AddUserInputFieldCommand}"
-                                            Content="입력 컬럼 추가"
+                                            Content="{DynamicResource Loc.View.Profiles.Content.AddInputColumn}"
                                             Icon="{ui:SymbolIcon Symbol=DocumentEdit20}" />
                                     </Grid>
 
@@ -710,22 +707,22 @@
                                                             <ColumnDefinition Width="Auto" />
                                                         </Grid.ColumnDefinitions>
                                                         <StackPanel>
-                                                            <TextBlock Style="{StaticResource FieldLabelStyle}" Text="표시 이름 *" />
+                                                            <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.DisplayName}" />
                                                             <ui:TextBox
-                                                                AutomationProperties.Name="사용자 입력 표시 이름"
-                                                                PlaceholderText="예: 검토 메모"
+                                                                AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.UserInputDisplayName}"
+                                                                PlaceholderText="{DynamicResource Loc.View.Profiles.PlaceholderText.ExampleReviewNote}"
                                                                 Text="{Binding Header, UpdateSourceTrigger=PropertyChanged}" />
                                                         </StackPanel>
                                                         <StackPanel Grid.Column="2">
                                                             <TextBlock Style="{StaticResource FieldLabelStyle}" Text="Field ID *" />
                                                             <ui:TextBox
-                                                                AutomationProperties.Name="사용자 입력 Field ID"
-                                                                PlaceholderText="예: review-note"
+                                                                AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.UserInputFieldID}"
+                                                                PlaceholderText="{DynamicResource Loc.View.Profiles.PlaceholderText.ExampleReviewNote144}"
                                                                 Text="{Binding FieldId, UpdateSourceTrigger=PropertyChanged}" />
                                                         </StackPanel>
                                                         <StackPanel Grid.Column="4">
-                                                            <TextBlock Style="{StaticResource FieldLabelStyle}" Text="컬럼 순서" />
-                                                            <ui:TextBox Text="{Binding Order, UpdateSourceTrigger=PropertyChanged}" />
+                                                            <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.ColumnOrder}" />
+                                                            <ui:TextBox Text="{Binding OrderText, UpdateSourceTrigger=PropertyChanged}" />
                                                         </StackPanel>
                                                         <ui:Button
                                                             Grid.Column="5"
@@ -734,24 +731,24 @@
                                                             Margin="10,22,0,0"
                                                             VerticalAlignment="Top"
                                                             Appearance="Caution"
-                                                            AutomationProperties.Name="사용자 입력 필드 삭제"
+                                                            AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.DeleteUserInputField}"
                                                             Command="{Binding DataContext.RemoveUserInputFieldCommand, RelativeSource={RelativeSource AncestorType={x:Type Page}}}"
                                                             CommandParameter="{Binding}"
                                                             Icon="{ui:SymbolIcon Symbol=Delete12}"
                                                             Style="{StaticResource IconOnlyButtonStyle}"
-                                                            ToolTip="입력 컬럼 삭제" />
+                                                            ToolTip="{DynamicResource Loc.View.Profiles.ToolTip.DeleteInputColumn}" />
                                                         <StackPanel Grid.Row="1" Grid.ColumnSpan="3" Margin="0,12,0,0">
-                                                            <TextBlock Style="{StaticResource FieldLabelStyle}" Text="입력 안내 문구" />
+                                                            <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.InputHint}" />
                                                             <ui:TextBox
                                                                 MaxLength="256"
-                                                                PlaceholderText="예: 이 항목에 메모 입력"
+                                                                PlaceholderText="{DynamicResource Loc.View.Profiles.PlaceholderText.ExampleEnterANoteForThisItem}"
                                                                 Text="{Binding Placeholder, UpdateSourceTrigger=PropertyChanged}" />
                                                         </StackPanel>
                                                         <StackPanel Grid.Row="1" Grid.Column="4" Grid.ColumnSpan="2" Margin="0,12,0,0">
-                                                            <TextBlock Style="{StaticResource FieldLabelStyle}" Text="선택 기본값" />
+                                                            <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.OptionalDefault}" />
                                                             <ui:TextBox
                                                                 MaxLength="4096"
-                                                                PlaceholderText="비워 두면 빈 입력칸"
+                                                                PlaceholderText="{DynamicResource Loc.View.Profiles.PlaceholderText.LeaveBlankForAnEmptyInput}"
                                                                 Text="{Binding DefaultValue, UpdateSourceTrigger=PropertyChanged}" />
                                                         </StackPanel>
                                                     </Grid>
@@ -761,131 +758,62 @@
                                     </ItemsControl>
                                     <TextBlock
                                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                        Text="최대 16개입니다. Field ID는 경로 값 및 텍스트 파일 값과 중복될 수 없습니다."
+                                        Text="{DynamicResource Loc.View.Profiles.Text.UpTo16ColumnsFieldIDsCannot}"
                                         TextWrapping="Wrap" />
                                 </StackPanel>
                             </Border>
 
                             <Border IsEnabled="{Binding IsEditorReady}" Style="{StaticResource GuidedEditorSectionStyle}">
-                                <StackPanel>
-                                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="2. 실제 경로에서 결과 값 고르기" />
+                                <Grid x:Name="GuidedWorkspace">
+                                    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                                    <Grid.ColumnDefinitions><ColumnDefinition x:Name="GuidedEditorColumn" Width="*" /><ColumnDefinition x:Name="GuidedGapColumn" Width="0" /><ColumnDefinition x:Name="GuidedChoicesColumn" Width="0" /></Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.2PickResultValuesFromAReal}" />
                                     <TextBlock
                                         Margin="0,4,0,16"
                                         Style="{StaticResource CaptionTextStyle}"
-                                        Text="정규식을 몰라도 괜찮습니다. 실제 경로를 분석한 뒤 폴더 조각을 버튼으로 골라 결과 값에 연결하세요."
+                                        Text="{DynamicResource Loc.View.Profiles.Text.YouDoNotNeedToKnowRegular}"
                                         TextWrapping="Wrap" />
 
-                                    <TextBlock Style="{StaticResource FieldLabelStyle}" Text="① 실제 경로 붙여넣기" />
+                                    <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.PasteARealPath}" />
                                     <TextBlock
                                         Style="{StaticResource CaptionTextStyle}"
-                                        Text="드라이브 또는 UNC를 포함한 실제 전체 폴더 경로를 사용하세요."
+                                        Text="{DynamicResource Loc.View.Profiles.Text.UseACompleteRealFolderPathIncluding}"
                                         TextWrapping="Wrap" />
                                     <ui:TextBox
                                         Margin="0,4,0,8"
-                                        AutomationProperties.Name="규칙을 만들 실제 경로"
+                                        AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.RealPathUsedToBuildTheRule}"
                                         ClearButtonEnabled="True"
-                                        PlaceholderText="예: C:\Archive\고객사\프로젝트\2026\Rev-3"
+                                        PlaceholderText="{DynamicResource Loc.View.Profiles.PlaceholderText.ExampleCArchiveClientProject2026Rev}"
                                         Text="{Binding SamplePath, UpdateSourceTrigger=PropertyChanged}" />
                                     <ui:Button
                                         Margin="0,0,0,20"
                                         HorizontalAlignment="Left"
                                         Command="{Binding BuildTemplateFromSampleCommand}"
-                                        Content="경로 분석"
+                                        Content="{DynamicResource Loc.View.Profiles.Content.AnalyzePath}"
                                         Icon="{ui:SymbolIcon Symbol=ArrowDown20}" />
 
-                                    <TextBlock Style="{StaticResource FieldLabelStyle}" Text="② 결과 값과 경로 조각 연결하기" />
+                                    <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.ConnectResultValuesToPathSegments}" />
                                     <TextBlock
                                         Style="{StaticResource CaptionTextStyle}"
-                                        Text="먼저 아래 결과 값 카드에서 연결할 항목을 누른 다음, 폴더명 전체 또는 _, -, 공백으로 나뉜 세부 조각 버튼을 누르세요."
+                                        Text="{DynamicResource Loc.View.Profiles.Text.FirstSelectAResultValueCardBelow}"
                                         TextWrapping="Wrap" />
 
-                                    <Border
-                                        x:Name="AssignmentPickerPanel"
-                                        Margin="0,8,0,12"
-                                        Padding="12"
-                                        Background="{DynamicResource ControlFillColorSecondaryBrush}"
-                                        CornerRadius="6"
-                                        Visibility="{Binding IsAssignmentPickerOpen, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                        <StackPanel>
-                                            <TextBlock FontWeight="SemiBold" Text="{Binding AssignmentPickerTitle}" TextWrapping="Wrap" />
-                                            <ItemsControl Margin="0,10,0,0" ItemsSource="{Binding GuidedPathSegments}">
-                                                <ItemsControl.ItemsPanel>
-                                                    <ItemsPanelTemplate>
-                                                        <WrapPanel />
-                                                    </ItemsPanelTemplate>
-                                                </ItemsControl.ItemsPanel>
-                                                <ItemsControl.ItemTemplate>
-                                                    <DataTemplate>
-                                                        <StackPanel Margin="0,0,8,8" Orientation="Horizontal">
-                                                            <TextBlock
-                                                                Margin="0,0,4,0"
-                                                                VerticalAlignment="Center"
-                                                                FontSize="18"
-                                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                                Text="{Binding Prefix}" />
-                                                            <Border
-                                                                Padding="8"
-                                                                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
-                                                                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
-                                                                BorderThickness="1"
-                                                                CornerRadius="6">
-                                                                <StackPanel>
-                                                                    <ui:Button
-                                                                        AutomationProperties.Name="폴더명 전체 선택"
-                                                                        Command="{Binding DataContext.AssignPathChoiceCommand, RelativeSource={RelativeSource AncestorType={x:Type Page}}}"
-                                                                        CommandParameter="{Binding WholeChoice}"
-                                                                        Content="{Binding WholeChoice.DisplayName}" />
-                                                                    <ItemsControl Margin="0,6,0,0" ItemsSource="{Binding PartChoices}">
-                                                                        <ItemsControl.Style>
-                                                                            <Style TargetType="ItemsControl">
-                                                                                <Setter Property="Visibility" Value="Collapsed" />
-                                                                                <Style.Triggers>
-                                                                                    <DataTrigger Binding="{Binding HasPartChoices}" Value="True">
-                                                                                        <Setter Property="Visibility" Value="Visible" />
-                                                                                    </DataTrigger>
-                                                                                </Style.Triggers>
-                                                                            </Style>
-                                                                        </ItemsControl.Style>
-                                                                        <ItemsControl.ItemsPanel>
-                                                                            <ItemsPanelTemplate>
-                                                                                <WrapPanel />
-                                                                            </ItemsPanelTemplate>
-                                                                        </ItemsControl.ItemsPanel>
-                                                                        <ItemsControl.ItemTemplate>
-                                                                            <DataTemplate>
-                                                                                <ui:Button
-                                                                                    MinWidth="52"
-                                                                                    Margin="0,0,4,4"
-                                                                                    AutomationProperties.Name="폴더명 세부 조각 선택"
-                                                                                    Appearance="Secondary"
-                                                                                    Command="{Binding DataContext.AssignPathChoiceCommand, RelativeSource={RelativeSource AncestorType={x:Type Page}}}"
-                                                                                    CommandParameter="{Binding}"
-                                                                                    Content="{Binding DisplayName}" />
-                                                                            </DataTemplate>
-                                                                        </ItemsControl.ItemTemplate>
-                                                                    </ItemsControl>
-                                                                </StackPanel>
-                                                            </Border>
-                                                        </StackPanel>
-                                                    </DataTemplate>
-                                                </ItemsControl.ItemTemplate>
-                                            </ItemsControl>
-                                        </StackPanel>
-                                    </Border>
+
 
                                     <TextBlock
                                         Margin="0,4,0,4"
                                         Style="{StaticResource CaptionTextStyle}"
-                                        Text="만들어진 경로 규칙 (읽기 전용)" />
+                                        Text="{DynamicResource Loc.View.Profiles.Text.GeneratedPathRuleReadOnly}" />
                                     <ui:TextBox
                                         x:Name="ProfilePathTemplateTextBox"
                                         Margin="0,4,0,20"
-                                        AutomationProperties.Name="초보자 경로 규칙"
+                                        AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.BeginnerPathRule}"
                                         ClearButtonEnabled="False"
                                         FontFamily="Consolas"
                                         FontSize="14"
                                         IsReadOnly="True"
-                                        PlaceholderText="먼저 위에 실제 경로를 붙여 넣으세요."
+                                        PlaceholderText="{DynamicResource Loc.View.Profiles.PlaceholderText.PasteARealPathAboveFirst}"
                                         Text="{Binding DraftPathTemplate, Mode=OneWay}" />
 
                                     <Grid Margin="0,0,0,8">
@@ -894,19 +822,19 @@
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
                                         <StackPanel>
-                                            <TextBlock Style="{StaticResource FieldLabelStyle}" Text="③ 보여줄 결과 값 만들기" />
+                                            <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.CreateResultValuesToDisplay}" />
                                             <TextBlock
                                                 Style="{StaticResource CaptionTextStyle}"
-                                                Text="각 카드는 목록의 한 컬럼이 됩니다. 필수 값을 끄면 경로 끝에 없어도 됩니다."
+                                                Text="{DynamicResource Loc.View.Profiles.Text.EachCardBecomesOneResultColumnTurn}"
                                                 TextWrapping="Wrap" />
                                         </StackPanel>
                                         <ui:Button
                                             Grid.Column="1"
                                             Margin="12,0,0,0"
                                             VerticalAlignment="Center"
-                                            AutomationProperties.Name="결과 값 추가"
+                                            AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.AddResultValue}"
                                             Command="{Binding AddFieldCommand}"
-                                            Content="결과 값 추가"
+                                            Content="{DynamicResource Loc.View.Profiles.AutomationName.AddResultValue}"
                                             Icon="{ui:SymbolIcon Symbol=AddSquare20}" />
                                     </Grid>
 
@@ -929,41 +857,41 @@
                                                             <StackPanel Grid.Column="1" Margin="12,0,0,0" Orientation="Horizontal">
                                                                 <ui:Button
                                                                     Margin="0,0,4,0"
-                                                                    AutomationProperties.Name="결과 값 위로 이동"
+                                                                    AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.MoveResultValueUp}"
                                                                     Command="{Binding DataContext.MoveFieldUpCommand, RelativeSource={RelativeSource AncestorType={x:Type ItemsControl}}}"
                                                                     CommandParameter="{Binding}"
                                                                     Icon="{ui:SymbolIcon Symbol=ArrowUp12}"
                                                                     Style="{StaticResource IconOnlyButtonStyle}"
-                                                                    ToolTip="위로 이동" />
+                                                                    ToolTip="{DynamicResource Loc.View.Profiles.ToolTip.MoveUp}" />
                                                                 <ui:Button
                                                                     Margin="0,0,4,0"
-                                                                    AutomationProperties.Name="결과 값 아래로 이동"
+                                                                    AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.MoveResultValueDown}"
                                                                     Command="{Binding DataContext.MoveFieldDownCommand, RelativeSource={RelativeSource AncestorType={x:Type ItemsControl}}}"
                                                                     CommandParameter="{Binding}"
                                                                     Icon="{ui:SymbolIcon Symbol=ArrowDown12}"
                                                                     Style="{StaticResource IconOnlyButtonStyle}"
-                                                                    ToolTip="아래로 이동" />
+                                                                    ToolTip="{DynamicResource Loc.View.Profiles.ToolTip.MoveDown}" />
                                                                 <ui:Button
                                                                     Appearance="Caution"
-                                                                    AutomationProperties.Name="결과 값 삭제"
+                                                                    AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.DeleteResultValue}"
                                                                     Command="{Binding DataContext.RemoveFieldCommand, RelativeSource={RelativeSource AncestorType={x:Type ItemsControl}}}"
                                                                     CommandParameter="{Binding}"
                                                                     Icon="{ui:SymbolIcon Symbol=Delete12}"
                                                                     Style="{StaticResource IconOnlyButtonStyle}"
-                                                                    ToolTip="삭제" />
+                                                                    ToolTip="{DynamicResource Loc.Common.Delete}" />
                                                             </StackPanel>
                                                         </Grid>
 
-                                                        <TextBlock Margin="0,12,0,4" Style="{StaticResource FieldLabelStyle}" Text="목록에 보일 이름" />
+                                                        <TextBlock Margin="0,12,0,4" Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.NameShownInTheList}" />
                                                         <ui:TextBox
-                                                            AutomationProperties.Name="결과 값 이름"
+                                                            AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.ResultValueName}"
                                                             ClearButtonEnabled="True"
-                                                            PlaceholderText="예: 고객사"
+                                                            PlaceholderText="{DynamicResource Loc.View.Profiles.PlaceholderText.ExampleClient}"
                                                             Text="{Binding Header, UpdateSourceTrigger=PropertyChanged}" />
 
-                                                        <TextBlock Margin="0,12,0,4" Style="{StaticResource FieldLabelStyle}" Text="값의 종류" />
+                                                        <TextBlock Margin="0,12,0,4" Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.ValueType}" />
                                                         <ComboBox
-                                                            AutomationProperties.Name="결과 값 종류"
+                                                            AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.ResultValueType}"
                                                             DisplayMemberPath="DisplayName"
                                                             ItemsSource="{Binding DataContext.FieldKindChoices, RelativeSource={RelativeSource AncestorType={x:Type ItemsControl}}}"
                                                             SelectedValue="{Binding Kind, UpdateSourceTrigger=PropertyChanged}"
@@ -980,9 +908,9 @@
                                                                     </Style.Triggers>
                                                                 </Style>
                                                             </StackPanel.Style>
-                                                            <TextBlock Style="{StaticResource FieldLabelStyle}" Text="날짜가 나뉘어 있는 방식" />
+                                                            <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.HowTheDateIsSplit}" />
                                                             <ComboBox
-                                                                AutomationProperties.Name="날짜 소스 구성"
+                                                                AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.DateSourceArrangement}"
                                                                 DisplayMemberPath="DisplayName"
                                                                 ItemsSource="{Binding DataContext.DateSourcePresetChoices, RelativeSource={RelativeSource AncestorType={x:Type Page}}}"
                                                                 SelectedValue="{Binding DateSourcePreset, UpdateSourceTrigger=PropertyChanged}"
@@ -991,10 +919,10 @@
                                                             <TextBlock
                                                                 Margin="0,12,0,4"
                                                                 Style="{StaticResource FieldLabelStyle}"
-                                                                Text="경로 속 날짜 모양" />
+                                                                Text="{DynamicResource Loc.View.Profiles.Text.DateFormatInThePath}" />
                                                             <ComboBox
-                                                                AutomationProperties.HelpText="경로에 표시된 날짜와 같은 예시를 선택합니다. 선택한 형식은 프로필의 날짜 입력 형식으로 저장됩니다."
-                                                                AutomationProperties.Name="날짜 입력 모양"
+                                                                AutomationProperties.HelpText="{DynamicResource Loc.View.Profiles.AutomationHelpText.ChooseAnExampleThatMatchesHowThe}"
+                                                                AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.DateInputFormat}"
                                                                 DisplayMemberPath="DisplayName"
                                                                 ItemsSource="{Binding DateFormatChoices}"
                                                                 SelectedValue="{Binding ParseFormat, UpdateSourceTrigger=PropertyChanged}"
@@ -1008,15 +936,15 @@
 
                                                         <CheckBox
                                                             Margin="0,12,0,12"
-                                                            AutomationProperties.Name="필수 결과 값"
-                                                            Content="이 값은 경로에 반드시 있어야 함"
+                                                            AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.RequiredResultValue}"
+                                                            Content="{DynamicResource Loc.View.Profiles.Content.ThisValueIsRequiredInThePath}"
                                                             IsChecked="{Binding Required, UpdateSourceTrigger=PropertyChanged}" />
 
                                                         <StackPanel>
                                                             <ui:Button
                                                                 HorizontalAlignment="Stretch"
                                                                 Appearance="Primary"
-                                                                AutomationProperties.Name="경로 조각 선택"
+                                                                AutomationProperties.Name="{DynamicResource Loc.Profiles.Action.SelectSegment}"
                                                                 Command="{Binding DataContext.BeginAssignValueCommand, RelativeSource={RelativeSource AncestorType={x:Type Page}}}"
                                                                 CommandParameter="{Binding}"
                                                                 Content="{Binding TemplateActionLabel}"
@@ -1050,13 +978,13 @@
                                                                     Appearance="Primary"
                                                                     Command="{Binding DataContext.BeginAssignYearCommand, RelativeSource={RelativeSource AncestorType={x:Type Page}}}"
                                                                     CommandParameter="{Binding}"
-                                                                    Content="연도 선택" />
+                                                                    Content="{DynamicResource Loc.View.Profiles.Content.SelectYear}" />
                                                                 <ui:Button
                                                                     MinWidth="120"
                                                                     Appearance="Primary"
                                                                     Command="{Binding DataContext.BeginAssignMonthDayCommand, RelativeSource={RelativeSource AncestorType={x:Type Page}}}"
                                                                     CommandParameter="{Binding}"
-                                                                    Content="월일 선택" />
+                                                                    Content="{DynamicResource Loc.View.Profiles.Content.SelectMonthAndDay}" />
                                                             </StackPanel>
 
                                                             <StackPanel Orientation="Horizontal">
@@ -1070,9 +998,9 @@
                                                                         </Style.Triggers>
                                                                     </Style>
                                                                 </StackPanel.Style>
-                                                                <ui:Button MinWidth="92" Margin="0,0,8,0" Appearance="Primary" Command="{Binding DataContext.BeginAssignYearCommand, RelativeSource={RelativeSource AncestorType={x:Type Page}}}" CommandParameter="{Binding}" Content="연도 선택" />
-                                                                <ui:Button MinWidth="92" Margin="0,0,8,0" Appearance="Primary" Command="{Binding DataContext.BeginAssignMonthCommand, RelativeSource={RelativeSource AncestorType={x:Type Page}}}" CommandParameter="{Binding}" Content="월 선택" />
-                                                                <ui:Button MinWidth="92" Appearance="Primary" Command="{Binding DataContext.BeginAssignDayCommand, RelativeSource={RelativeSource AncestorType={x:Type Page}}}" CommandParameter="{Binding}" Content="일 선택" />
+                                                                <ui:Button MinWidth="92" Margin="0,0,8,0" Appearance="Primary" Command="{Binding DataContext.BeginAssignYearCommand, RelativeSource={RelativeSource AncestorType={x:Type Page}}}" CommandParameter="{Binding}" Content="{DynamicResource Loc.View.Profiles.Content.SelectYear}" />
+                                                                <ui:Button MinWidth="92" Margin="0,0,8,0" Appearance="Primary" Command="{Binding DataContext.BeginAssignMonthCommand, RelativeSource={RelativeSource AncestorType={x:Type Page}}}" CommandParameter="{Binding}" Content="{DynamicResource Loc.View.Profiles.Content.SelectMonth}" />
+                                                                <ui:Button MinWidth="92" Appearance="Primary" Command="{Binding DataContext.BeginAssignDayCommand, RelativeSource={RelativeSource AncestorType={x:Type Page}}}" CommandParameter="{Binding}" Content="{DynamicResource Loc.View.Profiles.Content.SelectDay}" />
                                                             </StackPanel>
                                                         </StackPanel>
 
@@ -1092,31 +1020,31 @@
                                                                     Margin="8,0,0,0"
                                                                     Command="{Binding DataContext.ClearFieldAssignmentsCommand, RelativeSource={RelativeSource AncestorType={x:Type Page}}}"
                                                                     CommandParameter="{Binding}"
-                                                                    Content="연결 해제"
+                                                                    Content="{DynamicResource Loc.View.Profiles.Content.Disconnect}"
                                                                     Visibility="{Binding HasGuidedAssignments, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                                             </Grid>
                                                         </Border>
 
                                                         <RadioButton
                                                             Margin="0,12,0,0"
-                                                            AutomationProperties.Name="탐색 중단 기준 필드"
+                                                            AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.TraversalStopField}"
                                                             Command="{Binding DataContext.SelectTerminalFieldCommand, RelativeSource={RelativeSource AncestorType={x:Type Page}}}"
                                                             CommandParameter="{Binding}"
-                                                            Content="이 값까지 찾으면 하위 폴더 건너뛰기"
+                                                            Content="{DynamicResource Loc.View.Profiles.Content.SkipDescendantsAfterThisValueIsFound}"
                                                             GroupName="GuidedTerminalField"
                                                             IsChecked="{Binding IsTerminalField, Mode=OneWay}" />
 
                                                         <Expander
                                                             Margin="0,12,0,0"
                                                             HorizontalContentAlignment="Stretch"
-                                                            Header="고급 표시 설정">
+                                                            Header="{DynamicResource Loc.View.Profiles.Header.AdvancedDisplaySettings}">
                                                             <StackPanel Margin="0,8,0,0">
-                                                                <TextBlock Style="{StaticResource CaptionTextStyle}" Text="이 값의 내부 키" />
+                                                                <TextBlock Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.InternalKeyForThisValue}" />
                                                                 <TextBlock Margin="0,2,0,12" FontFamily="Consolas" Text="{Binding FieldId}" />
-                                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="표시 형식" />
+                                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.DisplayFormat}" />
                                                                 <ui:TextBox
                                                                     Margin="0,4,0,0"
-                                                                    PlaceholderText="예: yyyy-MM-dd 또는 N2"
+                                                                    PlaceholderText="{DynamicResource Loc.View.Profiles.PlaceholderText.ExampleYyyyMMDdOrN2}"
                                                                     Text="{Binding DisplayFormat, UpdateSourceTrigger=PropertyChanged}" />
                                                             </StackPanel>
                                                         </Expander>
@@ -1130,7 +1058,7 @@
                                         Margin="0,0,0,12"
                                         HorizontalAlignment="Left"
                                         Command="{Binding ClearTerminalFieldCommand}"
-                                        Content="하위 폴더를 계속 탐색" />
+                                        Content="{DynamicResource Loc.View.Profiles.Content.ContinueScanningDescendants}" />
 
                                     <ui:InfoBar
                                         Margin="0,4,0,0"
@@ -1138,12 +1066,12 @@
                                         IsOpen="True"
                                         Message="{Binding TemplateStatusMessage}"
                                         Severity="{Binding TemplateStatusSeverity}"
-                                        Title="경로 규칙 확인" />
+                                        Title="{DynamicResource Loc.View.Profiles.Title.ReviewPathRule}" />
 
                                     <Expander
                                         Margin="0,12,0,0"
                                         HorizontalContentAlignment="Stretch"
-                                        Header="전문가용: 만들어진 정규식 보기">
+                                        Header="{DynamicResource Loc.View.Profiles.Header.ExpertViewGeneratedRegularExpression}">
                                         <TextBox
                                             Margin="0,8,0,0"
                                             Padding="8"
@@ -1153,18 +1081,92 @@
                                             TextWrapping="Wrap" />
                                     </Expander>
                                 </StackPanel>
+                                    <Border
+                                        x:Name="AssignmentPickerPanel" Grid.Column="2" IsVisibleChanged="OnAssignmentPickerVisibilityChanged"
+                                        Margin="0"
+                                        Padding="12"
+                                        Background="{DynamicResource ControlFillColorSecondaryBrush}"
+                                        CornerRadius="8"
+                                        Visibility="{Binding IsAssignmentPickerOpen, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                        <StackPanel>
+                                            <TextBlock FontWeight="SemiBold" Text="{Binding AssignmentPickerTitle}" TextWrapping="Wrap" />
+                                            <ItemsControl Margin="0,10,0,0" ItemsSource="{Binding GuidedPathSegments}">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <WrapPanel />
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <StackPanel Margin="0,0,8,8" Orientation="Horizontal">
+                                                            <TextBlock
+                                                                Margin="0,0,4,0"
+                                                                VerticalAlignment="Center"
+                                                                FontSize="18"
+                                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                                Text="{Binding Prefix}" />
+                                                            <Border
+                                                                Padding="8"
+                                                                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                                                                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                                                BorderThickness="1"
+                                                                CornerRadius="6">
+                                                                <StackPanel>
+                                                                    <ui:Button
+                                                                        AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.SelectWholeFolderName}"
+                                                                        Command="{Binding DataContext.AssignPathChoiceCommand, RelativeSource={RelativeSource AncestorType={x:Type Page}}}"
+                                                                        CommandParameter="{Binding WholeChoice}"
+                                                                        Content="{Binding WholeChoice.DisplayName}" />
+                                                                    <ItemsControl Margin="0,6,0,0" ItemsSource="{Binding PartChoices}">
+                                                                        <ItemsControl.Style>
+                                                                            <Style TargetType="ItemsControl">
+                                                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                                                <Style.Triggers>
+                                                                                    <DataTrigger Binding="{Binding HasPartChoices}" Value="True">
+                                                                                        <Setter Property="Visibility" Value="Visible" />
+                                                                                    </DataTrigger>
+                                                                                </Style.Triggers>
+                                                                            </Style>
+                                                                        </ItemsControl.Style>
+                                                                        <ItemsControl.ItemsPanel>
+                                                                            <ItemsPanelTemplate>
+                                                                                <WrapPanel />
+                                                                            </ItemsPanelTemplate>
+                                                                        </ItemsControl.ItemsPanel>
+                                                                        <ItemsControl.ItemTemplate>
+                                                                            <DataTemplate>
+                                                                                <ui:Button
+                                                                                    MinWidth="52"
+                                                                                    Margin="0,0,4,4"
+                                                                                    AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.SelectFolderNameSubsegment}"
+                                                                                    Appearance="Secondary"
+                                                                                    Command="{Binding DataContext.AssignPathChoiceCommand, RelativeSource={RelativeSource AncestorType={x:Type Page}}}"
+                                                                                    CommandParameter="{Binding}"
+                                                                                    Content="{Binding DisplayName}" />
+                                                                            </DataTemplate>
+                                                                        </ItemsControl.ItemTemplate>
+                                                                    </ItemsControl>
+                                                                </StackPanel>
+                                                            </Border>
+                                                        </StackPanel>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
                             </Border>
 
                             <Border IsEnabled="{Binding IsEditorReady}" Style="{StaticResource ExpertEditorSectionStyle}">
                                 <StackPanel>
-                                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="2. 전문가 규칙 편집" />
+                                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.2EditExpertRules}" />
                                     <TextBlock
                                         Margin="0,4,0,16"
                                         Style="{StaticResource CaptionTextStyle}"
-                                        Text="결과 컬럼과 정규식을 직접 연결합니다. 경로 규칙은 최대 64개, pattern은 규칙당 최대 4,096자이며 폴더 제외·텍스트 파일 이름 규칙까지 합친 제한 시간은 프로필당 10,000ms 이하여야 합니다."
+                                        Text="{DynamicResource Loc.View.Profiles.Text.ConnectResultColumnsDirectlyToRegularExpressions}"
                                         TextWrapping="Wrap" />
 
-                                    <TextBlock Style="{StaticResource FieldLabelStyle}" Text="결과 컬럼" />
+                                    <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.ResultColumns}" />
                                     <DataGrid
                                         Margin="0,4,0,8"
                                         MinHeight="160"
@@ -1178,11 +1180,11 @@
                                         ScrollViewer.HorizontalScrollBarVisibility="Auto"
                                         ScrollViewer.VerticalScrollBarVisibility="Disabled">
                                         <DataGrid.Columns>
-                                            <DataGridTextColumn Width="1.3*" Binding="{Binding Header, UpdateSourceTrigger=PropertyChanged}" Header="표시 이름" MinWidth="120" />
+                                            <DataGridTextColumn Width="1.3*" Binding="{Binding Header, UpdateSourceTrigger=PropertyChanged}" Header="{DynamicResource Loc.View.Profiles.Header.DisplayName}" MinWidth="120" />
                                             <DataGridTextColumn Width="1.2*" Binding="{Binding FieldId, UpdateSourceTrigger=PropertyChanged}" Header="Field ID *" MinWidth="110" />
-                                            <DataGridTextColumn Width="1.1*" Binding="{Binding GroupName, UpdateSourceTrigger=PropertyChanged}" Header="단일 그룹" MinWidth="100" />
-                                            <DataGridTextColumn Width="1.8*" Binding="{Binding GroupNamesText, UpdateSourceTrigger=PropertyChanged}" Header="조합 그룹 (쉼표 순서)" MinWidth="170" />
-                                            <DataGridTemplateColumn Width="120" Header="값 타입">
+                                            <DataGridTextColumn Width="1.1*" Binding="{Binding GroupName, UpdateSourceTrigger=PropertyChanged}" Header="{DynamicResource Loc.View.Profiles.Header.SingleGroup}" MinWidth="100" />
+                                            <DataGridTextColumn Width="1.8*" Binding="{Binding GroupNamesText, UpdateSourceTrigger=PropertyChanged}" Header="{DynamicResource Loc.View.Profiles.Header.CombinedGroupsCommaOrder}" MinWidth="170" />
+                                            <DataGridTemplateColumn Width="120" Header="{DynamicResource Loc.View.Profiles.Header.ValueType}">
                                                 <DataGridTemplateColumn.CellTemplate>
                                                     <DataTemplate>
                                                         <TextBlock Margin="6,0" VerticalAlignment="Center" Text="{Binding KindDisplayName}" />
@@ -1198,37 +1200,37 @@
                                                     </DataTemplate>
                                                 </DataGridTemplateColumn.CellEditingTemplate>
                                             </DataGridTemplateColumn>
-                                            <DataGridCheckBoxColumn Width="70" Binding="{Binding Required, UpdateSourceTrigger=PropertyChanged}" Header="필수" />
-                                            <DataGridTextColumn Width="110" Binding="{Binding ParseFormat, UpdateSourceTrigger=PropertyChanged}" Header="입력 형식" />
-                                            <DataGridTextColumn Width="110" Binding="{Binding DisplayFormat, UpdateSourceTrigger=PropertyChanged}" Header="표시 형식" />
-                                            <DataGridTemplateColumn Width="118" Header="순서 / 삭제">
+                                            <DataGridCheckBoxColumn Width="70" Binding="{Binding Required, UpdateSourceTrigger=PropertyChanged}" Header="{DynamicResource Loc.View.Profiles.Header.Required}" />
+                                            <DataGridTextColumn Width="110" Binding="{Binding ParseFormat, UpdateSourceTrigger=PropertyChanged}" Header="{DynamicResource Loc.View.Profiles.Header.InputFormat}" />
+                                            <DataGridTextColumn Width="110" Binding="{Binding DisplayFormat, UpdateSourceTrigger=PropertyChanged}" Header="{DynamicResource Loc.View.Profiles.Text.DisplayFormat}" />
+                                            <DataGridTemplateColumn Width="118" Header="{DynamicResource Loc.View.Profiles.Header.OrderDelete}">
                                                 <DataGridTemplateColumn.CellTemplate>
                                                     <DataTemplate>
                                                         <StackPanel HorizontalAlignment="Center" Orientation="Horizontal">
                                                             <ui:Button
                                                                 Margin="0,0,4,0"
-                                                                AutomationProperties.Name="전문가 결과 컬럼 위로 이동"
+                                                                AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.MoveExpertResultColumnUp}"
                                                                 Command="{Binding DataContext.MoveFieldUpCommand, RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}}"
                                                                 CommandParameter="{Binding}"
                                                                 Icon="{ui:SymbolIcon Symbol=ArrowUp12}"
                                                                 Style="{StaticResource IconOnlyButtonStyle}"
-                                                                ToolTip="위로 이동" />
+                                                                ToolTip="{DynamicResource Loc.View.Profiles.ToolTip.MoveUp}" />
                                                             <ui:Button
                                                                 Margin="0,0,4,0"
-                                                                AutomationProperties.Name="전문가 결과 컬럼 아래로 이동"
+                                                                AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.MoveExpertResultColumnDown}"
                                                                 Command="{Binding DataContext.MoveFieldDownCommand, RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}}"
                                                                 CommandParameter="{Binding}"
                                                                 Icon="{ui:SymbolIcon Symbol=ArrowDown12}"
                                                                 Style="{StaticResource IconOnlyButtonStyle}"
-                                                                ToolTip="아래로 이동" />
+                                                                ToolTip="{DynamicResource Loc.View.Profiles.ToolTip.MoveDown}" />
                                                             <ui:Button
                                                                 Appearance="Caution"
-                                                                AutomationProperties.Name="전문가 결과 컬럼 삭제"
+                                                                AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.DeleteExpertResultColumn}"
                                                                 Command="{Binding DataContext.RemoveFieldCommand, RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}}"
                                                                 CommandParameter="{Binding}"
                                                                 Icon="{ui:SymbolIcon Symbol=Delete12}"
                                                                 Style="{StaticResource IconOnlyButtonStyle}"
-                                                                ToolTip="삭제" />
+                                                                ToolTip="{DynamicResource Loc.Common.Delete}" />
                                                         </StackPanel>
                                                     </DataTemplate>
                                                 </DataGridTemplateColumn.CellTemplate>
@@ -1239,10 +1241,10 @@
                                         Margin="0,0,0,20"
                                         HorizontalAlignment="Left"
                                         Command="{Binding AddFieldCommand}"
-                                        Content="컬럼 추가"
+                                        Content="{DynamicResource Loc.View.Profiles.Content.AddColumn}"
                                         Icon="{ui:SymbolIcon Symbol=AddSquare20}" />
 
-                                    <TextBlock Style="{StaticResource FieldLabelStyle}" Text="정규식 규칙" />
+                                    <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.RegularExpressionRules}" />
                                     <DataGrid
                                         Margin="0,4,0,8"
                                         MinHeight="160"
@@ -1256,8 +1258,8 @@
                                         ScrollViewer.HorizontalScrollBarVisibility="Auto"
                                         ScrollViewer.VerticalScrollBarVisibility="Disabled">
                                         <DataGrid.Columns>
-                                            <DataGridTextColumn Width="120" Binding="{Binding Id, UpdateSourceTrigger=PropertyChanged}" Header="규칙 ID" />
-                                            <DataGridTemplateColumn Width="110" Header="매칭">
+                                            <DataGridTextColumn Width="120" Binding="{Binding Id, UpdateSourceTrigger=PropertyChanged}" Header="{DynamicResource Loc.View.Profiles.Header.RuleID}" />
+                                            <DataGridTemplateColumn Width="110" Header="{DynamicResource Loc.View.Profiles.Header.Matching}">
                                                 <DataGridTemplateColumn.CellTemplate>
                                                     <DataTemplate>
                                                         <TextBlock Margin="6,0" VerticalAlignment="Center" Text="{Binding MatchModeDisplayName}" />
@@ -1273,38 +1275,38 @@
                                                     </DataTemplate>
                                                 </DataGridTemplateColumn.CellEditingTemplate>
                                             </DataGridTemplateColumn>
-                                            <DataGridCheckBoxColumn Width="110" Binding="{Binding IgnoreCase, UpdateSourceTrigger=PropertyChanged}" Header="대소문자 무시" />
-                                            <DataGridTextColumn Width="100" Binding="{Binding TimeoutMilliseconds, UpdateSourceTrigger=PropertyChanged}" Header="제한 (ms)" />
-                                            <DataGridTextColumn Width="3*" Binding="{Binding Pattern, UpdateSourceTrigger=PropertyChanged}" Header="정규식 Pattern *" MinWidth="240" />
-                                            <DataGridTextColumn Width="1.8*" Binding="{Binding StopTraversalGroupsText, UpdateSourceTrigger=PropertyChanged}" Header="탐색 중단 그룹 (쉼표 순서)" MinWidth="180" />
-                                            <DataGridTemplateColumn Width="118" Header="순서 / 삭제">
+                                            <DataGridCheckBoxColumn Width="110" Binding="{Binding IgnoreCase, UpdateSourceTrigger=PropertyChanged}" Header="{DynamicResource Loc.View.Profiles.Content.IgnoreCase}" />
+                                            <DataGridTextColumn Width="100" Binding="{Binding TimeoutMilliseconds, UpdateSourceTrigger=PropertyChanged}" Header="{DynamicResource Loc.View.Profiles.Header.LimitMs}" />
+                                            <DataGridTextColumn Width="3*" Binding="{Binding Pattern, UpdateSourceTrigger=PropertyChanged}" Header="{DynamicResource Loc.View.Profiles.Header.RegularExpressionPattern}" MinWidth="240" />
+                                            <DataGridTextColumn Width="1.8*" Binding="{Binding StopTraversalGroupsText, UpdateSourceTrigger=PropertyChanged}" Header="{DynamicResource Loc.View.Profiles.Header.TraversalStopGroupsCommaOrder}" MinWidth="180" />
+                                            <DataGridTemplateColumn Width="118" Header="{DynamicResource Loc.View.Profiles.Header.OrderDelete}">
                                                 <DataGridTemplateColumn.CellTemplate>
                                                     <DataTemplate>
                                                         <StackPanel HorizontalAlignment="Center" Orientation="Horizontal">
                                                             <ui:Button
                                                                 Margin="0,0,4,0"
-                                                                AutomationProperties.Name="전문가 정규식 규칙 위로 이동"
+                                                                AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.MoveExpertRegularExpressionRuleUp}"
                                                                 Command="{Binding DataContext.MoveRuleUpCommand, RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}}"
                                                                 CommandParameter="{Binding}"
                                                                 Icon="{ui:SymbolIcon Symbol=ArrowUp12}"
                                                                 Style="{StaticResource IconOnlyButtonStyle}"
-                                                                ToolTip="위로 이동" />
+                                                                ToolTip="{DynamicResource Loc.View.Profiles.ToolTip.MoveUp}" />
                                                             <ui:Button
                                                                 Margin="0,0,4,0"
-                                                                AutomationProperties.Name="전문가 정규식 규칙 아래로 이동"
+                                                                AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.MoveExpertRegularExpressionRuleDown}"
                                                                 Command="{Binding DataContext.MoveRuleDownCommand, RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}}"
                                                                 CommandParameter="{Binding}"
                                                                 Icon="{ui:SymbolIcon Symbol=ArrowDown12}"
                                                                 Style="{StaticResource IconOnlyButtonStyle}"
-                                                                ToolTip="아래로 이동" />
+                                                                ToolTip="{DynamicResource Loc.View.Profiles.ToolTip.MoveDown}" />
                                                             <ui:Button
                                                                 Appearance="Caution"
-                                                                AutomationProperties.Name="전문가 정규식 규칙 삭제"
+                                                                AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.DeleteExpertRegularExpressionRule}"
                                                                 Command="{Binding DataContext.RemoveRuleCommand, RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}}"
                                                                 CommandParameter="{Binding}"
                                                                 Icon="{ui:SymbolIcon Symbol=Delete12}"
                                                                 Style="{StaticResource IconOnlyButtonStyle}"
-                                                                ToolTip="삭제" />
+                                                                ToolTip="{DynamicResource Loc.Common.Delete}" />
                                                         </StackPanel>
                                                     </DataTemplate>
                                                 </DataGridTemplateColumn.CellTemplate>
@@ -1314,7 +1316,7 @@
                                     <ui:Button
                                         HorizontalAlignment="Left"
                                         Command="{Binding AddRuleCommand}"
-                                        Content="규칙 추가"
+                                        Content="{DynamicResource Loc.View.Profiles.Content.AddRule}"
                                         Icon="{ui:SymbolIcon Symbol=AddSquare20}" />
                                 </StackPanel>
                             </Border>
@@ -1325,31 +1327,31 @@
                                 Style="{StaticResource EditorSectionStyle}"
                                 Visibility="{Binding IsReviewStep, Converter={StaticResource BooleanToVisibilityConverter}}">
                                 <StackPanel>
-                                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="4. 검토하고 저장하기" />
+                                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.4ReviewAndSave}" />
                                     <TextBlock
                                         Margin="0,4,0,16"
                                         Style="{StaticResource CaptionTextStyle}"
-                                        Text="설정한 내용을 확인한 뒤 검증하고 저장하세요. 실제 경로 테스트는 저장 후 별도 Playground에서 현재 앱에 적용된 프로필로 실행합니다."
+                                        Text="{DynamicResource Loc.View.Profiles.Text.ReviewYourSettingsThenValidateAndSave}"
                                         TextWrapping="Wrap" />
 
                                     <UniformGrid Columns="2" Rows="2">
                                         <Border Margin="0,0,8,8" Style="{StaticResource FieldCardStyle}">
                                             <StackPanel>
-                                                <TextBlock Style="{StaticResource CaptionTextStyle}" Text="프로필" />
+                                                <TextBlock Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.Shell.Nav.Profiles}" />
                                                 <TextBlock Margin="0,4,0,0" FontSize="16" FontWeight="SemiBold" Text="{Binding DraftDisplayName}" />
                                                 <TextBlock Margin="0,2,0,0" FontFamily="Consolas" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding DraftId}" />
                                             </StackPanel>
                                         </Border>
                                         <Border Margin="8,0,0,8" Style="{StaticResource FieldCardStyle}">
                                             <StackPanel>
-                                                <TextBlock Style="{StaticResource CaptionTextStyle}" Text="편집 방식" />
+                                                <TextBlock Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.EditingMode225}" />
                                                 <TextBlock Margin="0,4,0,0" FontSize="16" FontWeight="SemiBold" Text="{Binding EditorModeDisplay}" />
-                                                <TextBlock Margin="0,2,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="경로 규칙과 결과 컬럼" />
+                                                <TextBlock Margin="0,2,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{DynamicResource Loc.View.Profiles.Text.PathRulesAndResultColumns}" />
                                             </StackPanel>
                                         </Border>
                                         <Border Margin="0,8,8,0" Style="{StaticResource FieldCardStyle}">
                                             <StackPanel>
-                                                <TextBlock Style="{StaticResource CaptionTextStyle}" Text="구조화된 결과" />
+                                                <TextBlock Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.StructuredResults}" />
                                                 <TextBlock Margin="0,4,0,0" FontSize="16" FontWeight="SemiBold" Text="{Binding DraftFields.Count, StringFormat={StaticResource Loc.Profiles.PathColumnCountFormat}}" />
                                                 <TextBlock Margin="0,2,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding DraftTextFileFields.Count, StringFormat={StaticResource Loc.Profiles.TextFileColumnCountFormat}}" />
                                                 <TextBlock Margin="0,2,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding DraftUserInputFields.Count, StringFormat={StaticResource Loc.Profiles.UserInputColumnCountFormat}}" />
@@ -1357,7 +1359,7 @@
                                         </Border>
                                         <Border Margin="8,8,0,0" Style="{StaticResource FieldCardStyle}">
                                             <StackPanel>
-                                                <TextBlock Style="{StaticResource CaptionTextStyle}" Text="탐색 동작" />
+                                                <TextBlock Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.ScanBehavior}" />
                                                 <TextBlock Margin="0,4,0,0" FontSize="16" FontWeight="SemiBold" Text="{Binding DraftRules.Count, StringFormat={StaticResource Loc.Profiles.PathRuleCountFormat}}" />
                                                 <TextBlock Margin="0,2,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding DraftExcludedDirectoryNameRules.Count, StringFormat={StaticResource Loc.Profiles.ExclusionRuleCountFormat}}" />
                                             </StackPanel>
@@ -1366,12 +1368,12 @@
 
                                     <ui:InfoBar
                                         Margin="0,16,0,0"
-                                        AutomationProperties.Name="프로필 저장과 Playground 안내"
+                                        AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.ProfileSaveAndPlaygroundGuidance}"
                                         IsClosable="False"
                                         IsOpen="True"
                                         Message="아래에서 검증 오류를 확인한 뒤 저장하세요. 저장이 완료되면 ‘Playground에서 테스트’ 버튼이 활성화됩니다. 수정 후에는 다시 저장해야 최신 내용으로 테스트할 수 있습니다."
                                         Severity="Informational"
-                                        Title="저장된 버전을 실제 경로에서 테스트" />
+                                        Title="{DynamicResource Loc.View.Profiles.Title.TestTheSavedVersionWithAReal}" />
                                 </StackPanel>
                             </Border>
                         </StackPanel>
@@ -1397,10 +1399,10 @@
                                     x:Name="PreviousProfileStepButton"
                                     MinWidth="88"
                                     Margin="0,0,12,0"
-                                    AutomationProperties.HelpText="이전 프로필 설정 단계로 이동합니다."
-                                    AutomationProperties.Name="이전 단계"
+                                    AutomationProperties.HelpText="{DynamicResource Loc.View.Profiles.AutomationHelpText.GoToThePreviousProfileConfigurationStep}"
+                                    AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.PreviousStep}"
                                     Command="{Binding PreviousEditorStepCommand}"
-                                    Content="이전"
+                                    Content="{DynamicResource Loc.View.Profiles.Content.Back}"
                                     Icon="{ui:SymbolIcon Symbol=ArrowLeft20}" />
                                 <TextBlock
                                     x:Name="EditorFooterStatusText"
@@ -1417,10 +1419,10 @@
                                     Grid.Column="2"
                                     MinWidth="104"
                                     Appearance="Primary"
-                                    AutomationProperties.HelpText="다음 프로필 설정 단계로 이동합니다."
-                                    AutomationProperties.Name="다음 단계"
+                                    AutomationProperties.HelpText="{DynamicResource Loc.View.Profiles.AutomationHelpText.GoToTheNextProfileConfigurationStep}"
+                                    AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.NextStep}"
                                     Command="{Binding NextEditorStepCommand}"
-                                    Content="다음"
+                                    Content="{DynamicResource Loc.View.Profiles.Content.Next}"
                                     Icon="{ui:SymbolIcon Symbol=ArrowRight20}">
                                     <ui:Button.Style>
                                         <Style BasedOn="{StaticResource {x:Type ui:Button}}" TargetType="{x:Type ui:Button}">
@@ -1440,21 +1442,21 @@
                                         MinWidth="96"
                                         Margin="0,0,8,0"
                                         Command="{Binding ValidateDraftCommand}"
-                                        Content="검증"
+                                        Content="{DynamicResource Loc.View.Profiles.Content.Validate}"
                                         Icon="{ui:SymbolIcon Symbol=CheckmarkCircle20}" />
                                     <ui:Button
                                         MinWidth="120"
                                         Appearance="Primary"
                                         Command="{Binding SaveDraftCommand}"
-                                        Content="검증 후 저장"
+                                        Content="{DynamicResource Loc.View.Profiles.Content.ValidateAndSave}"
                                         Icon="{ui:SymbolIcon Symbol=Save16}" />
                                     <ui:Button
                                         MinWidth="160"
                                         Margin="8,0,0,0"
-                                        AutomationProperties.HelpText="마지막으로 저장되어 현재 앱에 적용된 프로필을 Playground에서 엽니다. 저장하지 않은 변경 사항이 있으면 비활성화됩니다."
-                                        AutomationProperties.Name="저장된 프로필을 Playground에서 테스트"
+                                        AutomationProperties.HelpText="{DynamicResource Loc.View.Profiles.AutomationHelpText.OpenTheLastSavedProfileCurrentlyLoaded}"
+                                        AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.TestSavedProfileInPlayground}"
                                         Command="{Binding OpenSavedProfileInPlaygroundCommand}"
-                                        Content="Playground에서 테스트"
+                                        Content="{DynamicResource Loc.Home.Tools.Playground}"
                                         Icon="{ui:SymbolIcon Symbol=DocumentSearch20}" />
                                 </StackPanel>
                             </Grid>
@@ -1469,17 +1471,17 @@
                 </Grid>
             </TabItem>
 
-            <TabItem Header="로드 상태">
+            <TabItem Header="{DynamicResource Loc.View.Profiles.Header.LoadStatus}">
                 <ScrollViewer
                     x:Name="ProfileLoadStatusScrollViewer"
                     Style="{StaticResource FluentGutteredScrollViewerStyle}">
                     <StackPanel Margin="8,16,0,24">
                         <StackPanel Margin="0,0,0,16">
-                            <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="프로필 로드 상태" />
+                            <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.ProfileLoadStatus}" />
                             <TextBlock
                                 Margin="0,4,0,0"
                                 Style="{StaticResource PageSubtitleTextStyle}"
-                                Text="앱에서 사용할 수 있는 프로필을 선택하면 해석된 컬럼과 경로 규칙을 확인할 수 있습니다." />
+                                Text="{DynamicResource Loc.View.Profiles.Text.SelectAProfileAvailableToTheApp}" />
                         </StackPanel>
 
                         <StackPanel>
@@ -1490,12 +1492,12 @@
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
                                     </Grid.RowDefinitions>
-                                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="로드된 프로필" />
+                                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.LoadedProfiles}" />
                                     <TextBlock
                                         Grid.Row="1"
                                         Margin="0,4,0,12"
                                         Style="{StaticResource CaptionTextStyle}"
-                                        Text="상세 내용을 볼 프로필을 선택하세요." />
+                                        Text="{DynamicResource Loc.View.Profiles.Text.SelectAProfileToViewItsDetails}" />
                                     <DataGrid
                                         Grid.Row="2"
                                         MinHeight="280"
@@ -1510,8 +1512,8 @@
                                         SelectionMode="Single"
                                         Style="{StaticResource FluentDataGridStyle}">
                                         <DataGrid.Columns>
-                                            <DataGridTextColumn Width="*" Binding="{Binding DisplayName}" Header="표시 이름" MinWidth="140" />
-                                            <DataGridTextColumn Width="90" Binding="{Binding Kind}" Header="정의 방식" />
+                                            <DataGridTextColumn Width="*" Binding="{Binding DisplayName}" Header="{DynamicResource Loc.View.Profiles.Header.DisplayName}" MinWidth="140" />
+                                            <DataGridTextColumn Width="90" Binding="{Binding Kind}" Header="{DynamicResource Loc.View.Profiles.Header.DefinitionType}" />
                                         </DataGrid.Columns>
                                     </DataGrid>
                                 </Grid>
@@ -1520,7 +1522,7 @@
                             <StackPanel>
                                 <Border Style="{StaticResource EditorSectionStyle}">
                                     <StackPanel>
-                                        <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="선택한 프로필" />
+                                        <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.SelectedProfile}" />
                                         <TextBlock
                                             Margin="0,4,0,12"
                                             Style="{StaticResource CaptionTextStyle}"
@@ -1528,23 +1530,23 @@
                                             TextTrimming="CharacterEllipsis" />
                                         <WrapPanel>
                                             <StackPanel MinWidth="120" Margin="0,0,16,8">
-                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="버전" />
+                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.Version}" />
                                                 <TextBlock Text="{Binding SelectedProfile.Version}" />
                                             </StackPanel>
                                             <StackPanel MinWidth="120" Margin="0,0,16,8">
-                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="검색 대상" />
+                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.SearchTarget}" />
                                                 <TextBlock Text="{Binding SelectedProfile.CandidateKind}" />
                                             </StackPanel>
                                             <StackPanel MinWidth="100" Margin="0,0,16,8">
-                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="컬럼 수" />
+                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.ColumnCount}" />
                                                 <TextBlock Text="{Binding SelectedProfile.FieldCount}" />
                                             </StackPanel>
                                             <StackPanel MinWidth="120" Margin="0,0,0,8">
-                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="폴더 제외 규칙" />
+                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.FolderExclusionRules}" />
                                                 <TextBlock Text="{Binding SelectedProfile.ExcludedDirectoryRuleCount}" />
                                             </StackPanel>
                                             <StackPanel MinWidth="120" Margin="16,0,0,8">
-                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="텍스트 파일 값" />
+                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.TextFileValues}" />
                                                 <TextBlock Text="{Binding SelectedProfile.TextFileFieldCount}" />
                                             </StackPanel>
                                         </WrapPanel>
@@ -1557,7 +1559,7 @@
                                             <RowDefinition Height="Auto" />
                                             <RowDefinition Height="Auto" />
                                         </Grid.RowDefinitions>
-                                        <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="결과 컬럼" />
+                                        <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.ResultColumns}" />
                                         <DataGrid
                                             Grid.Row="1"
                                             Margin="0,12,0,0"
@@ -1571,16 +1573,16 @@
                                             Style="{StaticResource FluentDataGridStyle}">
                                             <DataGrid.Columns>
                                                 <DataGridTextColumn Width="50" Binding="{Binding Order}" Header="#" />
-                                                <DataGridTextColumn Width="1.4*" Binding="{Binding Header}" Header="표시 이름" MinWidth="110" />
+                                                <DataGridTextColumn Width="1.4*" Binding="{Binding Header}" Header="{DynamicResource Loc.View.Profiles.Header.DisplayName}" MinWidth="110" />
                                                 <DataGridTextColumn Width="1.2*" Binding="{Binding FieldId}" Header="Field ID" MinWidth="100" />
-                                                <DataGridTextColumn Width="110" Binding="{Binding Source}" Header="값 출처" />
-                                                <DataGridTextColumn Width="1.8*" Binding="{Binding CaptureGroups}" Header="정규식 그룹 (결합 순서)" MinWidth="160" />
-                                                <DataGridTextColumn Width="90" Binding="{Binding Kind}" Header="값 타입" />
-                                                <DataGridCheckBoxColumn Width="60" Binding="{Binding Required}" Header="필수" />
+                                                <DataGridTextColumn Width="110" Binding="{Binding Source}" Header="{DynamicResource Loc.View.Profiles.Header.ValueSource}" />
+                                                <DataGridTextColumn Width="1.8*" Binding="{Binding CaptureGroups}" Header="{DynamicResource Loc.View.Profiles.Header.RegularExpressionGroupsCombineOrder}" MinWidth="160" />
+                                                <DataGridTextColumn Width="90" Binding="{Binding Kind}" Header="{DynamicResource Loc.View.Profiles.Header.ValueType}" />
+                                                <DataGridCheckBoxColumn Width="60" Binding="{Binding Required}" Header="{DynamicResource Loc.View.Profiles.Header.Required}" />
                                                 <DataGridCheckBoxColumn Width="75" Binding="{Binding IsNullable}" Header="Nullable" />
-                                                <DataGridTextColumn Width="100" Binding="{Binding ParseFormat}" Header="입력 형식" />
-                                                <DataGridTextColumn Width="100" Binding="{Binding DisplayFormat}" Header="표시 형식" />
-                                                <DataGridTextColumn Width="90" Binding="{Binding ValueMappings}" Header="값 매핑" />
+                                                <DataGridTextColumn Width="100" Binding="{Binding ParseFormat}" Header="{DynamicResource Loc.View.Profiles.Header.InputFormat}" />
+                                                <DataGridTextColumn Width="100" Binding="{Binding DisplayFormat}" Header="{DynamicResource Loc.View.Profiles.Text.DisplayFormat}" />
+                                                <DataGridTextColumn Width="90" Binding="{Binding ValueMappings}" Header="{DynamicResource Loc.View.Profiles.Header.ValueMappings}" />
                                             </DataGrid.Columns>
                                         </DataGrid>
                                     </Grid>
@@ -1593,11 +1595,11 @@
                                             <RowDefinition Height="Auto" />
                                         </Grid.RowDefinitions>
                                         <StackPanel>
-                                            <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="텍스트 파일 값" />
+                                            <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.TextFileValues}" />
                                             <TextBlock
                                                 Margin="0,4,0,0"
                                                 Style="{StaticResource CaptionTextStyle}"
-                                                Text="일치 폴더 바로 아래에서 파일 이름을 비교하고 내용을 읽는 컬럼입니다."
+                                                Text="{DynamicResource Loc.View.Profiles.Text.TheseColumnsCompareNamesAndReadFile}"
                                                 TextWrapping="Wrap" />
                                         </StackPanel>
                                         <DataGrid
@@ -1613,14 +1615,14 @@
                                             Style="{StaticResource FluentDataGridStyle}">
                                             <DataGrid.Columns>
                                                 <DataGridTextColumn Width="50" Binding="{Binding Order}" Header="#" />
-                                                <DataGridTextColumn Width="1.2*" Binding="{Binding Header}" Header="표시 이름" MinWidth="110" />
+                                                <DataGridTextColumn Width="1.2*" Binding="{Binding Header}" Header="{DynamicResource Loc.View.Profiles.Header.DisplayName}" MinWidth="110" />
                                                 <DataGridTextColumn Width="1.1*" Binding="{Binding FieldId}" Header="Field ID" MinWidth="100" />
-                                                <DataGridTextColumn Width="2.2*" Binding="{Binding FileNamePattern}" Header="파일 이름 정규식" MinWidth="180" />
-                                                <DataGridTextColumn Width="100" Binding="{Binding MatchMode}" Header="매칭" />
-                                                <DataGridCheckBoxColumn Width="60" Binding="{Binding Required}" Header="필수" />
-                                                <DataGridCheckBoxColumn Width="100" Binding="{Binding IgnoreCase}" Header="대소문자 무시" />
-                                                <DataGridTextColumn Width="95" Binding="{Binding MaxBytes}" Header="최대 bytes" />
-                                                <DataGridTextColumn Width="85" Binding="{Binding TimeoutMilliseconds}" Header="제한 ms" />
+                                                <DataGridTextColumn Width="2.2*" Binding="{Binding FileNamePattern}" Header="{DynamicResource Loc.View.Profiles.Header.FileNameRegularExpression}" MinWidth="180" />
+                                                <DataGridTextColumn Width="100" Binding="{Binding MatchMode}" Header="{DynamicResource Loc.View.Profiles.Header.Matching}" />
+                                                <DataGridCheckBoxColumn Width="60" Binding="{Binding Required}" Header="{DynamicResource Loc.View.Profiles.Header.Required}" />
+                                                <DataGridCheckBoxColumn Width="100" Binding="{Binding IgnoreCase}" Header="{DynamicResource Loc.View.Profiles.Content.IgnoreCase}" />
+                                                <DataGridTextColumn Width="95" Binding="{Binding MaxBytes}" Header="{DynamicResource Loc.View.Profiles.Header.MaximumBytes}" />
+                                                <DataGridTextColumn Width="85" Binding="{Binding TimeoutMilliseconds}" Header="{DynamicResource Loc.View.Profiles.Header.LimitMs259}" />
                                             </DataGrid.Columns>
                                         </DataGrid>
                                     </Grid>
@@ -1632,7 +1634,7 @@
                                             <RowDefinition Height="Auto" />
                                             <RowDefinition Height="Auto" />
                                         </Grid.RowDefinitions>
-                                        <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="경로 규칙" />
+                                        <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.PathRules}" />
                                         <DataGrid
                                             Grid.Row="1"
                                             Margin="0,12,0,0"
@@ -1646,12 +1648,12 @@
                                             Style="{StaticResource FluentDataGridStyle}">
                                             <DataGrid.Columns>
                                                 <DataGridTextColumn Width="50" Binding="{Binding Order}" Header="#" />
-                                                <DataGridTextColumn Width="110" Binding="{Binding Id}" Header="규칙 ID" />
-                                                <DataGridTextColumn Width="90" Binding="{Binding MatchMode}" Header="매칭" />
-                                                <DataGridCheckBoxColumn Width="110" Binding="{Binding IgnoreCase}" Header="대소문자 무시" />
-                                                <DataGridTextColumn Width="90" Binding="{Binding TimeoutMilliseconds}" Header="제한 (ms)" />
-                                                <DataGridTextColumn Width="3*" Binding="{Binding Pattern}" Header="정규식 Pattern" MinWidth="240" />
-                                                <DataGridTextColumn Width="1.6*" Binding="{Binding StopTraversalGroups}" Header="하위 탐색 중단 그룹" MinWidth="160" />
+                                                <DataGridTextColumn Width="110" Binding="{Binding Id}" Header="{DynamicResource Loc.View.Profiles.Header.RuleID}" />
+                                                <DataGridTextColumn Width="90" Binding="{Binding MatchMode}" Header="{DynamicResource Loc.View.Profiles.Header.Matching}" />
+                                                <DataGridCheckBoxColumn Width="110" Binding="{Binding IgnoreCase}" Header="{DynamicResource Loc.View.Profiles.Content.IgnoreCase}" />
+                                                <DataGridTextColumn Width="90" Binding="{Binding TimeoutMilliseconds}" Header="{DynamicResource Loc.View.Profiles.Header.LimitMs}" />
+                                                <DataGridTextColumn Width="3*" Binding="{Binding Pattern}" Header="{DynamicResource Loc.View.Profiles.Header.RegularExpressionPattern261}" MinWidth="240" />
+                                                <DataGridTextColumn Width="1.6*" Binding="{Binding StopTraversalGroups}" Header="{DynamicResource Loc.View.Profiles.Header.DescendantTraversalStopGroups}" MinWidth="160" />
                                             </DataGrid.Columns>
                                         </DataGrid>
                                     </Grid>
@@ -1664,11 +1666,11 @@
                                             <RowDefinition Height="Auto" />
                                         </Grid.RowDefinitions>
                                         <StackPanel>
-                                            <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="탐색 제외 폴더 이름 규칙" />
+                                            <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.ExcludedFolderNameRules}" />
                                             <TextBlock
                                                 Margin="0,4,0,0"
                                                 Style="{StaticResource CaptionTextStyle}"
-                                                Text="구조화 스캔에서 현재 폴더의 마지막 이름에만 적용됩니다."
+                                                Text="{DynamicResource Loc.View.Profiles.Text.AppliedOnlyToTheCurrentFolderS}"
                                                 TextWrapping="Wrap" />
                                         </StackPanel>
                                         <DataGrid
@@ -1684,11 +1686,11 @@
                                             Style="{StaticResource FluentDataGridStyle}">
                                             <DataGrid.Columns>
                                                 <DataGridTextColumn Width="50" Binding="{Binding Order}" Header="#" />
-                                                <DataGridTextColumn Width="120" Binding="{Binding Id}" Header="규칙 ID" />
-                                                <DataGridTextColumn Width="130" Binding="{Binding MatchMode}" Header="폴더 이름 매칭" />
-                                                <DataGridCheckBoxColumn Width="110" Binding="{Binding IgnoreCase}" Header="대소문자 무시" />
-                                                <DataGridTextColumn Width="90" Binding="{Binding TimeoutMilliseconds}" Header="제한 (ms)" />
-                                                <DataGridTextColumn Width="3*" Binding="{Binding Pattern}" Header="정규식 Pattern" MinWidth="240" />
+                                                <DataGridTextColumn Width="120" Binding="{Binding Id}" Header="{DynamicResource Loc.View.Profiles.Header.RuleID}" />
+                                                <DataGridTextColumn Width="130" Binding="{Binding MatchMode}" Header="{DynamicResource Loc.View.Profiles.Header.FolderNameMatching}" />
+                                                <DataGridCheckBoxColumn Width="110" Binding="{Binding IgnoreCase}" Header="{DynamicResource Loc.View.Profiles.Content.IgnoreCase}" />
+                                                <DataGridTextColumn Width="90" Binding="{Binding TimeoutMilliseconds}" Header="{DynamicResource Loc.View.Profiles.Header.LimitMs}" />
+                                                <DataGridTextColumn Width="3*" Binding="{Binding Pattern}" Header="{DynamicResource Loc.View.Profiles.Header.RegularExpressionPattern261}" MinWidth="240" />
                                             </DataGrid.Columns>
                                         </DataGrid>
                                     </Grid>
@@ -1696,7 +1698,7 @@
                             </StackPanel>
                         </StackPanel>
 
-                        <Expander Margin="0,16,0,0" Header="고급: 플러그인 및 선언형 프로필 진단">
+                        <Expander Margin="0,16,0,0" Header="{DynamicResource Loc.View.Profiles.Header.AdvancedPlugInAndDeclarativeProfileDiagnostics}">
                             <Border Margin="0,8,0,0" Style="{StaticResource FluentSurfaceStyle}">
                                 <DataGrid
                                     MinHeight="160"
@@ -1708,11 +1710,11 @@
                                     ScrollViewer.VerticalScrollBarVisibility="Disabled"
                                     Style="{StaticResource FluentDataGridStyle}">
                                     <DataGrid.Columns>
-                                        <DataGridTextColumn Width="100" Binding="{Binding StatusText}" Header="로드 상태" />
-                                        <DataGridTextColumn Width="1.5*" Binding="{Binding DisplayName}" Header="표시 이름" />
-                                        <DataGridTextColumn Width="1.4*" Binding="{Binding ProfileId}" Header="프로필 ID" />
-                                        <DataGridTextColumn Width="3*" Binding="{Binding Diagnostics}" Header="검증 및 진단 메시지" />
-                                        <DataGridTextColumn Width="2.5*" Binding="{Binding SourceDirectory}" Header="원본 폴더" />
+                                        <DataGridTextColumn Width="100" Binding="{Binding StatusText}" Header="{DynamicResource Loc.View.Profiles.Header.LoadStatus}" />
+                                        <DataGridTextColumn Width="1.5*" Binding="{Binding DisplayName}" Header="{DynamicResource Loc.View.Profiles.Header.DisplayName}" />
+                                        <DataGridTextColumn Width="1.4*" Binding="{Binding ProfileId}" Header="{DynamicResource Loc.View.Profiles.AutomationName.ProfileID}" />
+                                        <DataGridTextColumn Width="3*" Binding="{Binding Diagnostics}" Header="{DynamicResource Loc.View.Profiles.Header.ValidationAndDiagnosticMessages}" />
+                                        <DataGridTextColumn Width="2.5*" Binding="{Binding SourceDirectory}" Header="{DynamicResource Loc.View.Profiles.Header.SourceFolder}" />
                                     </DataGrid.Columns>
                                 </DataGrid>
                             </Border>
@@ -1721,5 +1723,5 @@
                 </ScrollViewer>
             </TabItem>
         </TabControl>
-    </Grid>
+    </controls:WorkspacePageFrame>
 </Page>

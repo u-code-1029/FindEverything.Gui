@@ -11,6 +11,21 @@ namespace FindEverything.Desktop.Tests;
 public sealed class ScanConsoleViewModelTests
 {
     [Fact]
+    public void Diagnostic_values_use_bounded_previews_without_losing_the_copyable_path()
+    {
+        var trace = CreateEvent(CatalogScanTraceKind.DirectoryVisited,
+            rootPath: @"C:\Root", fullPath: @"C:\Root\Item") with
+        {
+            Values = new Dictionary<string, object?> { ["notes"] = new string('x', 4 * 1024 * 1024) },
+        };
+        var line = ScanConsoleViewModel.CreateLine(trace);
+        Assert.True(line.Text.Length < 2000);
+        Assert.Contains("[preview]", line.Text, StringComparison.Ordinal);
+        Assert.Equal(@"C:\Root\Item", line.Path);
+        Assert.Equal(4 * 1024 * 1024, ((string)trace.Values["notes"]!).Length);
+    }
+
+    [Fact]
     public void Closed_panel_requests_attention_until_the_user_opens_it()
     {
         var viewModel = new ScanConsoleViewModel(static _ => { })

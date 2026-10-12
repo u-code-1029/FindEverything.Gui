@@ -1,8 +1,10 @@
 using System.Windows;
 using System.Windows.Shell;
+using System.ComponentModel;
 using FindEverything.Application.Options;
 using FindEverything.Desktop.Appearance;
 using FindEverything.Desktop.ViewModels;
+using FindEverything.Desktop.Services;
 using Wpf.Ui;
 using Wpf.Ui.Controls;
 
@@ -11,6 +13,10 @@ namespace FindEverything.Desktop.Views;
 public partial class MainWindow
 {
     private ShellLayoutMode? _shellLayoutMode;
+    private readonly IDraftProtectionService _draftProtection;
+    private readonly ISnackbarService _snackbars;
+    private bool _closeConfirmed;
+    private bool _confirmingClose;
 
     public MainWindow(
         MainWindowViewModel viewModel,
@@ -18,8 +24,11 @@ public partial class MainWindow
         ISnackbarService snackbarService,
         IContentDialogService contentDialogService,
         IAppearanceService appearanceService,
-        IValidatedSettingsState<AppearanceOptions> appearanceSettings)
+        IValidatedSettingsState<AppearanceOptions> appearanceSettings,
+        IDraftProtectionService draftProtection)
     {
+        _draftProtection = draftProtection;
+        _snackbars = snackbarService;
         DataContext = viewModel;
 
         InitializeComponent();
@@ -36,6 +45,43 @@ public partial class MainWindow
         appearanceService.Apply(this, appearanceSettings.Current);
 
         ApplyAdaptiveShellLayout(Width);
+    }
+
+    protected override async void OnClosing(CancelEventArgs e)
+    {
+        if (_closeConfirmed)
+        {
+            base.OnClosing(e);
+            return;
+        }
+
+        e.Cancel = true;
+        base.OnClosing(e);
+        if (_confirmingClose) return;
+        _confirmingClose = true;
+        try
+        {
+            if (await _draftProtection.ConfirmAllAsync())
+            {
+                _closeConfirmed = true;
+                // Even an already-clean draft can complete synchronously. WPF
+                // rejects a reentrant Close while this Closing event is active.
+                _ = Dispatcher.BeginInvoke(new Action(Close));
+            }
+        }
+        catch (Exception)
+        {
+            _snackbars.Show(
+                System.Windows.Application.Current.TryFindResource("Loc.Draft.Leave.Failed.Title") as string ?? "Could not check unsaved changes",
+                System.Windows.Application.Current.TryFindResource("Loc.Draft.Leave.Failed.Message") as string ?? "Your draft has been preserved. Save it and try closing again.",
+                ControlAppearance.Danger,
+                new SymbolIcon(SymbolRegular.ErrorCircle20),
+                TimeSpan.FromSeconds(6));
+        }
+        finally
+        {
+            _confirmingClose = false;
+        }
     }
 
     private void OnWindowSizeChanged(object sender, SizeChangedEventArgs eventArgs)

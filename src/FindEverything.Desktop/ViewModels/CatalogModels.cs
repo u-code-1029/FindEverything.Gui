@@ -22,6 +22,23 @@ public sealed class ProfileChoiceViewModel(ILoadedProfile profile)
 
 public sealed class CatalogItemViewModel : ObservableObject
 {
+    private bool _isSelected;
+    public bool IsSelected { get => _isSelected; set => SetProperty(ref _isSelected, value); }
+    public bool IsPlaceholder { get; init; }
+    public IReadOnlyDictionary<string, string> FieldErrors { get; init; } = new Dictionary<string, string>();
+    private readonly string _previewTooltip;
+    private IReadOnlyList<string> _previewFields = [];
+    private IReadOnlyDictionary<string, string> _previewTooltips = new Dictionary<string, string>();
+    public IReadOnlyList<string> PreviewFields
+    {
+        get => _previewFields;
+        internal set
+        {
+            _previewFields = value ?? [];
+            _previewTooltips = _previewFields.ToDictionary(fieldId => fieldId, _ => _previewTooltip, StringComparer.OrdinalIgnoreCase);
+        }
+    }
+    public IReadOnlyDictionary<string, string> PreviewTooltips => _previewTooltips;
     private readonly Dictionary<string, string> _rawDisplayValues;
     private readonly Dictionary<string, string> _mappedDisplayValues;
     private readonly Dictionary<string, object?> _rawOutputValues;
@@ -50,6 +67,8 @@ public sealed class CatalogItemViewModel : ObservableObject
         ArgumentNullException.ThrowIfNull(item);
         ArgumentNullException.ThrowIfNull(fields);
         ArgumentNullException.ThrowIfNull(localizer);
+        _previewTooltip = localizer.Get("Loc.Catalog.Column.TextPreview.Help",
+            "목록에는 긴 텍스트의 처음 2,048자만 표시합니다. 검색은 전체 내용을 대상으로 하고 복사·내보내기에는 전체 값을 사용합니다.");
 
         FullPath = item.FullPath;
         RelativePath = item.RelativePath;
@@ -106,8 +125,8 @@ public sealed class CatalogItemViewModel : ObservableObject
                         OnPropertyChanged(nameof(DisplayValues));
                         OnPropertyChanged(nameof(OutputValues));
                         OnPropertyChanged(nameof(ExportDisplayValues));
-                        userInputChanged?.Invoke();
-                    });
+                    },
+                    userInputChanged);
                 userInputValues[field.FieldId] = input;
                 rawDisplayValues[field.FieldId] = initialValue;
                 mappedDisplayValues[field.FieldId] = initialValue;
@@ -241,24 +260,28 @@ public sealed class CatalogUserInputValueViewModel : ObservableObject
 {
     private readonly Func<string, string, Task>? _persist;
     private readonly Action _changed;
+    private readonly Action? _committed;
     private readonly SemaphoreSlim _persistGate = new(1, 1);
     private CancellationTokenSource? _saveDebounce;
     private string _value;
     private int _changeVersion;
     private int _savedVersion;
+    private int _committedVersion;
 
     public CatalogUserInputValueViewModel(
         string fieldId,
         string? placeholder,
         string value,
         Func<string, string, Task>? persist,
-        Action changed)
+        Action changed,
+        Action? committed = null)
     {
         FieldId = fieldId;
         Placeholder = placeholder ?? string.Empty;
         _value = value;
         _persist = persist;
         _changed = changed;
+        _committed = committed;
     }
 
     public string FieldId { get; }
@@ -289,7 +312,7 @@ public sealed class CatalogUserInputValueViewModel : ObservableObject
         }
     }
 
-    public async Task CommitAsync()
+    public async Task CommitAsync(bool notify = true)
     {
         _saveDebounce?.Cancel();
         _saveDebounce = null;
@@ -297,6 +320,12 @@ public sealed class CatalogUserInputValueViewModel : ObservableObject
         if (_persist is not null && version != Volatile.Read(ref _savedVersion))
         {
             await PersistVersionAsync(version, Value).ConfigureAwait(false);
+        }
+        if (notify && version > Volatile.Read(ref _committedVersion)
+            && version == Volatile.Read(ref _changeVersion) && version <= Volatile.Read(ref _savedVersion))
+        {
+            Interlocked.Exchange(ref _committedVersion, version);
+            _committed?.Invoke();
         }
     }
 
@@ -334,7 +363,8 @@ public sealed class CatalogUserInputValueViewModel : ObservableObject
             exception is IOException
                 or UnauthorizedAccessException
                 or ArgumentException
-                or NotSupportedException)
+                or NotSupportedException
+                or System.Data.Common.DbException)
         {
             // The owning view model reports the failure. Keep the version dirty
             // so LostFocus or shutdown can retry the latest value.
@@ -358,7 +388,7 @@ public sealed class CatalogUserInputValueViewModel : ObservableObject
             // A cancelled debounce can race with an explicit LostFocus/shutdown
             // commit. Never let that older task overwrite a value that was typed
             // and queued later.
-            if (version < Volatile.Read(ref _changeVersion))
+            if (version < Volatile.Read(ref _changeVersion) || version <= Volatile.Read(ref _savedVersion))
             {
                 return;
             }

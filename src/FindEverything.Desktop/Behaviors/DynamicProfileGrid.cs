@@ -14,6 +14,8 @@ namespace FindEverything.Desktop.Behaviors;
 public static class DynamicProfileGrid
 {
     private const int SelectionColumnOffset = 1;
+    private static readonly DependencyProperty ActiveEditorOwnerProperty = DependencyProperty.RegisterAttached(
+        "ActiveEditorOwner", typeof(ViewModels.CatalogViewModel), typeof(DynamicProfileGrid));
 
     public static readonly DependencyProperty FieldsProperty = DependencyProperty.RegisterAttached(
         "Fields",
@@ -138,7 +140,7 @@ public static class DynamicProfileGrid
 
                 var column = new MappedHighlightingTextColumn(field.FieldId)
                 {
-                    Header = field.Header,
+                    Header = CreateFieldHeader(field, localizer),
                     IsReadOnly = true,
                     SortMemberPath = $"DisplayValues[{field.FieldId}]",
                     Width = DataGridLength.Auto,
@@ -160,6 +162,34 @@ public static class DynamicProfileGrid
         });
 
         ApplyLayout(dataGrid);
+    }
+
+    private static object CreateFieldHeader(ProfileFieldDescriptor field, IAppLocalizer? localizer)
+    {
+        if (field.SourceKind != ProfileFieldSourceKind.TextFileContent) return field.Header;
+        var panel = new StackPanel { Orientation = Orientation.Horizontal };
+        panel.Children.Add(new TextBlock { Text = field.Header, VerticalAlignment = VerticalAlignment.Center });
+        var label = L(localizer, "Loc.Catalog.Column.Refresh", "이 컬럼 다시 읽기");
+        var button = new Wpf.Ui.Controls.Button
+        {
+            Width = 28, Height = 28, Padding = new Thickness(0), Margin = new Thickness(8, 0, 0, 0),
+            Appearance = Wpf.Ui.Controls.ControlAppearance.Transparent,
+            Icon = new Wpf.Ui.Controls.SymbolIcon(Wpf.Ui.Controls.SymbolRegular.ArrowSync20),
+            CommandParameter = field.FieldId,
+            ToolTip = L(localizer, "Loc.Catalog.Column.Refresh.Help", "필터·선택과 관계없이 현재 프로필 결과 전체에서 이 컬럼의 텍스트 파일만 다시 읽습니다. 다른 컬럼과 폴더 탐색은 변경하지 않습니다."),
+        };
+        System.Windows.Automation.AutomationProperties.SetName(button, label);
+        ToolTipService.SetShowOnDisabled(button, true);
+        button.SetBinding(Button.CommandProperty, new Binding("DataContext.RefreshTextColumnCommand")
+        {
+            RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor, typeof(DataGrid), 1),
+        });
+        button.SetBinding(UIElement.IsEnabledProperty, new Binding("DataContext.CanEditWorkspace")
+        {
+            RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor, typeof(DataGrid), 1),
+        });
+        panel.Children.Add(button);
+        return panel;
     }
 
     private static string L(
@@ -311,7 +341,19 @@ public static class DynamicProfileGrid
                 localizer,
                 "Loc.Catalog.Selection.Item",
                 "항목 선택");
-            Header = string.Empty;
+            var allButton = new Wpf.Ui.Controls.Button
+            {
+                Width = 32, Height = 28, Padding = new Thickness(0),
+                Appearance = Wpf.Ui.Controls.ControlAppearance.Transparent,
+                Icon = new Wpf.Ui.Controls.SymbolIcon(Wpf.Ui.Controls.SymbolRegular.CheckboxChecked20),
+                ToolTip = L(localizer, "Loc.Selection.All.ToolTip", "아직 화면에 불러오지 않은 항목까지 현재 검색 결과 전체를 선택합니다. (Ctrl+A)"),
+            };
+            System.Windows.Automation.AutomationProperties.SetName(allButton, L(localizer, "Loc.Selection.All", "전체 선택"));
+            allButton.SetBinding(Button.CommandProperty, new Binding("DataContext.SelectAllCommand")
+            {
+                RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor, typeof(DataGrid), 1),
+            });
+            Header = allButton;
             // This column stays frozen at the leading edge. The extra width is
             // intentional: WPF's focus chrome and the vertical grid line must
             // not crop the Fluent checkbox at the minimum window width.
@@ -325,13 +367,13 @@ public static class DynamicProfileGrid
         }
 
         protected override FrameworkElement GenerateElement(DataGridCell cell, object dataItem) =>
-            CreateCheckBox();
+            CreateCheckBox(cell);
 
         protected override FrameworkElement GenerateEditingElement(
             DataGridCell cell,
-            object dataItem) => CreateCheckBox();
+            object dataItem) => CreateCheckBox(cell);
 
-        private CheckBox CreateCheckBox()
+        private CheckBox CreateCheckBox(DataGridCell cell)
         {
             var checkBox = new CheckBox
             {
@@ -340,28 +382,60 @@ public static class DynamicProfileGrid
                 ToolTip = _selectionLabel,
             };
             System.Windows.Automation.AutomationProperties.SetName(checkBox, _selectionLabel);
+            var usesQuerySelection = FindAncestor<DataGrid>(cell)?.DataContext is ViewModels.CatalogViewModel { UsesQuerySelection: true };
             BindingOperations.SetBinding(
                 checkBox,
                 ToggleButton.IsCheckedProperty,
-                new Binding(nameof(DataGridRow.IsSelected))
-                {
-                    Mode = BindingMode.TwoWay,
-                    RelativeSource = new RelativeSource(
-                        RelativeSourceMode.FindAncestor,
-                        typeof(DataGridRow),
-                        1),
-                });
+                usesQuerySelection
+                    ? new Binding(nameof(ViewModels.CatalogItemViewModel.IsSelected)) { Mode = BindingMode.OneWay }
+                    : new Binding(nameof(DataGridRow.IsSelected))
+                    {
+                        Mode = BindingMode.TwoWay,
+                        RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor, typeof(DataGridRow), 1),
+                    });
             checkBox.PreviewMouseLeftButtonDown += OnCheckBoxPreviewMouseLeftButtonDown;
+            checkBox.PreviewKeyDown += OnCheckBoxPreviewKeyDown;
+            checkBox.Checked += OnCheckBoxStateChanged;
+            checkBox.Unchecked += OnCheckBoxStateChanged;
             return checkBox;
         }
 
-        private static void OnCheckBoxPreviewMouseLeftButtonDown(
+        private static async void OnCheckBoxStateChanged(object sender, RoutedEventArgs e)
+        {
+            if (sender is not CheckBox checkBox
+                || FindAncestor<DataGrid>(checkBox)?.DataContext is not ViewModels.CatalogViewModel { UsesQuerySelection: true } viewModel
+                || checkBox.DataContext is not ViewModels.CatalogItemViewModel { IsPlaceholder: false } item
+                || checkBox.IsChecked == item.IsSelected) return;
+            // UI Automation invokes TogglePattern without a pointer event. A
+            // model-driven binding update already has the desired state.
+            await viewModel.SelectRowAsync(item, additive: true, range: false);
+        }
+
+        private static async void OnCheckBoxPreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key != Key.Space || sender is not CheckBox checkBox
+                || FindAncestor<DataGrid>(checkBox)?.DataContext is not ViewModels.CatalogViewModel { UsesQuerySelection: true } viewModel
+                || FindAncestor<DataGridRow>(checkBox)?.Item is not ViewModels.CatalogItemViewModel { IsPlaceholder: false } item) return;
+            e.Handled = true;
+            await viewModel.SelectRowAsync(item, additive: true, range: Keyboard.Modifiers.HasFlag(ModifierKeys.Shift));
+        }
+
+        private static async void OnCheckBoxPreviewMouseLeftButtonDown(
             object sender,
             MouseButtonEventArgs eventArgs)
         {
             if (sender is not CheckBox checkBox
                 || FindAncestor<DataGridRow>(checkBox) is not { } row)
             {
+                return;
+            }
+
+            if (FindAncestor<DataGrid>(checkBox)?.DataContext is ViewModels.CatalogViewModel { UsesQuerySelection: true } viewModel)
+            {
+                eventArgs.Handled = true;
+                if (row.Item is not ViewModels.CatalogItemViewModel { IsPlaceholder: false } item) return;
+                checkBox.Focus();
+                await viewModel.SelectRowAsync(item, additive: true, range: Keyboard.Modifiers.HasFlag(ModifierKeys.Shift));
                 return;
             }
 
@@ -440,6 +514,8 @@ public static class DynamicProfileGrid
             {
                 Width = GridLength.Auto,
             });
+            panel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            panel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
             var valueText = new TextBlock
             {
@@ -464,6 +540,7 @@ public static class DynamicProfileGrid
                         1),
                 });
             panel.Children.Add(valueText);
+            valueText.SetBinding(FrameworkElement.ToolTipProperty, new Binding($"DisplayValues[{fieldId}]") { Mode = BindingMode.OneWay });
 
             var mappingBadge = new Border
             {
@@ -502,8 +579,60 @@ public static class DynamicProfileGrid
                 });
             Grid.SetColumn(mappingBadge, 1);
             panel.Children.Add(mappingBadge);
+            var errorBadge = new Wpf.Ui.Controls.SymbolIcon(Wpf.Ui.Controls.SymbolRegular.Warning20)
+            {
+                Width = 16, Height = 16, Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
+            };
+            errorBadge.SetResourceReference(Control.ForegroundProperty, "SystemFillColorCautionBrush");
+            errorBadge.SetBinding(UIElement.VisibilityProperty, new Binding("FieldErrors")
+            {
+                Converter = new FieldErrorConverter(visibility: true), ConverterParameter = fieldId,
+            });
+            errorBadge.SetBinding(FrameworkElement.ToolTipProperty, new Binding("FieldErrors")
+            {
+                Converter = new FieldErrorConverter(visibility: false), ConverterParameter = fieldId,
+            });
+            BindingOperations.SetBinding(errorBadge, System.Windows.Automation.AutomationProperties.NameProperty, new Binding("FieldErrors")
+            {
+                Converter = new FieldErrorConverter(visibility: false), ConverterParameter = fieldId,
+            });
+            Grid.SetColumn(errorBadge, 2);
+            panel.Children.Add(errorBadge);
+            var previewBadge = new Border
+            {
+                Margin = new Thickness(6, 0, 0, 0), Padding = new Thickness(4, 0, 4, 0), CornerRadius = new CornerRadius(4),
+                VerticalAlignment = VerticalAlignment.Center,
+                Child = new TextBlock { Text = "…", FontWeight = FontWeights.SemiBold },
+            };
+            previewBadge.SetResourceReference(Border.BackgroundProperty, "ControlFillColorSecondaryBrush");
+            previewBadge.SetBinding(UIElement.VisibilityProperty, new Binding("PreviewTooltips")
+            {
+                Converter = new FieldErrorConverter(visibility: true), ConverterParameter = fieldId,
+            });
+            previewBadge.SetBinding(FrameworkElement.ToolTipProperty, new Binding("PreviewTooltips")
+            {
+                Converter = new FieldErrorConverter(visibility: false), ConverterParameter = fieldId,
+            });
+            BindingOperations.SetBinding(previewBadge, System.Windows.Automation.AutomationProperties.NameProperty, new Binding("PreviewTooltips")
+            {
+                Converter = new FieldErrorConverter(visibility: false), ConverterParameter = fieldId,
+            });
+            Grid.SetColumn(previewBadge, 3);
+            panel.Children.Add(previewBadge);
             return panel;
         }
+    }
+
+    private sealed class FieldErrorConverter(bool visibility) : IValueConverter
+    {
+        public object? Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+        {
+            var error = value is IReadOnlyDictionary<string, string> errors && parameter is string fieldId
+                && errors.TryGetValue(fieldId, out var message) ? message : null;
+            return visibility ? string.IsNullOrEmpty(error) ? Visibility.Collapsed : Visibility.Visible : error;
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture) => Binding.DoNothing;
     }
 
     private sealed class UserInputTextColumn(ProfileFieldDescriptor field) : DataGridColumn
@@ -535,17 +664,35 @@ public static class DynamicProfileGrid
                     UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged,
                 });
             textBox.LostKeyboardFocus += OnLostKeyboardFocus;
+            textBox.GotKeyboardFocus += OnGotKeyboardFocus;
+            textBox.Unloaded += (_, _) => EndEditor(textBox);
             return textBox;
+        }
+
+        private static void OnGotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs eventArgs)
+        {
+            if (sender is not Wpf.Ui.Controls.TextBox textBox
+                || textBox.GetValue(ActiveEditorOwnerProperty) is not null
+                || FindAncestor<DataGrid>(textBox)?.DataContext is not ViewModels.CatalogViewModel viewModel) return;
+            viewModel.BeginUserInputEdit();
+            textBox.SetValue(ActiveEditorOwnerProperty, viewModel);
+        }
+
+        private static void EndEditor(Wpf.Ui.Controls.TextBox textBox)
+        {
+            if (textBox.GetValue(ActiveEditorOwnerProperty) is not ViewModels.CatalogViewModel owner) return;
+            textBox.ClearValue(ActiveEditorOwnerProperty);
+            owner.EndUserInputEdit();
         }
 
         private async void OnLostKeyboardFocus(
             object sender,
             KeyboardFocusChangedEventArgs eventArgs)
         {
-            if (sender is FrameworkElement element
-                && element.DataContext is ViewModels.CatalogItemViewModel item
-                && element is Wpf.Ui.Controls.TextBox textBox)
+            if (sender is not Wpf.Ui.Controls.TextBox textBox || textBox.IsKeyboardFocusWithin) return;
+            try
             {
+                if (textBox.DataContext is not ViewModels.CatalogItemViewModel item) return;
                 var binding = BindingOperations.GetBindingExpression(
                     textBox,
                     System.Windows.Controls.TextBox.TextProperty);
@@ -560,13 +707,20 @@ public static class DynamicProfileGrid
                         exception is IOException
                             or UnauthorizedAccessException
                             or ArgumentException
-                            or NotSupportedException)
+                            or NotSupportedException
+                            or System.Data.Common.DbException)
                     {
                         // CatalogViewModel already logged and surfaced the save
                         // failure. Keep the value dirty so the next focus loss or
                         // shutdown flush can retry it without crashing the UI.
                     }
                 }
+            }
+            finally
+            {
+                // Refocusing the same editor while its save awaited must keep it
+                // protected. Unloading a recycled row also releases the owner.
+                if (!textBox.IsKeyboardFocusWithin) EndEditor(textBox);
             }
         }
     }

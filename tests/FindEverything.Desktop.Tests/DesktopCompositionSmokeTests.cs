@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Documents;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Shell;
 using System.Windows.Threading;
 using FindEverything.Application;
@@ -25,6 +26,9 @@ using FindEverything.Profile.Abstractions;
 using FindEverything.Profile.Runtime;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
+using FindEverything.Infrastructure.Persistence;
 using Wpf.Ui;
 using Wpf.Ui.Appearance;
 using Wpf.Ui.Controls;
@@ -94,12 +98,18 @@ public sealed class DesktopCompositionSmokeTests
                 .AddProfileRuntime()
                 .AddDesktopPresentation(
                     configuration,
-                    new AppPaths(Path.GetTempPath(), Path.Combine(Path.GetTempPath(), "findeverything-smoke.json")));
+                    new AppPaths(
+                        Path.Combine(Path.GetTempPath(), $"findeverything-smoke-{Guid.NewGuid():N}"),
+                        Path.Combine(Path.GetTempPath(), $"findeverything-smoke-settings-{Guid.NewGuid():N}.json")));
             services.AddSingleton(blockingCatalogService);
             services.AddSingleton<ICatalogService>(
                 static provider => provider.GetRequiredService<BlockingCatalogService>());
             services.AddSingleton(completionNotifier);
             services.AddSingleton<IScanCompletionNotifier>(completionNotifier);
+            services.AddSingleton<IDraftDecisionPrompt, DiscardDraftPrompt>();
+            // Keep the existing live-scan/diagnostic regressions on their original
+            // fake service. A separate helper exercises the real projection path.
+            services.RemoveAll<ICatalogProjectionStore>();
 
             using var provider = services.BuildServiceProvider(new ServiceProviderOptions
             {
@@ -146,6 +156,8 @@ public sealed class DesktopCompositionSmokeTests
                     Backdrop = BackdropPreference.None,
                 });
             var navigation = provider.GetRequiredService<INavigationService>();
+            CaptureOptionalQaScreenshots(provider, window, filesPage, catalogPage,
+                profilesPage, profilePlaygroundPage, outputFormatsPage, settingsPage);
             Assert.True(navigation.Navigate(typeof(HomePage)));
             Assert.NotNull(homePage.FindName("HomeScrollViewer"));
             Assert.NotNull(homePage.FindName("FilesActionCard"));
@@ -153,6 +165,7 @@ public sealed class DesktopCompositionSmokeTests
             Assert.True(navigation.Navigate(typeof(FilesPage)));
             VerifyPageScrollContracts(filesPage, catalogPage);
             VerifyCompactSelectionPages(filesPage, catalogPage);
+            VerifyCoreWorkspaceBounds(filesPage, catalogPage);
             Assert.True(navigation.Navigate(typeof(CatalogPage)));
             Assert.True(navigation.Navigate(typeof(ProfilesPage)));
             VerifyProfilesScrolling(window, profilesPage);
@@ -163,6 +176,7 @@ public sealed class DesktopCompositionSmokeTests
             Assert.True(navigation.Navigate(typeof(SettingsPage)));
             VerifySettingsLayout(window, settingsPage);
             VerifyScanConsole(provider, window, catalogPage);
+            VerifyProjectionQueries(provider, window);
             VerifyDynamicGridHighlighting();
             window.Close();
             window = null;
@@ -251,6 +265,144 @@ public sealed class DesktopCompositionSmokeTests
         Assert.NotNull(exportButton.Command);
     }
 
+    private static void VerifyCoreWorkspaceBounds(FilesPage filesPage, CatalogPage catalogPage)
+    {
+        foreach (var page in new Page[] { filesPage, catalogPage })
+        {
+            var originalContext = page.DataContext;
+            try
+            {
+                page.DataContext = new WorkspaceLayoutFixture(page is CatalogPage);
+                foreach (var (size, minimumRatio) in new[]
+                         {
+                             (new Size(1140, 790), 0.70),
+                             (new Size(660, 600), 0.60),
+                         })
+                {
+                    page.Measure(size);
+                    page.Arrange(new Rect(size));
+                    page.UpdateLayout();
+                    SaveQaImage(page, $"{page.GetType().Name}-{(size.Width >= 900 ? "wide" : "small")}-workspace.png");
+                    page.Dispatcher.Invoke(static () => { }, DispatcherPriority.DataBind);
+                    page.UpdateLayout();
+                    var grid = Assert.IsType<System.Windows.Controls.DataGrid>(page.FindName("ResultsGrid"));
+                    var toolbar = Assert.IsType<Border>(page.FindName("SelectionToolbar"));
+                    Assert.True(grid.ActualHeight / page.ActualHeight >= minimumRatio,
+                        $"{page.GetType().Name}: results occupy {grid.ActualHeight / page.ActualHeight:P1} at {size}.");
+                    Assert.True(toolbar.ActualHeight > 0);
+                    var gridBottom = grid.TranslatePoint(new Point(0, grid.ActualHeight), page).Y;
+                    var toolbarTop = toolbar.TranslatePoint(new Point(0, 0), page).Y;
+                    Assert.True(toolbarTop >= gridBottom, "Selection actions must not cover the last row or scrollbar.");
+                    var header = grid.Columns[0].Header as Wpf.Ui.Controls.Button;
+                    Assert.NotNull(header);
+                    Assert.False(string.IsNullOrWhiteSpace(System.Windows.Automation.AutomationProperties.GetName(header)));
+                    Assert.False(ResultGridInput.IsInteractiveOrigin(new System.Windows.Controls.TextBlock()));
+                    Assert.True(ResultGridInput.IsInteractiveOrigin(new System.Windows.Controls.CheckBox()));
+                    Assert.True(ResultGridInput.IsInteractiveOrigin(new Wpf.Ui.Controls.TextBox()));
+                }
+            }
+            finally
+            {
+                page.DataContext = originalContext;
+                page.InvalidateMeasure();
+            }
+        }
+    }
+
+    private static void CaptureOptionalQaScreenshots(IServiceProvider provider, MainWindow window,
+        FilesPage files, CatalogPage catalog, ProfilesPage profiles, ProfilePlaygroundPage playground,
+        OutputFormatsPage outputFormats, SettingsPage settings)
+    {
+        if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("FINDEVERYTHING_QA_DIR"))) return;
+        var navigation = provider.GetRequiredService<INavigationService>();
+        var appearance = provider.GetRequiredService<IAppearanceService>();
+        var width = window.Width;
+        var height = window.Height;
+        window.Width = 1360;
+        window.Height = 860;
+        try
+        {
+            Capture(files, new WorkspaceLayoutFixture(isCatalog: false), "files-light.png");
+            Capture(catalog, new WorkspaceLayoutFixture(isCatalog: true), "catalog-light.png");
+            window.Width = 760;
+            window.Height = 640;
+            Capture(catalog, new WorkspaceLayoutFixture(isCatalog: true), "catalog-small.png");
+            window.Width = 1360;
+            window.Height = 860;
+            appearance.Apply(window, new AppearanceOptions { Theme = ThemePreference.Dark, Backdrop = BackdropPreference.None });
+            Capture(catalog, new WorkspaceLayoutFixture(isCatalog: true), "catalog-dark.png");
+            appearance.Apply(window, new AppearanceOptions { Theme = ThemePreference.Light, Backdrop = BackdropPreference.None });
+
+            var editor = Assert.IsType<ProfilesViewModel>(profiles.DataContext);
+            var previousStep = editor.CurrentEditorStep;
+            editor.GoToEditorStepCommand.Execute(ProfileEditorStep.PathAndFields);
+            Capture(profiles, null, "profiles-light.png");
+            editor.GoToEditorStepCommand.Execute(previousStep);
+
+            var input = @"C:\Archive\Clients\Apollo\2026\0521_Project";
+            var rules = new[] { new ProfileRegexRuleManifest
+            {
+                Id = "project-folders", Pattern = @".*[\\/](?<client>Apollo)[\\/](?<year>\d{4})[\\/](?<monthDay>\d{4})_(?<project>[^\\/]+)$",
+                MatchMode = ProfileRegexMatchMode.Full, TimeoutMilliseconds = 100,
+            } };
+            var choice = new { Description = "프로젝트 폴더" };
+            Capture(playground, new
+            {
+                IsReady = true, IsBusy = false, InputPath = input, Profiles = new[] { choice }, SelectedProfile = choice,
+                Summary = "규칙에 일치했습니다. 추출한 값과 캡처 그룹을 확인하세요.",
+                Rows = new[] { new ProfileTestResultViewModel("고객", "Apollo", "완료"), new ProfileTestResultViewModel("프로젝트", "Project", "완료"), new ProfileTestResultViewModel("기준일", "2026-05-21", "완료") },
+                HasRegexDebugRules = true, HasDirectoryExclusionTestResult = false, HasDirectoryExclusionRegexDebugRules = false,
+                RegexDebugInputPath = input, RegexDebugRules = ProfileRegexDebugBuilder.Build(input, rules),
+            }, "playground-light.png");
+            Capture(outputFormats, null, "output-formats-light.png");
+            Capture(settings, null, "settings-light.png");
+        }
+        finally
+        {
+            appearance.Apply(window, new AppearanceOptions { Theme = ThemePreference.Light, Backdrop = BackdropPreference.None });
+            window.Width = width;
+            window.Height = height;
+            navigation.Navigate(typeof(HomePage));
+            PumpLayout(window, window);
+        }
+
+        void Capture(Page page, object? fixture, string fileName)
+        {
+            var original = page.DataContext;
+            try
+            {
+                if (fixture is not null) page.DataContext = fixture;
+                Assert.True(navigation.Navigate(page.GetType()));
+                PumpDispatcherFor(window.Dispatcher, TimeSpan.FromMilliseconds(80));
+                PumpLayout(window, page);
+                if (fixture is WorkspaceLayoutFixture
+                    && page.FindName("ResultsGrid") is System.Windows.Controls.DataGrid sampleGrid)
+                {
+                    sampleGrid.SelectAll();
+                    PumpLayout(window, page);
+                }
+                SaveQaImage(Assert.IsAssignableFrom<FrameworkElement>(window.Content), fileName);
+            }
+            finally { page.DataContext = original; page.InvalidateMeasure(); }
+        }
+    }
+
+    private static void SaveQaImage(FrameworkElement visual, string fileName)
+    {
+        var directory = Environment.GetEnvironmentVariable("FINDEVERYTHING_QA_DIR");
+        if (string.IsNullOrWhiteSpace(directory)) return;
+        Directory.CreateDirectory(directory);
+        visual.UpdateLayout();
+        var width = Math.Max(1, checked((int)Math.Ceiling(visual.ActualWidth)));
+        var height = Math.Max(1, checked((int)Math.Ceiling(visual.ActualHeight)));
+        var bitmap = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
+        bitmap.Render(visual);
+        var encoder = new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(bitmap));
+        using var stream = File.Create(Path.Combine(directory, fileName));
+        encoder.Save(stream);
+    }
+
     private static void VerifyScanConsole(
         IServiceProvider provider,
         MainWindow mainWindow,
@@ -266,7 +418,7 @@ public sealed class DesktopCompositionSmokeTests
             catalogPage.FindName("ScanConsolePanel"));
         Assert.Null(mainWindow.FindName("ScanConsolePanel"));
         var pageLayout = Assert.IsType<Grid>(catalogPage.FindName("CatalogPageLayout"));
-        var pageContent = Assert.IsType<Grid>(catalogPage.FindName("CatalogPageContent"));
+        var pageContent = Assert.IsAssignableFrom<Grid>(catalogPage.FindName("CatalogPageContent"));
         var resultsGrid = Assert.IsType<System.Windows.Controls.DataGrid>(
             catalogPage.FindName("ResultsGrid"));
         var toggleButton = Assert.IsType<Wpf.Ui.Controls.Button>(
@@ -315,6 +467,7 @@ public sealed class DesktopCompositionSmokeTests
         Assert.InRange(Math.Abs(navigationHeight - navigation.ActualHeight), 0d, 1d);
         Assert.InRange(Math.Abs(pageLayoutHeight - pageLayout.ActualHeight), 0d, 1d);
         Assert.True(pageContent.ActualHeight < pageContentHeight);
+        Assert.InRange(panel.ActualHeight / pageLayout.ActualHeight, 0.25, 0.45);
         var traceList = Assert.IsType<ListBox>(panel.FindName("TraceList"));
         var saveLogButton = Assert.IsType<Wpf.Ui.Controls.Button>(
             panel.FindName("SaveScanLogButton"));
@@ -692,6 +845,79 @@ public sealed class DesktopCompositionSmokeTests
         Assert.Equal(
             2,
             provider.GetRequiredService<RecordingScanCompletionNotifier>().Notices.Count);
+    }
+
+    private static void VerifyProjectionQueries(IServiceProvider provider, Window window)
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"findeverything-projection-ui-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        var database = Path.Combine(root, "metadata.db");
+        var profile = new QueryTestProfile();
+        provider.GetRequiredService<IProfileCatalogPublisher>().Publish(
+            new ProfileCatalogSnapshot([profile], [], DateTimeOffset.UtcNow));
+        var workspace = new QueryTestWorkspace(new WorkspaceSnapshot("query-test", root, database,
+            new Dictionary<string, string> { ["query-test"] = database }));
+        using var projections = new SqliteCatalogProjectionStore(Path.Combine(root, "results.db"));
+        var service = new QueryTestCatalogService(profile, root);
+        var clipboard = new RecordingClipboard();
+        using var viewModel = new CatalogViewModel(service,
+            provider.GetRequiredService<IProfileCatalog>(), workspace,
+            provider.GetRequiredService<IIndexDatabasePathResolver>(),
+            provider.GetRequiredService<IDesktopPickerService>(), provider.GetRequiredService<IPathLauncher>(),
+            provider.GetRequiredService<IApplicationOperationCoordinator>(),
+            provider.GetRequiredService<IScanCompletionNotifier>(), provider.GetRequiredService<ISnackbarService>(),
+            provider.GetRequiredService<ISelectionOutputFormatStore>(),
+            provider.GetRequiredService<ISelectionOutputFormatter>(),
+            provider.GetRequiredService<ICatalogSelectionExporter>(), clipboard,
+            provider.GetRequiredService<IAppLocalizer>(), provider.GetRequiredService<ILogger<CatalogViewModel>>(),
+            projectionStore: projections);
+
+        Complete(viewModel.ScanCommand.ExecuteAsync(null));
+        Assert.True(viewModel.UsesQuerySelection);
+        Assert.Equal(1200, viewModel.Items.Count);
+        Assert.Equal(500, Enumerable.Range(0, 500).Count(index =>
+            viewModel.Items.GetItemAt(index) is CatalogItemViewModel { IsPlaceholder: false }));
+        viewModel.SelectAllCommand.Execute(null);
+        Assert.Equal(1200, viewModel.SelectedCount);
+        Complete(viewModel.CopySelectionCommand.ExecuteAsync(null));
+        var copied = clipboard.Text.Split(["\r\n", "\n"], StringSplitOptions.RemoveEmptyEntries);
+        Assert.Equal(1200, copied.Length);
+        Assert.EndsWith("Item-0000", copied[0], StringComparison.Ordinal);
+        Assert.EndsWith("Item-1199", copied[^1], StringComparison.Ordinal);
+
+        var previousView = viewModel.Items;
+        viewModel.ApplySort("DisplayValues[client]", EntrySortDirection.Descending);
+        PumpDispatcherUntil(window.Dispatcher, () => !ReferenceEquals(previousView, viewModel.Items), TimeSpan.FromSeconds(4));
+        Assert.Equal(1200, viewModel.SelectedCount);
+        Complete(viewModel.CopySelectionCommand.ExecuteAsync(null));
+        copied = clipboard.Text.Split(["\r\n", "\n"], StringSplitOptions.RemoveEmptyEntries);
+        Assert.EndsWith("Item-1199", copied[0], StringComparison.Ordinal);
+
+        viewModel.FilterText = "Item-0000";
+        PumpDispatcherUntil(window.Dispatcher, () => viewModel.Items.Count == 1, TimeSpan.FromSeconds(4));
+        Assert.Equal(0, viewModel.SelectedCount);
+        Assert.False(viewModel.CopySelectionCommand.CanExecute(null));
+        viewModel.FilterText = string.Empty;
+        PumpDispatcherUntil(window.Dispatcher, () => viewModel.Items.Count == 1200, TimeSpan.FromSeconds(4));
+
+        Complete(viewModel.LoadCommand.ExecuteAsync(null));
+        Assert.Equal(1, service.ScanCount);
+        Assert.Equal(0, service.ExistingLoadCount);
+        Assert.Equal(0, profile.TextReadCount);
+        Assert.Contains(root, viewModel.ResultSourceDescription, StringComparison.Ordinal);
+
+        var first = Assert.IsType<CatalogItemViewModel>(viewModel.Items.GetItemAt(0));
+        viewModel.SelectRowAsync(first, additive: false, range: false).GetAwaiter().GetResult();
+        Assert.Equal(1, viewModel.SelectedCount);
+        Complete(viewModel.RefreshTextColumnCommand.ExecuteAsync("notes"));
+        Assert.Equal(1200, profile.TextReadCount); // The one selected row is not the refresh scope.
+        Assert.Equal(1200, viewModel.Items.Count);
+
+        void Complete(Task operation)
+        {
+            PumpDispatcherUntil(window.Dispatcher, () => operation.IsCompleted, TimeSpan.FromSeconds(6));
+            operation.GetAwaiter().GetResult();
+        }
     }
 
     private static void PumpDispatcherFor(Dispatcher dispatcher, TimeSpan duration)
@@ -1334,4 +1560,125 @@ public sealed class DesktopCompositionSmokeTests
     }
 
     private sealed record FilterContext(string FilterText);
+
+    private sealed class WorkspaceLayoutFixture
+    {
+        private readonly object _profile = new { Id = "layout-sample", DisplayName = "프로젝트 폴더" };
+        public WorkspaceLayoutFixture(bool isCatalog)
+        {
+            var fields = new ProfileFieldDescriptor[]
+            {
+                new("client", "client", "고객", 0, true, ProfileFieldValueKind.String, false, null, null),
+                new("project", "project", "프로젝트", 1, true, ProfileFieldValueKind.String, false, null, null),
+                new("date", "date", "기준일", 2, false, ProfileFieldValueKind.DateTime, true, "yyyyMMdd", "yyyy-MM-dd"),
+                new("note", "", "검토 메모", 3, false, ProfileFieldValueKind.String, true, null, null) { SourceKind = ProfileFieldSourceKind.UserInput },
+            };
+            Fields = isCatalog ? fields : [];
+            Items = Enumerable.Range(0, 12).Select(index =>
+            {
+                var name = isCatalog ? $"Project-{index + 1:00}" : $"Project-{index + 1:00}.pdf";
+                var path = Path.Combine(RootPath, name);
+                if (!isCatalog) return (object)new FileSearchItemViewModel(new IndexedPathEntry(path, name, RootPath,
+                    IndexedPathKind.File, (index + 1) * 128000, DateTimeOffset.Parse("2026-05-21T09:00:00Z"),
+                    DateTimeOffset.Parse("2026-10-13T09:00:00Z"), false), new TestAppLocalizer());
+                return new CatalogItemViewModel(new CatalogItem(path, name, "sample", new object(),
+                    new Dictionary<string, object?> { ["client"] = index % 2 == 0 ? "Apollo" : "Contoso", ["project"] = name,
+                        ["date"] = new DateTime(2026, 5, 21).AddDays(index) }, false), fields, new TestAppLocalizer());
+            }).ToArray();
+        }
+        public bool HasIndex => true;
+        public bool HasLoadedItems => true;
+        public bool HasSelection => true;
+        public bool CanSearch => true;
+        public bool CanEditWorkspace => true;
+        public bool IsDetailsOpen => false;
+        public bool IsBusy => false;
+        public bool IsSearching => false;
+        public bool IsSetupStateVisible => false;
+        public bool IsNoResultsVisible => false;
+        public bool HasValueMappings => false;
+        public bool UsesQuerySelection => false;
+        public int SelectedCount => 1000000;
+        public string RootPath => @"C:\Archive\Projects";
+        public string DetailsButtonText => "자세히";
+        public string ResultSummary => "1,000,000개 항목";
+        public string FilterSummary => "100,000개 항목";
+        public string StatusMessage => "준비됨";
+        public string ProgressMessage => string.Empty;
+        public object[] Profiles => [_profile];
+        public object SelectedProfile => _profile;
+        public object[] Items { get; }
+        public ProfileFieldDescriptor[] Fields { get; }
+        public object[] OutputFormats => [];
+    }
+
+    private sealed class DiscardDraftPrompt : IDraftDecisionPrompt
+    {
+        public Task<DraftLeaveDecision> ChooseAsync(string draftTitle) => Task.FromResult(DraftLeaveDecision.Discard);
+    }
+
+    private sealed class RecordingClipboard : IClipboardService
+    {
+        public string Text { get; private set; } = string.Empty;
+        public bool TrySetText(string text, out string? errorMessage) { Text = text; errorMessage = null; return true; }
+    }
+
+    private sealed class QueryTestProfile : ILoadedProfile
+    {
+        public int TextReadCount { get; private set; }
+        public ProfileDescriptor Descriptor { get; } = new("query-test", "1.0", "Query test", ProfileCandidateKind.Directory,
+        [
+            new("client", "client", "고객", 0, true, ProfileFieldValueKind.String, false, null, null),
+            new("notes", "", "메모", 1, false, ProfileFieldValueKind.String, true, null, null) { SourceKind = ProfileFieldSourceKind.TextFileContent },
+        ], []);
+        public ProfileMapResult Map(ProfilePathCandidate candidate) => throw new InvalidOperationException("The persisted projection must be queried directly.");
+        public ProfileTextColumnReadResult ReadTextColumn(string fullPath, string fieldId)
+        {
+            Assert.Equal("notes", fieldId);
+            TextReadCount++;
+            return new("Updated notes", []);
+        }
+    }
+
+    private sealed class QueryTestCatalogService(QueryTestProfile profile, string root) : ICatalogService
+    {
+        public int ScanCount { get; private set; }
+        public int ExistingLoadCount { get; private set; }
+        public Task<CatalogResult> LoadExistingAsync(CatalogRequest request, IProgress<CatalogOperationProgress>? progress = null, CancellationToken cancellationToken = default)
+        { ExistingLoadCount++; throw new InvalidOperationException("The existing projection should be reused."); }
+        public Task<CatalogResult> DiscoverAsync(CatalogRequest request, IProgress<CatalogOperationProgress>? progress = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<CatalogResult> ScanAndLoadAsync(CatalogRequest request, IProgress<CatalogOperationProgress>? progress = null, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            ScanCount++;
+            Assert.False(request.RetainItems);
+            Assert.NotNull(request.ResultWriter);
+            for (var index = 0; index < 1200; index++)
+            {
+                var name = $"Item-{index:0000}";
+                var values = new Dictionary<string, object?> { ["client"] = name, ["notes"] = "Cached notes" };
+                request.ResultWriter.Append(new CatalogItem(Path.Combine(root, name), name, "test", values, values, false));
+            }
+            return Task.FromResult(new CatalogResult(profile.Descriptor, [], [], 1200, 0, false, null) { MatchedCount = 1200 });
+        }
+    }
+
+    private sealed class QueryTestWorkspace(WorkspaceSnapshot initial) : IWorkspaceContext
+    {
+        public WorkspaceSnapshot Current { get; private set; } = initial;
+        public event EventHandler<WorkspaceChangedEventArgs>? Changed;
+        public Task SaveAsync(WorkspaceSnapshot snapshot, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var previous = Current; Current = snapshot; Changed?.Invoke(this, new(previous, snapshot));
+            return Task.CompletedTask;
+        }
+        public Task UpdateAsync(Func<WorkspaceSnapshot, WorkspaceSnapshot> update, CancellationToken cancellationToken = default) => SaveAsync(update(Current), cancellationToken);
+        public Task SetProfileDatabasePathAsync(string profileId, string? databasePath, CancellationToken cancellationToken = default)
+        {
+            var paths = new Dictionary<string, string>(Current.ProfileDatabasePaths ?? new Dictionary<string, string>());
+            if (databasePath is null) paths.Remove(profileId); else paths[profileId] = databasePath;
+            return SaveAsync(Current with { ProfileDatabasePaths = paths }, cancellationToken);
+        }
+    }
 }

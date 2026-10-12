@@ -12,6 +12,37 @@ namespace FindEverything.Desktop.Tests;
 public sealed class HomeViewModelTests
 {
     [Fact]
+    public void Updates_use_the_injected_scheduler_and_queued_updates_after_disposal_are_ignored()
+    {
+        var workspace = new StubWorkspaceContext(new WorkspaceSnapshot(null, null, null));
+        var scheduler = new QueuedScheduler();
+        var vm = new HomeViewModel(workspace, new StubProfileCatalog(ProfileCatalogSnapshot.Empty),
+            new StubDatabasePathResolver("files.db", "profile.db"), new StubOperationCoordinator(),
+            new RecordingHomeNavigationService(), new TestAppLocalizer(), scheduler);
+
+        workspace.Publish(workspace.Current with { RootPath = @"C:\Projects" });
+        Assert.False(vm.HasRoot);
+        scheduler.Flush();
+        Assert.True(vm.HasRoot);
+
+        workspace.Publish(workspace.Current with { RootPath = null });
+        vm.Dispose();
+        scheduler.Flush();
+        Assert.True(vm.HasRoot);
+    }
+
+    private sealed class QueuedScheduler : IUiScheduler
+    {
+        private readonly Queue<Action> _actions = new();
+        public void Post(Action action) => _actions.Enqueue(action);
+        public Task<T> InvokeAsync<T>(Func<Task<T>> action) => action();
+        public void Flush()
+        {
+            while (_actions.TryDequeue(out var action)) action();
+        }
+    }
+
+    [Fact]
     public void Empty_workspace_explains_what_is_missing_and_navigation_remains_available()
     {
         var workspace = new StubWorkspaceContext(new WorkspaceSnapshot(null, null, null));

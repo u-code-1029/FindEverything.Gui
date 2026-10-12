@@ -194,7 +194,7 @@ public sealed class IndexSessionIntegrationTests
                 CancellationToken.None));
 
         Assert.True(mutated);
-        Assert.Equal(3, consumerCalls);
+        Assert.Equal(changeGeneration ? 1 : 3, consumerCalls);
         Assert.Equal(Path.GetFullPath(workspace.SourcePath), exception.RootPath);
         Assert.Equal(report.ScanId, exception.ExpectedScanId);
         Assert.Equal(
@@ -529,7 +529,7 @@ public sealed class IndexSessionIntegrationTests
     }
 
     [Fact]
-    public async Task SearchWaitingForAnActiveScan_CanBeCancelled()
+    public async Task PublishedSearch_DoesNotWaitForScanOfAnotherDatabase()
     {
         using var readableWorkspace = new TestWorkspace();
         using var slowWorkspace = new TestWorkspace();
@@ -563,12 +563,11 @@ public sealed class IndexSessionIntegrationTests
         try
         {
             await scanStarted.Task.WaitAsync(TimeSpan.FromSeconds(15));
-            using var waitingCancellation = new CancellationTokenSource();
-            waitingCancellation.CancelAfter(TimeSpan.FromMilliseconds(250));
-
-            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => searchSession.SearchEntriesAsync(
+            var results = await searchSession.SearchEntriesAsync(
                 new EntrySearchRequest(readableWorkspace.SourcePath),
-                waitingCancellation.Token));
+                CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(3));
+            Assert.Equal("ready", Assert.Single(results.Entries).Name);
+            Assert.False(slowScan.IsCompleted);
         }
         finally
         {
@@ -577,6 +576,80 @@ public sealed class IndexSessionIntegrationTests
 
         var cancelled = await slowScan;
         Assert.Equal(IndexScanStatus.Cancelled, cancelled.Status);
+    }
+
+    [Fact]
+    public async Task PublishedSearch_UsesOldGenerationWhileSameDatabaseScanIsStaged()
+    {
+        using var workspace = new TestWorkspace();
+        Directory.CreateDirectory(Path.Combine(workspace.SourcePath, "ready"));
+        var factory = new FindEverythingIndexSessionFactory();
+        IndexScanReport prepared;
+        await using (var prepareSession = factory.Create(workspace.DatabasePath))
+            prepared = await prepareSession.ScanAsync(FastScan(workspace.SourcePath));
+        for (var index = 0; index < 4; index++)
+            await File.WriteAllTextAsync(Path.Combine(workspace.SourcePath, $"new-{index}.txt"), "content");
+
+        await using var scanSession = factory.Create(workspace.DatabasePath);
+        await using var readSession = factory.Create(workspace.DatabasePath);
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var scan = scanSession.ScanAsync(new IndexScanRequest(workspace.SourcePath)
+        {
+            Options = new IndexScanOptions { DirectoryDelay = TimeSpan.Zero, MaxEntriesPerSecond = 1 }
+        }, new RecordingProgress(_ => started.TrySetResult()), cancellation.Token);
+        try
+        {
+            await started.Task.WaitAsync(TimeSpan.FromSeconds(15));
+            var result = await readSession.SearchEntriesAsync(new EntrySearchRequest(workspace.SourcePath)
+            {
+                ExpectedScanId = prepared.ScanId,
+                IncludeTotalCount = false,
+            }).WaitAsync(TimeSpan.FromSeconds(3));
+            Assert.Equal("ready", Assert.Single(result.Entries).Name);
+            Assert.False(result.TotalCountIncluded);
+            Assert.Equal(-1, result.TotalCount);
+            Assert.Equal(prepared.ScanId, result.LastScanId);
+            Assert.False(scan.IsCompleted);
+        }
+        finally
+        {
+            cancellation.Cancel();
+        }
+        Assert.Equal(IndexScanStatus.Cancelled, (await scan).Status);
+        var status = await readSession.GetRootStatusAsync(workspace.SourcePath);
+        Assert.Equal(prepared.ScanId, status.LastScanId);
+    }
+
+    [Fact]
+    public async Task EntrySearch_MapsSequentialCursorAndRejectsReplacedGeneration()
+    {
+        using var workspace = new TestWorkspace();
+        for (var index = 0; index < 5; index++)
+            await File.WriteAllTextAsync(Path.Combine(workspace.SourcePath, $"file-{index}.txt"), "content");
+        var factory = new FindEverythingIndexSessionFactory();
+        await using var scanSession = factory.Create(workspace.DatabasePath);
+        var firstReport = await scanSession.ScanAsync(FastScan(workspace.SourcePath));
+        await using var readSession = factory.Create(workspace.DatabasePath);
+        var query = new EntrySearchRequest(workspace.SourcePath)
+        {
+            SortBy = EntrySortField.FileType,
+            Limit = 2,
+            IncludeTotalCount = false,
+            ExpectedScanId = firstReport.ScanId,
+        };
+        var first = await readSession.SearchEntriesAsync(query);
+        Assert.Equal(2, first.Entries.Count);
+        Assert.True(first.HasMore);
+        Assert.NotNull(first.NextCursor);
+        var second = await readSession.SearchEntriesAsync(query with { AfterCursor = first.NextCursor });
+        Assert.Equal(new[] { "file-2.txt", "file-3.txt" }, second.Entries.Select(entry => entry.Name));
+
+        var replacement = await scanSession.ScanAsync(FastScan(workspace.SourcePath));
+        var error = await Assert.ThrowsAsync<IndexSnapshotChangedException>(() =>
+            readSession.SearchEntriesAsync(query with { AfterCursor = second.NextCursor }));
+        Assert.Equal(firstReport.ScanId, error.ExpectedScanId);
+        Assert.Equal(replacement.ScanId, error.ActualScanId);
     }
 
     private static IndexScanRequest FastScan(string sourcePath) => new(sourcePath)

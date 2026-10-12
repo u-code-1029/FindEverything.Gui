@@ -8,6 +8,45 @@ namespace FindEverything.Desktop.Tests;
 public sealed class SelectionOutputFormatterTests
 {
     [Fact]
+    public async Task Streaming_formatter_keeps_separators_even_when_items_render_as_empty_strings()
+    {
+        var formatter = new SelectionOutputFormatter();
+        var format = new SelectionOutputFormatDefinition("test", "Test", "{Field:value}", "|", null);
+        var item = SelectionOutputItem.FromPath("example", fields:
+            new Dictionary<string, object?> { ["value"] = string.Empty });
+
+        Assert.Equal("||", await formatter.FormatAsync(format, StreamItems(item, 3)));
+    }
+
+    [Fact]
+    public async Task Streaming_formatter_enforces_the_same_output_limit_as_sync_formatting()
+    {
+        var formatter = new SelectionOutputFormatter();
+        var format = new SelectionOutputFormatDefinition("test", "Test", "{Field:value}", "", null);
+        var item = SelectionOutputItem.FromPath("example", fields:
+            new Dictionary<string, object?> { ["value"] = new string('x', 1_000_000) });
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => formatter.FormatAsync(format, StreamItems(item, 34)));
+    }
+
+    [Fact]
+    public async Task Cancelled_streaming_format_does_not_return_partial_output()
+    {
+        var formatter = new SelectionOutputFormatter();
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => formatter.FormatAsync(
+            SelectionOutputFormatDefaults.FullPathLines, StreamItems(SelectionOutputItem.FromPath("example"), 2), cancellation.Token));
+    }
+
+    private static async IAsyncEnumerable<SelectionOutputItem> StreamItems(SelectionOutputItem item, int count)
+    {
+        for (var index = 0; index < count; index++) yield return item;
+        await Task.CompletedTask;
+    }
+
+    [Fact]
     public void Format_replaces_common_and_profile_tokens_for_every_selected_item()
     {
         var formatter = new SelectionOutputFormatter();

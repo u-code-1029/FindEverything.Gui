@@ -17,11 +17,103 @@ public partial class FilesPage
         _viewModel = viewModel;
         DataContext = viewModel;
         InitializeComponent();
+        viewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(FileSearchViewModel.IsDetailsOpen)) ApplyWorkspaceLayout();
+        };
     }
 
-    private void OnPagePreviewKeyDown(object sender, KeyEventArgs e)
+    private void OnWorkspaceSizeChanged(object sender, System.Windows.SizeChangedEventArgs e) => ApplyWorkspaceLayout();
+
+    private void ApplyWorkspaceLayout()
     {
-        if (e.Key == Key.C
+        if (ResultsGrid is null || FileDetailsPanel is null) return;
+        var reserveDetails = _viewModel.IsDetailsOpen && FilePageLayout.ActualWidth >= 900;
+        ResultsGrid.Margin = new System.Windows.Thickness(0, 0, reserveDetails ? 348 : 0, 0);
+        FileDetailsPanel.Width = Math.Min(340, Math.Max(200, FilePageLayout.ActualWidth));
+        var compact = FilePageLayout.ActualWidth < 900;
+        Grid.SetRow(SearchBox, compact ? 1 : 0);
+        Grid.SetColumn(SearchBox, compact ? 0 : 1);
+        Grid.SetColumnSpan(SearchBox, compact ? 3 : 1);
+        SearchBox.Margin = compact ? new System.Windows.Thickness(0, 8, 0, 0) : new System.Windows.Thickness(12, 0, 0, 0);
+        FileLocationColumn.Width = compact ? new System.Windows.GridLength(1, System.Windows.GridUnitType.Star) : new System.Windows.GridLength(220);
+        FileSearchColumn.Width = compact ? new System.Windows.GridLength(0) : new System.Windows.GridLength(1, System.Windows.GridUnitType.Star);
+    }
+
+    private async void OnSelectionCheckBoxPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not CheckBox checkBox
+            || ItemsControl.ContainerFromElement(ResultsGrid, checkBox) is not DataGridRow row) return;
+        if (_viewModel.UsesQuerySelection)
+        {
+            e.Handled = true;
+            if (row.Item is not FileSearchItemViewModel { IsPlaceholder: false } item) return;
+            checkBox.Focus();
+            await _viewModel.SelectRowAsync(item, additive: true, range: Keyboard.Modifiers.HasFlag(ModifierKeys.Shift));
+            return;
+        }
+        var selected = !row.IsSelected;
+        checkBox.Focus();
+        if (selected) row.IsSelected = true;
+        _ = Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, new Action(() => row.IsSelected = selected));
+        e.Handled = true;
+    }
+
+    private async void OnResultsGridPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (!_viewModel.UsesQuerySelection || e.OriginalSource is not System.Windows.DependencyObject source
+            || ResultGridInput.IsInteractiveOrigin(source)
+            || ItemsControl.ContainerFromElement(ResultsGrid, source) is not DataGridRow row) return;
+        e.Handled = true;
+        if (row.Item is not FileSearchItemViewModel { IsPlaceholder: false } item) return;
+        ResultsGrid.SelectedItem = item;
+        ResultsGrid.CurrentItem = item;
+        row.Focus();
+        await _viewModel.SelectRowAsync(item, Keyboard.Modifiers.HasFlag(ModifierKeys.Control), Keyboard.Modifiers.HasFlag(ModifierKeys.Shift));
+    }
+
+    private async void OnSelectionCheckBoxPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Space || !_viewModel.UsesQuerySelection || sender is not CheckBox checkBox
+            || ItemsControl.ContainerFromElement(ResultsGrid, checkBox) is not DataGridRow { Item: FileSearchItemViewModel { IsPlaceholder: false } item }) return;
+        e.Handled = true;
+        await _viewModel.SelectRowAsync(item, additive: true, range: Keyboard.Modifiers.HasFlag(ModifierKeys.Shift));
+    }
+
+    private async void OnSelectionCheckBoxStateChanged(object sender, System.Windows.RoutedEventArgs e)
+    {
+        if (!_viewModel.UsesQuerySelection || sender is not CheckBox checkBox
+            || checkBox.DataContext is not FileSearchItemViewModel { IsPlaceholder: false } item
+            || checkBox.IsChecked == item.IsSelected) return;
+        await _viewModel.SelectRowAsync(item, additive: true, range: false);
+    }
+
+    private async void OnPagePreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (ResultsGrid.IsKeyboardFocusWithin && Keyboard.FocusedElement is System.Windows.DependencyObject focused
+            && !ResultGridInput.IsInteractiveOrigin(focused)
+            && ResultsGrid.CurrentItem is FileSearchItemViewModel { IsPlaceholder: false } current)
+        {
+            if (_viewModel.UsesQuerySelection && e.Key == Key.Space)
+            {
+                e.Handled = true;
+                await _viewModel.SelectRowAsync(current, additive: true, range: Keyboard.Modifiers.HasFlag(ModifierKeys.Shift));
+                return;
+            }
+            if (e.Key == Key.Enter && _viewModel.OpenItemCommand.CanExecute(current))
+            {
+                e.Handled = true;
+                _viewModel.OpenItemCommand.Execute(current);
+                return;
+            }
+        }
+        if (e.Key == Key.A && Keyboard.Modifiers.HasFlag(ModifierKeys.Control)
+            && Keyboard.FocusedElement is not TextBoxBase && Keyboard.FocusedElement is not PasswordBox)
+        {
+            _viewModel.SelectAllCommand.Execute(null);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.C
             && Keyboard.Modifiers.HasFlag(ModifierKeys.Control)
             && Keyboard.FocusedElement is not TextBoxBase
             && Keyboard.FocusedElement is not PasswordBox
@@ -46,7 +138,7 @@ public partial class FilesPage
     private void OnResultsGridSelectionChanged(object sender, SelectionChangedEventArgs e) =>
         UpdateSelectionSnapshot();
 
-    private void OnResultsGridPreviewMouseRightButtonDown(
+    private async void OnResultsGridPreviewMouseRightButtonDown(
         object sender,
         MouseButtonEventArgs e)
     {
@@ -58,6 +150,15 @@ public partial class FilesPage
         }
 
         _pointerContextItem = row.Item as FileSearchItemViewModel;
+        if (_pointerContextItem?.IsPlaceholder != false) { _pointerContextItem = null; return; }
+        if (_viewModel.UsesQuerySelection)
+        {
+            ResultsGrid.CurrentItem = row.Item;
+            row.Focus();
+            if (!_pointerContextItem.IsSelected) await _viewModel.SelectRowAsync(_pointerContextItem, additive: false, range: false);
+            return;
+        }
+
         if (!row.IsSelected)
         {
             ResultsGrid.SelectedItems.Clear();
@@ -77,52 +178,23 @@ public partial class FilesPage
     {
         if (e.CursorLeft < 0)
         {
-            e.Handled = ResultsGrid.CurrentItem is not FileSearchItemViewModel;
+            e.Handled = ResultsGrid.CurrentItem is not FileSearchItemViewModel { IsPlaceholder: false };
             return;
         }
 
         e.Handled = _pointerContextItem is null;
     }
 
-    private void OnSelectAllClick(object sender, System.Windows.RoutedEventArgs e) =>
-        ResultsGrid.SelectAll();
-
-    private void OnClearSelectionClick(object sender, System.Windows.RoutedEventArgs e) =>
-        ResultsGrid.UnselectAll();
-
-    private void OnInvertSelectionClick(object sender, System.Windows.RoutedEventArgs e)
-    {
-        var selected = ResultsGrid.SelectedItems.Cast<object>().ToHashSet();
-        ResultsGrid.SelectionChanged -= OnResultsGridSelectionChanged;
-        try
-        {
-            ResultsGrid.SelectedItems.Clear();
-            foreach (var item in ResultsGrid.Items.Cast<object>())
-            {
-                if (!selected.Contains(item))
-                {
-                    ResultsGrid.SelectedItems.Add(item);
-                }
-            }
-        }
-        finally
-        {
-            ResultsGrid.SelectionChanged += OnResultsGridSelectionChanged;
-            UpdateSelectionSnapshot();
-        }
-    }
-
     private void UpdateSelectionSnapshot()
     {
-        var selected = ResultsGrid.SelectedItems.Cast<object>().ToHashSet();
-        _viewModel.SetSelection(ResultsGrid.Items
-            .Cast<FileSearchItemViewModel>()
-            .Where(selected.Contains));
+        if (_viewModel.UsesQuerySelection) return;
+        _viewModel.SetSelection(ResultsGrid.SelectedItems.OfType<FileSearchItemViewModel>());
     }
 
     private void OnResultsGridMouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
         if (e.OriginalSource is not System.Windows.DependencyObject source
+            || ResultGridInput.IsInteractiveOrigin(source)
             || ItemsControl.ContainerFromElement(ResultsGrid, source) is not DataGridRow row)
         {
             return;
