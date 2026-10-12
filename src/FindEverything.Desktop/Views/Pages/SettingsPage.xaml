@@ -44,8 +44,8 @@
         <controls:PageHeader Title="{DynamicResource Loc.Shell.Nav.Settings}" Description="{DynamicResource Loc.Workspace.Settings.Description}" />
         <ScrollViewer x:Name="SettingsScrollViewer" Grid.Row="1" Style="{StaticResource FluentGutteredScrollViewerStyle}">
             <StackPanel HorizontalAlignment="Stretch" IsEnabled="{Binding IsEditable}" ToolTipService.ShowOnDisabled="True">
-                <ui:CardControl x:Name="IndexingSettingsCard" Style="{StaticResource SettingsSectionCardStyle}">
-                    <ui:CardControl.Header>
+                <controls:SectionCard x:Name="IndexingSettingsCard" Style="{StaticResource SettingsSectionCardStyle}">
+                    <controls:SectionCard.Header>
                     <StackPanel>
                         <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.Workspace.Settings.Indexing}" AutomationProperties.HeadingLevel="Level2" />
                         <controls:SettingRowCard Style="{StaticResource GroupedSettingRowStyle}" Title="{DynamicResource Loc.Workspace.Settings.PageSize}" Description="{DynamicResource Loc.Workspace.Settings.PageSize.Help}">
@@ -61,10 +61,10 @@
                             <ui:TextBox HorizontalAlignment="Stretch" Text="{Binding DirectoryDelayMillisecondsText, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{DynamicResource Loc.Workspace.Settings.Delay}" ToolTip="{DynamicResource Loc.Workspace.Settings.Delay.Help}" />
                         </controls:SettingRowCard>
                     </StackPanel>
-                    </ui:CardControl.Header>
-                </ui:CardControl>
-                <ui:CardControl x:Name="NotificationSettingsCard" Style="{StaticResource SettingsSectionCardStyle}">
-                    <ui:CardControl.Header>
+                    </controls:SectionCard.Header>
+                </controls:SectionCard>
+                <controls:SectionCard x:Name="NotificationSettingsCard" Style="{StaticResource SettingsSectionCardStyle}">
+                    <controls:SectionCard.Header>
                     <StackPanel>
                         <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.Workspace.Settings.Notifications}" AutomationProperties.HeadingLevel="Level2" />
                         <TextBlock Margin="0,4,0,0" Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.Workspace.Settings.Notifications.Help}" TextWrapping="Wrap" />
@@ -72,10 +72,10 @@
                             <ui:TextBox HorizontalAlignment="Stretch" Text="{Binding NotificationAutoDismissSecondsText, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{DynamicResource Loc.Workspace.Settings.NotificationDuration}" ToolTip="{DynamicResource Loc.Workspace.Settings.NotificationDuration.Help}" />
                         </controls:SettingRowCard>
                     </StackPanel>
-                    </ui:CardControl.Header>
-                </ui:CardControl>
-                <ui:CardControl x:Name="AppearanceSettingsCard" Style="{StaticResource SettingsSectionCardStyle}">
-                    <ui:CardControl.Header>
+                    </controls:SectionCard.Header>
+                </controls:SectionCard>
+                <controls:SectionCard x:Name="AppearanceSettingsCard" Style="{StaticResource SettingsSectionCardStyle}">
+                    <controls:SectionCard.Header>
                     <StackPanel>
                         <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.Workspace.Settings.Appearance}" AutomationProperties.HeadingLevel="Level2" />
                         <controls:SettingRowCard Style="{StaticResource GroupedSettingRowStyle}" Title="{DynamicResource Loc.Workspace.Settings.Theme}" Description="{DynamicResource Loc.Workspace.Settings.Theme.Help}">
@@ -88,19 +88,19 @@
                             <TextBlock Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.Workspace.Settings.Language.Action}" />
                         </controls:SettingRowCard>
                     </StackPanel>
-                    </ui:CardControl.Header>
-                </ui:CardControl>
+                    </controls:SectionCard.Header>
+                </controls:SectionCard>
                 <TextBlock Margin="0,0,0,12" Foreground="{DynamicResource SystemFillColorCriticalBrush}" Text="{Binding NumericValidationMessage}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" Visibility="{Binding HasNumericValidationError, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                <ui:CardControl Style="{StaticResource SettingsSectionCardStyle}">
-                    <ui:CardControl.Header>
+                <controls:SectionCard Style="{StaticResource SettingsSectionCardStyle}">
+                    <controls:SectionCard.Header>
                     <Expander Header="{DynamicResource Loc.Workspace.Settings.Advanced}">
                         <StackPanel Margin="0,12,0,0">
                             <TextBlock FontWeight="SemiBold" Text="{DynamicResource Loc.Workspace.Settings.File}" />
                             <TextBlock Margin="0,4,0,0" Text="{Binding UserSettingsFile}" TextWrapping="Wrap" Style="{StaticResource CaptionTextStyle}" />
                         </StackPanel>
                     </Expander>
-                    </ui:CardControl.Header>
-                </ui:CardControl>
+                    </controls:SectionCard.Header>
+                </controls:SectionCard>
             </StackPanel>
         </ScrollViewer>
         <controls:CommandStrip Grid.Row="2" Margin="0,8,0,0">

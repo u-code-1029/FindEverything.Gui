@@ -139,8 +139,8 @@
         <controls:SplitWorkspace x:Name="PlaygroundWorkspace" Grid.Row="2" PrimaryRatio="0.35" PrimaryTitle="{DynamicResource Loc.Workspace.Playground.Values}" SecondaryTitle="{DynamicResource Loc.Workspace.Playground.Debug}">
             <controls:SplitWorkspace.PrimaryContent>
                 <ScrollViewer x:Name="ProfilePlaygroundScrollViewer" Style="{StaticResource FluentGutteredScrollViewerStyle}">
-                    <StackPanel>                <ui:CardControl Margin="0" Style="{StaticResource FluentSectionCardStyle}">
-                      <ui:CardControl.Header>
+                    <StackPanel>                <controls:SectionCard Margin="0" Style="{StaticResource FluentSectionCardStyle}">
+                      <controls:SectionCard.Header>
                     <StackPanel>
                         <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.ProfilePlayground.Text.StructuredValues}" />
                         <TextBlock
@@ -186,14 +186,14 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
                     </StackPanel>
-                      </ui:CardControl.Header>
-                </ui:CardControl>                <ui:CardControl
+                      </controls:SectionCard.Header>
+                </controls:SectionCard>                <controls:SectionCard
                     x:Name="PlaygroundDirectoryExclusionResultPanel"
                     Margin="0,16,0,0"
                     AutomationProperties.Name="{DynamicResource Loc.View.ProfilePlayground.AutomationName.PlaygroundFolderNameExclusionResult}"
                     Style="{StaticResource FluentSectionCardStyle}"
                     Visibility="{Binding HasDirectoryExclusionTestResult, Converter={StaticResource BooleanToVisibilityConverter}}">
-                  <ui:CardControl.Header>
+                  <controls:SectionCard.Header>
                     <StackPanel>
                         <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.ProfilePlayground.Text.FolderNameExclusionDecision}" />
                         <TextBlock
@@ -222,8 +222,8 @@
                             Severity="{Binding DirectoryExclusionTestResult.Severity}"
                             Title="{Binding DirectoryExclusionTestResult.Title}" />
                     </StackPanel>
-                  </ui:CardControl.Header>
-                </ui:CardControl></StackPanel>
+                  </controls:SectionCard.Header>
+                </controls:SectionCard></StackPanel>
                 </ScrollViewer>
             </controls:SplitWorkspace.PrimaryContent>
             <controls:SplitWorkspace.SecondaryContent>
@@ -235,8 +235,8 @@
                     Header="{DynamicResource Loc.View.ProfilePlayground.AutomationName.PathRegexColorDebugger}"
                     IsExpanded="True"
                     Visibility="{Binding HasRegexDebugRules, Converter={StaticResource BooleanToVisibilityConverter}}">
-                    <ui:CardControl Margin="0,8,0,0" Style="{StaticResource FluentSectionCardStyle}">
-                      <ui:CardControl.Header>
+                    <controls:SectionCard Margin="0,8,0,0" Style="{StaticResource FluentSectionCardStyle}">
+                      <controls:SectionCard.Header>
                         <StackPanel>
                             <TextBlock
                                 Style="{StaticResource CaptionTextStyle}"
@@ -253,16 +253,16 @@
                                 ItemsSource="{Binding RegexDebugRules}"
                                 Style="{StaticResource PlaygroundRegexDebugItemsStyle}" />
                         </StackPanel>
-                      </ui:CardControl.Header>
-                    </ui:CardControl>
+                      </controls:SectionCard.Header>
+                    </controls:SectionCard>
                 </Expander>                <Expander
                     x:Name="PlaygroundDirectoryExclusionRegexDebugExpander"
                     Margin="0,12,0,0"
                     AutomationProperties.Name="{DynamicResource Loc.View.ProfilePlayground.AutomationName.FolderExclusionRegexColorDebugger}"
                     Header="{DynamicResource Loc.View.ProfilePlayground.AutomationName.FolderExclusionRegexColorDebugger}"
                     Visibility="{Binding HasDirectoryExclusionRegexDebugRules, Converter={StaticResource BooleanToVisibilityConverter}}">
-                    <ui:CardControl Margin="0,8,0,0" Style="{StaticResource FluentSectionCardStyle}">
-                      <ui:CardControl.Header>
+                    <controls:SectionCard Margin="0,8,0,0" Style="{StaticResource FluentSectionCardStyle}">
+                      <controls:SectionCard.Header>
                         <StackPanel>
                             <TextBlock
                                 Style="{StaticResource CaptionTextStyle}"
@@ -273,8 +273,8 @@
                                 ItemsSource="{Binding DirectoryExclusionRegexDebugRules}"
                                 Style="{StaticResource PlaygroundRegexDebugItemsStyle}" />
                         </StackPanel>
-                      </ui:CardControl.Header>
-                    </ui:CardControl>
+                      </controls:SectionCard.Header>
+                    </controls:SectionCard>
                 </Expander></StackPanel>
                 </ScrollViewer>
             </controls:SplitWorkspace.SecondaryContent>

@@ -166,7 +166,7 @@ public sealed class DesktopCompositionSmokeTests
             Assert.NotNull(homePage.FindName("HomeScrollViewer"));
             Assert.IsType<CardAction>(homePage.FindName("FilesActionCard"));
             Assert.IsType<CardAction>(homePage.FindName("CatalogActionCard"));
-            Assert.IsType<CardControl>(homePage.FindName("WorkspaceOverviewCard"));
+            Assert.IsAssignableFrom<CardControl>(homePage.FindName("WorkspaceOverviewCard"));
             Assert.True(navigation.Navigate(typeof(FilesPage)));
             VerifyPageScrollContracts(filesPage, catalogPage);
             VerifyCompactSelectionPages(filesPage, catalogPage);
@@ -1231,7 +1231,7 @@ public sealed class DesktopCompositionSmokeTests
         var templateBox = Assert.IsType<Wpf.Ui.Controls.TextBox>(
             page.FindName("ProfilePathTemplateTextBox"));
         Assert.True(templateBox.IsReadOnly);
-        Assert.IsType<CardControl>(page.FindName("AssignmentPickerPanel"));
+        Assert.IsAssignableFrom<CardControl>(page.FindName("AssignmentPickerPanel"));
         Assert.NotEmpty(viewModel.GuidedPathSegments);
         VerifyGuidedPathButtonAuthoring(window, viewModel);
 
@@ -1240,10 +1240,10 @@ public sealed class DesktopCompositionSmokeTests
         var editorScrollViewer = Assert.IsType<ScrollViewer>(
             page.FindName("ProfileEditorScrollViewer"));
         Assert.Equal(new Thickness(0, 0, 16, 0), editorScrollViewer.Padding);
-        Assert.IsType<CardControl>(page.FindName("ProfileEditorStepRail"));
+        Assert.IsAssignableFrom<CardControl>(page.FindName("ProfileEditorStepRail"));
         Assert.IsType<Wpf.Ui.Controls.Button>(page.FindName("PreviousProfileStepButton"));
         Assert.IsType<Wpf.Ui.Controls.Button>(page.FindName("NextProfileStepButton"));
-        var userInputEditor = Assert.IsType<CardControl>(page.FindName("UserInputFieldsEditor"));
+        var userInputEditor = Assert.IsAssignableFrom<CardControl>(page.FindName("UserInputFieldsEditor"));
         Assert.True(viewModel.AddUserInputFieldCommand.CanExecute(null));
         viewModel.AddUserInputFieldCommand.Execute(null);
         Assert.Single(viewModel.DraftUserInputFields);
@@ -1266,7 +1266,7 @@ public sealed class DesktopCompositionSmokeTests
         Assert.True(viewModel.IsReviewStep);
         Assert.Equal(
             Visibility.Visible,
-            Assert.IsType<CardControl>(page.FindName("ProfileReviewPanel")).Visibility);
+            Assert.IsAssignableFrom<CardControl>(page.FindName("ProfileReviewPanel")).Visibility);
 
         tabControl.SelectedIndex = 1;
         PumpLayout(window, page);
@@ -1390,7 +1390,7 @@ public sealed class DesktopCompositionSmokeTests
             Assert.NotNull(style.BasedOn);
         }
 
-        var editorFooter = Assert.IsType<CardControl>(page.FindName("EditorFooter"));
+        var editorFooter = Assert.IsAssignableFrom<CardControl>(page.FindName("EditorFooter"));
         Assert.IsType<System.Windows.Controls.TextBlock>(page.FindName("EditorFooterStatusText"));
         Assert.Empty(FindVisualChildren<Wpf.Ui.Controls.InfoBar>(editorFooter));
 
@@ -1518,9 +1518,9 @@ public sealed class DesktopCompositionSmokeTests
         Assert.Equal(new Thickness(0, 0, 16, 0), scrollViewer.Padding);
         Assert.True(scrollViewer.ActualWidth > 0);
 
-        var indexingCard = Assert.IsType<CardControl>(page.FindName("IndexingSettingsCard"));
-        var notificationsCard = Assert.IsType<CardControl>(page.FindName("NotificationSettingsCard"));
-        var appearanceCard = Assert.IsType<CardControl>(page.FindName("AppearanceSettingsCard"));
+        var indexingCard = Assert.IsAssignableFrom<CardControl>(page.FindName("IndexingSettingsCard"));
+        var notificationsCard = Assert.IsAssignableFrom<CardControl>(page.FindName("NotificationSettingsCard"));
+        var appearanceCard = Assert.IsAssignableFrom<CardControl>(page.FindName("AppearanceSettingsCard"));
         foreach (var card in new[] { indexingCard, notificationsCard, appearanceCard })
         {
             Assert.Equal(new CornerRadius(8), card.CornerRadius);

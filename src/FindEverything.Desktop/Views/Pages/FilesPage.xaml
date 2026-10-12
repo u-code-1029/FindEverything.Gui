@@ -171,7 +171,7 @@
                             VerticalAlignment="Center"
                             FontWeight="SemiBold"
                             Text="{Binding SelectedCount, StringFormat={StaticResource Loc.Common.SelectedCountFormat}}" />
-                        <Label Padding="0" Margin="0,0,8,0" VerticalAlignment="Center" Content="{DynamicResource Loc.Workspace.Output.Format.Label}" Target="{Binding ElementName=FilesOutputFormatComboBox}" />
+                        <Label x:Name="FilesOutputFormatLabel" Padding="0" Margin="0,0,8,0" VerticalAlignment="Center" Content="{DynamicResource Loc.Workspace.Output.Format.Label}" Target="{Binding ElementName=FilesOutputFormatComboBox}" />
                         <ComboBox
                             x:Name="FilesOutputFormatComboBox"
                             Width="140"
@@ -179,6 +179,7 @@
                             AutomationProperties.Name="{DynamicResource Loc.View.Files.AutomationName.SelectionOutputFormat}"
                             DisplayMemberPath="DisplayName"
                             ItemsSource="{Binding OutputFormats}"
+                            ToolTip="{Binding SelectedOutputFormat.DisplayName}"
                             SelectedItem="{Binding SelectedOutputFormat}" />
                     </StackPanel>
                     <ui:Button
@@ -306,8 +307,8 @@
                 <TextBlock Grid.Column="1" MaxWidth="260" Margin="12,0,0,0" Text="{Binding ResultSourceDescription}" Style="{StaticResource CaptionTextStyle}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" ToolTip="{Binding ResultSourceDescription}" AutomationProperties.Name="{DynamicResource Loc.Workspace.ResultSource}" />
             </Grid>
         </Border>
-        <ui:CardControl x:Name="FileDetailsPanel" Grid.Row="2" Width="340" HorizontalAlignment="Right" VerticalAlignment="Stretch" Panel.ZIndex="8" Style="{StaticResource FluentSectionCardStyle}" Visibility="{Binding IsDetailsOpen, Converter={StaticResource BooleanToVisibilityConverter}}">
-          <ui:CardControl.Header>
+        <controls:SectionCard x:Name="FileDetailsPanel" Grid.Row="2" Width="340" HorizontalAlignment="Right" VerticalAlignment="Stretch" Panel.ZIndex="8" Style="{StaticResource FluentSectionCardStyle}" Visibility="{Binding IsDetailsOpen, Converter={StaticResource BooleanToVisibilityConverter}}">
+          <controls:SectionCard.Header>
             <ScrollViewer x:Name="FileDetailsScrollViewer" Style="{StaticResource FluentGutteredScrollViewerStyle}">
                 <StackPanel>
                     <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.Workspace.Details}" />
@@ -435,7 +436,7 @@
             </Popup>
                 </StackPanel>
             </ScrollViewer>
-          </ui:CardControl.Header>
-        </ui:CardControl>
+          </controls:SectionCard.Header>
+        </controls:SectionCard>
     </controls:WorkspacePageFrame>
 </Page>

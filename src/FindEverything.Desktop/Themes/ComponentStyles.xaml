@@ -147,8 +147,8 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="controls:SettingRowCard">
-                    <ui:CardControl Style="{StaticResource FluentCardStyle}">
-                        <ui:CardControl.Header>
+                    <controls:SectionCard Style="{StaticResource FluentCardStyle}">
+                        <controls:SectionCard.Header>
                           <Grid>
                             <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                             <Grid.ColumnDefinitions><ColumnDefinition Width="0.45*" /><ColumnDefinition Width="0.55*" /></Grid.ColumnDefinitions>
@@ -158,8 +158,8 @@
                             </StackPanel>
                             <ContentPresenter x:Name="Editor" Grid.Column="1" VerticalAlignment="Center" Content="{TemplateBinding Content}" HorizontalAlignment="Stretch" />
                           </Grid>
-                        </ui:CardControl.Header>
-                    </ui:CardControl>
+                        </controls:SectionCard.Header>
+                    </controls:SectionCard>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsCompact" Value="True">
                             <Setter TargetName="DescriptionPanel" Property="Grid.ColumnSpan" Value="2" /><Setter TargetName="DescriptionPanel" Property="Margin" Value="0,0,0,12" />

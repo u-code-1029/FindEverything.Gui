@@ -94,7 +94,7 @@
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
-                    <ui:CardControl
+                    <controls:SectionCard
                         x:Name="ProfileEditorStepRail"
                         Grid.Row="0"
                         Margin="0,4,0,0"
@@ -105,7 +105,7 @@
                         AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.ProfileSetupSteps}"
                         IsEnabled="{Binding IsEditorReady}"
                         Style="{StaticResource FluentToolbarCardStyle}">
-                        <ui:CardControl.Header>
+                        <controls:SectionCard.Header>
                         <UniformGrid x:Name="ProfileStepButtons" Columns="4">
                             <RadioButton
                                 Margin="0,0,8,0"
@@ -147,18 +147,18 @@
                                 GroupName="ProfileEditorSteps"
                                 IsChecked="{Binding IsReviewStep, Mode=OneWay}" />
                         </UniformGrid>
-                        </ui:CardControl.Header>
-                    </ui:CardControl>
+                        </controls:SectionCard.Header>
+                    </controls:SectionCard>
 
                     <ScrollViewer
                         x:Name="ProfileEditorScrollViewer"
                         Grid.Row="1"
                         Style="{StaticResource FluentGutteredScrollViewerStyle}">
                         <StackPanel Margin="0,8,0,0"><TextBlock Margin="0,0,0,8" Text="{Binding NumericValidationMessage}" TextWrapping="Wrap" Foreground="{DynamicResource SystemFillColorCriticalBrush}" Visibility="{Binding HasNumericValidationError, Converter={StaticResource BooleanToVisibilityConverter}}" AutomationProperties.LiveSetting="Polite" />
-                            <ui:CardControl
+                            <controls:SectionCard
                                 Style="{StaticResource EditorSectionStyle}"
                                 Visibility="{Binding IsProfileStep, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                <ui:CardControl.Header>
+                                <controls:SectionCard.Header>
                                 <Grid>
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto" />
@@ -212,14 +212,14 @@
                                         </WrapPanel>
                                     </Grid>
                                 </Grid>
-                                </ui:CardControl.Header>
-                            </ui:CardControl>
+                                </controls:SectionCard.Header>
+                            </controls:SectionCard>
 
-                            <ui:CardControl
+                            <controls:SectionCard
                                 IsEnabled="{Binding IsEditorReady}"
                                 Style="{StaticResource EditorSectionStyle}"
                                 Visibility="{Binding IsScanOptionsStep, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                <ui:CardControl.Header>
+                                <controls:SectionCard.Header>
                                 <StackPanel>
                                     <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.DisplayValueMappings}" />
                                     <TextBlock
@@ -230,10 +230,10 @@
                                     <ItemsControl ItemsSource="{Binding DraftFields}">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate>
-                                                <ui:CardControl
+                                                <controls:SectionCard
                                                     Style="{StaticResource FieldCardStyle}"
                                                     Visibility="{Binding ShowValueMappingEditor, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                    <ui:CardControl.Header>
+                                                    <controls:SectionCard.Header>
                                                     <StackPanel>
                                                         <Grid>
                                                             <Grid.ColumnDefinitions>
@@ -307,8 +307,8 @@
                                                             Content="{DynamicResource Loc.View.Profiles.Content.AddOriginalDisplayValue}"
                                                             Icon="{ui:SymbolIcon Symbol=AddSquare20}" />
                                                     </StackPanel>
-                                                    </ui:CardControl.Header>
-                                                </ui:CardControl>
+                                                    </controls:SectionCard.Header>
+                                                </controls:SectionCard>
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
@@ -317,14 +317,14 @@
                                         Text="{DynamicResource Loc.View.Profiles.Text.OnlyTextFieldsCanBeMappedOriginal}"
                                         TextWrapping="Wrap" />
                                 </StackPanel>
-                                </ui:CardControl.Header>
-                            </ui:CardControl>
+                                </controls:SectionCard.Header>
+                            </controls:SectionCard>
 
-                            <ui:CardControl
+                            <controls:SectionCard
                                 IsEnabled="{Binding IsEditorReady}"
                                 Style="{StaticResource EditorSectionStyle}"
                                 Visibility="{Binding IsProfileStep, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                <ui:CardControl.Header>
+                                <controls:SectionCard.Header>
                                 <StackPanel>
                                     <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.EditingMode}" />
                                     <TextBlock
@@ -354,14 +354,14 @@
                                         Text="{DynamicResource Loc.View.Profiles.Text.IfTheReturnToBeginnerButtonIs}"
                                         TextWrapping="Wrap" />
                                 </StackPanel>
-                                </ui:CardControl.Header>
-                            </ui:CardControl>
+                                </controls:SectionCard.Header>
+                            </controls:SectionCard>
 
-                            <ui:CardControl
+                            <controls:SectionCard
                                 IsEnabled="{Binding IsEditorReady}"
                                 Style="{StaticResource EditorSectionStyle}"
                                 Visibility="{Binding IsProfileStep, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                <ui:CardControl.Header>
+                                <controls:SectionCard.Header>
                                 <StackPanel>
                                     <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.1BasicInformation}" />
                                     <TextBlock
@@ -397,14 +397,14 @@
                                         Severity="Informational"
                                         Title="{DynamicResource Loc.View.Profiles.Title.AlwaysUseAbsolutePaths}" />
                                 </StackPanel>
-                                </ui:CardControl.Header>
-                            </ui:CardControl>
+                                </controls:SectionCard.Header>
+                            </controls:SectionCard>
 
-                            <ui:CardControl
+                            <controls:SectionCard
                                 IsEnabled="{Binding IsEditorReady}"
                                 Style="{StaticResource EditorSectionStyle}"
                                 Visibility="{Binding IsScanOptionsStep, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                <ui:CardControl.Header>
+                                <controls:SectionCard.Header>
                                 <StackPanel>
                                     <Grid>
                                         <Grid.ColumnDefinitions>
@@ -429,12 +429,12 @@
                                             Icon="{ui:SymbolIcon Symbol=AddSquare20}" />
                                     </Grid>
 
-                                    <ui:CardControl
+                                    <controls:SectionCard
                                         Margin="0,12,0,12"
                                         Padding="12"
                                         Background="{DynamicResource ControlFillColorSecondaryBrush}"
                                         CornerRadius="6" Style="{StaticResource FluentCardStyle}">
-                                        <ui:CardControl.Header>
+                                        <controls:SectionCard.Header>
                                         <StackPanel AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.FolderNameExclusionRuleScope}">
                                             <TextBlock TextWrapping="Wrap">
                                                 <Run FontWeight="SemiBold" Text="{DynamicResource Loc.View.Profiles.Text.InputExample}" />
@@ -450,14 +450,14 @@
                                                 <Run Text="{DynamicResource Loc.View.Profiles.Text.AMatchRemovesThatFolderFromResult}" />
                                             </TextBlock>
                                         </StackPanel>
-                                        </ui:CardControl.Header>
-                                    </ui:CardControl>
+                                        </controls:SectionCard.Header>
+                                    </controls:SectionCard>
 
                                     <ItemsControl ItemsSource="{Binding DraftExcludedDirectoryNameRules}">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate>
-                                                <ui:CardControl Style="{StaticResource FieldCardStyle}">
-                                                    <ui:CardControl.Header>
+                                                <controls:SectionCard Style="{StaticResource FieldCardStyle}">
+                                                    <controls:SectionCard.Header>
                                                     <StackPanel>
                                                         <Grid>
                                                             <Grid.ColumnDefinitions>
@@ -530,8 +530,8 @@
                                                             Text="{Binding MatchModeDisplayName}"
                                                             TextWrapping="Wrap" />
                                                     </StackPanel>
-                                                    </ui:CardControl.Header>
-                                                </ui:CardControl>
+                                                    </controls:SectionCard.Header>
+                                                </controls:SectionCard>
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
@@ -540,14 +540,14 @@
                                         Text="{DynamicResource Loc.View.Profiles.Text.WithoutExclusionRulesEveryFolderIsVisited}"
                                         TextWrapping="Wrap" />
                                 </StackPanel>
-                                </ui:CardControl.Header>
-                            </ui:CardControl>
+                                </controls:SectionCard.Header>
+                            </controls:SectionCard>
 
-                            <ui:CardControl
+                            <controls:SectionCard
                                 IsEnabled="{Binding IsEditorReady}"
                                 Style="{StaticResource EditorSectionStyle}"
                                 Visibility="{Binding IsScanOptionsStep, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                <ui:CardControl.Header>
+                                <controls:SectionCard.Header>
                                 <StackPanel>
                                     <Grid>
                                         <Grid.ColumnDefinitions>
@@ -583,8 +583,8 @@
                                     <ItemsControl ItemsSource="{Binding DraftTextFileFields}">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate>
-                                                <ui:CardControl Style="{StaticResource FieldCardStyle}">
-                                                    <ui:CardControl.Header>
+                                                <controls:SectionCard Style="{StaticResource FieldCardStyle}">
+                                                    <controls:SectionCard.Header>
                                                     <StackPanel>
                                                         <Grid>
                                                             <Grid.ColumnDefinitions>
@@ -677,8 +677,8 @@
                                                                 IsChecked="{Binding IgnoreCase, UpdateSourceTrigger=PropertyChanged}" />
                                                         </WrapPanel>
                                                     </StackPanel>
-                                                    </ui:CardControl.Header>
-                                                </ui:CardControl>
+                                                    </controls:SectionCard.Header>
+                                                </controls:SectionCard>
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
@@ -687,15 +687,15 @@
                                         Text="{DynamicResource Loc.View.Profiles.Text.UpTo16FieldsAreAllowedThe}"
                                         TextWrapping="Wrap" />
                                 </StackPanel>
-                                </ui:CardControl.Header>
-                            </ui:CardControl>
+                                </controls:SectionCard.Header>
+                            </controls:SectionCard>
 
-                            <ui:CardControl
+                            <controls:SectionCard
                                 x:Name="UserInputFieldsEditor"
                                 IsEnabled="{Binding IsEditorReady}"
                                 Style="{StaticResource EditorSectionStyle}"
                                 Visibility="{Binding IsScanOptionsStep, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                <ui:CardControl.Header>
+                                <controls:SectionCard.Header>
                                 <StackPanel>
                                     <Grid>
                                         <Grid.ColumnDefinitions>
@@ -722,8 +722,8 @@
                                     <ItemsControl Margin="0,12,0,0" ItemsSource="{Binding DraftUserInputFields}">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate>
-                                                <ui:CardControl Style="{StaticResource FieldCardStyle}">
-                                                    <ui:CardControl.Header>
+                                                <controls:SectionCard Style="{StaticResource FieldCardStyle}">
+                                                    <controls:SectionCard.Header>
                                                     <Grid>
                                                         <Grid.RowDefinitions>
                                                             <RowDefinition Height="Auto" />
@@ -783,8 +783,8 @@
                                                                 Text="{Binding DefaultValue, UpdateSourceTrigger=PropertyChanged}" />
                                                         </StackPanel>
                                                     </Grid>
-                                                    </ui:CardControl.Header>
-                                                </ui:CardControl>
+                                                    </controls:SectionCard.Header>
+                                                </controls:SectionCard>
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
@@ -793,11 +793,11 @@
                                         Text="{DynamicResource Loc.View.Profiles.Text.UpTo16ColumnsFieldIDsCannot}"
                                         TextWrapping="Wrap" />
                                 </StackPanel>
-                                </ui:CardControl.Header>
-                            </ui:CardControl>
+                                </controls:SectionCard.Header>
+                            </controls:SectionCard>
 
-                            <ui:CardControl IsEnabled="{Binding IsEditorReady}" Style="{StaticResource GuidedEditorSectionStyle}">
-                                <ui:CardControl.Header>
+                            <controls:SectionCard IsEnabled="{Binding IsEditorReady}" Style="{StaticResource GuidedEditorSectionStyle}">
+                                <controls:SectionCard.Header>
                                 <Grid x:Name="GuidedWorkspace">
                                     <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                                     <Grid.ColumnDefinitions><ColumnDefinition x:Name="GuidedEditorColumn" Width="*" /><ColumnDefinition x:Name="GuidedGapColumn" Width="0" /><ColumnDefinition x:Name="GuidedChoicesColumn" Width="0" /></Grid.ColumnDefinitions>
@@ -875,8 +875,8 @@
                                     <ItemsControl ItemsSource="{Binding DraftFields}">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate>
-                                                <ui:CardControl Style="{StaticResource FieldCardStyle}">
-                                                    <ui:CardControl.Header>
+                                                <controls:SectionCard Style="{StaticResource FieldCardStyle}">
+                                                    <controls:SectionCard.Header>
                                                     <StackPanel>
                                                         <Grid>
                                                             <Grid.ColumnDefinitions>
@@ -1039,12 +1039,12 @@
                                                             </StackPanel>
                                                         </StackPanel>
 
-                                                        <ui:CardControl
+                                                        <controls:SectionCard
                                                             Margin="0,10,0,0"
                                                             Padding="10"
                                                             Background="{DynamicResource ControlFillColorSecondaryBrush}"
                                                             CornerRadius="6" Style="{StaticResource FluentCardStyle}">
-                                                            <ui:CardControl.Header>
+                                                            <controls:SectionCard.Header>
                                                             <Grid>
                                                                 <Grid.ColumnDefinitions>
                                                                     <ColumnDefinition Width="*" />
@@ -1059,8 +1059,8 @@
                                                                     Content="{DynamicResource Loc.View.Profiles.Content.Disconnect}"
                                                                     Visibility="{Binding HasGuidedAssignments, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                                             </Grid>
-                                                            </ui:CardControl.Header>
-                                                        </ui:CardControl>
+                                                            </controls:SectionCard.Header>
+                                                        </controls:SectionCard>
 
                                                         <RadioButton
                                                             Margin="0,12,0,0"
@@ -1086,8 +1086,8 @@
                                                             </StackPanel>
                                                         </Expander>
                                                     </StackPanel>
-                                                    </ui:CardControl.Header>
-                                                </ui:CardControl>
+                                                    </controls:SectionCard.Header>
+                                                </controls:SectionCard>
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
@@ -1119,14 +1119,14 @@
                                             TextWrapping="Wrap" />
                                     </Expander>
                                 </StackPanel>
-                                    <ui:CardControl
+                                    <controls:SectionCard
                                         x:Name="AssignmentPickerPanel" Grid.Column="2" IsVisibleChanged="OnAssignmentPickerVisibilityChanged"
                                         Margin="0"
                                         Padding="12"
                                         Background="{DynamicResource ControlFillColorSecondaryBrush}"
                                         CornerRadius="8"
                                         Visibility="{Binding IsAssignmentPickerOpen, Converter={StaticResource BooleanToVisibilityConverter}}" Style="{StaticResource FluentCardStyle}">
-                                        <ui:CardControl.Header>
+                                        <controls:SectionCard.Header>
                                         <StackPanel>
                                             <TextBlock FontWeight="SemiBold" Text="{Binding AssignmentPickerTitle}" TextWrapping="Wrap" />
                                             <ItemsControl Margin="0,10,0,0" ItemsSource="{Binding GuidedPathSegments}">
@@ -1144,13 +1144,13 @@
                                                                 FontSize="18"
                                                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                                                 Text="{Binding Prefix}" />
-                                                            <ui:CardControl
+                                                            <controls:SectionCard
                                                                 Padding="8"
                                                                 Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
                                                                 BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
                                                                 BorderThickness="1"
                                                                 CornerRadius="6" Style="{StaticResource FluentCardStyle}">
-                                                                <ui:CardControl.Header>
+                                                                <controls:SectionCard.Header>
                                                                 <StackPanel>
                                                                     <ui:Button
                                                                         AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.SelectWholeFolderName}"
@@ -1187,21 +1187,21 @@
                                                                         </ItemsControl.ItemTemplate>
                                                                     </ItemsControl>
                                                                 </StackPanel>
-                                                                </ui:CardControl.Header>
-                                                            </ui:CardControl>
+                                                                </controls:SectionCard.Header>
+                                                            </controls:SectionCard>
                                                         </StackPanel>
                                                     </DataTemplate>
                                                 </ItemsControl.ItemTemplate>
                                             </ItemsControl>
                                         </StackPanel>
-                                        </ui:CardControl.Header>
-                                    </ui:CardControl>
+                                        </controls:SectionCard.Header>
+                                    </controls:SectionCard>
                                 </Grid>
-                                </ui:CardControl.Header>
-                            </ui:CardControl>
+                                </controls:SectionCard.Header>
+                            </controls:SectionCard>
 
-                            <ui:CardControl IsEnabled="{Binding IsEditorReady}" Style="{StaticResource ExpertEditorSectionStyle}">
-                                <ui:CardControl.Header>
+                            <controls:SectionCard IsEnabled="{Binding IsEditorReady}" Style="{StaticResource ExpertEditorSectionStyle}">
+                                <controls:SectionCard.Header>
                                 <StackPanel>
                                     <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.2EditExpertRules}" />
                                     <TextBlock
@@ -1363,15 +1363,15 @@
                                         Content="{DynamicResource Loc.View.Profiles.Content.AddRule}"
                                         Icon="{ui:SymbolIcon Symbol=AddSquare20}" />
                                 </StackPanel>
-                                </ui:CardControl.Header>
-                            </ui:CardControl>
+                                </controls:SectionCard.Header>
+                            </controls:SectionCard>
 
-                            <ui:CardControl
+                            <controls:SectionCard
                                 x:Name="ProfileReviewPanel"
                                 IsEnabled="{Binding IsEditorReady}"
                                 Style="{StaticResource EditorSectionStyle}"
                                 Visibility="{Binding IsReviewStep, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                <ui:CardControl.Header>
+                                <controls:SectionCard.Header>
                                 <StackPanel>
                                     <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.4ReviewAndSave}" />
                                     <TextBlock
@@ -1381,43 +1381,43 @@
                                         TextWrapping="Wrap" />
 
                                     <UniformGrid Columns="2" Rows="2">
-                                        <ui:CardControl Margin="0,0,8,8" Style="{StaticResource FieldCardStyle}">
-                                            <ui:CardControl.Header>
+                                        <controls:SectionCard Margin="0,0,8,8" Style="{StaticResource FieldCardStyle}">
+                                            <controls:SectionCard.Header>
                                             <StackPanel>
                                                 <TextBlock Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.Shell.Nav.Profiles}" />
                                                 <TextBlock Margin="0,4,0,0" FontSize="16" FontWeight="SemiBold" Text="{Binding DraftDisplayName}" />
                                                 <TextBlock Margin="0,2,0,0" FontFamily="Consolas" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding DraftId}" />
                                             </StackPanel>
-                                            </ui:CardControl.Header>
-                                        </ui:CardControl>
-                                        <ui:CardControl Margin="8,0,0,8" Style="{StaticResource FieldCardStyle}">
-                                            <ui:CardControl.Header>
+                                            </controls:SectionCard.Header>
+                                        </controls:SectionCard>
+                                        <controls:SectionCard Margin="8,0,0,8" Style="{StaticResource FieldCardStyle}">
+                                            <controls:SectionCard.Header>
                                             <StackPanel>
                                                 <TextBlock Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.EditingMode225}" />
                                                 <TextBlock Margin="0,4,0,0" FontSize="16" FontWeight="SemiBold" Text="{Binding EditorModeDisplay}" />
                                                 <TextBlock Margin="0,2,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{DynamicResource Loc.View.Profiles.Text.PathRulesAndResultColumns}" />
                                             </StackPanel>
-                                            </ui:CardControl.Header>
-                                        </ui:CardControl>
-                                        <ui:CardControl Margin="0,8,8,0" Style="{StaticResource FieldCardStyle}">
-                                            <ui:CardControl.Header>
+                                            </controls:SectionCard.Header>
+                                        </controls:SectionCard>
+                                        <controls:SectionCard Margin="0,8,8,0" Style="{StaticResource FieldCardStyle}">
+                                            <controls:SectionCard.Header>
                                             <StackPanel>
                                                 <TextBlock Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.StructuredResults}" />
                                                 <TextBlock Margin="0,4,0,0" FontSize="16" FontWeight="SemiBold" Text="{Binding DraftFields.Count, StringFormat={StaticResource Loc.Profiles.PathColumnCountFormat}}" />
                                                 <TextBlock Margin="0,2,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding DraftTextFileFields.Count, StringFormat={StaticResource Loc.Profiles.TextFileColumnCountFormat}}" />
                                                 <TextBlock Margin="0,2,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding DraftUserInputFields.Count, StringFormat={StaticResource Loc.Profiles.UserInputColumnCountFormat}}" />
                                             </StackPanel>
-                                            </ui:CardControl.Header>
-                                        </ui:CardControl>
-                                        <ui:CardControl Margin="8,8,0,0" Style="{StaticResource FieldCardStyle}">
-                                            <ui:CardControl.Header>
+                                            </controls:SectionCard.Header>
+                                        </controls:SectionCard>
+                                        <controls:SectionCard Margin="8,8,0,0" Style="{StaticResource FieldCardStyle}">
+                                            <controls:SectionCard.Header>
                                             <StackPanel>
                                                 <TextBlock Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.ScanBehavior}" />
                                                 <TextBlock Margin="0,4,0,0" FontSize="16" FontWeight="SemiBold" Text="{Binding DraftRules.Count, StringFormat={StaticResource Loc.Profiles.PathRuleCountFormat}}" />
                                                 <TextBlock Margin="0,2,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding DraftExcludedDirectoryNameRules.Count, StringFormat={StaticResource Loc.Profiles.ExclusionRuleCountFormat}}" />
                                             </StackPanel>
-                                            </ui:CardControl.Header>
-                                        </ui:CardControl>
+                                            </controls:SectionCard.Header>
+                                        </controls:SectionCard>
                                     </UniformGrid>
 
                                     <ui:InfoBar
@@ -1429,17 +1429,17 @@
                                         Severity="Informational"
                                         Title="{DynamicResource Loc.View.Profiles.Title.TestTheSavedVersionWithAReal}" />
                                 </StackPanel>
-                                </ui:CardControl.Header>
-                            </ui:CardControl>
+                                </controls:SectionCard.Header>
+                            </controls:SectionCard>
                         </StackPanel>
                     </ScrollViewer>
 
-                    <ui:CardControl
+                    <controls:SectionCard
                         x:Name="EditorFooter"
                         Grid.Row="2"
                         Margin="8,12,8,8"
                         Style="{StaticResource FluentToolbarCardStyle}">
-                        <ui:CardControl.Header>
+                        <controls:SectionCard.Header>
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
@@ -1523,8 +1523,8 @@
                                 IsIndeterminate="True"
                                 Visibility="{Binding IsEditorBusy, Converter={StaticResource BooleanToVisibilityConverter}}" />
                         </Grid>
-                        </ui:CardControl.Header>
-                    </ui:CardControl>
+                        </controls:SectionCard.Header>
+                    </controls:SectionCard>
                 </Grid>
             </TabItem>
 
@@ -1536,8 +1536,8 @@
                     Style="{StaticResource FluentGutteredScrollViewerStyle}">
                     <StackPanel Margin="0,8,0,24">
                         <StackPanel>
-                            <ui:CardControl x:Name="LoadedProfilesCard" Style="{StaticResource EditorSectionStyle}">
-                                <ui:CardControl.Header>
+                            <controls:SectionCard x:Name="LoadedProfilesCard" Style="{StaticResource EditorSectionStyle}">
+                                <controls:SectionCard.Header>
                                 <Grid>
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto" />
@@ -1569,12 +1569,12 @@
                                         </DataGrid.Columns>
                                     </DataGrid>
                                 </Grid>
-                                </ui:CardControl.Header>
-                            </ui:CardControl>
+                                </controls:SectionCard.Header>
+                            </controls:SectionCard>
 
                             <StackPanel>
-                                <ui:CardControl Style="{StaticResource EditorSectionStyle}">
-                                    <ui:CardControl.Header>
+                                <controls:SectionCard Style="{StaticResource EditorSectionStyle}">
+                                    <controls:SectionCard.Header>
                                     <StackPanel>
                                         <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.SelectedProfile}" />
                                         <TextBlock
@@ -1605,11 +1605,11 @@
                                             </StackPanel>
                                         </WrapPanel>
                                     </StackPanel>
-                                    </ui:CardControl.Header>
-                                </ui:CardControl>
+                                    </controls:SectionCard.Header>
+                                </controls:SectionCard>
 
-                                <ui:CardControl Style="{StaticResource EditorSectionStyle}">
-                                    <ui:CardControl.Header>
+                                <controls:SectionCard Style="{StaticResource EditorSectionStyle}">
+                                    <controls:SectionCard.Header>
                                     <Grid>
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="Auto" />
@@ -1643,11 +1643,11 @@
                                             </DataGrid.Columns>
                                         </DataGrid>
                                     </Grid>
-                                    </ui:CardControl.Header>
-                                </ui:CardControl>
+                                    </controls:SectionCard.Header>
+                                </controls:SectionCard>
 
-                                <ui:CardControl Style="{StaticResource EditorSectionStyle}">
-                                    <ui:CardControl.Header>
+                                <controls:SectionCard Style="{StaticResource EditorSectionStyle}">
+                                    <controls:SectionCard.Header>
                                     <Grid>
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="Auto" />
@@ -1686,11 +1686,11 @@
                                             </DataGrid.Columns>
                                         </DataGrid>
                                     </Grid>
-                                    </ui:CardControl.Header>
-                                </ui:CardControl>
+                                    </controls:SectionCard.Header>
+                                </controls:SectionCard>
 
-                                <ui:CardControl Style="{StaticResource EditorSectionStyle}">
-                                    <ui:CardControl.Header>
+                                <controls:SectionCard Style="{StaticResource EditorSectionStyle}">
+                                    <controls:SectionCard.Header>
                                     <Grid>
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="Auto" />
@@ -1720,11 +1720,11 @@
                                             </DataGrid.Columns>
                                         </DataGrid>
                                     </Grid>
-                                    </ui:CardControl.Header>
-                                </ui:CardControl>
+                                    </controls:SectionCard.Header>
+                                </controls:SectionCard>
 
-                                <ui:CardControl Margin="0" Style="{StaticResource FluentCardStyle}">
-                                    <ui:CardControl.Header>
+                                <controls:SectionCard Margin="0" Style="{StaticResource FluentCardStyle}">
+                                    <controls:SectionCard.Header>
                                     <Grid>
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="Auto" />
@@ -1760,13 +1760,13 @@
                                             </DataGrid.Columns>
                                         </DataGrid>
                                     </Grid>
-                                    </ui:CardControl.Header>
-                                </ui:CardControl>
+                                    </controls:SectionCard.Header>
+                                </controls:SectionCard>
                             </StackPanel>
                         </StackPanel>
 
-                        <ui:CardControl x:Name="ProfileDiagnosticsCard" Margin="0,16,0,0" Style="{StaticResource FluentCardStyle}">
-                            <ui:CardControl.Header>
+                        <controls:SectionCard x:Name="ProfileDiagnosticsCard" Margin="0,16,0,0" Style="{StaticResource FluentCardStyle}">
+                            <controls:SectionCard.Header>
                             <Expander Header="{DynamicResource Loc.View.Profiles.Header.AdvancedPlugInAndDeclarativeProfileDiagnostics}">
                                 <DataGrid
                                     Margin="0,12,0,0"
@@ -1787,8 +1787,8 @@
                                     </DataGrid.Columns>
                                 </DataGrid>
                             </Expander>
-                            </ui:CardControl.Header>
-                        </ui:CardControl>
+                            </controls:SectionCard.Header>
+                        </controls:SectionCard>
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>

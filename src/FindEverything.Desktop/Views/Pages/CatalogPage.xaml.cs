@@ -11,6 +11,7 @@ public partial class CatalogPage
     private readonly CatalogViewModel _viewModel;
     private CatalogItemViewModel? _pointerContextItem;
     private PendingRowClick? _pendingRowClick;
+    private bool? _selectionCompactMode;
 
     private sealed record PendingRowClick(CatalogItemViewModel Item, System.Windows.Point Start,
         bool Range, int ClickCount);
@@ -57,6 +58,25 @@ public partial class CatalogPage
             ExportSelectionButton.SetResourceReference(System.Windows.Controls.ContentControl.ContentProperty, "Loc.Workspace.Selection.Export");
         }
         CopySelectionButton.Width = ExportSelectionButton.Width = compact ? 32 : double.NaN;
+        if (_selectionCompactMode != compact)
+        {
+            _selectionCompactMode = compact;
+            CatalogOutputFormatComboBox.Width = compact ? 90 : 140;
+            CatalogOutputFormatLabel.SetResourceReference(System.Windows.Controls.ContentControl.ContentProperty,
+                compact ? "Loc.Workspace.Output.Format.ShortLabel" : "Loc.Workspace.Output.Format.Label");
+            foreach (var (button, symbol) in new[]
+            {
+                (SelectAllResultsButton, Wpf.Ui.Controls.SymbolRegular.CheckboxChecked20),
+                (ClearAllResultsButton, Wpf.Ui.Controls.SymbolRegular.CheckboxUnchecked20),
+                (InvertResultsSelectionButton, Wpf.Ui.Controls.SymbolRegular.ArrowSwap20),
+            })
+            {
+                // Keep all action words visible; omit redundant icons in a narrow footer.
+                button.Icon = compact ? null : new Wpf.Ui.Controls.SymbolIcon(symbol);
+                button.Padding = new System.Windows.Thickness(compact ? 6 : 8, 4, compact ? 6 : 8, 4);
+                button.FontSize = compact ? 13 : 14;
+            }
+        }
     }
 
     private async void OnPagePreviewKeyDown(object sender, KeyEventArgs e)

@@ -1049,6 +1049,7 @@
     <sys:String x:Key="Loc.Workspace.Profile">Structured profile</sys:String>
     <sys:String x:Key="Loc.Workspace.Profile.Label">Profile</sys:String>
     <sys:String x:Key="Loc.Workspace.Output.Format.Label">Output format</sys:String>
+    <sys:String x:Key="Loc.Workspace.Output.Format.ShortLabel">Format</sys:String>
     <sys:String x:Key="Loc.Workspace.Catalog.Profile.Help">Choose a saved profile that defines how path and file information becomes columns.</sys:String>
     <sys:String x:Key="Loc.Workspace.Catalog.Database.Help">Without a custom path, the per-profile database in LocalAppData is used.</sys:String>
     <sys:String x:Key="Loc.Selection.All">Select all</sys:String>

@@ -11,6 +11,7 @@ public partial class FilesPage
 {
     private readonly FileSearchViewModel _viewModel;
     private FileSearchItemViewModel? _pointerContextItem;
+    private bool? _selectionCompactMode;
 
     public FilesPage(FileSearchViewModel viewModel)
     {
@@ -45,6 +46,24 @@ public partial class FilesPage
         if (compact) CopySelectionButton.Content = null;
         else CopySelectionButton.SetResourceReference(ContentControl.ContentProperty, "Loc.Workspace.Selection.Copy");
         CopySelectionButton.Width = compact ? 32 : double.NaN;
+        if (_selectionCompactMode != compact)
+        {
+            _selectionCompactMode = compact;
+            FilesOutputFormatComboBox.Width = compact ? 90 : 140;
+            FilesOutputFormatLabel.SetResourceReference(ContentControl.ContentProperty,
+                compact ? "Loc.Workspace.Output.Format.ShortLabel" : "Loc.Workspace.Output.Format.Label");
+            foreach (var (button, symbol) in new[]
+            {
+                (SelectAllResultsButton, Wpf.Ui.Controls.SymbolRegular.CheckboxChecked20),
+                (ClearAllResultsButton, Wpf.Ui.Controls.SymbolRegular.CheckboxUnchecked20),
+                (InvertResultsSelectionButton, Wpf.Ui.Controls.SymbolRegular.ArrowSwap20),
+            })
+            {
+                button.Icon = compact ? null : new Wpf.Ui.Controls.SymbolIcon(symbol);
+                button.Padding = new System.Windows.Thickness(compact ? 6 : 8, 4, compact ? 6 : 8, 4);
+                button.FontSize = compact ? 13 : 14;
+            }
+        }
     }
 
     private async void OnSelectionCheckBoxPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)

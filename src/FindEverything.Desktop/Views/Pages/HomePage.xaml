@@ -5,6 +5,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+    xmlns:controls="clr-namespace:FindEverything.Desktop.Views.Controls"
     Title="{DynamicResource Loc.Home.Nav}"
     Background="Transparent"
     Foreground="{DynamicResource TextFillColorPrimaryBrush}"
@@ -43,8 +44,8 @@
             x:Name="DashboardContent"
             Margin="24,20,8,28"
             SizeChanged="OnDashboardContentSizeChanged">
-            <ui:CardControl Padding="16" Style="{StaticResource FluentCardStyle}">
-                <ui:CardControl.Header>
+            <controls:SectionCard Padding="16" Style="{StaticResource FluentCardStyle}">
+                <controls:SectionCard.Header>
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
@@ -86,8 +87,8 @@
                             Symbol="Search48" />
                     </Border>
                 </Grid>
-                </ui:CardControl.Header>
-            </ui:CardControl>
+                </controls:SectionCard.Header>
+            </controls:SectionCard>
 
             <ui:InfoBar
                 Margin="0,12,0,0"
@@ -193,12 +194,12 @@
             </WrapPanel>
 
             <WrapPanel x:Name="OverviewCardsHost" Margin="0,12,0,0">
-                <ui:CardControl
+                <controls:SectionCard
                     x:Name="WorkspaceOverviewCard"
                     MinHeight="334"
                     Margin="0,0,12,12"
                     Style="{StaticResource HomeCardStyle}">
-                    <ui:CardControl.Header>
+                    <controls:SectionCard.Header>
                     <StackPanel>
                         <TextBlock
                             AutomationProperties.HeadingLevel="Level2"
@@ -268,15 +269,15 @@
                                 ToolTip="{Binding ProfileDatabasePath}" />
                         </StackPanel>
                     </StackPanel>
-                    </ui:CardControl.Header>
-                </ui:CardControl>
+                    </controls:SectionCard.Header>
+                </controls:SectionCard>
 
-                <ui:CardControl
+                <controls:SectionCard
                     x:Name="SetupOverviewCard"
                     MinHeight="334"
                     Margin="0,0,12,12"
                     Style="{StaticResource HomeCardStyle}">
-                    <ui:CardControl.Header>
+                    <controls:SectionCard.Header>
                     <StackPanel>
                         <TextBlock
                             AutomationProperties.HeadingLevel="Level2"
@@ -332,12 +333,12 @@
                             <TextBlock Grid.Column="2" VerticalAlignment="Center" FontWeight="SemiBold" Text="{Binding ScanStepState}" />
                         </Grid>
                     </StackPanel>
-                    </ui:CardControl.Header>
-                </ui:CardControl>
+                    </controls:SectionCard.Header>
+                </controls:SectionCard>
             </WrapPanel>
 
-            <ui:CardControl Margin="0,12,12,0" Style="{StaticResource HomeCardStyle}">
-                <ui:CardControl.Header>
+            <controls:SectionCard Margin="0,12,12,0" Style="{StaticResource HomeCardStyle}">
+                <controls:SectionCard.Header>
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -374,8 +375,8 @@
                             Icon="{ui:SymbolIcon Symbol=ClipboardTask20}" />
                     </WrapPanel>
                 </Grid>
-                </ui:CardControl.Header>
-            </ui:CardControl>
+                </controls:SectionCard.Header>
+            </controls:SectionCard>
         </StackPanel>
     </ScrollViewer>
 </Page>

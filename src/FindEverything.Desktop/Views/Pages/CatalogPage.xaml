@@ -168,7 +168,7 @@
                             VerticalAlignment="Center"
                             FontWeight="SemiBold"
                             Text="{Binding SelectedCount, StringFormat={StaticResource Loc.Common.SelectedCountFormat}}" />
-                        <Label Padding="0" Margin="0,0,8,0" VerticalAlignment="Center" Content="{DynamicResource Loc.Workspace.Output.Format.Label}" Target="{Binding ElementName=CatalogOutputFormatComboBox}" />
+                        <Label x:Name="CatalogOutputFormatLabel" Padding="0" Margin="0,0,8,0" VerticalAlignment="Center" Content="{DynamicResource Loc.Workspace.Output.Format.Label}" Target="{Binding ElementName=CatalogOutputFormatComboBox}" />
                         <ComboBox
                             x:Name="CatalogOutputFormatComboBox"
                             Width="140"
@@ -176,6 +176,7 @@
                             AutomationProperties.Name="{DynamicResource Loc.View.Files.AutomationName.SelectionOutputFormat}"
                             DisplayMemberPath="DisplayName"
                             ItemsSource="{Binding OutputFormats}"
+                            ToolTip="{Binding SelectedOutputFormat.DisplayName}"
                             SelectedItem="{Binding SelectedOutputFormat}" />
                     </StackPanel>
                     <ui:Button
@@ -272,8 +273,8 @@
                     <TextBlock Grid.Column="1" MaxWidth="260" Margin="12,0,0,0" Text="{Binding ResultSourceDescription}" Style="{StaticResource CaptionTextStyle}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" ToolTip="{Binding ResultSourceDescription}" AutomationProperties.Name="{DynamicResource Loc.Workspace.ResultSource}" />
                 </Grid>
             </Border>
-            <ui:CardControl x:Name="CatalogDetailsPanel" Grid.Row="2" Width="340" HorizontalAlignment="Right" Panel.ZIndex="8" Style="{StaticResource FluentSectionCardStyle}" Visibility="{Binding IsDetailsOpen, Converter={StaticResource BooleanToVisibilityConverter}}">
-              <ui:CardControl.Header>
+            <controls:SectionCard x:Name="CatalogDetailsPanel" Grid.Row="2" Width="340" HorizontalAlignment="Right" Panel.ZIndex="8" Style="{StaticResource FluentSectionCardStyle}" Visibility="{Binding IsDetailsOpen, Converter={StaticResource BooleanToVisibilityConverter}}">
+              <controls:SectionCard.Header>
                 <ScrollViewer Style="{StaticResource FluentGutteredScrollViewerStyle}">
                     <StackPanel>
                         <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.Workspace.Details}" />
@@ -286,8 +287,8 @@
                         <TextBlock Style="{StaticResource CaptionTextStyle}" Text="{Binding DatabasePath}" TextWrapping="Wrap" />
                     </StackPanel>
                 </ScrollViewer>
-              </ui:CardControl.Header>
-            </ui:CardControl>
+              </controls:SectionCard.Header>
+            </controls:SectionCard>
         </controls:WorkspacePageFrame>
         <controls:ScanConsolePanel x:Name="ScanConsolePanel" Grid.Row="1" Height="220" Margin="24,0,24,16" DataContext="{x:Null}" Visibility="{Binding IsPanelOpen, Converter={StaticResource BooleanToVisibilityConverter}}" />
     </Grid>

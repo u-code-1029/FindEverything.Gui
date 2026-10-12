@@ -611,6 +611,7 @@
     <sys:String x:Key="Loc.Workspace.Profile">구조화 프로필</sys:String>
     <sys:String x:Key="Loc.Workspace.Profile.Label">프로필</sys:String>
     <sys:String x:Key="Loc.Workspace.Output.Format.Label">출력 형식</sys:String>
+    <sys:String x:Key="Loc.Workspace.Output.Format.ShortLabel">형식</sys:String>
     <sys:String x:Key="Loc.Workspace.Catalog.Profile.Help">경로와 파일 내용을 어떤 컬럼으로 추출할지 정의한 저장 프로필을 선택합니다.</sys:String>
     <sys:String x:Key="Loc.Workspace.Catalog.Database.Help">별도 경로를 지정하지 않으면 LocalAppData의 프로필별 DB를 사용합니다.</sys:String>
     <sys:String x:Key="Loc.Selection.All">전체 선택</sys:String>
