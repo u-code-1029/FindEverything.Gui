@@ -623,7 +623,8 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
             await CancelActiveLoadAsync().WaitAsync(scanCancellation.Token).ConfigureAwait(true);
             scanCancellation.Token.ThrowIfCancellationRequested();
             ProgressMessage = L("Loc.Files.Progress.PreparingIndex", "인덱스를 준비하고 있습니다…");
-            var progress = new Progress<IndexScanProgress>(value =>
+            var progress = new IndexProgressBatcher(_indexingSettings.Current.UiUpdateBatchSize,
+                new Progress<IndexScanProgress>(value =>
             {
                 if (!ReferenceEquals(_scanCancellation, scanCancellation) || scanCancellation.IsCancellationRequested) return;
                 ProgressMessage = F(
@@ -631,7 +632,7 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
                     "{0:N0}개 항목 · {1:N0}개 폴더",
                     value.Entries,
                     value.Directories);
-            });
+            }));
             IndexScanReport? report = null;
             await _operationCoordinator.ReplaceAsync(
                 ApplicationOperationKind.IndexLoad,
@@ -642,6 +643,7 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
                         .ConfigureAwait(false);
                 }, scanCancellation.Token).ConfigureAwait(true);
 
+            progress.FlushAndClose();
             if (report is null)
             {
                 throw new InvalidOperationException(L(
@@ -788,7 +790,8 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
                 "Loc.Files.PartialRefresh.Progress.Preparing",
                 "'{0}' 부분 새로 고침을 준비하고 있습니다…",
                 refreshPath);
-            var progress = new Progress<IndexScanProgress>(value =>
+            var progress = new IndexProgressBatcher(_indexingSettings.Current.UiUpdateBatchSize,
+                new Progress<IndexScanProgress>(value =>
             {
                 if (!ReferenceEquals(_scanCancellation, scanCancellation) || scanCancellation.IsCancellationRequested) return;
                 ProgressMessage = F(
@@ -796,7 +799,7 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
                     "선택한 폴더에서 {0:N0}개 항목 · {1:N0}개 폴더",
                     value.Entries,
                     value.Directories);
-            });
+            }));
             IndexScanReport? report = null;
             await _operationCoordinator.ReplaceAsync(
                 ApplicationOperationKind.IndexLoad,
@@ -811,6 +814,7 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
                         .ConfigureAwait(false);
                 }, scanCancellation.Token).ConfigureAwait(true);
 
+            progress.FlushAndClose();
             if (report is null)
             {
                 throw new InvalidOperationException(L(

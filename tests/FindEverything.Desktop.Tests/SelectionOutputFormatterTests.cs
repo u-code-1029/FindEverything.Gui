@@ -8,6 +8,64 @@ namespace FindEverything.Desktop.Tests;
 public sealed class SelectionOutputFormatterTests
 {
     [Fact]
+    public async Task Prefix_and_suffix_wrap_the_whole_result_once_in_sync_and_streaming_output()
+    {
+        var formatter = new SelectionOutputFormatter();
+        var format = new SelectionOutputFormatDefinition("test", "Test", "{Name}", ", ", null, "[", "]");
+        var items = new[] { SelectionOutputItem.FromPath("one"), SelectionOutputItem.FromPath("two") };
+
+        Assert.Equal("[one, two]", formatter.Format(format, items));
+        Assert.Equal("[one, two]", await formatter.FormatAsync(format, StreamItems(items)));
+        ISelectionOutputFormatter fallback = new SyncOnlyFormatter();
+        Assert.Equal("[one, two]", await fallback.FormatAsync(format, StreamItems(items)));
+    }
+
+    [Fact]
+    public async Task Empty_selection_does_not_copy_only_the_prefix_and_suffix()
+    {
+        var formatter = new SelectionOutputFormatter();
+        var format = new SelectionOutputFormatDefinition("test", "Test", "{Name}", ", ", null, "[", "]");
+
+        Assert.Empty(formatter.Format(format, []));
+        Assert.Empty(await formatter.FormatAsync(format, StreamItems([])));
+    }
+
+    [Fact]
+    public async Task Wrappers_are_literal_and_empty_rendered_items_keep_their_separators()
+    {
+        var formatter = new SelectionOutputFormatter();
+        var format = new SelectionOutputFormatDefinition("test", "Test", "{Field:value}", "|", null, "{Name}[", "]");
+        var item = SelectionOutputItem.FromPath("example", fields: new Dictionary<string, object?> { ["value"] = null });
+
+        Assert.Equal("{Name}[||]", formatter.Format(format, Enumerable.Repeat(item, 3)));
+        Assert.Equal("{Name}[||]", await formatter.FormatAsync(format, StreamItems(item, 3)));
+    }
+
+    [Fact]
+    public async Task Affixes_are_validated_before_reading_any_items()
+    {
+        var formatter = new SelectionOutputFormatter();
+        var format = new SelectionOutputFormatDefinition("test", "Test", "{Name}", ", ", null,
+            new string('x', SelectionOutputFormatDefaults.MaximumAffixCharacters + 1), "");
+
+        Assert.False(formatter.ValidateFormat(format).IsValid);
+        Assert.Throws<FormatException>(() => formatter.Format(format, []));
+        await Assert.ThrowsAsync<FormatException>(() => formatter.FormatAsync(format, StreamItems([])));
+    }
+
+    [Fact]
+    public async Task Suffix_is_included_in_the_clipboard_output_limit()
+    {
+        var formatter = new SelectionOutputFormatter();
+        var format = new SelectionOutputFormatDefinition("test", "Test", "{Field:value}", "", null, "", "xx");
+        var item = SelectionOutputItem.FromPath("example", fields:
+            new Dictionary<string, object?> { ["value"] = new string('x', 32 * 1024 * 1024 - 1) });
+
+        Assert.Throws<InvalidOperationException>(() => formatter.Format(format, [item]));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => formatter.FormatAsync(format, StreamItems(item, 1)));
+    }
+
+    [Fact]
     public async Task Streaming_formatter_keeps_separators_even_when_items_render_as_empty_strings()
     {
         var formatter = new SelectionOutputFormatter();
@@ -44,6 +102,21 @@ public sealed class SelectionOutputFormatterTests
     {
         for (var index = 0; index < count; index++) yield return item;
         await Task.CompletedTask;
+    }
+
+    private static async IAsyncEnumerable<SelectionOutputItem> StreamItems(IEnumerable<SelectionOutputItem> items)
+    {
+        foreach (var item in items) yield return item;
+        await Task.CompletedTask;
+    }
+
+    private sealed class SyncOnlyFormatter : ISelectionOutputFormatter
+    {
+        private readonly SelectionOutputFormatter _inner = new();
+        public SelectionOutputTemplateValidation ValidateTemplate(string template, IEnumerable<string>? allowedFieldIds = null) =>
+            _inner.ValidateTemplate(template, allowedFieldIds);
+        public string Format(SelectionOutputFormatDefinition format, IEnumerable<SelectionOutputItem> items) =>
+            _inner.Format(format, items);
     }
 
     [Fact]

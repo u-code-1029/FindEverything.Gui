@@ -33,6 +33,7 @@ public sealed class SettingsReloadDiagnostics :
     private readonly IValidatedSettingsUpdater<IndexingOptions> _indexingUpdater;
     private readonly IValidatedSettingsUpdater<AppearanceOptions> _appearanceUpdater;
     private readonly IValidatedSettingsUpdater<LocalizationOptions> _localizationUpdater;
+    private readonly IValidatedSettingsUpdater<NotificationOptions>? _notificationUpdater;
     private readonly IValidatedSettingsState<LocalizationOptions> _localizationState;
     private readonly IAppearanceService _appearanceService;
     private readonly IAppLocalizer _localizer;
@@ -62,7 +63,8 @@ public sealed class SettingsReloadDiagnostics :
         IAppLocalizer localizer,
         IApplicationRestartCoordinator restartCoordinator,
         ILogger<SettingsReloadDiagnostics> logger,
-        IDraftProtectionService? draftProtection = null)
+        IDraftProtectionService? draftProtection = null,
+        IValidatedSettingsUpdater<NotificationOptions>? notificationUpdater = null)
     {
         _paths = paths;
         _settingsFilePath = Path.GetFullPath(paths.UserSettingsFile);
@@ -77,6 +79,7 @@ public sealed class SettingsReloadDiagnostics :
         _restartCoordinator = restartCoordinator;
         _logger = logger;
         _draftProtection = draftProtection;
+        _notificationUpdater = notificationUpdater;
     }
 
     public string? LastError => Volatile.Read(ref _lastError);
@@ -328,6 +331,7 @@ public sealed class SettingsReloadDiagnostics :
             _indexingUpdater.Publish(candidate.Indexing);
             _appearanceUpdater.Publish(candidate.Appearance);
             _localizationUpdater.Publish(localization);
+            _notificationUpdater?.Publish(candidate.Notifications);
 
             _appearanceService.ApplyToAttachedWindow(candidate.Appearance);
 
@@ -476,6 +480,7 @@ public sealed class SettingsReloadDiagnostics :
         var indexing = Bind<IndexingOptions>(configuration, IndexingOptions.SectionName);
         var appearance = Bind<AppearanceOptions>(configuration, AppearanceOptions.SectionName);
         var localization = Bind<LocalizationOptions>(configuration, LocalizationOptions.SectionName);
+        var notifications = Bind<NotificationOptions>(configuration, NotificationOptions.SectionName);
         var host = Bind<HostLifecycleOptions>(configuration, HostLifecycleOptions.SectionName);
         var plugins = Bind<PluginDiscoveryOptions>(configuration, PluginDiscoveryOptions.SectionName);
 
@@ -483,6 +488,7 @@ public sealed class SettingsReloadDiagnostics :
         ValidateDataAnnotations(indexing);
         ValidateDataAnnotations(appearance);
         ValidateDataAnnotations(localization);
+        ValidateDataAnnotations(notifications);
         ValidateDataAnnotations(host);
         ValidateDataAnnotations(plugins);
 
@@ -499,7 +505,7 @@ public sealed class SettingsReloadDiagnostics :
         }
 
         localization.CultureName = LocalizationOptions.Normalize(localization.CultureName);
-        return new ValidatedCandidate(workspace, indexing, appearance, localization);
+        return new ValidatedCandidate(workspace, indexing, appearance, localization, notifications);
     }
 
     private static T Bind<T>(IConfiguration configuration, string sectionName)
@@ -647,7 +653,8 @@ public sealed class SettingsReloadDiagnostics :
         WorkspaceOptions Workspace,
         IndexingOptions Indexing,
         AppearanceOptions Appearance,
-        LocalizationOptions Localization);
+        LocalizationOptions Localization,
+        NotificationOptions Notifications);
 
     private readonly record struct UserSettingsSnapshot(
         bool Exists,

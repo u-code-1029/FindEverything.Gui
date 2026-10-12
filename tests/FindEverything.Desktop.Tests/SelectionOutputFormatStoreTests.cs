@@ -41,12 +41,17 @@ public sealed class SelectionOutputFormatStoreTests
             "프로젝트",
             "{Field:Client}: {FullPath}",
             Environment.NewLine,
-            "sample-projects"));
+            "sample-projects",
+            "[\n",
+            "\n]"));
 
         var reloaded = CreateStore(paths);
 
         Assert.Equal(2, changeCount);
         Assert.Equal(3, reloaded.GetAll().Count);
+        var projectFormat = Assert.Single(reloaded.GetAll(), format => format.Id == "projects");
+        Assert.Equal("[\n", projectFormat.Prefix);
+        Assert.Equal("\n]", projectFormat.Suffix);
         Assert.Equal(
             [SelectionOutputFormatDefaults.FullPathLinesId, "common", "projects"],
             reloaded.GetApplicable("sample-projects").Select(static format => format.Id));
@@ -56,6 +61,35 @@ public sealed class SelectionOutputFormatStoreTests
         Assert.True(reloaded.Delete("projects"));
         Assert.False(reloaded.Delete(SelectionOutputFormatDefaults.FullPathLinesId));
         Assert.DoesNotContain(CreateStore(paths).GetAll(), static format => format.Id == "projects");
+    }
+
+    [Fact]
+    public void Formats_saved_before_affixes_were_added_load_with_empty_affixes()
+    {
+        using var directory = new TemporaryDirectory();
+        var paths = CreatePaths(directory.Path);
+        File.WriteAllText(paths.SelectionOutputFormatsFile, """
+            { "version": 1, "formats": [
+              { "id": "old", "displayName": "Old", "template": "{Name}", "itemSeparator": ", ", "profileId": null }
+            ] }
+            """);
+
+        var format = Assert.Single(CreateStore(paths).GetAll(), item => item.Id == "old");
+
+        Assert.Empty(format.Prefix);
+        Assert.Empty(format.Suffix);
+    }
+
+    [Fact]
+    public void Oversized_affixes_are_rejected_without_changing_saved_formats()
+    {
+        using var directory = new TemporaryDirectory();
+        var store = CreateStore(CreatePaths(directory.Path));
+        var format = new SelectionOutputFormatDefinition("test", "Test", "{Name}", ", ", null,
+            "", new string('x', SelectionOutputFormatDefaults.MaximumAffixCharacters + 1));
+
+        Assert.Throws<ArgumentException>(() => store.Save(format));
+        Assert.Single(store.GetAll());
     }
 
     [Fact]

@@ -4,6 +4,7 @@ using System.Windows.Data;
 using System.Windows.Threading;
 using FindEverything.Application.Catalog;
 using FindEverything.Application.Indexing;
+using FindEverything.Application.Options;
 using FindEverything.Desktop.Configuration;
 using FindEverything.Desktop.Filtering;
 using FindEverything.Desktop.Localization;
@@ -49,6 +50,9 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
     private int _workspaceDirtyFields;
     private CatalogOperationMode _activeOperationMode;
     private CancellationTokenSource? _pendingScanCancellation;
+    private readonly ICatalogMissingDataPrompt? _missingDataPrompt;
+    private readonly IValidatedSettingsState<IndexingOptions>? _indexingSettings;
+    private bool _automaticLoadSuppressed;
     private bool _disposed;
 
     [ObservableProperty]
@@ -154,7 +158,9 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
         ILogger<CatalogViewModel> logger,
         IProfileUserInputValueStore? userInputValueStore = null,
         ICatalogProjectionStore? projectionStore = null,
-        IIndexSessionFactory? indexSessions = null)
+        IIndexSessionFactory? indexSessions = null,
+        ICatalogMissingDataPrompt? missingDataPrompt = null,
+        IValidatedSettingsState<IndexingOptions>? indexingSettings = null)
     {
         _catalogService = catalogService;
         _profileCatalog = profileCatalog;
@@ -172,6 +178,8 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
         _userInputValueStore = userInputValueStore;
         _projectionStore = projectionStore;
         _indexSessions = indexSessions;
+        _missingDataPrompt = missingDataPrompt;
+        _indexingSettings = indexingSettings;
         _localizer = localizer;
         _logger = logger;
         _filterSummary = F("Loc.Catalog.Filter.Empty", "{0:N0}개 항목", 0);
@@ -216,13 +224,14 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
     {
         _isActive = false;
         if (!_isAutomaticIndexLoad
-            || !IsLoadingExistingIndex
-            || _operationCoordinator.CurrentKind != ApplicationOperationKind.IndexLoad)
+            || !IsLoadingExistingIndex)
         {
             return;
         }
 
         _lastAutomaticLoadKey = null;
+        _projectionCancellation?.Cancel();
+        _queryCancellation?.Cancel();
         ProgressMessage = L(
             "Loc.Catalog.Progress.CancelAutomaticLoadOnClose",
             "페이지를 닫아 자동 불러오기를 취소하는 중…");
@@ -275,6 +284,7 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
 
     partial void OnSelectedProfileChanged(ProfileChoiceViewModel? value)
     {
+        _automaticLoadSuppressed = false;
         ReleaseProjectionQuery();
         _projectionSnapshot = null;
         _displayedProjectionSnapshot = null;
@@ -303,16 +313,37 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
         ScheduleAutomaticLoad();
     }
 
-    partial void OnRootPathChanged(string? value)
+    partial void OnRootPathChanged(string? oldValue, string? newValue)
     {
-        _lastAutomaticLoadKey = null;
+        if (!SameWorkspacePath(oldValue, newValue))
+        {
+            _automaticLoadSuppressed = false;
+            _lastAutomaticLoadKey = null;
+        }
         ScheduleWorkspacePersistence(WorkspaceDraftFields.RootPath);
     }
 
-    partial void OnDatabasePathChanged(string? value)
+    partial void OnDatabasePathChanged(string? oldValue, string? newValue)
     {
-        _lastAutomaticLoadKey = null;
+        if (!SameWorkspacePath(oldValue, newValue))
+        {
+            _automaticLoadSuppressed = false;
+            _lastAutomaticLoadKey = null;
+        }
         ScheduleWorkspacePersistence(WorkspaceDraftFields.DatabasePath);
+    }
+
+    private static bool SameWorkspacePath(string? first, string? second)
+    {
+        if (string.IsNullOrWhiteSpace(first) || string.IsNullOrWhiteSpace(second))
+            return string.Equals(first, second, StringComparison.OrdinalIgnoreCase);
+        try
+        {
+            return string.Equals(Path.TrimEndingDirectorySeparator(Path.GetFullPath(first)),
+                Path.TrimEndingDirectorySeparator(Path.GetFullPath(second)), StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception exception) when (exception is ArgumentException or NotSupportedException or PathTooLongException)
+        { return string.Equals(first, second, StringComparison.OrdinalIgnoreCase); }
     }
 
     partial void OnIsBusyChanged(bool value)
@@ -519,6 +550,7 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
     private async Task ScanAsync()
     {
         if (_disposed || _pendingScanCancellation is not null) return;
+        _automaticLoadSuppressed = false;
         using var cancellation = new CancellationTokenSource();
         _pendingScanCancellation = cancellation;
         ScanCommand.NotifyCanExecuteChanged();
@@ -574,15 +606,20 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand(CanExecute = nameof(CanStart))]
-    private Task LoadAsync() => RunOperationAsync(
-        L("Loc.Catalog.Operation.LoadExisting", "기존 인덱스에서 불러오기"),
-        CatalogOperationMode.ExistingIndex);
+    private Task LoadAsync()
+    {
+        _automaticLoadSuppressed = false;
+        return RunOperationAsync(L("Loc.Catalog.Operation.LoadExisting", "기존 인덱스에서 불러오기"),
+            CatalogOperationMode.ExistingIndex);
+    }
 
     [RelayCommand(CanExecute = nameof(CanCancel))]
     private void Cancel()
     {
+        _automaticLoadSuppressed = true;
         _pendingScanCancellation?.Cancel();
         _projectionCancellation?.Cancel();
+        _queryCancellation?.Cancel();
         ProgressMessage = L("Loc.Common.Cancelling", "작업을 취소하는 중입니다…");
         _operationCoordinator.Cancel();
     }
@@ -1124,6 +1161,7 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
     private void ScheduleAutomaticLoad()
     {
         if (!_isActive
+            || _automaticLoadSuppressed
             || IsBusy
             || _pendingScanCancellation is not null
             || SelectedProfile is null
@@ -1137,7 +1175,7 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
         string databasePath;
         try
         {
-            rootPath = Path.GetFullPath(RootPath);
+            rootPath = Path.TrimEndingDirectorySeparator(Path.GetFullPath(RootPath));
             databasePath = Path.GetFullPath(DatabasePath);
         }
         catch (Exception exception) when (
@@ -1146,7 +1184,7 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
             return;
         }
 
-        if (!File.Exists(databasePath))
+        if (!File.Exists(databasePath) && (_projectionStore is null || _missingDataPrompt is null))
         {
             return;
         }
@@ -1236,7 +1274,8 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
         new(
             _dispatcher,
             (progress, matchedItems) => ApplyProgress(session, progress, matchedItems),
-            exception => HandleProgressDisplayFailure(session, exception));
+            exception => HandleProgressDisplayFailure(session, exception),
+            _indexingSettings?.Current.UiUpdateBatchSize ?? 10);
 
     private CatalogResultSession BeginResultSession()
     {
@@ -2134,6 +2173,7 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
         private readonly DispatcherTimer _drainTimer;
         private readonly Action<CatalogOperationProgress?, IReadOnlyList<CatalogItem>> _applyProgress;
         private readonly Action<Exception> _reportFailure;
+        private readonly CatalogProgressBatcher _batcher;
         private CatalogOperationProgress? _latestProgress;
         private int _attemptId = 1;
         private bool _attemptResetPending;
@@ -2143,11 +2183,13 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
         public CatalogOperationProgressPump(
             Dispatcher dispatcher,
             Action<CatalogOperationProgress?, IReadOnlyList<CatalogItem>> applyProgress,
-            Action<Exception> reportFailure)
+            Action<Exception> reportFailure,
+            int uiUpdateBatchSize)
         {
             _dispatcher = dispatcher;
             _applyProgress = applyProgress;
             _reportFailure = reportFailure;
+            _batcher = new CatalogProgressBatcher(uiUpdateBatchSize, ReportBatch);
             _drainTimer = new DispatcherTimer(
                 DispatcherPriority.Background,
                 dispatcher)
@@ -2157,8 +2199,11 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
             _drainTimer.Tick += OnDrainTimerTick;
         }
 
-        public void Report(CatalogOperationProgress value)
+        public void Report(CatalogOperationProgress value) => _batcher.Report(value);
+
+        private void ReportBatch(CatalogProgressBatch batch)
         {
+            var value = batch.Latest;
             ArgumentNullException.ThrowIfNull(value);
             var scheduleDrain = false;
             lock (_gate)
@@ -2176,10 +2221,7 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
                     _attemptResetPending = true;
                 }
                 _latestProgress = value;
-                if (value.MatchedItem is { } item)
-                {
-                    _pendingItems.Enqueue(item);
-                }
+                foreach (var match in batch.Matches) _pendingItems.Enqueue(match.MatchedItem!);
 
                 if (!_drainScheduled)
                 {
@@ -2201,6 +2243,8 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
                 _dispatcher.Invoke(FlushAndClose);
                 return;
             }
+
+            _batcher.FlushAndClose();
 
             List<CatalogItem> batch;
             CatalogOperationProgress? progress;

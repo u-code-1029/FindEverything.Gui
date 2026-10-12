@@ -76,6 +76,18 @@ public sealed class IndexingOptions
 
     [Range(0, int.MaxValue)]
     public int DirectoryDelayMilliseconds { get; set; } = 5;
+
+    /// <summary>Publish scan progress and newly discovered rows together after this many candidates.</summary>
+    [Range(1, 1000)]
+    public int UiUpdateBatchSize { get; set; } = 10;
+}
+
+public sealed class NotificationOptions
+{
+    public const string SectionName = "Notifications";
+
+    [Range(1, 60)]
+    public int AutoDismissSeconds { get; set; } = 3;
 }
 
 public enum ThemePreference

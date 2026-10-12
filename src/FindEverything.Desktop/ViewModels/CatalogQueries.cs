@@ -68,7 +68,7 @@ public partial class CatalogViewModel
     }
 
     private async Task RunProjectionOperationAsync(string name, CatalogOperationMode mode, bool automatic,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default, bool allowBuildFromIndex = false)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (IsBusy) return;
@@ -95,11 +95,14 @@ public partial class CatalogViewModel
         CatalogProjectionScope? scope = null;
         var scanFields = Fields.ToArray();
         var operationProfile = SelectedProfile?.Profile;
-        var hadPublishedResults = _projectionSnapshot is not null;
+        var hadPublishedResults = _displayedProjectionSnapshot is not null;
         var liveVersion = Interlocked.Increment(ref _resultSessionVersion);
+        var followUp = CatalogMissingDataDecision.Later;
+        WorkspaceSelection? requestedWorkspace = null;
         try
         {
             var workspace = ValidateWorkspace(requireExistingRoot: false);
+            requestedWorkspace = workspace;
             CancelWorkspacePersistenceDebounce();
             var save = CreateWorkspaceSaveAttempt(Interlocked.Increment(ref _workspaceDraftVersion),
                 WorkspaceDraftFields.Profile | WorkspaceDraftFields.RootPath | ReadWorkspaceDirtyFields());
@@ -123,60 +126,65 @@ public partial class CatalogViewModel
                     var status = await index.GetRootStatusAsync(workspace.RootPath, token).ConfigureAwait(false);
                     previousScan = status.LastScanId;
                     if (mode == CatalogOperationMode.ExistingIndex && status.Availability != IndexRootAvailability.Available)
-                        throw new CatalogIndexUnavailableException(status.Availability, workspace.DatabasePath, workspace.RootPath);
+                        throw new MissingProjectionException(false);
                 }
                 scope = CreateProjectionScope(workspace, previousScan, operationProfile!);
                 if (mode == CatalogOperationMode.ExistingIndex)
                     published = await _projectionStore!.FindAsync(scope, token).ConfigureAwait(false);
-                if (published is not null) return; // Cached text values are deliberately not reread.
+                if (published is not null && published.Summary.MatchedCount > 0) return;
+                if (mode == CatalogOperationMode.ExistingIndex && !allowBuildFromIndex)
+                    throw new MissingProjectionException(true);
                 writer = _projectionStore!.Begin(scope, scanFields);
                 // Only bounded live rows are materialized. The projection writer
                 // receives every match synchronously on the scan worker.
-                var progress = new ProjectionProgress(value =>
+                var delivery = new CatalogProgressDelivery(
+                    action => _dispatcher.BeginInvoke(DispatcherPriority.Background, action), batch =>
                 {
-                    IReadOnlyList<string> previewFields = [];
-                    if (value.MatchedItem is { } fullItem)
+                    if (_disposed || liveVersion != Volatile.Read(ref _resultSessionVersion)) return;
+                    ProgressMessage = FormatProgress(batch.Latest, batch.Latest.MatchedCount);
+                    if (!hadPublishedResults && batch.Latest.AttemptReset) _loadedItems.Clear();
+                    if (!hadPublishedResults && batch.Matches.Count > 0)
                     {
-                        var previews = scanFields.Where(field => field.SourceKind == ProfileFieldSourceKind.TextFileContent &&
+                        foreach (var value in batch.Matches.Take(Math.Max(0, 500 - _loadedItems.Count)))
+                        {
+                            var row = CreateItemViewModel(value.MatchedItem!, scanFields);
+                            row.PreviewFields = value.PreviewFields;
+                            _loadedItems.Add(row);
+                        }
+                        HasLoadedItems = _loadedItems.Count > 0;
+                        FilterSummary = F("Loc.Catalog.Filter.Empty", "{0:N0}개 항목", batch.Latest.MatchedCount);
+                    }
+                    if (!hadPublishedResults && (batch.Latest.AttemptReset || batch.Matches.Count > 0)) Items.Refresh();
+                });
+                var progress = new CatalogProgressBatcher(_indexingSettings?.Current.UiUpdateBatchSize ?? 10, batch =>
+                {
+                    var previews = batch.Matches.Select(value =>
+                    {
+                        var fullItem = value.MatchedItem!;
+                        var previewFields = scanFields.Where(field => field.SourceKind == ProfileFieldSourceKind.TextFileContent &&
                             fullItem.Values.TryGetValue(field.FieldId, out var raw) && raw is string text && text.Length > 2048)
                             .Select(field => field.FieldId).ToArray();
-                        if (previews.Length > 0)
+                        if (previewFields.Length > 0)
                         {
                             var values = fullItem.Values.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
-                            foreach (var field in previews)
+                            foreach (var field in previewFields)
                             {
                                 var text = (string)values[field]!;
                                 values[field] = text[..(char.IsHighSurrogate(text[2047]) ? 2047 : 2048)];
                             }
-                            previewFields = previews;
-                            value = value with { MatchedItem = fullItem with { Model = values, Values = values } };
+                            fullItem = fullItem with { Model = values, Values = values };
                         }
-                    }
-                    _dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
-                    {
-                        if (_disposed || liveVersion != Volatile.Read(ref _resultSessionVersion)) return;
-                        ProgressMessage = FormatProgress(value, Math.Max(value.MatchedCount, writer.Count));
-                        if (!hadPublishedResults && value.AttemptReset)
-                        {
-                            _loadedItems.Clear();
-                            Items.Refresh();
-                        }
-                        if (!hadPublishedResults && value.MatchedItem is { } item && _loadedItems.Count < 500)
-                        {
-                            var row = CreateItemViewModel(item, scanFields);
-                            row.PreviewFields = previewFields;
-                            _loadedItems.Add(row);
-                            HasLoadedItems = true;
-                            Items.Refresh();
-                            FilterSummary = F("Loc.Catalog.Filter.Empty", "{0:N0}개 항목",
-                                Math.Max(value.MatchedCount, writer.Count));
-                        }
-                    }));
+                        return value with { MatchedItem = fullItem, PreviewFields = previewFields };
+                    }).ToArray();
+                    var processedCount = Math.Max(batch.Latest.MatchedCount, writer.Count);
+                    delivery.Post(new CatalogProgressBatch(
+                        batch.Latest with { MatchedItem = null, MatchedCount = checked((int)processedCount) }, previews));
                 });
                 var request = CreateRequest(workspace) with { RetainItems = false, ResultWriter = writer };
                 result = mode == CatalogOperationMode.Scan
                     ? await _catalogService.ScanAndLoadAsync(request, progress, token).ConfigureAwait(false)
                     : await _catalogService.LoadExistingAsync(request, progress, token).ConfigureAwait(false);
+                progress.FlushAndClose();
                 token.ThrowIfCancellationRequested();
                 var finalScope = scope with { IndexScanId = result.ScanReport?.ScanId ?? previousScan };
                 published = writer.Publish(new(result.CandidateCount, result.MatchedCount,
@@ -200,7 +208,8 @@ public partial class CatalogViewModel
             _projectionSnapshot = published ?? throw new InvalidOperationException("No catalog projection was published.");
             Fields = _projectionSnapshot.Fields;
             HasValueMappings = Fields.Any(field => field.HasValueMappings);
-            await RefreshProjectionQueryAsync(force: true);
+            await RefreshProjectionQueryAsync(force: true, cancellationToken: cancellation.Token);
+            cancellation.Token.ThrowIfCancellationRequested();
             if (_projectionQuery?.Identity != _projectionSnapshot.Generation)
                 throw new InvalidOperationException(L("Loc.Catalog.Query.DisplayFailed", "저장 결과를 화면에 불러오지 못했습니다. 다시 불러오세요."));
             OnPropertyChanged(nameof(ResultSourceDescription));
@@ -225,6 +234,28 @@ public partial class CatalogViewModel
                 _scanCompletionNotifier.Notify(notice);
                 ShowSnackbar(title, message, incomplete ? ControlAppearance.Caution : ControlAppearance.Success);
             }
+            else ShowSnackbar(title, message, incomplete ? ControlAppearance.Caution : ControlAppearance.Success);
+        }
+        catch (MissingProjectionException missing)
+        {
+            ProgressMessage = L("Loc.Catalog.Missing.None", "저장된 구조화 결과가 없습니다.");
+            SetStatus(L("Loc.Common.Ready", "준비"), ProgressMessage, InfoBarSeverity.Informational);
+            if (_missingDataPrompt is not null && !cancellation.IsCancellationRequested && (_isActive || !automatic))
+            {
+                try
+                {
+                    followUp = await _dispatcher.InvokeAsync(() => _missingDataPrompt.ChooseAsync(
+                        operationProfile!.Descriptor.DisplayName, missing.HasIndex, cancellation.Token)).Task.Unwrap()
+                        .WaitAsync(cancellation.Token);
+                }
+                catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+                catch (Exception exception)
+                {
+                    _logger.LogWarning(exception, "Could not ask whether to create catalog results.");
+                    SetStatus(L("Loc.Catalog.Status.Error", "오류"), exception.Message, InfoBarSeverity.Error);
+                    ShowSnackbar(StatusTitle, StatusMessage, ControlAppearance.Danger);
+                }
+            }
         }
         catch (OperationCanceledException)
         {
@@ -238,6 +269,7 @@ public partial class CatalogViewModel
             SetStatus(L("Loc.Common.Cancelled", "취소됨"),
                 L("Loc.Catalog.Query.Cancelled", "작업을 취소했습니다. 이전 저장 결과는 유지됩니다."), InfoBarSeverity.Warning);
             ProgressMessage = L("Loc.Common.Cancelled", "취소됨");
+            ShowSnackbar(L("Loc.Common.Cancelled", "취소됨"), StatusMessage, ControlAppearance.Caution);
         }
         catch (Exception exception)
         {
@@ -249,10 +281,12 @@ public partial class CatalogViewModel
                 HasLoadedItems = false;
                 SetSelection([]);
             }
-            if (automatic) _lastAutomaticLoadKey = null;
+            if (automatic && requestedWorkspace is { } failed && MatchesRequestedWorkspace(failed))
+                _automaticLoadSuppressed = true;
             SetStatus(L("Loc.Catalog.Status.Error", "오류"),
                 UserFacingExceptionLocalizer.TranslateOperationFailure(_localizer, exception), InfoBarSeverity.Error);
             ProgressMessage = L("Loc.Catalog.Progress.Failed", "작업 실패");
+            ShowSnackbar(StatusTitle, StatusMessage, ControlAppearance.Danger);
         }
         finally
         {
@@ -266,27 +300,31 @@ public partial class CatalogViewModel
             IsBusy = false;
             _activeOperationMode = default;
             ApplyPendingProfileSnapshot();
+            if (automatic && _isActive) ScheduleAutomaticLoad();
         }
-    }
-
-    private sealed class ProjectionProgress(Action<CatalogOperationProgress> report) : IProgress<CatalogOperationProgress>
-    {
-        private long _lastTick;
-        private int _liveCount;
-        public void Report(CatalogOperationProgress value)
+        if (followUp != CatalogMissingDataDecision.Later && !cancellation.IsCancellationRequested
+            && !_disposed && requestedWorkspace is { } requested
+            && ReferenceEquals(SelectedProfile?.Profile, operationProfile)
+            && MatchesRequestedWorkspace(requested))
         {
-            var now = Environment.TickCount64;
-            if (value.AttemptReset) _liveCount = 0;
-            if (value.MatchedItem is not null && _liveCount++ < 500 || value.AttemptReset ||
-                now - _lastTick >= 100 || value.Phase == CatalogOperationPhase.Preparing)
-            {
-                _lastTick = now;
-                report(value);
-            }
+            if (followUp == CatalogMissingDataDecision.Scan) await ScanAsync();
+            else await RunProjectionOperationAsync(name, CatalogOperationMode.ExistingIndex, false,
+                cancellationToken, allowBuildFromIndex: true);
         }
     }
 
-    private async Task RefreshProjectionQueryAsync(bool preserveSelection = false, bool force = false)
+    private sealed class MissingProjectionException(bool hasIndex) : Exception
+    { public bool HasIndex { get; } = hasIndex; }
+
+    private bool MatchesRequestedWorkspace(WorkspaceSelection requested)
+    {
+        try { return ValidateWorkspace(requireExistingRoot: false) == requested; }
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException
+            or NotSupportedException or PathTooLongException) { return false; }
+    }
+
+    private async Task RefreshProjectionQueryAsync(bool preserveSelection = false, bool force = false,
+        CancellationToken cancellationToken = default)
     {
         if (_projectionStore is null || _projectionSnapshot is not { } snapshot) return;
         if (_activeNoteEdits > 0 && !force)
@@ -298,7 +336,7 @@ public partial class CatalogViewModel
         }
         _deferredQueryRefresh = false;
         _queryCancellation?.Cancel();
-        var source = new CancellationTokenSource();
+        var source = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _queryCancellation = source;
         var version = Interlocked.Increment(ref _queryVersion);
         var definition = _queryDefinition with { Keyword = FilterText, ShowOriginalValues = ShowOriginalValues };
@@ -309,9 +347,10 @@ public partial class CatalogViewModel
             // Debounce query construction, not the user's text input. Superseded
             // definitions never allocate a grid or queue a count query.
             await Task.Delay(150, source.Token);
-            query = await Task.Run(() => _projectionStore.OpenQuery(snapshot, definition), source.Token);
-            var first = await Task.Run(() => query.ReadRangeAsync(0, 500, source.Token), source.Token);
-            var total = await Task.Run(() => query.CountAsync(source.Token), source.Token);
+            query = await OpenProjectionQueryAsync(snapshot, definition, source.Token);
+            var first = await Task.Run(() => query.ReadRangeAsync(0, 500, source.Token), source.Token).WaitAsync(source.Token);
+            var total = await Task.Run(() => query.CountAsync(source.Token), source.Token).WaitAsync(source.Token);
+            source.Token.ThrowIfCancellationRequested();
             if (version != Volatile.Read(ref _queryVersion) || _disposed) return;
             preserveSelection = preserveSelection && _displayedProjectionSnapshot?.Generation == snapshot.Generation &&
                 (_displayedQueryDefinition with { SortFieldId = null, Descending = false }) ==
@@ -348,7 +387,8 @@ public partial class CatalogViewModel
             UpdateProjectionSelection();
             PruneCompletedNoteEditors();
         }
-        catch (OperationCanceledException) when (source.IsCancellationRequested) { }
+        catch (OperationCanceledException) when (source.IsCancellationRequested)
+        { cancellationToken.ThrowIfCancellationRequested(); }
         catch (Exception exception)
         {
             if (version != Volatile.Read(ref _queryVersion) || source.IsCancellationRequested || _disposed) return;
@@ -357,9 +397,28 @@ public partial class CatalogViewModel
         }
         finally
         {
-            if (query is not null) await query.DisposeAsync();
+            if (query is not null) _ = DisposeProjectionQueryAsync(query);
             if (ReferenceEquals(_queryCancellation, source)) _queryCancellation = null;
             source.Dispose();
+        }
+    }
+
+    private async Task<IResultQuerySession<CatalogProjectionRow>> OpenProjectionQueryAsync(
+        CatalogProjectionSnapshot snapshot, CatalogProjectionQuery definition, CancellationToken token)
+    {
+        var opening = Task.Run(() => _projectionStore!.OpenQuery(snapshot, definition), token);
+        try { return await opening.WaitAsync(token); }
+        catch
+        {
+            // A synchronous provider may finish after UI cancellation. Dispose
+            // its late session instead of leaking a generation lease.
+            _ = opening.ContinueWith(async completed =>
+            {
+                if (completed.Status == TaskStatus.RanToCompletion)
+                    await DisposeProjectionQueryAsync(completed.Result);
+                else _ = completed.Exception;
+            }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default).Unwrap();
+            throw;
         }
     }
 

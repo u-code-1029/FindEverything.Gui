@@ -25,13 +25,15 @@ public partial class MainWindow
         IContentDialogService contentDialogService,
         IAppearanceService appearanceService,
         IValidatedSettingsState<AppearanceOptions> appearanceSettings,
-        IDraftProtectionService draftProtection)
+        IDraftProtectionService draftProtection,
+        OperationNotificationService? operationNotifications = null)
     {
         _draftProtection = draftProtection;
         _snackbars = snackbarService;
         DataContext = viewModel;
 
         InitializeComponent();
+        OperationInfoBar.DataContext = operationNotifications ?? snackbarService as OperationNotificationService;
 
         navigationService.SetNavigationControl(RootNavigation);
         snackbarService.SetSnackbarPresenter(SnackbarPresenter);

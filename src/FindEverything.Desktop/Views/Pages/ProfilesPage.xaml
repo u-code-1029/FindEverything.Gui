@@ -63,13 +63,13 @@
             <Setter Property="Padding" Value="12,10" />
             <Setter Property="FontWeight" Value="SemiBold" />
         </Style>
-        <Style x:Key="FieldCardStyle" TargetType="Border">
+        <!-- Inset editors belong to their section card; avoid repeating the full outer-card treatment. -->
+        <Style x:Key="FieldCardStyle" BasedOn="{StaticResource FluentSurfaceStyle}" TargetType="Border">
             <Setter Property="Margin" Value="0,0,0,12" />
-            <Setter Property="Padding" Value="16" />
-            <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
+            <Setter Property="Padding" Value="12" />
+            <Setter Property="Background" Value="{DynamicResource ControlFillColorSecondaryBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="CornerRadius" Value="6" />
         </Style>
     </Page.Resources>
 
@@ -1472,32 +1472,26 @@
             </TabItem>
 
             <TabItem Header="{DynamicResource Loc.View.Profiles.Header.LoadStatus}">
+                <!-- Inspection booleans are getter-only. Grid IsReadOnly does not
+                     override the CheckBox IsChecked default TwoWay binding. -->
                 <ScrollViewer
                     x:Name="ProfileLoadStatusScrollViewer"
                     Style="{StaticResource FluentGutteredScrollViewerStyle}">
-                    <StackPanel Margin="8,16,0,24">
-                        <StackPanel Margin="0,0,0,16">
-                            <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.ProfileLoadStatus}" />
-                            <TextBlock
-                                Margin="0,4,0,0"
-                                Style="{StaticResource PageSubtitleTextStyle}"
-                                Text="{DynamicResource Loc.View.Profiles.Text.SelectAProfileAvailableToTheApp}" />
-                        </StackPanel>
-
+                    <StackPanel Margin="0,8,0,24">
                         <StackPanel>
-                            <Border Margin="0,0,0,16" Style="{StaticResource FluentSurfaceStyle}">
+                            <Border x:Name="LoadedProfilesCard" Style="{StaticResource EditorSectionStyle}">
                                 <Grid>
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
                                     </Grid.RowDefinitions>
-                                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.LoadedProfiles}" />
+                                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.ProfileLoadStatus}" AutomationProperties.HeadingLevel="Level2" />
                                     <TextBlock
                                         Grid.Row="1"
                                         Margin="0,4,0,12"
                                         Style="{StaticResource CaptionTextStyle}"
-                                        Text="{DynamicResource Loc.View.Profiles.Text.SelectAProfileToViewItsDetails}" />
+                                        Text="{DynamicResource Loc.View.Profiles.Text.SelectAProfileAvailableToTheApp}" TextWrapping="Wrap" />
                                     <DataGrid
                                         Grid.Row="2"
                                         MinHeight="280"
@@ -1568,6 +1562,7 @@
                                             CanUserAddRows="False"
                                             IsReadOnly="True"
                                             ItemsSource="{Binding Fields}"
+                                            x:Name="ProfileFieldsInspectionGrid"
                                             PreviewMouseWheel="OnNestedDataGridPreviewMouseWheel"
                                             ScrollViewer.VerticalScrollBarVisibility="Disabled"
                                             Style="{StaticResource FluentDataGridStyle}">
@@ -1578,8 +1573,8 @@
                                                 <DataGridTextColumn Width="110" Binding="{Binding Source}" Header="{DynamicResource Loc.View.Profiles.Header.ValueSource}" />
                                                 <DataGridTextColumn Width="1.8*" Binding="{Binding CaptureGroups}" Header="{DynamicResource Loc.View.Profiles.Header.RegularExpressionGroupsCombineOrder}" MinWidth="160" />
                                                 <DataGridTextColumn Width="90" Binding="{Binding Kind}" Header="{DynamicResource Loc.View.Profiles.Header.ValueType}" />
-                                                <DataGridCheckBoxColumn Width="60" Binding="{Binding Required}" Header="{DynamicResource Loc.View.Profiles.Header.Required}" />
-                                                <DataGridCheckBoxColumn Width="75" Binding="{Binding IsNullable}" Header="Nullable" />
+                                                <DataGridCheckBoxColumn Width="60" Binding="{Binding Required, Mode=OneWay}" Header="{DynamicResource Loc.View.Profiles.Header.Required}" />
+                                                <DataGridCheckBoxColumn Width="75" Binding="{Binding IsNullable, Mode=OneWay}" Header="Nullable" />
                                                 <DataGridTextColumn Width="100" Binding="{Binding ParseFormat}" Header="{DynamicResource Loc.View.Profiles.Header.InputFormat}" />
                                                 <DataGridTextColumn Width="100" Binding="{Binding DisplayFormat}" Header="{DynamicResource Loc.View.Profiles.Text.DisplayFormat}" />
                                                 <DataGridTextColumn Width="90" Binding="{Binding ValueMappings}" Header="{DynamicResource Loc.View.Profiles.Header.ValueMappings}" />
@@ -1610,6 +1605,7 @@
                                             CanUserAddRows="False"
                                             IsReadOnly="True"
                                             ItemsSource="{Binding TextFileFields}"
+                                            x:Name="ProfileTextFileFieldsInspectionGrid"
                                             PreviewMouseWheel="OnNestedDataGridPreviewMouseWheel"
                                             ScrollViewer.VerticalScrollBarVisibility="Disabled"
                                             Style="{StaticResource FluentDataGridStyle}">
@@ -1619,8 +1615,8 @@
                                                 <DataGridTextColumn Width="1.1*" Binding="{Binding FieldId}" Header="Field ID" MinWidth="100" />
                                                 <DataGridTextColumn Width="2.2*" Binding="{Binding FileNamePattern}" Header="{DynamicResource Loc.View.Profiles.Header.FileNameRegularExpression}" MinWidth="180" />
                                                 <DataGridTextColumn Width="100" Binding="{Binding MatchMode}" Header="{DynamicResource Loc.View.Profiles.Header.Matching}" />
-                                                <DataGridCheckBoxColumn Width="60" Binding="{Binding Required}" Header="{DynamicResource Loc.View.Profiles.Header.Required}" />
-                                                <DataGridCheckBoxColumn Width="100" Binding="{Binding IgnoreCase}" Header="{DynamicResource Loc.View.Profiles.Content.IgnoreCase}" />
+                                                <DataGridCheckBoxColumn Width="60" Binding="{Binding Required, Mode=OneWay}" Header="{DynamicResource Loc.View.Profiles.Header.Required}" />
+                                                <DataGridCheckBoxColumn Width="100" Binding="{Binding IgnoreCase, Mode=OneWay}" Header="{DynamicResource Loc.View.Profiles.Content.IgnoreCase}" />
                                                 <DataGridTextColumn Width="95" Binding="{Binding MaxBytes}" Header="{DynamicResource Loc.View.Profiles.Header.MaximumBytes}" />
                                                 <DataGridTextColumn Width="85" Binding="{Binding TimeoutMilliseconds}" Header="{DynamicResource Loc.View.Profiles.Header.LimitMs259}" />
                                             </DataGrid.Columns>
@@ -1643,6 +1639,7 @@
                                             CanUserAddRows="False"
                                             IsReadOnly="True"
                                             ItemsSource="{Binding Rules}"
+                                            x:Name="ProfileRulesInspectionGrid"
                                             PreviewMouseWheel="OnNestedDataGridPreviewMouseWheel"
                                             ScrollViewer.VerticalScrollBarVisibility="Disabled"
                                             Style="{StaticResource FluentDataGridStyle}">
@@ -1650,7 +1647,7 @@
                                                 <DataGridTextColumn Width="50" Binding="{Binding Order}" Header="#" />
                                                 <DataGridTextColumn Width="110" Binding="{Binding Id}" Header="{DynamicResource Loc.View.Profiles.Header.RuleID}" />
                                                 <DataGridTextColumn Width="90" Binding="{Binding MatchMode}" Header="{DynamicResource Loc.View.Profiles.Header.Matching}" />
-                                                <DataGridCheckBoxColumn Width="110" Binding="{Binding IgnoreCase}" Header="{DynamicResource Loc.View.Profiles.Content.IgnoreCase}" />
+                                                <DataGridCheckBoxColumn Width="110" Binding="{Binding IgnoreCase, Mode=OneWay}" Header="{DynamicResource Loc.View.Profiles.Content.IgnoreCase}" />
                                                 <DataGridTextColumn Width="90" Binding="{Binding TimeoutMilliseconds}" Header="{DynamicResource Loc.View.Profiles.Header.LimitMs}" />
                                                 <DataGridTextColumn Width="3*" Binding="{Binding Pattern}" Header="{DynamicResource Loc.View.Profiles.Header.RegularExpressionPattern261}" MinWidth="240" />
                                                 <DataGridTextColumn Width="1.6*" Binding="{Binding StopTraversalGroups}" Header="{DynamicResource Loc.View.Profiles.Header.DescendantTraversalStopGroups}" MinWidth="160" />
@@ -1681,6 +1678,7 @@
                                             CanUserAddRows="False"
                                             IsReadOnly="True"
                                             ItemsSource="{Binding ExcludedDirectoryNameRules}"
+                                            x:Name="ProfileExclusionsInspectionGrid"
                                             PreviewMouseWheel="OnNestedDataGridPreviewMouseWheel"
                                             ScrollViewer.VerticalScrollBarVisibility="Disabled"
                                             Style="{StaticResource FluentDataGridStyle}">
@@ -1688,7 +1686,7 @@
                                                 <DataGridTextColumn Width="50" Binding="{Binding Order}" Header="#" />
                                                 <DataGridTextColumn Width="120" Binding="{Binding Id}" Header="{DynamicResource Loc.View.Profiles.Header.RuleID}" />
                                                 <DataGridTextColumn Width="130" Binding="{Binding MatchMode}" Header="{DynamicResource Loc.View.Profiles.Header.FolderNameMatching}" />
-                                                <DataGridCheckBoxColumn Width="110" Binding="{Binding IgnoreCase}" Header="{DynamicResource Loc.View.Profiles.Content.IgnoreCase}" />
+                                                <DataGridCheckBoxColumn Width="110" Binding="{Binding IgnoreCase, Mode=OneWay}" Header="{DynamicResource Loc.View.Profiles.Content.IgnoreCase}" />
                                                 <DataGridTextColumn Width="90" Binding="{Binding TimeoutMilliseconds}" Header="{DynamicResource Loc.View.Profiles.Header.LimitMs}" />
                                                 <DataGridTextColumn Width="3*" Binding="{Binding Pattern}" Header="{DynamicResource Loc.View.Profiles.Header.RegularExpressionPattern261}" MinWidth="240" />
                                             </DataGrid.Columns>
@@ -1698,9 +1696,10 @@
                             </StackPanel>
                         </StackPanel>
 
-                        <Expander Margin="0,16,0,0" Header="{DynamicResource Loc.View.Profiles.Header.AdvancedPlugInAndDeclarativeProfileDiagnostics}">
-                            <Border Margin="0,8,0,0" Style="{StaticResource FluentSurfaceStyle}">
+                        <Border x:Name="ProfileDiagnosticsCard" Margin="0,16,0,0" Style="{StaticResource FluentSurfaceStyle}">
+                            <Expander Header="{DynamicResource Loc.View.Profiles.Header.AdvancedPlugInAndDeclarativeProfileDiagnostics}">
                                 <DataGrid
+                                    Margin="0,12,0,0"
                                     MinHeight="160"
                                     AutoGenerateColumns="False"
                                     CanUserAddRows="False"
@@ -1717,8 +1716,8 @@
                                         <DataGridTextColumn Width="2.5*" Binding="{Binding SourceDirectory}" Header="{DynamicResource Loc.View.Profiles.Header.SourceFolder}" />
                                     </DataGrid.Columns>
                                 </DataGrid>
-                            </Border>
-                        </Expander>
+                            </Expander>
+                        </Border>
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>

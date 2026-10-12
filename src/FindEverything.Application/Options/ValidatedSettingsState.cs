@@ -55,4 +55,5 @@ public sealed record UserSettingsUpdate(
     WorkspaceOptions? Workspace = null,
     IndexingOptions? Indexing = null,
     AppearanceOptions? Appearance = null,
-    LocalizationOptions? Localization = null);
+    LocalizationOptions? Localization = null,
+    NotificationOptions? Notifications = null);

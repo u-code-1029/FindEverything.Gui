@@ -118,6 +118,7 @@ internal sealed class CatalogService(
                 CatalogOperationPhase.Preparing,
                 "DB에 저장하지 않는 바로 스캔을 준비하고 있습니다."));
 
+            var operationSettings = indexingSettings.Current;
             var accumulator = new MappingAccumulator(
                 profile,
                 request.RootPath,
@@ -127,8 +128,8 @@ internal sealed class CatalogService(
                 applyDirectoryNameExclusions: true,
                 retainItems: request.RetainItems,
                 resultWriter: request.ResultWriter,
-                trace: trace);
-            var operationSettings = indexingSettings.Current;
+                trace: trace,
+                uiUpdateBatchSize: operationSettings.UiUpdateBatchSize);
             var discoveryProgress = progress is null
                 ? null
                 : new InlineProgress<DirectoryDiscoveryProgress>(value => progress.Report(new(
@@ -249,7 +250,8 @@ internal sealed class CatalogService(
                 applyDirectoryNameExclusions: true,
                 retainItems: request.RetainItems,
                 resultWriter: request.ResultWriter,
-                trace: trace);
+                trace: trace,
+                uiUpdateBatchSize: operationSettings.UiUpdateBatchSize);
             var scanProgress = progress is null
                 ? null
                 : new InlineProgress<IndexScanProgress>(value => progress.Report(new(
@@ -376,7 +378,8 @@ internal sealed class CatalogService(
             retainItems: request.RetainItems,
             resultWriter: request.ResultWriter,
             attemptId: attemptId,
-            trace: trace);
+            trace: trace,
+            uiUpdateBatchSize: operationSettings.UiUpdateBatchSize);
         // The index stores its root as metadata rather than as an entry row.
         // Synthesize it so an existing-index load evaluates the same path set as
         // live structured scans.
@@ -492,7 +495,8 @@ internal sealed class CatalogService(
         bool retainItems = true,
         ICatalogProjectionWriter? resultWriter = null,
         int attemptId = 1,
-        ScanTraceWriter? trace = null)
+        ScanTraceWriter? trace = null,
+        int uiUpdateBatchSize = 10)
     {
         private const int MaximumDetailedIssues = 5000;
         private readonly List<CatalogItem> _items = [];
@@ -587,7 +591,7 @@ internal sealed class CatalogService(
                     break;
             }
 
-            if (_candidateCount == 1 || _candidateCount % 250 == 0)
+            if (_candidateCount % Math.Max(1, uiUpdateBatchSize) == 0)
             {
                 progress?.Report(new CatalogOperationProgress(
                     CatalogOperationPhase.Mapping,

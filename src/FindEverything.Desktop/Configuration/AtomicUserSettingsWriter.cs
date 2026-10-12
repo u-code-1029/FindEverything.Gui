@@ -12,7 +12,8 @@ public sealed class AtomicUserSettingsWriter(
     IValidatedSettingsUpdater<WorkspaceOptions> workspaceUpdater,
     IValidatedSettingsUpdater<IndexingOptions> indexingUpdater,
     IValidatedSettingsUpdater<AppearanceOptions> appearanceUpdater,
-    IValidatedSettingsUpdater<LocalizationOptions> localizationUpdater) : IUserSettingsWriter
+    IValidatedSettingsUpdater<LocalizationOptions> localizationUpdater,
+    IValidatedSettingsUpdater<NotificationOptions>? notificationUpdater = null) : IUserSettingsWriter
 {
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
@@ -87,6 +88,7 @@ public sealed class AtomicUserSettingsWriter(
                 ReplaceSectionIfPresent(existing.Document, IndexingOptions.SectionName, update.Indexing);
                 ReplaceSectionIfPresent(existing.Document, AppearanceOptions.SectionName, update.Appearance);
                 ReplaceSectionIfPresent(existing.Document, LocalizationOptions.SectionName, update.Localization);
+                ReplaceSectionIfPresent(existing.Document, NotificationOptions.SectionName, update.Notifications);
                 await JsonSerializer.SerializeAsync(
                     stream,
                     existing.Document,
@@ -130,6 +132,11 @@ public sealed class AtomicUserSettingsWriter(
             if (update.Localization is { } localization)
             {
                 localizationUpdater.Publish(localization);
+            }
+
+            if (update.Notifications is { } notifications)
+            {
+                notificationUpdater?.Publish(notifications);
             }
         }
         finally
@@ -410,7 +417,8 @@ public sealed class AtomicUserSettingsWriter(
         if (update.Workspace is null
             && update.Indexing is null
             && update.Appearance is null
-            && update.Localization is null)
+            && update.Localization is null
+            && update.Notifications is null)
         {
             throw new ValidationException("At least one settings section must be provided.");
         }
@@ -419,6 +427,7 @@ public sealed class AtomicUserSettingsWriter(
         ValidateIfPresent(update.Indexing);
         ValidateIfPresent(update.Appearance);
         ValidateIfPresent(update.Localization);
+        ValidateIfPresent(update.Notifications);
 
         if (update.Appearance is { } appearance && !Enum.IsDefined(appearance.Theme))
         {

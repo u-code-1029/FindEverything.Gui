@@ -357,9 +357,16 @@ public static class DynamicProfileGrid
             // This column stays frozen at the leading edge. The extra width is
             // intentional: WPF's focus chrome and the vertical grid line must
             // not crop the Fluent checkbox at the minimum window width.
-            Width = new DataGridLength(52, DataGridLengthUnitType.Pixel);
-            MinWidth = 52;
-            MaxWidth = 52;
+            Width = new DataGridLength(64, DataGridLengthUnitType.Pixel);
+            MinWidth = 64;
+            MaxWidth = 64;
+            var cellStyle = new Style(typeof(DataGridCell),
+                System.Windows.Application.Current?.TryFindResource("DefaultDataGridCellStyle") as Style
+                ?? System.Windows.Application.Current?.TryFindResource(typeof(DataGridCell)) as Style);
+            cellStyle.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(12, 0, 12, 0)));
+            cellStyle.Setters.Add(new Setter(Control.HorizontalContentAlignmentProperty, HorizontalAlignment.Center));
+            cellStyle.Setters.Add(new Setter(Control.VerticalContentAlignmentProperty, VerticalAlignment.Center));
+            CellStyle = cellStyle;
             CanUserReorder = false;
             CanUserResize = false;
             CanUserSort = false;
@@ -377,6 +384,8 @@ public static class DynamicProfileGrid
         {
             var checkBox = new CheckBox
             {
+                Width = 24, Height = 24, MinWidth = 24, MinHeight = 24,
+                Padding = new Thickness(0), Margin = new Thickness(0),
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
                 ToolTip = _selectionLabel,

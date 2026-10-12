@@ -26,6 +26,10 @@ public static class DependencyInjection
             .Bind(configuration.GetSection(IndexingOptions.SectionName))
             .ValidateDataAnnotations()
             .ValidateOnStart();
+        services.AddOptions<NotificationOptions>()
+            .Bind(configuration.GetSection(NotificationOptions.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
         services.AddOptions<AppearanceOptions>()
             .Bind(configuration.GetSection(AppearanceOptions.SectionName))
             .ValidateDataAnnotations()
@@ -50,6 +54,11 @@ public static class DependencyInjection
             static provider => provider.GetRequiredService<ValidatedSettingsState<IndexingOptions>>());
         services.AddSingleton<IValidatedSettingsUpdater<IndexingOptions>>(
             static provider => provider.GetRequiredService<ValidatedSettingsState<IndexingOptions>>());
+        services.AddSingleton<ValidatedSettingsState<NotificationOptions>>();
+        services.AddSingleton<IValidatedSettingsState<NotificationOptions>>(
+            static provider => provider.GetRequiredService<ValidatedSettingsState<NotificationOptions>>());
+        services.AddSingleton<IValidatedSettingsUpdater<NotificationOptions>>(
+            static provider => provider.GetRequiredService<ValidatedSettingsState<NotificationOptions>>());
         services.AddSingleton<ValidatedSettingsState<AppearanceOptions>>();
         services.AddSingleton<IValidatedSettingsState<AppearanceOptions>>(
             static provider => provider.GetRequiredService<ValidatedSettingsState<AppearanceOptions>>());

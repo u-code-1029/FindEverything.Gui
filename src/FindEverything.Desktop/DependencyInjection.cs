@@ -53,8 +53,11 @@ public static class DependencyInjection
 
         services.AddNavigationViewPageProvider();
         services.AddSingleton<INavigationService, NavigationService>();
-        services.AddSingleton<ISnackbarService, SnackbarService>();
+        services.AddSingleton<OperationNotificationService>();
+        services.AddSingleton<ISnackbarService>(
+            static provider => provider.GetRequiredService<OperationNotificationService>());
         services.AddSingleton<IContentDialogService, ContentDialogService>();
+        services.AddSingleton<ICatalogMissingDataPrompt, ContentDialogCatalogMissingDataPrompt>();
 
         services.AddSingleton<IApplicationOperationCoordinator, ApplicationOperationCoordinator>();
         services.AddSingleton<IApplicationLifetimeController, WpfApplicationLifetimeController>();

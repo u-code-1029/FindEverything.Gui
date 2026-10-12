@@ -23,6 +23,7 @@ public sealed record CatalogOperationProgress(
     /// </summary>
     public CatalogItem? MatchedItem { get; init; }
     public int MatchedCount { get; init; }
+    public IReadOnlyList<string> PreviewFields { get; init; } = [];
 
     /// <summary>True when a changed index requires discarding a previous mapping attempt.</summary>
     public bool AttemptReset { get; init; }

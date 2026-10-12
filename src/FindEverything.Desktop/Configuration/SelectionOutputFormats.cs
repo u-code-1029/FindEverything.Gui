@@ -9,7 +9,9 @@ public sealed record SelectionOutputFormatDefinition(
     string DisplayName,
     string Template,
     string ItemSeparator,
-    string? ProfileId)
+    string? ProfileId,
+    string Prefix = "",
+    string Suffix = "")
 {
     public bool IsBuiltIn => string.Equals(
         Id,
@@ -20,6 +22,7 @@ public sealed record SelectionOutputFormatDefinition(
 public static class SelectionOutputFormatDefaults
 {
     public const string FullPathLinesId = "builtin.full-path-lines";
+    public const int MaximumAffixCharacters = 16_384;
 
     public static SelectionOutputFormatDefinition FullPathLines { get; } =
         CreateFullPathLines();
@@ -314,6 +317,8 @@ public sealed class SelectionOutputFormatStore : ISelectionOutputFormatStore
         var displayName = definition.DisplayName?.Trim() ?? string.Empty;
         var template = definition.Template ?? string.Empty;
         var itemSeparator = definition.ItemSeparator ?? string.Empty;
+        var prefix = definition.Prefix ?? string.Empty;
+        var suffix = definition.Suffix ?? string.Empty;
         var profileId = string.IsNullOrWhiteSpace(definition.ProfileId)
             ? null
             : definition.ProfileId.Trim();
@@ -346,6 +351,14 @@ public sealed class SelectionOutputFormatStore : ISelectionOutputFormatStore
                 nameof(definition));
         }
 
+        if (prefix.Length > SelectionOutputFormatDefaults.MaximumAffixCharacters
+            || suffix.Length > SelectionOutputFormatDefaults.MaximumAffixCharacters)
+        {
+            throw new ArgumentException(
+                L("Loc.Output.Validation.AffixTooLong", "전체 결과의 앞·뒤 문구는 각각 16,384자 이하여야 합니다."),
+                nameof(definition));
+        }
+
         if (profileId is { Length: > 128 })
         {
             throw new ArgumentException(
@@ -358,7 +371,9 @@ public sealed class SelectionOutputFormatStore : ISelectionOutputFormatStore
             displayName,
             template,
             itemSeparator,
-            profileId);
+            profileId,
+            prefix,
+            suffix);
     }
 
     private string L(string key, string koreanFallback) =>

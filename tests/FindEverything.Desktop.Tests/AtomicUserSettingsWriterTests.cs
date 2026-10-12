@@ -12,6 +12,28 @@ namespace FindEverything.Desktop.Tests;
 public sealed class AtomicUserSettingsWriterTests
 {
     [Fact]
+    public async Task Notification_update_is_validated_persisted_and_published_without_overwriting_other_sections()
+    {
+        using var directory = new TemporaryDirectory();
+        var paths = CreatePaths(directory.Path);
+        using var provider = CreateProvider(paths);
+        var writer = provider.GetRequiredService<IUserSettingsWriter>();
+        await writer.SaveAsync(CreateUpdate());
+        var notifications = new NotificationOptions { AutoDismissSeconds = 8 };
+        await writer.SaveAsync(new UserSettingsUpdate(Notifications: notifications));
+
+        Assert.Same(notifications, provider.GetRequiredService<IValidatedSettingsState<NotificationOptions>>().Current);
+        var content = await File.ReadAllTextAsync(paths.UserSettingsFile);
+        using var document = JsonDocument.Parse(content);
+        Assert.Equal(8, document.RootElement.GetProperty("Notifications").GetProperty("AutoDismissSeconds").GetInt32());
+        Assert.Equal(321, document.RootElement.GetProperty("Indexing").GetProperty("SearchPageSize").GetInt32());
+        await Assert.ThrowsAsync<System.ComponentModel.DataAnnotations.ValidationException>(() =>
+            writer.SaveAsync(new UserSettingsUpdate(Notifications: new NotificationOptions { AutoDismissSeconds = 0 })));
+        Assert.Equal(content, await File.ReadAllTextAsync(paths.UserSettingsFile));
+        Assert.Same(notifications, provider.GetRequiredService<IValidatedSettingsState<NotificationOptions>>().Current);
+    }
+
+    [Fact]
     public async Task Save_preserves_unknown_sections_and_replaces_managed_sections()
     {
         using var directory = new TemporaryDirectory();

@@ -13,6 +13,31 @@ namespace FindEverything.Desktop.Tests;
 public sealed class SettingsReloadDiagnosticsTests
 {
     [Fact]
+    public async Task Notification_and_batch_settings_reload_atomically_and_invalid_values_preserve_the_previous_settings()
+    {
+        using var directory = new TemporaryDirectory();
+        var paths = new AppPaths(directory.Path, Path.Combine(directory.Path, "appsettings.user.json"));
+        var indexing = new RecordingValidatedSettings<IndexingOptions>(new());
+        var notifications = new RecordingValidatedSettings<NotificationOptions>(new());
+        using var diagnostics = CreateDiagnostics(paths,
+            new RecordingValidatedSettings<WorkspaceOptions>(new()), indexing,
+            new RecordingValidatedSettings<AppearanceOptions>(new()),
+            new RecordingValidatedSettings<LocalizationOptions>(new()),
+            new RecordingRestartCoordinator(), LocalizationOptions.KoreanCultureName, [], notifications);
+        await File.WriteAllTextAsync(paths.UserSettingsFile,
+            """{"Indexing":{"UiUpdateBatchSize":25},"Notifications":{"AutoDismissSeconds":9}}""");
+        Assert.True(await diagnostics.ReloadNowAsync());
+        Assert.Equal(25, indexing.Current.UiUpdateBatchSize);
+        Assert.Equal(9, notifications.Current.AutoDismissSeconds);
+
+        await File.WriteAllTextAsync(paths.UserSettingsFile,
+            """{"Indexing":{"UiUpdateBatchSize":50},"Notifications":{"AutoDismissSeconds":61}}""");
+        Assert.False(await diagnostics.ReloadNowAsync());
+        Assert.Equal(25, indexing.Current.UiUpdateBatchSize);
+        Assert.Equal(9, notifications.Current.AutoDismissSeconds);
+    }
+
+    [Fact]
     public async Task Watcher_contains_invalid_json_and_recovers_on_a_valid_locale_edit()
     {
         using var directory = new TemporaryDirectory();
@@ -164,7 +189,8 @@ public sealed class SettingsReloadDiagnosticsTests
         RecordingValidatedSettings<LocalizationOptions> localization,
         RecordingRestartCoordinator restart,
         string appliedCulture,
-        IReadOnlyList<string> arguments) =>
+        IReadOnlyList<string> arguments,
+        RecordingValidatedSettings<NotificationOptions>? notifications = null) =>
         new(
             paths,
             new ApplicationLaunchContext(
@@ -179,7 +205,8 @@ public sealed class SettingsReloadDiagnosticsTests
             new RecordingAppearanceService(),
             new TestAppLocalizer(appliedCulture),
             restart,
-            NullLogger<SettingsReloadDiagnostics>.Instance);
+            NullLogger<SettingsReloadDiagnostics>.Instance,
+            notificationUpdater: notifications);
 
     private static async Task WaitUntilAsync(Func<bool> condition)
     {

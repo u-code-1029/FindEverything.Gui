@@ -24,11 +24,14 @@ public partial class SettingsViewModel : ObservableObject
     private bool _isShowingReloadError;
     private readonly IValidatedSettingsState<IndexingOptions> _indexingSettings;
     private readonly IValidatedSettingsState<AppearanceOptions> _appearanceSettings;
+    private readonly IValidatedSettingsState<NotificationOptions> _notificationSettings;
     private readonly IUiScheduler _uiScheduler;
     private bool _isRefreshing;
     private string _savedSearchPageSize = string.Empty;
     private string _savedMaxEntriesPerSecond = string.Empty;
     private string _savedDirectoryDelay = string.Empty;
+    private string _savedUiUpdateBatchSize = string.Empty;
+    private string _savedNotificationAutoDismissSeconds = string.Empty;
     private ThemePreference _savedTheme;
     private BackdropPreference _savedBackdrop;
 
@@ -43,7 +46,8 @@ public partial class SettingsViewModel : ObservableObject
         IAppLocalizer localizer,
         AppPaths paths,
         ILogger<SettingsViewModel> logger,
-        IUiScheduler? uiScheduler = null)
+        IUiScheduler? uiScheduler = null,
+        IValidatedSettingsState<NotificationOptions>? notificationSettings = null)
     {
         _settingsWriter = settingsWriter;
         _appearanceService = appearanceService;
@@ -54,6 +58,7 @@ public partial class SettingsViewModel : ObservableObject
         _logger = logger;
         _indexingSettings = indexingSettings;
         _appearanceSettings = appearanceSettings;
+        _notificationSettings = notificationSettings ?? DefaultNotificationSettings.Instance;
         _uiScheduler = uiScheduler ?? ImmediateUiScheduler.Instance;
 
         ThemeChoices =
@@ -72,6 +77,8 @@ public partial class SettingsViewModel : ObservableObject
         SearchPageSize = indexing.SearchPageSize;
         MaxEntriesPerSecond = indexing.MaxEntriesPerSecond;
         DirectoryDelayMilliseconds = indexing.DirectoryDelayMilliseconds;
+        UiUpdateBatchSize = indexing.UiUpdateBatchSize;
+        NotificationAutoDismissSeconds = _notificationSettings.Current.AutoDismissSeconds;
 
         var appearance = appearanceSettings.Current;
         SelectedTheme = ThemeChoices.First(choice => choice.Value == appearance.Theme);
@@ -102,6 +109,12 @@ public partial class SettingsViewModel : ObservableObject
     private int _directoryDelayMilliseconds;
 
     [ObservableProperty]
+    private int _uiUpdateBatchSize;
+
+    [ObservableProperty]
+    private int _notificationAutoDismissSeconds;
+
+    [ObservableProperty]
     private string _searchPageSizeText = string.Empty;
 
     [ObservableProperty]
@@ -109,6 +122,12 @@ public partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     private string _directoryDelayMillisecondsText = string.Empty;
+
+    [ObservableProperty]
+    private string _uiUpdateBatchSizeText = string.Empty;
+
+    [ObservableProperty]
+    private string _notificationAutoDismissSecondsText = string.Empty;
 
     [ObservableProperty]
     private string _numericValidationMessage = string.Empty;
@@ -122,6 +141,8 @@ public partial class SettingsViewModel : ObservableObject
     partial void OnSearchPageSizeTextChanged(string value) => ValidateNumericDrafts();
     partial void OnMaxEntriesPerSecondTextChanged(string value) => ValidateNumericDrafts();
     partial void OnDirectoryDelayMillisecondsTextChanged(string value) => ValidateNumericDrafts();
+    partial void OnUiUpdateBatchSizeTextChanged(string value) => ValidateNumericDrafts();
+    partial void OnNotificationAutoDismissSecondsTextChanged(string value) => ValidateNumericDrafts();
 
     partial void OnSearchPageSizeChanged(int value)
     {
@@ -136,6 +157,16 @@ public partial class SettingsViewModel : ObservableObject
     partial void OnDirectoryDelayMillisecondsChanged(int value)
     {
         if (!_isRefreshing) DirectoryDelayMillisecondsText = value.ToString(CultureInfo.InvariantCulture);
+    }
+
+    partial void OnUiUpdateBatchSizeChanged(int value)
+    {
+        if (!_isRefreshing) UiUpdateBatchSizeText = value.ToString(CultureInfo.InvariantCulture);
+    }
+
+    partial void OnNotificationAutoDismissSecondsChanged(int value)
+    {
+        if (!_isRefreshing) NotificationAutoDismissSecondsText = value.ToString(CultureInfo.InvariantCulture);
     }
 
     [ObservableProperty]
@@ -190,9 +221,13 @@ public partial class SettingsViewModel : ObservableObject
         SearchPageSize = indexing.SearchPageSize;
         MaxEntriesPerSecond = indexing.MaxEntriesPerSecond;
         DirectoryDelayMilliseconds = indexing.DirectoryDelayMilliseconds;
+        UiUpdateBatchSize = indexing.UiUpdateBatchSize;
+        NotificationAutoDismissSeconds = new NotificationOptions().AutoDismissSeconds;
         SearchPageSizeText = indexing.SearchPageSize.ToString(CultureInfo.InvariantCulture);
         MaxEntriesPerSecondText = indexing.MaxEntriesPerSecond.ToString(CultureInfo.InvariantCulture);
         DirectoryDelayMillisecondsText = indexing.DirectoryDelayMilliseconds.ToString(CultureInfo.InvariantCulture);
+        UiUpdateBatchSizeText = indexing.UiUpdateBatchSize.ToString(CultureInfo.InvariantCulture);
+        NotificationAutoDismissSecondsText = NotificationAutoDismissSeconds.ToString(CultureInfo.InvariantCulture);
         SelectedTheme = ThemeChoices.First(choice => choice.Value == ThemePreference.System);
         SelectedBackdrop = BackdropChoices.First(choice => choice.Value == BackdropPreference.Auto);
         await SaveCoreAsync(showResetMessage: true).ConfigureAwait(true);
@@ -232,7 +267,7 @@ public partial class SettingsViewModel : ObservableObject
 
     private async Task SaveCoreAsync(bool showResetMessage)
     {
-        if (!TryReadNumericDrafts(out var indexing))
+        if (!TryReadNumericDrafts(out var indexing, out var notifications))
         {
             ValidateNumericDrafts();
             StatusSeverity = InfoBarSeverity.Error;
@@ -251,13 +286,16 @@ public partial class SettingsViewModel : ObservableObject
             await _settingsWriter.SaveAsync(
                 new UserSettingsUpdate(
                     Indexing: indexing,
-                    Appearance: appearance)).ConfigureAwait(true);
+                    Appearance: appearance,
+                    Notifications: notifications)).ConfigureAwait(true);
 
             _appearanceService.ApplyToAttachedWindow(appearance);
 
             _savedSearchPageSize = indexing.SearchPageSize.ToString(CultureInfo.InvariantCulture);
             _savedMaxEntriesPerSecond = indexing.MaxEntriesPerSecond.ToString(CultureInfo.InvariantCulture);
             _savedDirectoryDelay = indexing.DirectoryDelayMilliseconds.ToString(CultureInfo.InvariantCulture);
+            _savedUiUpdateBatchSize = indexing.UiUpdateBatchSize.ToString(CultureInfo.InvariantCulture);
+            _savedNotificationAutoDismissSeconds = notifications.AutoDismissSeconds.ToString(CultureInfo.InvariantCulture);
             _savedTheme = appearance.Theme;
             _savedBackdrop = appearance.Backdrop;
 
@@ -294,27 +332,34 @@ public partial class SettingsViewModel : ObservableObject
         }
     }
 
-    private bool TryReadNumericDrafts(out IndexingOptions indexing)
+    private bool TryReadNumericDrafts(out IndexingOptions indexing, out NotificationOptions notifications)
     {
         indexing = new IndexingOptions();
+        notifications = new NotificationOptions();
         if (!int.TryParse(SearchPageSizeText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var pageSize)
             || pageSize is < 1 or > 1000
             || !int.TryParse(MaxEntriesPerSecondText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var maxEntries)
             || maxEntries < 1
             || !int.TryParse(DirectoryDelayMillisecondsText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var delay)
-            || delay < 0) return false;
+            || delay < 0
+            || !int.TryParse(UiUpdateBatchSizeText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var batchSize)
+            || batchSize is < 1 or > 1000
+            || !int.TryParse(NotificationAutoDismissSecondsText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var dismissSeconds)
+            || dismissSeconds is < 1 or > 60) return false;
 
         indexing.SearchPageSize = pageSize;
         indexing.MaxEntriesPerSecond = maxEntries;
         indexing.DirectoryDelayMilliseconds = delay;
+        indexing.UiUpdateBatchSize = batchSize;
+        notifications.AutoDismissSeconds = dismissSeconds;
         return true;
     }
 
     private void ValidateNumericDrafts()
     {
-        NumericValidationMessage = TryReadNumericDrafts(out _)
+        NumericValidationMessage = TryReadNumericDrafts(out _, out _)
             ? string.Empty
-            : L("Loc.Settings.Validation.Numeric", "검색 페이지 크기는 1–1,000, 초당 최대 항목 수는 1 이상, 폴더 지연은 0 이상인 정수를 입력하세요.");
+            : L("Loc.Settings.Validation.Numeric", "검색 페이지 크기와 화면 갱신 묶음은 1–1,000, 초당 최대 항목 수는 1 이상, 폴더 지연은 0 이상, 알림 표시 시간은 1–60초인 정수를 입력하세요.");
         OnPropertyChanged(nameof(HasNumericValidationError));
         OnPropertyChanged(nameof(IsSaveAvailable));
         SaveCommand.NotifyCanExecuteChanged();
@@ -324,6 +369,7 @@ public partial class SettingsViewModel : ObservableObject
     {
         var indexing = _indexingSettings.Current;
         var appearance = _appearanceSettings.Current;
+        var notifications = _notificationSettings.Current;
         _isRefreshing = true;
         try
         {
@@ -342,6 +388,16 @@ public partial class SettingsViewModel : ObservableObject
                 DirectoryDelayMilliseconds = indexing.DirectoryDelayMilliseconds;
                 DirectoryDelayMillisecondsText = indexing.DirectoryDelayMilliseconds.ToString(CultureInfo.InvariantCulture);
             }
+            if (force || UiUpdateBatchSizeText == _savedUiUpdateBatchSize)
+            {
+                UiUpdateBatchSize = indexing.UiUpdateBatchSize;
+                UiUpdateBatchSizeText = indexing.UiUpdateBatchSize.ToString(CultureInfo.InvariantCulture);
+            }
+            if (force || NotificationAutoDismissSecondsText == _savedNotificationAutoDismissSeconds)
+            {
+                NotificationAutoDismissSeconds = notifications.AutoDismissSeconds;
+                NotificationAutoDismissSecondsText = notifications.AutoDismissSeconds.ToString(CultureInfo.InvariantCulture);
+            }
             if (force || SelectedTheme.Value == _savedTheme)
                 SelectedTheme = ThemeChoices.First(choice => choice.Value == appearance.Theme);
             if (force || SelectedBackdrop.Value == _savedBackdrop)
@@ -350,6 +406,8 @@ public partial class SettingsViewModel : ObservableObject
             _savedSearchPageSize = indexing.SearchPageSize.ToString(CultureInfo.InvariantCulture);
             _savedMaxEntriesPerSecond = indexing.MaxEntriesPerSecond.ToString(CultureInfo.InvariantCulture);
             _savedDirectoryDelay = indexing.DirectoryDelayMilliseconds.ToString(CultureInfo.InvariantCulture);
+            _savedUiUpdateBatchSize = indexing.UiUpdateBatchSize.ToString(CultureInfo.InvariantCulture);
+            _savedNotificationAutoDismissSeconds = notifications.AutoDismissSeconds.ToString(CultureInfo.InvariantCulture);
             _savedTheme = appearance.Theme;
             _savedBackdrop = appearance.Backdrop;
         }
@@ -359,6 +417,12 @@ public partial class SettingsViewModel : ObservableObject
 
     private string L(string key, string koreanFallback) =>
         _localizer.Get(key, koreanFallback);
+
+    private sealed class DefaultNotificationSettings : IValidatedSettingsState<NotificationOptions>
+    {
+        public static DefaultNotificationSettings Instance { get; } = new();
+        public NotificationOptions Current { get; } = new();
+    }
 }
 
 public sealed record SettingChoice<T>(T Value, string DisplayName)

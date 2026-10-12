@@ -86,6 +86,9 @@ public sealed class DesktopCompositionSmokeTests
                 ["Appearance:Theme"] = "System",
                 ["Appearance:Backdrop"] = "Auto",
                 ["Localization:CultureName"] = LocalizationOptions.KoreanCultureName,
+                // This legacy fake deliberately reports two rows and then blocks.
+                // Production/default-size batching is covered separately.
+                ["Indexing:UiUpdateBatchSize"] = "1",
             });
             var services = new ServiceCollection();
             var blockingCatalogService = new BlockingCatalogService();
@@ -107,6 +110,7 @@ public sealed class DesktopCompositionSmokeTests
             services.AddSingleton(completionNotifier);
             services.AddSingleton<IScanCompletionNotifier>(completionNotifier);
             services.AddSingleton<IDraftDecisionPrompt, DiscardDraftPrompt>();
+            services.AddSingleton<ICatalogMissingDataPrompt, LaterCatalogMissingDataPrompt>();
             // Keep the existing live-scan/diagnostic regressions on their original
             // fake service. A separate helper exercises the real projection path.
             services.RemoveAll<ICatalogProjectionStore>();
@@ -172,9 +176,10 @@ public sealed class DesktopCompositionSmokeTests
             Assert.True(navigation.Navigate(typeof(ProfilePlaygroundPage)));
             VerifyProfilePlaygroundLayout(window, profilePlaygroundPage);
             Assert.True(navigation.Navigate(typeof(OutputFormatsPage)));
-            Assert.NotNull(outputFormatsPage.FindName("OutputFormatsScrollViewer"));
+            VerifyOutputFormatEditor(provider, window, outputFormatsPage);
             Assert.True(navigation.Navigate(typeof(SettingsPage)));
             VerifySettingsLayout(window, settingsPage);
+            VerifyOperationInfoBar(provider, window);
             VerifyScanConsole(provider, window, catalogPage);
             VerifyProjectionQueries(provider, window);
             VerifyDynamicGridHighlighting();
@@ -323,6 +328,14 @@ public sealed class DesktopCompositionSmokeTests
                         Assert.InRange(selectorLeft, 0, grid.Columns[0].ActualWidth);
                         Assert.True(selectorLeft + selector.ActualWidth <= grid.Columns[0].ActualWidth,
                             "The frozen selection checkbox must remain fully visible after horizontal scrolling.");
+                        if (page is CatalogPage)
+                        {
+                            Assert.True(selectorLeft >= 12,
+                                "The structured checkbox needs a left gutter after horizontal scrolling.");
+                            Assert.True(grid.Columns[0].ActualWidth - selectorLeft - selector.ActualWidth >= 12,
+                                "The structured checkbox needs a right gutter after horizontal scrolling.");
+                            Assert.Equal(24, selector.MinWidth);
+                        }
                         scroll.ScrollToHorizontalOffset(0);
                         ArrangeWorkspace(page, size);
                     }
@@ -1153,6 +1166,7 @@ public sealed class DesktopCompositionSmokeTests
 
         tabControl.SelectedIndex = 1;
         PumpLayout(window, page);
+        VerifyReadOnlyProfileInspectionBindings(window, page, viewModel);
         var loadStatusScrollViewer = Assert.IsType<ScrollViewer>(
             page.FindName("ProfileLoadStatusScrollViewer"));
         Assert.Equal(new Thickness(0, 0, 16, 0), loadStatusScrollViewer.Padding);
@@ -1160,6 +1174,98 @@ public sealed class DesktopCompositionSmokeTests
 
         tabControl.SelectedIndex = 0;
         PumpLayout(window, page);
+    }
+
+    private static void VerifyReadOnlyProfileInspectionBindings(
+        Window window,
+        ProfilesPage page,
+        ProfilesViewModel viewModel)
+    {
+        // Empty inspection grids cannot expose WPF's CheckReadOnly failure.
+        // Populate every getter-only boolean with both checked and unchecked rows.
+        var previousProfiles = viewModel.Profiles;
+        var previousSelection = viewModel.SelectedProfile;
+        var descriptor = new ProfileDescriptor(
+            "inspection-binding-smoke",
+            "1.0.0",
+            "읽기 전용 프로필 검사",
+            ProfileCandidateKind.Directory,
+            [
+                new("required", "required", "필수", 1, true,
+                    ProfileFieldValueKind.String, false, null, null),
+                new("optional", "optional", "선택", 2, false,
+                    ProfileFieldValueKind.String, true, null, null),
+            ],
+            [
+                new(1, "sensitive", ".*", ProfileRegexMatchMode.Full, false, 250),
+                new(2, "insensitive", ".*", ProfileRegexMatchMode.Full, true, 250),
+            ])
+        {
+            TextFileFields =
+            [
+                new(1, "required-text", "필수 텍스트", @"^required\.txt$",
+                    ProfileRegexMatchMode.Full, false, 250, true, 1024),
+                new(2, "optional-text", "선택 텍스트", @"^optional\.txt$",
+                    ProfileRegexMatchMode.Full, true, 250, false, 1024),
+            ],
+            ExcludedDirectoryNameRules =
+            [
+                new(1, "sensitive", "temp", ProfileRegexMatchMode.Full, false, 250),
+                new(2, "insensitive", "cache", ProfileRegexMatchMode.Full, true, 250),
+            ],
+        };
+        var inspectionProfile = new ProfileSummaryViewModel(descriptor);
+        try
+        {
+            viewModel.Profiles = [inspectionProfile];
+            viewModel.SelectedProfile = inspectionProfile;
+            PumpLayout(window, page);
+
+            string[] gridNames =
+            [
+                "ProfileFieldsInspectionGrid",
+                "ProfileTextFileFieldsInspectionGrid",
+                "ProfileRulesInspectionGrid",
+                "ProfileExclusionsInspectionGrid",
+            ];
+            var checkboxColumnCount = 0;
+            foreach (var gridName in gridNames)
+            {
+                var grid = Assert.IsType<System.Windows.Controls.DataGrid>(page.FindName(gridName));
+                Assert.True(grid.IsReadOnly);
+                Assert.Equal(2, grid.Items.Count);
+                foreach (var column in grid.Columns.OfType<DataGridCheckBoxColumn>())
+                {
+                    checkboxColumnCount++;
+                    var binding = Assert.IsType<Binding>(column.Binding);
+                    Assert.Equal(BindingMode.OneWay, binding.Mode);
+                    foreach (var item in grid.Items)
+                    {
+                        grid.ScrollIntoView(item, column);
+                        PumpLayout(window, page);
+                        var property = item.GetType().GetProperty(binding.Path.Path);
+                        Assert.NotNull(property);
+                        Assert.False(property.CanWrite);
+                        var expected = Assert.IsType<bool>(property.GetValue(item));
+                        var checkbox = Assert.IsAssignableFrom<System.Windows.Controls.CheckBox>(
+                            column.GetCellContent(item));
+                        Assert.Equal(expected, checkbox.IsChecked);
+                        var expression = checkbox.GetBindingExpression(
+                            System.Windows.Controls.CheckBox.IsCheckedProperty);
+                        Assert.NotNull(expression);
+                        Assert.Equal(BindingStatus.Active, expression.Status);
+                    }
+                }
+            }
+
+            Assert.Equal(6, checkboxColumnCount);
+        }
+        finally
+        {
+            viewModel.Profiles = previousProfiles;
+            viewModel.SelectedProfile = previousSelection;
+            PumpLayout(window, page);
+        }
     }
 
     private static void VerifyProfilesFluentControls(ProfilesPage page)
@@ -1308,6 +1414,19 @@ public sealed class DesktopCompositionSmokeTests
         Assert.Equal(new Thickness(0, 0, 16, 0), scrollViewer.Padding);
         Assert.True(scrollViewer.ActualWidth > 0);
 
+        var indexingCard = Assert.IsType<Border>(page.FindName("IndexingSettingsCard"));
+        var notificationsCard = Assert.IsType<Border>(page.FindName("NotificationSettingsCard"));
+        var appearanceCard = Assert.IsType<Border>(page.FindName("AppearanceSettingsCard"));
+        foreach (var card in new[] { indexingCard, notificationsCard, appearanceCard })
+        {
+            Assert.Equal(new CornerRadius(8), card.CornerRadius);
+            Assert.Equal(new Thickness(1), card.BorderThickness);
+            Assert.NotNull(card.Background);
+        }
+        Assert.Equal(4, FindVisualChildren<SettingRowCard>(indexingCard).Count());
+        Assert.Single(FindVisualChildren<SettingRowCard>(notificationsCard));
+        Assert.Equal(3, FindVisualChildren<SettingRowCard>(appearanceCard).Count());
+
         var inputs = FindVisualChildren<FrameworkElement>(scrollViewer)
             .Where(static element => element is System.Windows.Controls.TextBox or ComboBox)
             .ToArray();
@@ -1317,6 +1436,137 @@ public sealed class DesktopCompositionSmokeTests
             Assert.Equal(double.PositiveInfinity, input.MaxWidth);
             Assert.Equal(HorizontalAlignment.Stretch, input.HorizontalAlignment);
         }
+
+        var textInputs = inputs.OfType<Wpf.Ui.Controls.TextBox>().ToArray();
+        var batchInput = Assert.Single(textInputs, input =>
+            BindingOperations.GetBinding(input, System.Windows.Controls.TextBox.TextProperty)?.Path?.Path
+                == nameof(SettingsViewModel.UiUpdateBatchSizeText));
+        var durationInput = Assert.Single(textInputs, input =>
+            BindingOperations.GetBinding(input, System.Windows.Controls.TextBox.TextProperty)?.Path?.Path
+                == nameof(SettingsViewModel.NotificationAutoDismissSecondsText));
+        Assert.False(string.IsNullOrWhiteSpace(System.Windows.Automation.AutomationProperties.GetName(batchInput)));
+        Assert.False(string.IsNullOrWhiteSpace(System.Windows.Automation.AutomationProperties.GetName(durationInput)));
+        Assert.NotNull(batchInput.ToolTip);
+        Assert.NotNull(durationInput.ToolTip);
+        var viewModel = Assert.IsType<SettingsViewModel>(page.DataContext);
+        var batch = viewModel.UiUpdateBatchSizeText;
+        var duration = viewModel.NotificationAutoDismissSecondsText;
+        try
+        {
+            batchInput.SetCurrentValue(System.Windows.Controls.TextBox.TextProperty, "0");
+            batchInput.GetBindingExpression(System.Windows.Controls.TextBox.TextProperty)!.UpdateSource();
+            Assert.True(viewModel.HasNumericValidationError);
+            Assert.False(viewModel.SaveCommand.CanExecute(null));
+            batchInput.SetCurrentValue(System.Windows.Controls.TextBox.TextProperty, batch);
+            batchInput.GetBindingExpression(System.Windows.Controls.TextBox.TextProperty)!.UpdateSource();
+            durationInput.SetCurrentValue(System.Windows.Controls.TextBox.TextProperty, "61");
+            durationInput.GetBindingExpression(System.Windows.Controls.TextBox.TextProperty)!.UpdateSource();
+            Assert.True(viewModel.HasNumericValidationError);
+            Assert.False(viewModel.SaveCommand.CanExecute(null));
+        }
+        finally
+        {
+            batchInput.SetCurrentValue(System.Windows.Controls.TextBox.TextProperty, batch);
+            durationInput.SetCurrentValue(System.Windows.Controls.TextBox.TextProperty, duration);
+            batchInput.GetBindingExpression(System.Windows.Controls.TextBox.TextProperty)!.UpdateSource();
+            durationInput.GetBindingExpression(System.Windows.Controls.TextBox.TextProperty)!.UpdateSource();
+        }
+        Assert.False(viewModel.HasNumericValidationError);
+    }
+
+    private static void VerifyOperationInfoBar(IServiceProvider provider, MainWindow window)
+    {
+        var notifications = provider.GetRequiredService<OperationNotificationService>();
+        Assert.Same(notifications, provider.GetRequiredService<ISnackbarService>());
+        var infoBar = Assert.IsType<Wpf.Ui.Controls.InfoBar>(window.FindName("OperationInfoBar"));
+        Assert.Same(notifications, infoBar.DataContext);
+        Assert.True(infoBar.IsClosable);
+        Assert.Equal(1, Grid.GetRow(infoBar));
+        Assert.Equal(Visibility.Collapsed,
+            Assert.IsType<SnackbarPresenter>(window.FindName("SnackbarPresenter")).Visibility);
+
+        // Legacy callers cannot replace the user's configured timeout. Timing
+        // itself uses a fake clock in OperationNotificationServiceTests.
+        notifications.Show("UI verification", "Operation completed", ControlAppearance.Caution,
+            null, TimeSpan.FromHours(1));
+        PumpLayout(window, infoBar);
+        Assert.True(notifications.IsOpen);
+        Assert.True(infoBar.IsOpen);
+        Assert.Equal(Visibility.Visible, infoBar.Visibility);
+        Assert.Equal("UI verification", infoBar.Title);
+        Assert.Equal("Operation completed", infoBar.Message);
+        Assert.Equal(InfoBarSeverity.Warning, infoBar.Severity);
+        var dismiss = Assert.Single(FindVisualChildren<Wpf.Ui.Controls.Button>(infoBar),
+            button => ReferenceEquals(button.Command, notifications.DismissCommand));
+        Assert.False(string.IsNullOrWhiteSpace(System.Windows.Automation.AutomationProperties.GetName(dismiss)));
+        dismiss.Command!.Execute(null);
+        PumpLayout(window, infoBar);
+        Assert.False(notifications.IsOpen);
+        Assert.False(infoBar.IsOpen);
+        Assert.Equal(Visibility.Collapsed, infoBar.Visibility);
+
+        notifications.Show("Dismiss", "Two-way close binding", ControlAppearance.Secondary,
+            null, TimeSpan.Zero);
+        PumpLayout(window, infoBar);
+        infoBar.SetCurrentValue(Wpf.Ui.Controls.InfoBar.IsOpenProperty, false);
+        infoBar.GetBindingExpression(Wpf.Ui.Controls.InfoBar.IsOpenProperty)!.UpdateSource();
+        Assert.False(notifications.IsOpen);
+        PumpLayout(window, infoBar);
+        Assert.Equal(Visibility.Collapsed, infoBar.Visibility);
+    }
+
+    private static void VerifyOutputFormatEditor(IServiceProvider provider, Window window, OutputFormatsPage page)
+    {
+        var scroll = Assert.IsType<ScrollViewer>(page.FindName("OutputFormatsScrollViewer"));
+        Assert.Equal(new Thickness(0, 0, 16, 0), scroll.Padding);
+        provider.GetRequiredService<IProfileCatalogPublisher>().Publish(
+            new ProfileCatalogSnapshot([new StubLoadedProfile()], [], DateTimeOffset.UtcNow));
+        // Profile publication is marshalled to the UI scheduler. Let that refresh
+        // finish before creating a new editable output draft.
+        PumpDispatcherFor(window.Dispatcher, TimeSpan.FromMilliseconds(40));
+        var viewModel = Assert.IsType<OutputFormatsViewModel>(page.DataContext);
+        var create = viewModel.NewFormatCommand.ExecuteAsync(null);
+        PumpDispatcherUntil(window.Dispatcher, () => create.IsCompleted, TimeSpan.FromSeconds(3));
+        create.GetAwaiter().GetResult();
+        PumpLayout(window, page);
+
+        var profileChoice = Assert.Single(viewModel.ProfileChoices, choice =>
+            choice.ProfileId == "scan-smoke-profile");
+        var profilePicker = Assert.IsType<ComboBox>(page.FindName("OutputProfileComboBox"));
+        profilePicker.SetCurrentValue(System.Windows.Controls.Primitives.Selector.SelectedItemProperty, profileChoice);
+        profilePicker.GetBindingExpression(System.Windows.Controls.Primitives.Selector.SelectedItemProperty)!.UpdateSource();
+        PumpLayout(window, page);
+        Assert.Same(profileChoice, viewModel.SelectedProfileChoice);
+        var clientToken = Assert.Single(viewModel.ProfileTokenChoices, choice => choice.Token == "{Field:client}");
+        var tokenButton = Assert.Single(FindVisualChildren<Wpf.Ui.Controls.Button>(scroll),
+            button => ReferenceEquals(button.DataContext, clientToken));
+        Assert.NotNull(tokenButton.ToolTip);
+
+        var template = Assert.IsType<Wpf.Ui.Controls.TextBox>(page.FindName("TemplateTextBox"));
+        template.SetCurrentValue(System.Windows.Controls.TextBox.TextProperty, "before|after");
+        template.GetBindingExpression(System.Windows.Controls.TextBox.TextProperty)!.UpdateSource();
+        template.Select(6, 1);
+        tokenButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+        Assert.Equal("before{Field:client}after", viewModel.DraftTemplate);
+
+        var prefix = Assert.IsType<Wpf.Ui.Controls.TextBox>(page.FindName("OutputPrefixTextBox"));
+        var suffix = Assert.IsType<Wpf.Ui.Controls.TextBox>(page.FindName("OutputSuffixTextBox"));
+        foreach (var input in new[] { prefix, suffix })
+        {
+            Assert.Equal(HorizontalAlignment.Stretch, input.HorizontalAlignment);
+            Assert.Equal(double.PositiveInfinity, input.MaxWidth);
+            Assert.NotNull(input.ToolTip);
+        }
+        prefix.SetCurrentValue(System.Windows.Controls.TextBox.TextProperty, "[");
+        suffix.SetCurrentValue(System.Windows.Controls.TextBox.TextProperty, "]");
+        prefix.GetBindingExpression(System.Windows.Controls.TextBox.TextProperty)!.UpdateSource();
+        suffix.GetBindingExpression(System.Windows.Controls.TextBox.TextProperty)!.UpdateSource();
+        Assert.Equal("[", viewModel.DraftPrefix);
+        Assert.Equal("]", viewModel.DraftSuffix);
+        Assert.True(viewModel.IsPreviewValid);
+        Assert.StartsWith("[before", viewModel.PreviewText, StringComparison.Ordinal);
+        Assert.EndsWith("after]", viewModel.PreviewText, StringComparison.Ordinal);
+        viewModel.DiscardChanges();
     }
 
     private static void VerifyPageScrollContracts(FilesPage filesPage, CatalogPage catalogPage)
@@ -1447,7 +1697,9 @@ public sealed class DesktopCompositionSmokeTests
             Assert.False(selectionColumn.CanUserReorder);
             Assert.False(selectionColumn.CanUserResize);
             Assert.False(selectionColumn.CanUserSort);
-            Assert.Equal(52, selectionColumn.Width.Value);
+            Assert.Equal(64, selectionColumn.Width.Value);
+            Assert.Equal(64, selectionColumn.MinWidth);
+            Assert.Equal(64, selectionColumn.MaxWidth);
             Assert.Equal(1, grid.FrozenColumnCount);
             Assert.Contains(grid.Columns, column => Equals(column.Header, "Status"));
             Assert.Contains(grid.Columns, column => Equals(column.Header, "Folder path"));
@@ -1461,6 +1713,14 @@ public sealed class DesktopCompositionSmokeTests
             Assert.Equal("메모 입력", userInput.PlaceholderText);
             var selector = Assert.Single(
                 FindVisualChildren<System.Windows.Controls.CheckBox>(row));
+            var selectionCell = Assert.Single(FindVisualChildren<DataGridCell>(row),
+                cell => ReferenceEquals(cell.Column, selectionColumn));
+            Assert.Equal(new Thickness(12, 0, 12, 0), selectionCell.Padding);
+            Assert.Equal(24, selector.MinWidth);
+            var selectorLeft = selector.TranslatePoint(new Point(0, 0), selectionCell).X;
+            Assert.True(selectorLeft >= 12, "The structured checkbox needs at least 12 DIP on its left.");
+            Assert.True(selectionCell.ActualWidth - selectorLeft - selector.ActualWidth >= 12,
+                "The structured checkbox needs at least 12 DIP on its right.");
             Assert.Equal("Select item", selector.ToolTip);
             Assert.True(selector.IsVisible);
             Assert.False(selector.IsChecked);
@@ -1791,6 +2051,16 @@ public sealed class DesktopCompositionSmokeTests
     private sealed class DiscardDraftPrompt : IDraftDecisionPrompt
     {
         public Task<DraftLeaveDecision> ChooseAsync(string draftTitle) => Task.FromResult(DraftLeaveDecision.Discard);
+    }
+
+    private sealed class LaterCatalogMissingDataPrompt : ICatalogMissingDataPrompt
+    {
+        public Task<CatalogMissingDataDecision> ChooseAsync(string profileName, bool hasIndex,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(CatalogMissingDataDecision.Later);
+        }
     }
 
     private sealed class RecordingClipboard : IClipboardService

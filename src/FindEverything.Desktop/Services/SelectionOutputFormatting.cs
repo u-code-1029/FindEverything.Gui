@@ -45,6 +45,20 @@ public interface ISelectionOutputFormatter
         string template,
         IEnumerable<string>? allowedFieldIds = null);
 
+    SelectionOutputTemplateValidation ValidateFormat(
+        Configuration.SelectionOutputFormatDefinition format,
+        IEnumerable<string>? allowedFieldIds = null)
+    {
+        ArgumentNullException.ThrowIfNull(format);
+        var errors = ValidateTemplate(format.Template, allowedFieldIds).Errors.ToList();
+        if ((format.Prefix?.Length ?? 0) > Configuration.SelectionOutputFormatDefaults.MaximumAffixCharacters
+            || (format.Suffix?.Length ?? 0) > Configuration.SelectionOutputFormatDefaults.MaximumAffixCharacters)
+        {
+            errors.Add("전체 결과의 앞·뒤 문구는 각각 16,384자 이하여야 합니다.");
+        }
+        return new SelectionOutputTemplateValidation(errors.AsReadOnly());
+    }
+
     string Format(
         Configuration.SelectionOutputFormatDefinition format,
         IEnumerable<SelectionOutputItem> items);
@@ -53,15 +67,28 @@ public interface ISelectionOutputFormatter
         IAsyncEnumerable<SelectionOutputItem> items, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        ArgumentNullException.ThrowIfNull(format);
+        ArgumentNullException.ThrowIfNull(items);
+        var validation = ValidateFormat(format);
+        if (!validation.IsValid) throw new FormatException(string.Join(Environment.NewLine, validation.Errors));
         var builder = new StringBuilder();
         var first = true;
+        void Append(string? value)
+        {
+            value ??= string.Empty;
+            if (value.Length > 32 * 1024 * 1024 - builder.Length)
+                throw new InvalidOperationException("Clipboard output exceeds 32 Mi characters.");
+            builder.Append(value);
+        }
         await foreach (var item in items.WithCancellation(cancellationToken).ConfigureAwait(false))
         {
-            if (!first) builder.Append(format.ItemSeparator);
+            if (first) Append(format.Prefix);
+            else Append(format.ItemSeparator);
             first = false;
-            builder.Append(Format(format with { ItemSeparator = string.Empty }, [item]));
-            if (builder.Length > 32 * 1024 * 1024) throw new InvalidOperationException("Clipboard output exceeds 32 Mi characters.");
+            Append(Format(format with { ItemSeparator = string.Empty, Prefix = string.Empty, Suffix = string.Empty }, [item]));
         }
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!first) Append(format.Suffix);
         return builder.ToString();
     }
 }
@@ -77,6 +104,7 @@ public sealed class SelectionOutputFormatter(IAppLocalizer? localizer = null) : 
         cancellationToken.ThrowIfCancellationRequested();
         ArgumentNullException.ThrowIfNull(format);
         ArgumentNullException.ThrowIfNull(items);
+        ValidateAffixes(format);
         var template = format.Template ?? throw new FormatException(L(
             "Loc.Output.Validation.TemplateRequired", "출력 템플릿을 입력하세요."));
         if (template.Length > MaximumTemplateCharacters) throw new FormatException(L(
@@ -93,7 +121,8 @@ public sealed class SelectionOutputFormatter(IAppLocalizer? localizer = null) : 
         {
             ArgumentNullException.ThrowIfNull(item);
             ArgumentNullException.ThrowIfNull(item.Fields);
-            if (!first) AppendChecked(builder, format.ItemSeparator ?? string.Empty);
+            if (first) AppendChecked(builder, format.Prefix ?? string.Empty);
+            else AppendChecked(builder, format.ItemSeparator ?? string.Empty);
             first = false;
             foreach (var segment in segments)
             {
@@ -112,7 +141,19 @@ public sealed class SelectionOutputFormatter(IAppLocalizer? localizer = null) : 
             }
         }
         cancellationToken.ThrowIfCancellationRequested();
+        if (!first) AppendChecked(builder, format.Suffix ?? string.Empty);
         return builder.ToString();
+    }
+
+    public SelectionOutputTemplateValidation ValidateFormat(
+        Configuration.SelectionOutputFormatDefinition format,
+        IEnumerable<string>? allowedFieldIds = null)
+    {
+        ArgumentNullException.ThrowIfNull(format);
+        var errors = ValidateTemplate(format.Template, allowedFieldIds).Errors.ToList();
+        if (HasOversizedAffix(format)) errors.Add(L(
+            "Loc.Output.Validation.AffixTooLong", "전체 결과의 앞·뒤 문구는 각각 16,384자 이하여야 합니다."));
+        return new SelectionOutputTemplateValidation(errors.AsReadOnly());
     }
 
     public SelectionOutputTemplateValidation ValidateTemplate(
@@ -162,6 +203,7 @@ public sealed class SelectionOutputFormatter(IAppLocalizer? localizer = null) : 
     {
         ArgumentNullException.ThrowIfNull(format);
         ArgumentNullException.ThrowIfNull(items);
+        ValidateAffixes(format);
 
         var template = format.Template
             ?? throw new FormatException(L(
@@ -192,7 +234,11 @@ public sealed class SelectionOutputFormatter(IAppLocalizer? localizer = null) : 
         {
             ArgumentNullException.ThrowIfNull(item);
             ArgumentNullException.ThrowIfNull(item.Fields);
-            if (itemIndex > 0)
+            if (itemIndex == 0)
+            {
+                AppendChecked(builder, format.Prefix ?? string.Empty);
+            }
+            else
             {
                 AppendChecked(builder, format.ItemSeparator ?? string.Empty);
             }
@@ -216,7 +262,19 @@ public sealed class SelectionOutputFormatter(IAppLocalizer? localizer = null) : 
             itemIndex++;
         }
 
+        if (itemIndex > 0) AppendChecked(builder, format.Suffix ?? string.Empty);
+
         return builder.ToString();
+    }
+
+    private static bool HasOversizedAffix(Configuration.SelectionOutputFormatDefinition format) =>
+        (format.Prefix?.Length ?? 0) > Configuration.SelectionOutputFormatDefaults.MaximumAffixCharacters
+        || (format.Suffix?.Length ?? 0) > Configuration.SelectionOutputFormatDefaults.MaximumAffixCharacters;
+
+    private void ValidateAffixes(Configuration.SelectionOutputFormatDefinition format)
+    {
+        if (HasOversizedAffix(format)) throw new FormatException(L(
+            "Loc.Output.Validation.AffixTooLong", "전체 결과의 앞·뒤 문구는 각각 16,384자 이하여야 합니다."));
     }
 
     private IReadOnlyList<TemplateSegment> Parse(

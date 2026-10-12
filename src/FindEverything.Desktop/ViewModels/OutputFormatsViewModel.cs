@@ -89,6 +89,12 @@ public partial class OutputFormatsViewModel : ObservableObject, IDraftParticipan
     private string _draftItemSeparator = "\\r\\n";
 
     [ObservableProperty]
+    private string _draftPrefix = string.Empty;
+
+    [ObservableProperty]
+    private string _draftSuffix = string.Empty;
+
+    [ObservableProperty]
     private bool _canEdit;
 
     [ObservableProperty]
@@ -131,6 +137,14 @@ public partial class OutputFormatsViewModel : ObservableObject, IDraftParticipan
     public bool IsDeleteAvailable => CanEdit && SelectedFormat is not null;
 
     public bool HasProfileTokens => TokenChoices.Count > 3;
+
+    public IReadOnlyList<OutputFormatTokenChoice> CommonTokenChoices => TokenChoices.Take(3).ToArray();
+
+    public IReadOnlyList<OutputFormatTokenChoice> ProfileTokenChoices => TokenChoices.Skip(3).ToArray();
+
+    public string ProfileColumnGuidance => HasProfileTokens
+        ? F("Loc.Output.Profile.ColumnsReady", "'{0}'의 컬럼을 클릭하면 현재 커서 위치에 삽입됩니다.", SelectedProfileChoice?.DisplayName)
+        : L("Loc.Output.Profile.ChooseForColumns", "구조화된 프로필을 선택하면 해당 프로필의 컬럼 버튼이 나타납니다.");
 
     public bool IsEditorReady => !IsSaving && !IsTransitioning;
 
@@ -198,6 +212,18 @@ public partial class OutputFormatsViewModel : ObservableObject, IDraftParticipan
         RefreshPreview();
     }
 
+    partial void OnDraftPrefixChanged(string value)
+    {
+        SetDraftChangedStatus();
+        RefreshPreview();
+    }
+
+    partial void OnDraftSuffixChanged(string value)
+    {
+        SetDraftChangedStatus();
+        RefreshPreview();
+    }
+
     partial void OnIsSavingChanged(bool value) => NotifyEditorAvailability();
 
     partial void OnIsTransitioningChanged(bool value) => NotifyEditorAvailability();
@@ -230,7 +256,10 @@ public partial class OutputFormatsViewModel : ObservableObject, IDraftParticipan
             DraftDisplayName = L("Loc.Output.New.DefaultName", "새 출력 포맷");
             DraftTemplate = "{FullPath}";
             DraftItemSeparator = "\\r\\n";
-            SelectedProfileChoice = ProfileChoices.FirstOrDefault();
+            DraftPrefix = string.Empty;
+            DraftSuffix = string.Empty;
+            SelectedProfileChoice = ProfileChoices.FirstOrDefault(static choice => !choice.IsCommon)
+                ?? ProfileChoices.FirstOrDefault();
             RefreshTokenChoices(SelectedProfileChoice);
         }
         finally
@@ -249,12 +278,16 @@ public partial class OutputFormatsViewModel : ObservableObject, IDraftParticipan
     [RelayCommand(CanExecute = nameof(CanModify))]
     private void InsertToken(OutputFormatTokenChoice? choice)
     {
-        if (choice is null)
-        {
-            return;
-        }
+        InsertTokenAtSelection(choice, DraftTemplate.Length, 0);
+    }
 
-        DraftTemplate += choice.Token;
+    public int InsertTokenAtSelection(OutputFormatTokenChoice? choice, int selectionStart, int selectionLength)
+    {
+        if (!CanModify() || choice is null) return Math.Clamp(selectionStart, 0, DraftTemplate.Length);
+        var start = Math.Clamp(selectionStart, 0, DraftTemplate.Length);
+        var length = Math.Clamp(selectionLength, 0, DraftTemplate.Length - start);
+        DraftTemplate = DraftTemplate.Remove(start, length).Insert(start, choice.Token);
+        return start + choice.Token.Length;
     }
 
     [RelayCommand(CanExecute = nameof(CanModify))]
@@ -274,19 +307,14 @@ public partial class OutputFormatsViewModel : ObservableObject, IDraftParticipan
             var allowedFields = SelectedProfileChoice?.Fields
                 .Select(static field => field.FieldId)
                 ?? [];
-            var validation = _formatter.ValidateTemplate(DraftTemplate, allowedFields);
+            var definition = CreateDraftDefinition(_draftId, displayName);
+            var validation = _formatter.ValidateFormat(definition, allowedFields);
             if (!validation.IsValid)
             {
                 SetError(string.Join(" ", validation.Errors));
                 return;
             }
 
-            var definition = new SelectionOutputFormatDefinition(
-                _draftId,
-                displayName,
-                DraftTemplate,
-                DecodeSeparator(DraftItemSeparator),
-                SelectedProfileChoice?.ProfileId);
             _formatStore.Save(definition);
             _isDraftDirty = false;
             RefreshFormats(definition.Id);
@@ -424,6 +452,8 @@ public partial class OutputFormatsViewModel : ObservableObject, IDraftParticipan
             DraftDisplayName = definition.DisplayName;
             DraftTemplate = definition.Template;
             DraftItemSeparator = EncodeSeparator(definition.ItemSeparator);
+            DraftPrefix = EncodeSeparator(definition.Prefix ?? string.Empty);
+            DraftSuffix = EncodeSeparator(definition.Suffix ?? string.Empty);
             SelectedProfileChoice = ProfileChoices.FirstOrDefault(choice =>
                 string.Equals(
                     choice.ProfileId,
@@ -544,12 +574,16 @@ public partial class OutputFormatsViewModel : ObservableObject, IDraftParticipan
 
         TokenChoices = choices;
         OnPropertyChanged(nameof(HasProfileTokens));
+        OnPropertyChanged(nameof(CommonTokenChoices));
+        OnPropertyChanged(nameof(ProfileTokenChoices));
+        OnPropertyChanged(nameof(ProfileColumnGuidance));
     }
 
     private void RefreshPreview()
     {
         var fields = SelectedProfileChoice?.Fields ?? [];
-        var validation = _formatter.ValidateTemplate(DraftTemplate, fields.Select(static field => field.FieldId));
+        var definition = CreateDraftDefinition("preview", DraftDisplayName);
+        var validation = _formatter.ValidateFormat(definition, fields.Select(static field => field.FieldId));
         IsPreviewValid = validation.IsValid;
         PreviewValidationMessage = string.Join(Environment.NewLine, validation.Errors);
         if (!validation.IsValid)
@@ -565,17 +599,19 @@ public partial class OutputFormatsViewModel : ObservableObject, IDraftParticipan
                 field => (object?)$"{field.Header} {index}", StringComparer.OrdinalIgnoreCase)));
         try
         {
-            PreviewText = _formatter.Format(new SelectionOutputFormatDefinition(
-                "preview", DraftDisplayName, DraftTemplate, DecodeSeparator(DraftItemSeparator),
-                SelectedProfileChoice?.ProfileId), items);
+            PreviewText = _formatter.Format(definition, items);
         }
-        catch (Exception exception) when (exception is FormatException or ArgumentException)
+        catch (Exception exception) when (exception is FormatException or ArgumentException or InvalidOperationException)
         {
             IsPreviewValid = false;
             PreviewValidationMessage = exception.Message;
             PreviewText = string.Empty;
         }
     }
+
+    private SelectionOutputFormatDefinition CreateDraftDefinition(string id, string displayName) => new(
+        id, displayName, DraftTemplate, DecodeSeparator(DraftItemSeparator), SelectedProfileChoice?.ProfileId,
+        DecodeSeparator(DraftPrefix), DecodeSeparator(DraftSuffix));
 
     private void OnFormatStoreChanged(object? sender, EventArgs e) =>
         RunOnDispatcher(() => RefreshFormats(_draftId));
