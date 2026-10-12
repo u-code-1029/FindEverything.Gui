@@ -354,7 +354,6 @@ public sealed class DesktopCompositionSmokeTests
             appearance.Apply(window, new AppearanceOptions { Theme = ThemePreference.Light, Backdrop = BackdropPreference.None });
             window.Width = width;
             window.Height = height;
-            navigation.Navigate(typeof(HomePage));
             PumpLayout(window, window);
         }
 
@@ -364,13 +363,18 @@ public sealed class DesktopCompositionSmokeTests
             try
             {
                 if (fixture is not null) page.DataContext = fixture;
-                Assert.True(navigation.Navigate(page.GetType()));
+                var shell = Assert.IsType<NavigationView>(window.FindName("RootNavigation"));
+                // Navigate is an intentional no-op for the currently displayed
+                // page. Repeated size/theme captures do not change navigation.
+                if ((shell.SelectedItem as NavigationViewItem)?.TargetPageType != page.GetType())
+                    Assert.True(navigation.Navigate(page.GetType()));
                 PumpDispatcherFor(window.Dispatcher, TimeSpan.FromMilliseconds(80));
                 PumpLayout(window, page);
                 if (fixture is WorkspaceLayoutFixture
                     && page.FindName("ResultsGrid") is System.Windows.Controls.DataGrid sampleGrid)
                 {
                     sampleGrid.SelectAll();
+                    PumpDispatcherFor(window.Dispatcher, TimeSpan.FromMilliseconds(250));
                     PumpLayout(window, page);
                 }
                 SaveQaImage(Assert.IsAssignableFrom<FrameworkElement>(window.Content), fileName);
