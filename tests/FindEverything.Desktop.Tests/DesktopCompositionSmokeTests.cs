@@ -1663,6 +1663,7 @@ public sealed class DesktopCompositionSmokeTests
                 new("note", "", "검토 메모", 3, false, ProfileFieldValueKind.String, true, null, null) { SourceKind = ProfileFieldSourceKind.UserInput },
             };
             Fields = isCatalog ? fields : [];
+            SelectedCount = isCatalog ? 100000 : 1000000;
             Items = Enumerable.Range(0, 12).Select(index =>
             {
                 var name = isCatalog ? $"Project-{index + 1:00}" : $"Project-{index + 1:00}.pdf";
@@ -1687,7 +1688,7 @@ public sealed class DesktopCompositionSmokeTests
         public bool IsNoResultsVisible => false;
         public bool HasValueMappings => false;
         public bool UsesQuerySelection { get; set; }
-        public int SelectedCount => isCatalog ? 100000 : 1000000;
+        public int SelectedCount { get; }
         public string RootPath { get; set; } = @"C:\Archive\Projects";
         public string DetailsButtonText => "자세히";
         public string ResultSummary => "1,000,000개 항목";
