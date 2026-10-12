@@ -116,7 +116,7 @@
                 SelectedItem="{Binding SelectedItem}"
                 SelectionMode="Extended"
                 SelectionUnit="FullRow"
-                RowHeight="48"
+                RowHeight="44"
                 ScrollViewer.HorizontalScrollBarVisibility="Visible"
                 ScrollViewer.PanningMode="Both"
                 ScrollViewer.VerticalScrollBarVisibility="Auto"
@@ -132,7 +132,7 @@
                 <DataGrid.RowStyle>
                     <Style BasedOn="{StaticResource FluentResultRowStyle}" TargetType="DataGridRow">
                         <Setter Property="Margin" Value="0,2" />
-                        <Setter Property="Padding" Value="0,4" />
+                        <Setter Property="Padding" Value="0,2" />
                         <Style.Triggers>
                             <DataTrigger Binding="{Binding IsPlaceholder}" Value="True"><Setter Property="IsEnabled" Value="False" /><Setter Property="Opacity" Value="0.45" /></DataTrigger>
                             <DataTrigger Binding="{Binding IsSelected}" Value="True"><Setter Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}" /></DataTrigger>

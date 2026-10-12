@@ -49,7 +49,7 @@ public partial class FilesPage
         if (_selectionCompactMode != compact)
         {
             _selectionCompactMode = compact;
-            FilesOutputFormatComboBox.Width = compact ? 90 : 140;
+            FilesOutputFormatComboBox.Width = compact ? 80 : 140;
             FilesOutputFormatLabel.SetResourceReference(ContentControl.ContentProperty,
                 compact ? "Loc.Workspace.Output.Format.ShortLabel" : "Loc.Workspace.Output.Format.Label");
             foreach (var (button, symbol) in new[]
@@ -60,7 +60,7 @@ public partial class FilesPage
             })
             {
                 button.Icon = compact ? null : new Wpf.Ui.Controls.SymbolIcon(symbol);
-                button.Padding = new System.Windows.Thickness(compact ? 6 : 8, 4, compact ? 6 : 8, 4);
+                button.Padding = new System.Windows.Thickness(compact ? 4 : 8, 4, compact ? 4 : 8, 4);
                 button.FontSize = compact ? 13 : 14;
             }
         }

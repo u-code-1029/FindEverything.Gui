@@ -1156,7 +1156,7 @@ public sealed class DesktopCompositionSmokeTests
             var checkbox = Assert.Single(FindVisualChildren<System.Windows.Controls.CheckBox>(row));
             Assert.True(checkbox.IsChecked == true);
             Assert.Equal(new Thickness(0, 2, 0, 2), row.Margin);
-            Assert.Equal(new Thickness(0, 4, 0, 4), row.Padding);
+            Assert.Equal(new Thickness(0, 2, 0, 2), row.Padding);
 
             // Interactive descendants must never reach the ordinary row gesture.
             var count = viewModel.SelectedCount;

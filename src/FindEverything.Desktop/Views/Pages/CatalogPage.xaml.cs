@@ -61,7 +61,7 @@ public partial class CatalogPage
         if (_selectionCompactMode != compact)
         {
             _selectionCompactMode = compact;
-            CatalogOutputFormatComboBox.Width = compact ? 90 : 140;
+            CatalogOutputFormatComboBox.Width = compact ? 80 : 140;
             CatalogOutputFormatLabel.SetResourceReference(System.Windows.Controls.ContentControl.ContentProperty,
                 compact ? "Loc.Workspace.Output.Format.ShortLabel" : "Loc.Workspace.Output.Format.Label");
             foreach (var (button, symbol) in new[]
@@ -73,7 +73,7 @@ public partial class CatalogPage
             {
                 // Keep all action words visible; omit redundant icons in a narrow footer.
                 button.Icon = compact ? null : new Wpf.Ui.Controls.SymbolIcon(symbol);
-                button.Padding = new System.Windows.Thickness(compact ? 6 : 8, 4, compact ? 6 : 8, 4);
+                button.Padding = new System.Windows.Thickness(compact ? 4 : 8, 4, compact ? 4 : 8, 4);
                 button.FontSize = compact ? 13 : 14;
             }
         }
