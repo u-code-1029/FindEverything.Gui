@@ -308,6 +308,24 @@ public sealed class DesktopCompositionSmokeTests
                     Assert.False(ResultGridInput.IsInteractiveOrigin(new System.Windows.Controls.TextBlock()));
                     Assert.True(ResultGridInput.IsInteractiveOrigin(new System.Windows.Controls.CheckBox()));
                     Assert.True(ResultGridInput.IsInteractiveOrigin(new Wpf.Ui.Controls.TextBox()));
+                    if (size.Width < 900)
+                    {
+                        var scroll = Assert.Single(FindVisualChildren<ScrollViewer>(grid),
+                            viewer => viewer.Name == "DG_ScrollViewer");
+                        Assert.True(scroll.ScrollableWidth > 0, "Narrow results must scroll instead of squeezing metadata columns.");
+                        Assert.Equal(Visibility.Visible, scroll.ComputedHorizontalScrollBarVisibility);
+                        scroll.ScrollToHorizontalOffset(scroll.ScrollableWidth);
+                        ArrangeWorkspace(page, size);
+                        Assert.True(scroll.HorizontalOffset > 0);
+                        var firstRow = Assert.IsType<System.Windows.Controls.DataGridRow>(grid.ItemContainerGenerator.ContainerFromIndex(0));
+                        var selector = Assert.Single(FindVisualChildren<System.Windows.Controls.CheckBox>(firstRow));
+                        var selectorLeft = selector.TranslatePoint(new Point(0, 0), grid).X;
+                        Assert.InRange(selectorLeft, 0, grid.Columns[0].ActualWidth);
+                        Assert.True(selectorLeft + selector.ActualWidth <= grid.Columns[0].ActualWidth,
+                            "The frozen selection checkbox must remain fully visible after horizontal scrolling.");
+                        scroll.ScrollToHorizontalOffset(0);
+                        ArrangeWorkspace(page, size);
+                    }
                 }
                 VerifyResultRowContrast(provider, window, page);
             }
@@ -342,12 +360,25 @@ public sealed class DesktopCompositionSmokeTests
         // Rebind this non-notifying test fixture's query-selection mode.
         page.DataContext = null;
         page.DataContext = fixture;
+        // WPF broadcasts application resource changes to presentation roots,
+        // not unattached measure-only trees. Contrast therefore uses a real
+        // presentation source, while the bounds fixture remains exact-size.
+        var host = new Window
+        {
+            Width = 1140, Height = 790, WindowStyle = WindowStyle.None,
+            ResizeMode = ResizeMode.NoResize, Opacity = 0, ShowInTaskbar = false,
+            Content = page,
+        };
         try
         {
+            host.Show();
+            PumpLayout(host, page);
+            Assert.NotNull(PresentationSource.FromVisual(page));
             foreach (var theme in new[] { ThemePreference.Light, ThemePreference.Dark })
             {
                 appearance.Apply(window, new AppearanceOptions { Theme = theme, Backdrop = BackdropPreference.None });
-                ArrangeWorkspace(page, new Size(1140, 790));
+                PumpLayout(host, page);
+                SaveQaImage(page, $"{page.GetType().Name}-{theme.ToString().ToLowerInvariant()}-contrast.png");
                 var grid = Assert.IsType<System.Windows.Controls.DataGrid>(page.FindName("ResultsGrid"));
                 foreach (var index in new[] { 0, 1 })
                 {
@@ -375,11 +406,19 @@ public sealed class DesktopCompositionSmokeTests
                     var second = RelativeLuminance(background);
                     var contrast = (Math.Max(first, second) + 0.05) / (Math.Min(first, second) + 0.05);
                     Assert.True(contrast >= 4.5,
-                        $"{page.GetType().Name} {theme} row {index}: rendered text contrast {contrast:N2}:1.");
+                        $"{page.GetType().Name} {theme} row {index}: rendered text contrast {contrast:N2}:1; " +
+                        $"foreground={foreground}, painted foreground={paintedForeground}, background={background}, " +
+                        $"theme foreground={(page.TryFindResource("TextFillColorPrimaryBrush") as SolidColorBrush)?.Color}, " +
+                        $"loaded={row.IsLoaded}, bitmap alpha={pixel[3]}.");
                 }
             }
         }
-        finally { appearance.Apply(window, new AppearanceOptions { Theme = ThemePreference.Light, Backdrop = BackdropPreference.None }); }
+        finally
+        {
+            host.Content = null;
+            host.Close();
+            appearance.Apply(window, new AppearanceOptions { Theme = ThemePreference.Light, Backdrop = BackdropPreference.None });
+        }
 
         static double RelativeLuminance(Color color)
         {
@@ -409,6 +448,7 @@ public sealed class DesktopCompositionSmokeTests
             Capture(catalog, new WorkspaceLayoutFixture(isCatalog: true), "catalog-light.png");
             window.Width = 760;
             window.Height = 640;
+            Capture(files, new WorkspaceLayoutFixture(isCatalog: false), "files-small.png");
             Capture(catalog, new WorkspaceLayoutFixture(isCatalog: true), "catalog-small.png");
             window.Width = 1360;
             window.Height = 860;

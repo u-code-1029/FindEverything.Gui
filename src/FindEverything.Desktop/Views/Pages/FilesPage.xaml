@@ -146,11 +146,11 @@
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
-                    <DataGridTextColumn Width="120" ElementStyle="{StaticResource FileMetadataCellTextStyle}" Binding="{Binding KindText}" Header="{DynamicResource Loc.Files.Sort.Kind}" SortMemberPath="FileType" />
-                    <DataGridTextColumn Width="110" ElementStyle="{StaticResource FileMetadataCellTextStyle}" Binding="{Binding SizeText}" Header="{DynamicResource Loc.Files.Sort.Size}" SortMemberPath="Size" />
-                    <DataGridTextColumn Width="150" ElementStyle="{StaticResource FileMetadataCellTextStyle}" Binding="{Binding ModifiedLocal, StringFormat={}{0:g}}" Header="{DynamicResource Loc.Files.Sort.Modified}" SortMemberPath="Modified" />
-                    <DataGridTextColumn Width="150" ElementStyle="{StaticResource FileMetadataCellTextStyle}" Binding="{Binding CreatedLocal, StringFormat={}{0:g}}" Header="{DynamicResource Loc.Files.Sort.Created}" SortMemberPath="Created" />
-                    <DataGridTextColumn Width="90" ElementStyle="{StaticResource FileMetadataCellTextStyle}" Binding="{Binding StatusText}" Header="{DynamicResource Loc.Catalog.Column.Status}" CanUserSort="False" />
+                    <DataGridTextColumn Width="120" MinWidth="100" ElementStyle="{StaticResource FileMetadataCellTextStyle}" Binding="{Binding KindText}" Header="{DynamicResource Loc.Files.Sort.Kind}" SortMemberPath="FileType" />
+                    <DataGridTextColumn Width="110" MinWidth="90" ElementStyle="{StaticResource FileMetadataCellTextStyle}" Binding="{Binding SizeText}" Header="{DynamicResource Loc.Files.Sort.Size}" SortMemberPath="Size" />
+                    <DataGridTextColumn Width="150" MinWidth="140" ElementStyle="{StaticResource FileMetadataCellTextStyle}" Binding="{Binding ModifiedLocal, StringFormat={}{0:g}}" Header="{DynamicResource Loc.Files.Sort.Modified}" SortMemberPath="Modified" />
+                    <DataGridTextColumn Width="150" MinWidth="140" ElementStyle="{StaticResource FileMetadataCellTextStyle}" Binding="{Binding CreatedLocal, StringFormat={}{0:g}}" Header="{DynamicResource Loc.Files.Sort.Created}" SortMemberPath="Created" />
+                    <DataGridTextColumn Width="90" MinWidth="80" ElementStyle="{StaticResource FileMetadataCellTextStyle}" Binding="{Binding StatusText}" Header="{DynamicResource Loc.Catalog.Column.Status}" CanUserSort="False" />
                 </DataGrid.Columns>
             </DataGrid>
 
