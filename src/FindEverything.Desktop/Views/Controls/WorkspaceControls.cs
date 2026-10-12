@@ -74,7 +74,7 @@ public sealed class WorkspacePageFrame : Grid
             var inset = ActualWidth < 900 ? 16 : 24;
             if (Margin.Left != inset)
             {
-                Margin = new Thickness(inset, 0, inset, 16);
+                Margin = new Thickness(inset, 0, inset, Margin.Bottom);
             }
         };
     }

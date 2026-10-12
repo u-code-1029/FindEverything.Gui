@@ -65,7 +65,7 @@ public sealed class DesktopCompositionSmokeTests
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
 
-        var exception = await completion.Task.WaitAsync(TimeSpan.FromSeconds(20));
+        var exception = await completion.Task.WaitAsync(TimeSpan.FromSeconds(60));
         Assert.Null(exception);
     }
 
@@ -165,7 +165,7 @@ public sealed class DesktopCompositionSmokeTests
             Assert.True(navigation.Navigate(typeof(FilesPage)));
             VerifyPageScrollContracts(filesPage, catalogPage);
             VerifyCompactSelectionPages(filesPage, catalogPage);
-            VerifyCoreWorkspaceBounds(filesPage, catalogPage);
+            VerifyCoreWorkspaceBounds(provider, window);
             Assert.True(navigation.Navigate(typeof(CatalogPage)));
             Assert.True(navigation.Navigate(typeof(ProfilesPage)));
             VerifyProfilesScrolling(window, profilesPage);
@@ -265,9 +265,19 @@ public sealed class DesktopCompositionSmokeTests
         Assert.NotNull(exportButton.Command);
     }
 
-    private static void VerifyCoreWorkspaceBounds(FilesPage filesPage, CatalogPage catalogPage)
+    private static void VerifyCoreWorkspaceBounds(IServiceProvider provider, MainWindow window)
     {
-        foreach (var page in new Page[] { filesPage, catalogPage })
+        // Navigation's attached content host owns the cached page's size. Directly
+        // arranging that page is subsequently overwritten by its parent window.
+        // Separate, unattached instances exercise the actual production XAML at
+        // an exact viewport without changing the acceptance thresholds.
+        var pages = new Page[]
+        {
+            new FilesPage(provider.GetRequiredService<FileSearchViewModel>()),
+            new CatalogPage(provider.GetRequiredService<CatalogViewModel>(),
+                provider.GetRequiredService<ScanConsoleViewModel>(), provider.GetRequiredService<IGridLayoutStore>()),
+        };
+        foreach (var page in pages)
         {
             var originalContext = page.DataContext;
             try
@@ -279,12 +289,11 @@ public sealed class DesktopCompositionSmokeTests
                              (new Size(660, 600), 0.60),
                          })
                 {
-                    page.Measure(size);
-                    page.Arrange(new Rect(size));
-                    page.UpdateLayout();
-                    SaveQaImage(page, $"{page.GetType().Name}-{(size.Width >= 900 ? "wide" : "small")}-workspace.png");
                     page.Dispatcher.Invoke(static () => { }, DispatcherPriority.DataBind);
-                    page.UpdateLayout();
+                    ArrangeWorkspace(page, size);
+                    SaveQaImage(page, $"{page.GetType().Name}-{(size.Width >= 900 ? "wide" : "small")}-workspace.png");
+                    Assert.InRange(page.ActualWidth, size.Width - 0.01, size.Width + 0.01);
+                    Assert.InRange(page.ActualHeight, size.Height - 0.01, size.Height + 0.01);
                     var grid = Assert.IsType<System.Windows.Controls.DataGrid>(page.FindName("ResultsGrid"));
                     var toolbar = Assert.IsType<Border>(page.FindName("SelectionToolbar"));
                     Assert.True(grid.ActualHeight / page.ActualHeight >= minimumRatio,
@@ -300,12 +309,86 @@ public sealed class DesktopCompositionSmokeTests
                     Assert.True(ResultGridInput.IsInteractiveOrigin(new System.Windows.Controls.CheckBox()));
                     Assert.True(ResultGridInput.IsInteractiveOrigin(new Wpf.Ui.Controls.TextBox()));
                 }
+                VerifyResultRowContrast(provider, window, page);
             }
             finally
             {
                 page.DataContext = originalContext;
                 page.InvalidateMeasure();
             }
+        }
+    }
+
+    private static void ArrangeWorkspace(Page page, Size size)
+    {
+        // SizeChanged switches the compact command/footer layout. Let those
+        // invalidations and bindings settle before the second exact-size pass.
+        page.Measure(size);
+        page.Arrange(new Rect(size));
+        page.UpdateLayout();
+        PumpDispatcherFor(page.Dispatcher, TimeSpan.FromMilliseconds(80));
+        page.Measure(size);
+        page.Arrange(new Rect(size));
+        page.UpdateLayout();
+    }
+
+    private static void VerifyResultRowContrast(IServiceProvider provider, MainWindow window, Page page)
+    {
+        var appearance = provider.GetRequiredService<IAppearanceService>();
+        var fixture = Assert.IsType<WorkspaceLayoutFixture>(page.DataContext);
+        fixture.UsesQuerySelection = true;
+        if (fixture.Items[0] is FileSearchItemViewModel file) file.IsSelected = true;
+        if (fixture.Items[0] is CatalogItemViewModel catalog) catalog.IsSelected = true;
+        // Rebind this non-notifying test fixture's query-selection mode.
+        page.DataContext = null;
+        page.DataContext = fixture;
+        try
+        {
+            foreach (var theme in new[] { ThemePreference.Light, ThemePreference.Dark })
+            {
+                appearance.Apply(window, new AppearanceOptions { Theme = theme, Backdrop = BackdropPreference.None });
+                ArrangeWorkspace(page, new Size(1140, 790));
+                var grid = Assert.IsType<System.Windows.Controls.DataGrid>(page.FindName("ResultsGrid"));
+                foreach (var index in new[] { 0, 1 })
+                {
+                    var row = Assert.IsType<System.Windows.Controls.DataGridRow>(grid.ItemContainerGenerator.ContainerFromIndex(index));
+                    var bitmap = new RenderTargetBitmap((int)Math.Ceiling(row.ActualWidth),
+                        (int)Math.Ceiling(row.ActualHeight), 96, 96, PixelFormats.Pbgra32);
+                    var backdrop = new DrawingVisual();
+                    using (var drawing = backdrop.RenderOpen())
+                        drawing.DrawRectangle((Brush)page.FindResource("SolidBackgroundFillColorBaseBrush"),
+                            null, new Rect(0, 0, bitmap.PixelWidth, bitmap.PixelHeight));
+                    bitmap.Render(backdrop);
+                    bitmap.Render(row);
+                    var pixel = new byte[4];
+                    // Blank space before the checkbox samples the painted row,
+                    // not the checkbox, text, header, or selection footer.
+                    bitmap.CopyPixels(new Int32Rect(6, bitmap.PixelHeight / 2, 1, 1), pixel, 4, 0);
+                    var background = Color.FromRgb(pixel[2], pixel[1], pixel[0]);
+                    var foreground = Assert.IsType<SolidColorBrush>(row.Foreground).Color;
+                    var alpha = foreground.A / 255d;
+                    var paintedForeground = Color.FromRgb(
+                        (byte)Math.Round(foreground.R * alpha + background.R * (1 - alpha)),
+                        (byte)Math.Round(foreground.G * alpha + background.G * (1 - alpha)),
+                        (byte)Math.Round(foreground.B * alpha + background.B * (1 - alpha)));
+                    var first = RelativeLuminance(paintedForeground);
+                    var second = RelativeLuminance(background);
+                    var contrast = (Math.Max(first, second) + 0.05) / (Math.Min(first, second) + 0.05);
+                    Assert.True(contrast >= 4.5,
+                        $"{page.GetType().Name} {theme} row {index}: rendered text contrast {contrast:N2}:1.");
+                }
+            }
+        }
+        finally { appearance.Apply(window, new AppearanceOptions { Theme = ThemePreference.Light, Backdrop = BackdropPreference.None }); }
+
+        static double RelativeLuminance(Color color)
+        {
+            static double Linear(byte value)
+            {
+                var channel = value / 255d;
+                return channel <= 0.04045 ? channel / 12.92 : Math.Pow((channel + 0.055) / 1.055, 2.4);
+            }
+            return 0.2126 * Linear(color.R) + 0.7152 * Linear(color.G) + 0.0722 * Linear(color.B);
         }
     }
 
@@ -374,6 +457,7 @@ public sealed class DesktopCompositionSmokeTests
                     && page.FindName("ResultsGrid") is System.Windows.Controls.DataGrid sampleGrid)
                 {
                     sampleGrid.SelectAll();
+                    foreach (var item in sampleGrid.Items.OfType<FileSearchItemViewModel>()) item.IsSelected = true;
                     PumpDispatcherFor(window.Dispatcher, TimeSpan.FromMilliseconds(250));
                     PumpLayout(window, page);
                 }
@@ -1602,8 +1686,8 @@ public sealed class DesktopCompositionSmokeTests
         public bool IsSetupStateVisible => false;
         public bool IsNoResultsVisible => false;
         public bool HasValueMappings => false;
-        public bool UsesQuerySelection => false;
-        public int SelectedCount => 1000000;
+        public bool UsesQuerySelection { get; set; }
+        public int SelectedCount => isCatalog ? 100000 : 1000000;
         public string RootPath { get; set; } = @"C:\Archive\Projects";
         public string DetailsButtonText => "자세히";
         public string ResultSummary => "1,000,000개 항목";

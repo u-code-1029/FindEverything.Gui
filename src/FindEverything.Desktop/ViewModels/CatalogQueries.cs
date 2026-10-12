@@ -67,8 +67,10 @@ public partial class CatalogViewModel
             _localizer.Culture.Name, scanId);
     }
 
-    private async Task RunProjectionOperationAsync(string name, CatalogOperationMode mode, bool automatic)
+    private async Task RunProjectionOperationAsync(string name, CatalogOperationMode mode, bool automatic,
+        CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         if (IsBusy) return;
         if (_operationCoordinator.IsRunning &&
             !(mode == CatalogOperationMode.Scan && _operationCoordinator.CurrentKind == ApplicationOperationKind.IndexLoad))
@@ -78,7 +80,7 @@ public partial class CatalogViewModel
                 L("Loc.Common.WaitForOperation", "현재 작업이 끝난 뒤 다시 시도하세요."), InfoBarSeverity.Warning);
             return;
         }
-        using var cancellation = new CancellationTokenSource();
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _projectionCancellation = cancellation;
         IsLoadingExistingIndex = mode == CatalogOperationMode.ExistingIndex;
         _isAutomaticIndexLoad = automatic && IsLoadingExistingIndex;
@@ -194,6 +196,7 @@ public partial class CatalogViewModel
             catch { AbandonWorkspaceSaveAttempt(save); throw; }
             cancellation.Token.ThrowIfCancellationRequested();
             await CommitTrackedNotesAsync();
+            cancellation.Token.ThrowIfCancellationRequested();
             _projectionSnapshot = published ?? throw new InvalidOperationException("No catalog projection was published.");
             Fields = _projectionSnapshot.Fields;
             HasValueMappings = Fields.Any(field => field.HasValueMappings);

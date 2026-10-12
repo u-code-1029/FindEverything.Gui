@@ -48,6 +48,7 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
     private WorkspaceSaveAttempt? _latestWorkspaceDraft;
     private int _workspaceDirtyFields;
     private CatalogOperationMode _activeOperationMode;
+    private CancellationTokenSource? _pendingScanCancellation;
     private bool _disposed;
 
     [ObservableProperty]
@@ -236,6 +237,7 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
         }
 
         _disposed = true;
+        _pendingScanCancellation?.Cancel();
         _projectionCancellation?.Cancel();
         _outputLifetime.Cancel();
         FlushPendingUserInputValues();
@@ -276,6 +278,10 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
         ReleaseProjectionQuery();
         _projectionSnapshot = null;
         _displayedProjectionSnapshot = null;
+        // Column identifiers belong to a single profile. Carrying the previous
+        // profile's sort into this scope can make its first query invalid.
+        _queryDefinition = new() { TextPreviewCharacters = 2048 };
+        _displayedQueryDefinition = new();
         _lastAutomaticLoadKey = null;
         EndResultSession(_activeResultSession);
         Fields = value?.Profile.Descriptor.Fields
@@ -512,29 +518,59 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
     [RelayCommand(CanExecute = nameof(CanScan))]
     private async Task ScanAsync()
     {
-        if (_projectionStore is not null && IsLoadingExistingIndex)
+        if (_disposed || _pendingScanCancellation is not null) return;
+        using var cancellation = new CancellationTokenSource();
+        _pendingScanCancellation = cancellation;
+        ScanCommand.NotifyCanExecuteChanged();
+        LoadCommand.NotifyCanExecuteChanged();
+        CancelCommand.NotifyCanExecuteChanged();
+        try
         {
-            _projectionCancellation?.Cancel();
-            await _operationCoordinator.CancelAndWaitAsync(TimeSpan.FromSeconds(30));
-            while (IsBusy) await Task.Delay(25);
-        }
-        if (IsLoadingExistingIndex
-            && _operationCoordinator.CurrentKind == ApplicationOperationKind.IndexLoad)
-        {
-            ProgressMessage = L(
-                "Loc.Catalog.Progress.CancelExistingLoad",
-                "기존 인덱스 불러오기를 취소하는 중…");
-            await _operationCoordinator.CancelAndWaitAsync(TimeSpan.FromSeconds(30))
-                .ConfigureAwait(true);
-            await Dispatcher.Yield(DispatcherPriority.Background);
-        }
+            if (_projectionStore is not null && IsLoadingExistingIndex)
+            {
+                _projectionCancellation?.Cancel();
+                await _operationCoordinator.CancelAndWaitAsync(TimeSpan.FromSeconds(30), cancellation.Token);
+                while (IsBusy) await Task.Delay(25, cancellation.Token);
+            }
+            if (IsLoadingExistingIndex
+                && _operationCoordinator.CurrentKind == ApplicationOperationKind.IndexLoad)
+            {
+                ProgressMessage = L(
+                    "Loc.Catalog.Progress.CancelExistingLoad",
+                    "기존 인덱스 불러오기를 취소하는 중…");
+                await _operationCoordinator.CancelAndWaitAsync(TimeSpan.FromSeconds(30), cancellation.Token)
+                    .ConfigureAwait(true);
+                await Dispatcher.Yield(DispatcherPriority.Background);
+            }
 
-        await RunOperationAsync(
-                L(
-                    "Loc.Catalog.Operation.Scan",
-                    "스캔"),
-                CatalogOperationMode.Scan)
-            .ConfigureAwait(true);
+            cancellation.Token.ThrowIfCancellationRequested();
+            await RunOperationAsync(
+                    L("Loc.Catalog.Operation.Scan", "스캔"),
+                    CatalogOperationMode.Scan,
+                    cancellationToken: cancellation.Token)
+                .ConfigureAwait(true);
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+            SetStatus(L("Loc.Common.Cancelled", "취소됨"),
+                L("Loc.Catalog.Query.Cancelled", "작업을 취소했습니다. 이전 저장 결과는 유지됩니다."),
+                InfoBarSeverity.Warning);
+            ProgressMessage = L("Loc.Common.Cancelled", "취소됨");
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Could not prepare catalog scan.");
+            SetStatus(L("Loc.Catalog.Status.Error", "오류"),
+                UserFacingExceptionLocalizer.TranslateOperationFailure(_localizer, exception), InfoBarSeverity.Error);
+            ProgressMessage = L("Loc.Catalog.Progress.Failed", "작업 실패");
+        }
+        finally
+        {
+            if (ReferenceEquals(_pendingScanCancellation, cancellation)) _pendingScanCancellation = null;
+            ScanCommand.NotifyCanExecuteChanged();
+            LoadCommand.NotifyCanExecuteChanged();
+            CancelCommand.NotifyCanExecuteChanged();
+        }
     }
 
     [RelayCommand(CanExecute = nameof(CanStart))]
@@ -545,6 +581,7 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
     [RelayCommand(CanExecute = nameof(CanCancel))]
     private void Cancel()
     {
+        _pendingScanCancellation?.Cancel();
         _projectionCancellation?.Cancel();
         ProgressMessage = L("Loc.Common.Cancelling", "작업을 취소하는 중입니다…");
         _operationCoordinator.Cancel();
@@ -753,11 +790,13 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
         ExportSelectionCommand.NotifyCanExecuteChanged();
     }
 
-    private bool CanStart() => !IsBusy && SelectedProfile is not null;
+    private bool CanStart() => !_disposed && _pendingScanCancellation is null
+        && !IsBusy && SelectedProfile is not null;
 
-    private bool CanScan() => SelectedProfile is not null && (!IsBusy || IsLoadingExistingIndex);
+    private bool CanScan() => !_disposed && _pendingScanCancellation is null
+        && SelectedProfile is not null && (!IsBusy || IsLoadingExistingIndex);
 
-    private bool CanCancel() => IsBusy;
+    private bool CanCancel() => IsBusy || _pendingScanCancellation is not null;
 
     private bool CanOpenSelected() => SelectedItem is { IsPlaceholder: false };
 
@@ -821,11 +860,14 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
     private async Task RunOperationAsync(
         string operationName,
         CatalogOperationMode mode,
-        bool isAutomatic = false)
+        bool isAutomatic = false,
+        CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (_disposed) return;
         if (_projectionStore is not null)
         {
-            await RunProjectionOperationAsync(operationName, mode, isAutomatic);
+            await RunProjectionOperationAsync(operationName, mode, isAutomatic, cancellationToken);
             return;
         }
         var writesIndex = mode == CatalogOperationMode.Scan;
@@ -900,10 +942,11 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
                 CatalogOperationMode.Scan => ApplicationOperationKind.IndexWrite,
                 _ => ApplicationOperationKind.IndexLoad,
             };
-            async Task RunCatalogOperationAsync(CancellationToken cancellationToken)
+            async Task RunCatalogOperationAsync(CancellationToken operationToken)
             {
                 try
                 {
+                    operationToken.ThrowIfCancellationRequested();
                     if (mode == CatalogOperationMode.Scan)
                     {
                         EnsureDatabaseDirectory(workspace.DatabasePath);
@@ -911,7 +954,7 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
 
                     await PersistWorkspaceAsync(
                             operationWorkspaceAttempt,
-                            cancellationToken)
+                            operationToken)
                         .ConfigureAwait(false);
                 }
                 catch
@@ -926,11 +969,11 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
                         await _catalogService.ScanAndLoadAsync(
                             request,
                             progress,
-                            cancellationToken).ConfigureAwait(false),
+                            operationToken).ConfigureAwait(false),
                     _ => await _catalogService.LoadExistingAsync(
                         request,
                         progress,
-                        cancellationToken).ConfigureAwait(false),
+                        operationToken).ConfigureAwait(false),
                 };
             }
 
@@ -941,14 +984,16 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
                     await _operationCoordinator.ReplaceAsync(
                             ApplicationOperationKind.IndexLoad,
                             operationKind,
-                            RunCatalogOperationAsync)
+                            RunCatalogOperationAsync,
+                            cancellationToken)
                         .ConfigureAwait(true);
                 }
                 else
                 {
                     await _operationCoordinator.RunAsync(
                             operationKind,
-                            RunCatalogOperationAsync)
+                            RunCatalogOperationAsync,
+                            cancellationToken)
                         .ConfigureAwait(true);
                 }
             }
@@ -1080,6 +1125,7 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
     {
         if (!_isActive
             || IsBusy
+            || _pendingScanCancellation is not null
             || SelectedProfile is null
             || string.IsNullOrWhiteSpace(RootPath)
             || string.IsNullOrWhiteSpace(DatabasePath))
@@ -1129,7 +1175,7 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
             return;
         }
 
-        if (IsBusy || _operationCoordinator.IsRunning)
+        if (IsBusy || _pendingScanCancellation is not null || _operationCoordinator.IsRunning)
         {
             // A later profile/workspace change can schedule this scope again.
             if (string.Equals(_lastAutomaticLoadKey, key, StringComparison.OrdinalIgnoreCase))

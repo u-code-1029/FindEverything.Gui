@@ -19,7 +19,7 @@
     mc:Ignorable="d">
     <Grid x:Name="CatalogPageLayout" SizeChanged="OnWorkspaceSizeChanged">
         <Grid.RowDefinitions><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-        <controls:WorkspacePageFrame x:Name="CatalogPageContent" Grid.Row="0">
+        <controls:WorkspacePageFrame x:Name="CatalogPageContent" Grid.Row="0" Margin="24,0,24,8">
             <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
             <controls:PageHeader Title="{DynamicResource Loc.Shell.Nav.Catalog}" Description="{DynamicResource Loc.Workspace.Catalog.Description}">
                 <StackPanel Orientation="Horizontal" Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}">
@@ -51,8 +51,7 @@
             <Border
                 Grid.Row="0"
                 Margin="0,0,0,8"
-                Padding="12,8"
-                Style="{StaticResource FluentToolbarSurfaceStyle}"
+                Padding="0"
                 Visibility="{Binding HasLoadedItems, Converter={StaticResource BooleanToVisibilityConverter}}">
                 <Grid>
                     <Grid.ColumnDefinitions>
@@ -62,6 +61,7 @@
                     </Grid.ColumnDefinitions>
             <ui:TextBox
                 x:Name="SearchBox"
+                MinHeight="36"
                 Grid.Column="0"
                 Margin="0,0,12,0"
                 AutomationProperties.Name="{DynamicResource Loc.View.Catalog.AutomationName.FilterAllResultColumns}"
@@ -121,10 +121,10 @@
                 Style="{StaticResource FluentDataGridStyle}"
                 Visibility="{Binding HasLoadedItems, Converter={StaticResource BooleanToVisibilityConverter}}">
                 <DataGrid.RowStyle>
-                    <Style BasedOn="{StaticResource {x:Type DataGridRow}}" TargetType="DataGridRow">
+                    <Style BasedOn="{StaticResource FluentResultRowStyle}" TargetType="DataGridRow">
                         <Style.Triggers>
                             <DataTrigger Binding="{Binding IsPlaceholder}" Value="True"><Setter Property="IsEnabled" Value="False" /><Setter Property="Opacity" Value="0.45" /></DataTrigger>
-                            <MultiDataTrigger><MultiDataTrigger.Conditions><Condition Binding="{Binding DataContext.UsesQuerySelection, RelativeSource={RelativeSource AncestorType=DataGrid}}" Value="True" /><Condition Binding="{Binding IsSelected}" Value="True" /></MultiDataTrigger.Conditions><Setter Property="Background" Value="{DynamicResource AccentFillColorSecondaryBrush}" /></MultiDataTrigger>
+                            <MultiDataTrigger><MultiDataTrigger.Conditions><Condition Binding="{Binding DataContext.UsesQuerySelection, RelativeSource={RelativeSource AncestorType=DataGrid}}" Value="True" /><Condition Binding="{Binding IsSelected}" Value="True" /></MultiDataTrigger.Conditions><Setter Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}" /></MultiDataTrigger>
                             <MultiDataTrigger><MultiDataTrigger.Conditions><Condition Binding="{Binding DataContext.UsesQuerySelection, RelativeSource={RelativeSource AncestorType=DataGrid}}" Value="True" /><Condition Binding="{Binding IsSelected}" Value="False" /></MultiDataTrigger.Conditions><Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" /></MultiDataTrigger>
                         </Style.Triggers>
                     </Style>
@@ -143,7 +143,7 @@
                 x:Name="SelectionToolbar"
                 Grid.Row="3"
                 Margin="0,8,0,0"
-                Padding="8,4"
+                Padding="8,2"
                 HorizontalAlignment="Stretch"
                 VerticalAlignment="Stretch"
 
@@ -165,10 +165,12 @@
                             SelectedItem="{Binding SelectedOutputFormat}" />
                     </StackPanel>
                     <ui:Button
+                        x:Name="CopySelectionButton"
                         Margin="0,0,6,0"
                         Appearance="Primary"
                         Command="{Binding CopySelectionCommand}"
                         Content="{DynamicResource Loc.Workspace.Selection.Copy}"
+                        AutomationProperties.Name="{DynamicResource Loc.Workspace.Selection.Copy}"
                         ToolTip="{DynamicResource Loc.Workspace.Selection.Copy.Help}"
                         Icon="{ui:SymbolIcon Symbol=Copy20}" />
                     <ui:Button
@@ -176,6 +178,7 @@
                         Margin="0,0,12,0"
                         Command="{Binding ExportSelectionCommand}"
                         Content="{DynamicResource Loc.Workspace.Selection.Export}"
+                        AutomationProperties.Name="{DynamicResource Loc.Workspace.Selection.Export}"
                         Icon="{ui:SymbolIcon Symbol=ArrowExportUp20}"
                         ToolTip="{DynamicResource Loc.View.Catalog.ToolTip.SaveSelectedStructuredResultsToAnExcel}" />
                     <ui:Button

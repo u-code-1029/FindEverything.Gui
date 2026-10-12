@@ -37,6 +37,18 @@ public partial class CatalogPage
         var reserveDetails = _viewModel.IsDetailsOpen && CatalogPageContent.ActualWidth >= 900;
         CatalogResultsWorkspace.Margin = new System.Windows.Thickness(0, 0, reserveDetails ? 348 : 0, 0);
         CatalogDetailsPanel.Width = Math.Min(340, Math.Max(200, CatalogPageContent.ActualWidth));
+        var compact = CatalogPageContent.ActualWidth < 900;
+        if (compact)
+        {
+            CopySelectionButton.Content = null;
+            ExportSelectionButton.Content = null;
+        }
+        else
+        {
+            CopySelectionButton.SetResourceReference(System.Windows.Controls.ContentControl.ContentProperty, "Loc.Workspace.Selection.Copy");
+            ExportSelectionButton.SetResourceReference(System.Windows.Controls.ContentControl.ContentProperty, "Loc.Workspace.Selection.Export");
+        }
+        CopySelectionButton.Width = ExportSelectionButton.Width = compact ? 32 : double.NaN;
     }
 
     private async void OnPagePreviewKeyDown(object sender, KeyEventArgs e)

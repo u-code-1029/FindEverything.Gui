@@ -32,12 +32,19 @@ public partial class FilesPage
         ResultsGrid.Margin = new System.Windows.Thickness(0, 0, reserveDetails ? 348 : 0, 0);
         FileDetailsPanel.Width = Math.Min(340, Math.Max(200, FilePageLayout.ActualWidth));
         var compact = FilePageLayout.ActualWidth < 900;
-        Grid.SetRow(SearchBox, compact ? 1 : 0);
+        Grid.SetRow(SearchBox, 0);
         Grid.SetColumn(SearchBox, compact ? 0 : 1);
-        Grid.SetColumnSpan(SearchBox, compact ? 3 : 1);
-        SearchBox.Margin = compact ? new System.Windows.Thickness(0, 8, 0, 0) : new System.Windows.Thickness(12, 0, 0, 0);
+        Grid.SetColumnSpan(SearchBox, compact ? 2 : 1);
+        SearchBox.Margin = compact ? new System.Windows.Thickness(0) : new System.Windows.Thickness(12, 0, 0, 0);
+        Grid.SetRow(FileRootPathText, compact ? 1 : 0);
+        Grid.SetColumnSpan(FileRootPathText, compact ? 3 : 1);
+        FileRootPathText.Margin = compact ? new System.Windows.Thickness(0, 4, 0, 0) : new System.Windows.Thickness(0);
+        FileRootPathText.FontSize = compact ? 12 : 14;
         FileLocationColumn.Width = compact ? new System.Windows.GridLength(1, System.Windows.GridUnitType.Star) : new System.Windows.GridLength(220);
         FileSearchColumn.Width = compact ? new System.Windows.GridLength(0) : new System.Windows.GridLength(1, System.Windows.GridUnitType.Star);
+        if (compact) CopySelectionButton.Content = null;
+        else CopySelectionButton.SetResourceReference(ContentControl.ContentProperty, "Loc.Workspace.Selection.Copy");
+        CopySelectionButton.Width = compact ? 32 : double.NaN;
     }
 
     private async void OnSelectionCheckBoxPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
