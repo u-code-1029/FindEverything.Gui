@@ -9,10 +9,19 @@ using Xunit;
 
 namespace FindEverything.Desktop.Tests;
 
-public sealed class SectionCardTests
+/// <summary>
+/// Run these checks on the composition smoke test's application dispatcher.
+/// WPF-UI theme resources must not be initialized by competing STA threads.
+/// </summary>
+internal static class SectionCardRegressionChecks
 {
-    [Fact]
-    public Task Collapsed_header_inherits_commands_and_live_resources_before_template_creation() => RunOnSta(() =>
+    internal static void Verify()
+    {
+        VerifyCollapsedHeaderInheritance();
+        VerifyHeaderReplacementAndRemoval();
+    }
+
+    private static void VerifyCollapsedHeaderInheritance()
     {
         var first = new HeaderViewModel(new TestCommand());
         var second = new HeaderViewModel(new TestCommand());
@@ -42,10 +51,9 @@ public sealed class SectionCardTests
         Assert.Same(second, button.DataContext);
         Assert.Same(second.Command, button.Command);
         Assert.Equal("Profile", label.Text);
-    });
+    }
 
-    [Fact]
-    public Task Header_replacement_and_removal_update_the_logical_tree_without_losing_content() => RunOnSta(() =>
+    private static void VerifyHeaderReplacementAndRemoval()
     {
         var viewModel = new HeaderViewModel(new TestCommand());
         var original = new StackPanel();
@@ -68,37 +76,13 @@ public sealed class SectionCardTests
         Assert.Null(LogicalTreeHelper.GetParent(replacement));
         Assert.Same(card, LogicalTreeHelper.GetParent(action));
         Assert.Equal(new object[] { action }, LogicalTreeHelper.GetChildren(card).Cast<object>().ToArray());
-    });
+    }
 
     private static void FlushBindings()
     {
         var frame = new DispatcherFrame();
         Dispatcher.CurrentDispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() => frame.Continue = false));
         Dispatcher.PushFrame(frame);
-    }
-
-    private static Task RunOnSta(Action action)
-    {
-        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var thread = new Thread(() =>
-        {
-            try
-            {
-                action();
-                completion.TrySetResult();
-            }
-            catch (Exception exception)
-            {
-                completion.TrySetException(exception);
-            }
-            finally
-            {
-                Dispatcher.CurrentDispatcher.InvokeShutdown();
-            }
-        }) { IsBackground = true, Name = "FindEverything native section card test" };
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        return completion.Task.WaitAsync(TimeSpan.FromSeconds(15));
     }
 
     private sealed record HeaderViewModel(ICommand Command);

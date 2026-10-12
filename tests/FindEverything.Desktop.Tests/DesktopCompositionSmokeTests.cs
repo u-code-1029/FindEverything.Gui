@@ -79,6 +79,7 @@ public sealed class DesktopCompositionSmokeTests
         try
         {
             application = CreateTestApplication();
+            SectionCardRegressionChecks.Verify();
 
             var configuration = new ConfigurationManager();
             configuration.AddInMemoryCollection(new Dictionary<string, string?>
