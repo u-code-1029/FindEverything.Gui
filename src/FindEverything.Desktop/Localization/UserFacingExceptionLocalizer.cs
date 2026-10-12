@@ -27,6 +27,9 @@ internal static class UserFacingExceptionLocalizer
             ApplicationOperationBusyException => localizer.Get(
                 "Loc.Common.TryAfterOperation",
                 "현재 작업이 끝난 뒤 다시 시도하세요."),
+            IndexSnapshotChangedException => localizer.Get(
+                "Loc.Index.Error.SnapshotChanged",
+                "읽는 동안 인덱스가 계속 갱신되어 안전한 결과를 만들 수 없습니다. 잠시 후 다시 불러오세요."),
             CatalogIndexUnavailableException
             {
                 Availability: IndexRootAvailability.DatabaseMissing,

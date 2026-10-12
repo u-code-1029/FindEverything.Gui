@@ -43,6 +43,13 @@ internal sealed record ValidatedTextFileField(
     int TimeoutMilliseconds,
     long MaxBytes);
 
+internal sealed record ValidatedUserInputField(
+    string FieldId,
+    string Header,
+    int Order,
+    string? Placeholder,
+    string? DefaultValue);
+
 internal sealed record ValidatedProfileManifest(
     string SourceDirectory,
     string Id,
@@ -54,6 +61,7 @@ internal sealed record ValidatedProfileManifest(
     ProfileCandidateKind CandidateKind,
     IReadOnlyList<ValidatedProfileField> Fields,
     IReadOnlyList<ValidatedTextFileField> TextFileFields,
+    IReadOnlyList<ValidatedUserInputField> UserInputFields,
     IReadOnlyList<ValidatedDirectoryNameExclusionRule> ExcludedDirectoryNameRules,
     IReadOnlyList<ValidatedRegexRule> Rules);
 
@@ -195,6 +203,13 @@ internal sealed class ProfileManifestValidator
                 $"프로필 계약 버전 {manifest.ContractVersion}은(는) 지원되지 않습니다. 지원 버전: {supportedContractMajor}."));
         }
 
+        if (manifest.LegacyPathInput is not null)
+        {
+            diagnostics.Add(Error(
+                "path_input_removed",
+                "pathInput은 계약 버전 2에서 제거되었습니다. 경로 규칙은 항상 절대 경로를 입력받으므로 pathInput 항목을 삭제하고 규칙을 절대 경로 기준으로 확인하세요."));
+        }
+
         if (id is null || !StableIdPattern.IsMatch(id))
         {
             diagnostics.Add(Error(
@@ -225,6 +240,7 @@ internal sealed class ProfileManifestValidator
         string? entryAssemblyPath = null;
         var validatedFields = new List<ValidatedProfileField>();
         var validatedTextFileFields = new List<ValidatedTextFileField>();
+        var validatedUserInputFields = new List<ValidatedUserInputField>();
         if (manifest.Kind == ProfileKind.Assembly)
         {
             if (modelType is null)
@@ -250,6 +266,11 @@ internal sealed class ProfileManifestValidator
                     "assembly_text_file_fields_not_allowed",
                     "textFileFields는 Declarative 프로필에서만 사용할 수 있습니다."));
             }
+
+            validatedUserInputFields = ValidateUserInputFields(
+                manifest.UserInputFields,
+                new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+                diagnostics);
         }
         else if (manifest.Kind == ProfileKind.Declarative)
         {
@@ -276,12 +297,17 @@ internal sealed class ProfileManifestValidator
                 manifest.TextFileFields,
                 fieldIds,
                 diagnostics);
+            validatedUserInputFields = ValidateUserInputFields(
+                manifest.UserInputFields,
+                fieldIds,
+                diagnostics);
             if (manifest.Fields is not { Count: > 0 }
-                && manifest.TextFileFields is not { Count: > 0 })
+                && manifest.TextFileFields is not { Count: > 0 }
+                && manifest.UserInputFields is not { Count: > 0 })
             {
                 diagnostics.Add(Error(
                     "capture_fields_missing",
-                    "Declarative 프로필에는 fields 또는 textFileFields 항목이 하나 이상 필요합니다."));
+                    "Declarative 프로필에는 fields, textFileFields 또는 userInputFields 항목이 하나 이상 필요합니다."));
             }
         }
 
@@ -317,6 +343,7 @@ internal sealed class ProfileManifestValidator
                 manifest.CandidateKind,
                 Array.AsReadOnly(validatedFields.ToArray()),
                 Array.AsReadOnly(validatedTextFileFields.ToArray()),
+                Array.AsReadOnly(validatedUserInputFields.ToArray()),
                 Array.AsReadOnly(validatedExcludedDirectoryNameRules.ToArray()),
                 Array.AsReadOnly(validatedRules.ToArray())),
             id,
@@ -685,6 +712,81 @@ internal sealed class ProfileManifestValidator
                 source.IgnoreCase,
                 source.TimeoutMilliseconds,
                 source.MaxBytes));
+        }
+
+        validated.Sort(static (left, right) =>
+        {
+            var orderComparison = left.Order.CompareTo(right.Order);
+            return orderComparison != 0
+                ? orderComparison
+                : StringComparer.Ordinal.Compare(left.FieldId, right.FieldId);
+        });
+        return validated;
+    }
+
+    private static List<ValidatedUserInputField> ValidateUserInputFields(
+        IReadOnlyList<ProfileUserInputFieldManifest>? fields,
+        ISet<string> fieldIds,
+        ICollection<ProfileDiagnostic> diagnostics)
+    {
+        var validated = new List<ValidatedUserInputField>();
+        if (fields is null)
+        {
+            return validated;
+        }
+
+        if (fields.Count > ProfileManifestLimits.MaximumUserInputFieldCount)
+        {
+            diagnostics.Add(Error(
+                "user_input_field_limit_exceeded",
+                $"사용자 입력 필드는 최대 {ProfileManifestLimits.MaximumUserInputFieldCount}개까지 사용할 수 있습니다."));
+        }
+
+        for (var index = 0; index < fields.Count; index++)
+        {
+            var source = fields[index];
+            var fieldId = NormalizeRequired(source.FieldId);
+            var valid = true;
+            if (fieldId is null || !FieldIdPattern.IsMatch(fieldId))
+            {
+                diagnostics.Add(Error(
+                    "user_input_field_id_invalid",
+                    $"사용자 입력 필드 #{index + 1}의 fieldId는 소문자 영숫자로 시작하고 소문자 영숫자, 점, 밑줄, 하이픈만 포함해야 합니다."));
+                valid = false;
+            }
+            else if (!fieldIds.Add(fieldId))
+            {
+                diagnostics.Add(Error(
+                    "user_input_field_id_duplicate",
+                    $"경로, 텍스트 파일, 사용자 입력 값을 포함해 fieldId가 중복되었습니다: {fieldId}"));
+                valid = false;
+            }
+
+            if (source.Placeholder is { Length: > ProfileManifestLimits.MaximumUserInputPlaceholderLength })
+            {
+                diagnostics.Add(Error(
+                    "user_input_placeholder_too_long",
+                    $"사용자 입력 필드 '{fieldId ?? $"#{index + 1}"}'의 placeholder는 최대 {ProfileManifestLimits.MaximumUserInputPlaceholderLength:N0}자까지 사용할 수 있습니다."));
+                valid = false;
+            }
+
+            if (source.DefaultValue is { Length: > ProfileManifestLimits.MaximumUserInputValueLength })
+            {
+                diagnostics.Add(Error(
+                    "user_input_default_too_long",
+                    $"사용자 입력 필드 '{fieldId ?? $"#{index + 1}"}'의 defaultValue는 최대 {ProfileManifestLimits.MaximumUserInputValueLength:N0}자까지 사용할 수 있습니다."));
+                valid = false;
+            }
+
+            if (valid)
+            {
+                validated.Add(new ValidatedUserInputField(
+                    fieldId!,
+                    NormalizeRequired(source.Header) ?? fieldId!,
+                    source.Order,
+                    string.IsNullOrWhiteSpace(source.Placeholder) ? null : source.Placeholder.Trim(),
+                    source.DefaultValue));
+            }
         }
 
         validated.Sort(static (left, right) =>

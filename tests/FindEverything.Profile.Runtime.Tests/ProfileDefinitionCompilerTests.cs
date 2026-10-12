@@ -792,6 +792,63 @@ public sealed class ProfileDefinitionCompilerTests
         Assert.Contains(review.Diagnostics, diagnostic => diagnostic.Code == expectedCode);
     }
 
+    [Fact]
+    public void Validate_compiles_user_input_metadata_without_adding_scan_values()
+    {
+        using var provider = BuildProvider();
+        var manifest = CompositeDateManifest();
+        manifest.UserInputFields =
+        [
+            new ProfileUserInputFieldManifest
+            {
+                FieldId = "review-note",
+                Header = "검토 메모",
+                Order = 15,
+                Placeholder = "메모 입력",
+                DefaultValue = "확인 필요",
+            },
+        ];
+
+        var profile = Compile(provider, manifest);
+
+        var descriptor = Assert.Single(profile.Descriptor.UserInputFields);
+        Assert.Equal("review-note", descriptor.FieldId);
+        Assert.Equal("메모 입력", descriptor.Placeholder);
+        Assert.Equal("확인 필요", descriptor.DefaultValue);
+        var unified = Assert.Single(profile.Descriptor.Fields, static field =>
+            field.FieldId == "review-note");
+        Assert.Equal(ProfileFieldSourceKind.UserInput, unified.SourceKind);
+        Assert.Equal("확인 필요", unified.DefaultValue);
+
+        var result = profile.Map(new ProfilePathCandidate(
+            AbsolutePath("2026", "0521_Apollo")));
+        Assert.Equal(ProfileMapStatus.Success, result.Status);
+        Assert.DoesNotContain("review-note", result.Item!.Values.Keys);
+    }
+
+    [Fact]
+    public void Validate_rejects_user_input_ids_that_collide_with_parsed_fields()
+    {
+        using var provider = BuildProvider();
+        var manifest = CompositeDateManifest();
+        manifest.UserInputFields =
+        [
+            new ProfileUserInputFieldManifest
+            {
+                FieldId = "name",
+                Header = "메모",
+            },
+        ];
+
+        var review = provider
+            .GetRequiredService<IProfileDefinitionCompiler>()
+            .Validate(manifest);
+
+        Assert.False(review.IsValid);
+        Assert.Contains(review.Diagnostics, static diagnostic =>
+            diagnostic.Code == "user_input_field_id_duplicate");
+    }
+
     private static ServiceProvider BuildProvider()
     {
         var services = new ServiceCollection();

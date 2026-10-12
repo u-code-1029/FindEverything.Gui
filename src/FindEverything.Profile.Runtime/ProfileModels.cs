@@ -16,6 +16,7 @@ public enum ProfileFieldSourceKind
 {
     RegexCapture = 0,
     TextFileContent = 1,
+    UserInput = 2,
 }
 
 public sealed record ProfileFieldDescriptor(
@@ -45,6 +46,10 @@ public sealed record ProfileFieldDescriptor(
 
     public bool HasValueMappings => ValueMappings.Count > 0;
 
+    public string? Placeholder { get; init; }
+
+    public string? DefaultValue { get; init; }
+
     public IReadOnlyList<string> EffectiveGroupNames =>
         GroupNames.Count > 0
             ? GroupNames
@@ -63,6 +68,13 @@ public sealed record ProfileTextFileFieldDescriptor(
     int TimeoutMilliseconds,
     bool Required,
     long MaxBytes);
+
+public sealed record ProfileUserInputFieldDescriptor(
+    int Order,
+    string FieldId,
+    string Header,
+    string? Placeholder,
+    string? DefaultValue);
 
 public sealed record ProfileRegexRuleDescriptor(
     int Order,
@@ -100,6 +112,9 @@ public sealed record ProfileDescriptor(
 
     public IReadOnlyList<ProfileTextFileFieldDescriptor> TextFileFields { get; init; } =
         Array.Empty<ProfileTextFileFieldDescriptor>();
+
+    public IReadOnlyList<ProfileUserInputFieldDescriptor> UserInputFields { get; init; } =
+        Array.Empty<ProfileUserInputFieldDescriptor>();
 }
 
 public sealed record ProfilePathCandidate

@@ -1,0 +1,278 @@
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using FindEverything.Desktop.Localization;
+using FindEverything.Desktop.Services;
+using FindEverything.Desktop.Views.Pages;
+using FindEverything.Profile.Runtime;
+
+namespace FindEverything.Desktop.ViewModels;
+
+public partial class HomeViewModel : ObservableObject, IDisposable
+{
+    private readonly IWorkspaceContext _workspaceContext;
+    private readonly IProfileCatalog _profileCatalog;
+    private readonly IIndexDatabasePathResolver _databasePathResolver;
+    private readonly IApplicationOperationCoordinator _operationCoordinator;
+    private readonly IHomeNavigationService _navigationService;
+    private readonly IAppLocalizer _localizer;
+    private bool _disposed;
+
+    [ObservableProperty]
+    private bool _hasRoot;
+
+    [ObservableProperty]
+    private bool _hasProfile;
+
+    [ObservableProperty]
+    private bool _isReady;
+
+    [ObservableProperty]
+    private bool _isOperationRunning;
+
+    [ObservableProperty]
+    private string _rootPathText = string.Empty;
+
+    [ObservableProperty]
+    private string _rootStateText = string.Empty;
+
+    [ObservableProperty]
+    private string _profileName = string.Empty;
+
+    [ObservableProperty]
+    private string _profileStateText = string.Empty;
+
+    [ObservableProperty]
+    private string _profileCountText = string.Empty;
+
+    [ObservableProperty]
+    private string _fileDatabasePath = string.Empty;
+
+    [ObservableProperty]
+    private string _fileDatabaseStateText = string.Empty;
+
+    [ObservableProperty]
+    private string _profileDatabasePath = string.Empty;
+
+    [ObservableProperty]
+    private string _profileDatabaseStateText = string.Empty;
+
+    [ObservableProperty]
+    private string _setupTitle = string.Empty;
+
+    [ObservableProperty]
+    private string _setupMessage = string.Empty;
+
+    [ObservableProperty]
+    private string _locationStepState = string.Empty;
+
+    [ObservableProperty]
+    private string _profileStepState = string.Empty;
+
+    [ObservableProperty]
+    private string _scanStepState = string.Empty;
+
+    [ObservableProperty]
+    private string _operationStatus = string.Empty;
+
+    public HomeViewModel(
+        IWorkspaceContext workspaceContext,
+        IProfileCatalog profileCatalog,
+        IIndexDatabasePathResolver databasePathResolver,
+        IApplicationOperationCoordinator operationCoordinator,
+        IHomeNavigationService navigationService,
+        IAppLocalizer localizer)
+    {
+        _workspaceContext = workspaceContext;
+        _profileCatalog = profileCatalog;
+        _databasePathResolver = databasePathResolver;
+        _operationCoordinator = operationCoordinator;
+        _navigationService = navigationService;
+        _localizer = localizer;
+
+        _workspaceContext.Changed += OnWorkspaceChanged;
+        _profileCatalog.Changed += OnProfileCatalogChanged;
+        _operationCoordinator.StateChanged += OnOperationStateChanged;
+        RefreshDashboard(_workspaceContext.Current, _profileCatalog.Current);
+        ApplyOperationState(_operationCoordinator.CurrentKind);
+    }
+
+    [RelayCommand]
+    private void OpenFiles() => _navigationService.Navigate(typeof(FilesPage));
+
+    [RelayCommand]
+    private void OpenCatalog() => _navigationService.Navigate(typeof(CatalogPage));
+
+    [RelayCommand]
+    private void OpenProfiles() => _navigationService.Navigate(typeof(ProfilesPage));
+
+    [RelayCommand]
+    private void OpenPlayground() => _navigationService.Navigate(typeof(ProfilePlaygroundPage));
+
+    [RelayCommand]
+    private void OpenOutputFormats() => _navigationService.Navigate(typeof(OutputFormatsPage));
+
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        _workspaceContext.Changed -= OnWorkspaceChanged;
+        _profileCatalog.Changed -= OnProfileCatalogChanged;
+        _operationCoordinator.StateChanged -= OnOperationStateChanged;
+        GC.SuppressFinalize(this);
+    }
+
+    private void OnWorkspaceChanged(object? sender, WorkspaceChangedEventArgs eventArgs) =>
+        Dispatch(() => RefreshDashboard(eventArgs.Current, _profileCatalog.Current));
+
+    private void OnProfileCatalogChanged(object? sender, ProfileCatalogChangedEventArgs eventArgs) =>
+        Dispatch(() => RefreshDashboard(_workspaceContext.Current, eventArgs.Current));
+
+    private void OnOperationStateChanged(
+        object? sender,
+        ApplicationOperationStateChangedEventArgs eventArgs) =>
+        Dispatch(() =>
+        {
+            ApplyOperationState(eventArgs.CurrentKind);
+            if (eventArgs.CurrentKind is null)
+            {
+                RefreshDashboard(_workspaceContext.Current, _profileCatalog.Current);
+            }
+        });
+
+    private void RefreshDashboard(
+        WorkspaceSnapshot workspace,
+        ProfileCatalogSnapshot catalog)
+    {
+        HasRoot = !string.IsNullOrWhiteSpace(workspace.RootPath);
+        RootPathText = HasRoot
+            ? workspace.RootPath!
+            : L("Loc.Home.State.Root.Empty", "아직 검색 위치를 선택하지 않았습니다.");
+        RootStateText = HasRoot
+            ? L("Loc.Home.State.Configured", "설정됨")
+            : L("Loc.Home.State.Required", "선택 필요");
+
+        var selectedProfile = ResolveSelectedProfile(workspace.SelectedProfileId, catalog);
+        HasProfile = selectedProfile is not null;
+        ProfileName = selectedProfile?.Descriptor.DisplayName
+            ?? L("Loc.Home.State.Profile.Empty", "아직 사용할 프로필이 없습니다.");
+        ProfileStateText = HasProfile
+            ? selectedProfile!.Descriptor.Id
+            : L("Loc.Home.State.Required", "선택 필요");
+        ProfileCountText = F(
+            "Loc.Home.State.ProfileCount",
+            "사용 가능한 프로필 {0:N0}개",
+            catalog.Profiles.Count);
+
+        FileDatabasePath = _databasePathResolver.ResolveFileSearchDatabasePath(workspace);
+        FileDatabaseStateText = BuildDatabaseState(
+            string.IsNullOrWhiteSpace(workspace.DatabasePath));
+
+        if (selectedProfile is null)
+        {
+            ProfileDatabasePath = L(
+                "Loc.Home.State.ProfileDatabase.Pending",
+                "프로필을 선택하면 전용 DB 경로가 자동으로 정해집니다.");
+            ProfileDatabaseStateText = L("Loc.Home.State.Waiting", "대기 중");
+        }
+        else
+        {
+            ProfileDatabasePath = _databasePathResolver.ResolveProfileDatabasePath(
+                selectedProfile.Descriptor.Id,
+                workspace);
+            ProfileDatabaseStateText = BuildDatabaseState(
+                !HasProfileDatabaseOverride(workspace, selectedProfile.Descriptor.Id));
+        }
+
+        IsReady = HasRoot && HasProfile;
+        SetupTitle = IsReady
+            ? L("Loc.Home.State.Ready.Title", "구조화 스캔 설정 완료")
+            : L("Loc.Home.State.Setup.Title", "몇 가지만 준비하면 시작할 수 있어요");
+        SetupMessage = IsReady
+            ? L(
+                "Loc.Home.State.Ready.Message",
+                "검색 위치와 프로필이 연결되었습니다. 구조화 보기에서 접근 상태를 확인한 뒤 스캔을 시작하세요.")
+            : L(
+                "Loc.Home.State.Setup.Message",
+                "검색 위치와 프로필을 준비하세요. 파일 찾기는 프로필 없이도 사용할 수 있습니다.");
+        LocationStepState = HasRoot
+            ? L("Loc.Common.Completed", "완료")
+            : L("Loc.Home.State.Required", "선택 필요");
+        ProfileStepState = HasProfile
+            ? L("Loc.Common.Completed", "완료")
+            : L("Loc.Home.State.Required", "선택 필요");
+        ScanStepState = IsReady
+            ? L("Loc.Common.Ready", "준비")
+            : L("Loc.Home.State.Waiting", "대기 중");
+    }
+
+    private void ApplyOperationState(ApplicationOperationKind? operationKind)
+    {
+        IsOperationRunning = operationKind is not null;
+        OperationStatus = operationKind switch
+        {
+            ApplicationOperationKind.IndexWrite => L(
+                "Loc.Home.Operation.Scanning",
+                "디스크를 스캔하고 검색 DB를 갱신하고 있습니다."),
+            ApplicationOperationKind.IndexLoad => L(
+                "Loc.Home.Operation.Loading",
+                "저장된 검색 DB에서 결과를 불러오고 있습니다."),
+            ApplicationOperationKind.ProfileDiscovery => L(
+                "Loc.Home.Operation.ProfileDiscovery",
+                "사용 가능한 프로필을 불러오고 있습니다."),
+            ApplicationOperationKind.ProfileWrite => L(
+                "Loc.Home.Operation.ProfileWrite",
+                "프로필을 검증하고 저장하고 있습니다."),
+            ApplicationOperationKind.Exclusive => L(
+                "Loc.Home.Operation.Working",
+                "요청한 작업을 처리하고 있습니다."),
+            _ => string.Empty,
+        };
+    }
+
+    // Do not probe this path on the UI thread. In particular, File.Exists can
+    // block for a disconnected UNC share and file existence alone does not prove
+    // that the database contains a valid index for the configured root.
+    private string BuildDatabaseState(bool usesDefaultPath) => usesDefaultPath
+        ? L("Loc.Home.State.Database.Default", "자동 저장 위치")
+        : L("Loc.Home.State.Database.Custom", "사용자 지정 저장 위치");
+
+    private static ILoadedProfile? ResolveSelectedProfile(
+        string? selectedProfileId,
+        ProfileCatalogSnapshot catalog) =>
+        !string.IsNullOrWhiteSpace(selectedProfileId)
+            && catalog.TryGetProfile(selectedProfileId, out var selected)
+                ? selected
+                : catalog.Profiles.FirstOrDefault();
+
+    private static bool HasProfileDatabaseOverride(
+        WorkspaceSnapshot workspace,
+        string profileId) =>
+        workspace.ProfileDatabasePaths?.Any(pair =>
+            string.Equals(pair.Key, profileId, StringComparison.OrdinalIgnoreCase)
+            && !string.IsNullOrWhiteSpace(pair.Value)) == true;
+
+    private void Dispatch(Action action)
+    {
+        var dispatcher = System.Windows.Application.Current?.Dispatcher;
+        if (dispatcher is null || dispatcher.CheckAccess())
+        {
+            action();
+            return;
+        }
+
+        if (!dispatcher.HasShutdownStarted && !dispatcher.HasShutdownFinished)
+        {
+            _ = dispatcher.BeginInvoke(action);
+        }
+    }
+
+    private string L(string key, string koreanFallback) =>
+        _localizer.Get(key, koreanFallback);
+
+    private string F(string key, string koreanFallback, params object?[] arguments) =>
+        _localizer.Format(key, koreanFallback, arguments);
+}

@@ -106,21 +106,36 @@ public sealed class ProfilePlaygroundEvaluator(
                     .ThenBy(static field => field.FieldId, StringComparer.Ordinal)
                     .Select(field =>
                     {
-                        _ = mapping.Item.Values.TryGetValue(field.FieldId, out var rawValue);
-                        _ = mapping.Item.DisplayValues.TryGetValue(
-                            field.FieldId,
-                            out var displayValue);
+                        object? rawValue;
+                        object? displayValue;
+                        if (field.SourceKind == ProfileFieldSourceKind.UserInput)
+                        {
+                            rawValue = field.DefaultValue;
+                            displayValue = field.DefaultValue;
+                        }
+                        else
+                        {
+                            _ = mapping.Item.Values.TryGetValue(field.FieldId, out rawValue);
+                            _ = mapping.Item.DisplayValues.TryGetValue(
+                                field.FieldId,
+                                out displayValue);
+                        }
                         var rawText = FormatValue(rawValue, field.DisplayFormat);
                         var displayText = FormatValue(displayValue, field.DisplayFormat);
                         var hasMappedValue = !string.Equals(
                             rawText,
                             displayText,
                             StringComparison.Ordinal);
-                        var source = field.SourceKind == ProfileFieldSourceKind.TextFileContent
-                            ? L("Loc.Profile.Source.TextFile", "텍스트 파일")
-                            : field.Required
-                                ? L("Loc.Profile.Source.RequiredPath", "필수 경로 값")
-                                : L("Loc.Profile.Source.OptionalPath", "선택 경로 값");
+                        var source = field.SourceKind switch
+                        {
+                            ProfileFieldSourceKind.TextFileContent =>
+                                L("Loc.Profile.Source.TextFile", "텍스트 파일"),
+                            ProfileFieldSourceKind.UserInput =>
+                                L("Loc.Profile.Source.UserInput", "사용자 입력"),
+                            _ when field.Required =>
+                                L("Loc.Profile.Source.RequiredPath", "필수 경로 값"),
+                            _ => L("Loc.Profile.Source.OptionalPath", "선택 경로 값"),
+                        };
                         return new ProfileTestResultViewModel(
                             field.Header,
                             displayText,

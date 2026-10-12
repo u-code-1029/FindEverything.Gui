@@ -9,6 +9,9 @@ public sealed record AppPaths(
     public string SelectionOutputFormatsFile =>
         Path.Combine(LocalDataDirectory, "selection-output-formats.json");
 
+    public string ProfileUserInputValuesFile =>
+        Path.Combine(LocalDataDirectory, "profile-user-input-values.json");
+
     public string UserProfilesDirectory => Path.Combine(LocalDataDirectory, "Profiles");
 
     public string IndexesDirectory => Path.Combine(LocalDataDirectory, "Indexes");

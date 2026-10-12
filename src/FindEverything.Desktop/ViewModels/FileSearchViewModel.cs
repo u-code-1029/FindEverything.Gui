@@ -38,6 +38,7 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
     private Task? _activeLoadTask;
     private long _queryVersion;
     private long _scopeVersion;
+    private IndexRootStatus? _loadedSearchSnapshot;
     private bool _coercingSizeRange;
     private bool _disposed;
     private IReadOnlyList<FileSearchItemViewModel> _selectedItems = [];
@@ -133,10 +134,17 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(HasNoRoot))]
     [NotifyPropertyChangedFor(nameof(IsSetupStateVisible))]
     [NotifyCanExecuteChangedFor(nameof(RefreshIndexCommand))]
+    [NotifyCanExecuteChangedFor(nameof(BrowseRefreshScopeCommand))]
+    [NotifyCanExecuteChangedFor(nameof(RefreshScopeCommand))]
+    [NotifyCanExecuteChangedFor(nameof(RefreshItemScopeCommand))]
     private string? _rootPath;
 
     [ObservableProperty]
     private string _databasePath = string.Empty;
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(RefreshScopeCommand))]
+    private string? _refreshScopePath;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(UseDefaultDatabasePathCommand))]
@@ -200,6 +208,9 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(IsSetupStateVisible))]
     [NotifyPropertyChangedFor(nameof(IsNoResultsVisible))]
     [NotifyPropertyChangedFor(nameof(CanSearch))]
+    [NotifyCanExecuteChangedFor(nameof(BrowseRefreshScopeCommand))]
+    [NotifyCanExecuteChangedFor(nameof(RefreshScopeCommand))]
+    [NotifyCanExecuteChangedFor(nameof(RefreshItemScopeCommand))]
     private bool _hasIndex;
 
     [ObservableProperty]
@@ -288,6 +299,14 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
 
     public bool IsModifiedCustomRange => SelectedModifiedDateFilter.Value == DateFilterPreset.Custom;
 
+    partial void OnRootPathChanged(string? oldValue, string? newValue)
+    {
+        if (!string.Equals(oldValue, newValue, StringComparison.OrdinalIgnoreCase))
+        {
+            RefreshScopePath = null;
+        }
+    }
+
     partial void OnSearchTextChanged(string value) => ScheduleSearch();
 
     partial void OnSelectedKindChanged(EntryKindChoice value) => ScheduleSearch();
@@ -355,13 +374,17 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
         CopySelectedPathCommand.NotifyCanExecuteChanged();
         OpenSelectedFolderCommand.NotifyCanExecuteChanged();
         CopySelectedFolderPathCommand.NotifyCanExecuteChanged();
+        RefreshItemScopeCommand.NotifyCanExecuteChanged();
     }
 
     partial void OnIsBusyChanged(bool value)
     {
         BrowseRootCommand.NotifyCanExecuteChanged();
         BrowseDatabaseCommand.NotifyCanExecuteChanged();
+        BrowseRefreshScopeCommand.NotifyCanExecuteChanged();
         RefreshIndexCommand.NotifyCanExecuteChanged();
+        RefreshScopeCommand.NotifyCanExecuteChanged();
+        RefreshItemScopeCommand.NotifyCanExecuteChanged();
         UseDefaultDatabasePathCommand.NotifyCanExecuteChanged();
         CancelCommand.NotifyCanExecuteChanged();
         LoadMoreCommand.NotifyCanExecuteChanged();
@@ -374,6 +397,24 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
 
     [RelayCommand]
     private void ToggleDetails() => IsDetailsOpen = !IsDetailsOpen;
+
+    [RelayCommand(CanExecute = nameof(CanBrowseRefreshScope))]
+    private void BrowseRefreshScope()
+    {
+        var selected = _pickerService.PickRootDirectory(
+            Directory.Exists(RefreshScopePath) ? RefreshScopePath : RootPath);
+        if (selected is not null)
+        {
+            RefreshScopePath = selected;
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanRefreshScope))]
+    private Task RefreshScopeAsync() => RefreshScopeCoreAsync(RefreshScopePath);
+
+    [RelayCommand(CanExecute = nameof(CanRefreshItemScope))]
+    private Task RefreshItemScopeAsync(FileSearchItemViewModel? item) =>
+        RefreshScopeCoreAsync(item?.FolderPath);
 
     [RelayCommand(CanExecute = nameof(CanChangeWorkspace))]
     private async Task BrowseRootAsync()
@@ -632,6 +673,167 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
         }
     }
 
+    private async Task RefreshScopeCoreAsync(string? requestedPath)
+    {
+        if (IsBusy)
+        {
+            return;
+        }
+
+        var refreshResults = false;
+        ScanCompletionNotice? completionNotice = null;
+        IsBusy = true;
+        try
+        {
+            if (_operationCoordinator.IsRunning)
+            {
+                if (_operationCoordinator.CurrentKind == ApplicationOperationKind.IndexLoad)
+                {
+                    ProgressMessage = L(
+                        "Loc.Files.Progress.CancelIndexLoad",
+                        "기존 인덱스 불러오기를 취소하는 중…");
+                    await _operationCoordinator.CancelAndWaitAsync(TimeSpan.FromSeconds(30))
+                        .ConfigureAwait(true);
+                }
+                else
+                {
+                    ShowStatus(
+                        L("Loc.Common.OperationInProgress", "다른 작업 진행 중"),
+                        L("Loc.Common.TryAfterOperation", "현재 작업이 끝난 뒤 다시 시도하세요."),
+                        InfoBarSeverity.Warning);
+                    return;
+                }
+            }
+
+            FileSearchScope scope;
+            string refreshPath;
+            try
+            {
+                scope = ValidateScope();
+                refreshPath = ValidateRefreshScopePath(scope, requestedPath);
+                if (!HasIndex)
+                {
+                    throw new InvalidOperationException(L(
+                        "Loc.Files.PartialRefresh.Error.IndexUnavailable",
+                        "부분 새로 고침 전에 전체 인덱스를 한 번 만들어 주세요."));
+                }
+            }
+            catch (Exception exception) when (
+                exception is ArgumentException
+                    or DirectoryNotFoundException
+                    or InvalidOperationException
+                    or NotSupportedException)
+            {
+                ShowStatus(
+                    L("Loc.Files.PartialRefresh.CheckPath", "새로 고칠 폴더 확인 필요"),
+                    exception.Message,
+                    InfoBarSeverity.Error);
+                return;
+            }
+
+            RefreshScopePath = refreshPath;
+            await CancelActiveLoadAsync().ConfigureAwait(true);
+            ProgressMessage = F(
+                "Loc.Files.PartialRefresh.Progress.Preparing",
+                "'{0}' 부분 새로 고침을 준비하고 있습니다…",
+                refreshPath);
+            var progress = new Progress<IndexScanProgress>(value =>
+            {
+                ProgressMessage = F(
+                    "Loc.Files.PartialRefresh.Progress.Scanning",
+                    "선택한 폴더에서 {0:N0}개 항목 · {1:N0}개 폴더",
+                    value.Entries,
+                    value.Directories);
+            });
+            IndexScanReport? report = null;
+            await _operationCoordinator.ReplaceAsync(
+                ApplicationOperationKind.IndexLoad,
+                ApplicationOperationKind.IndexWrite,
+                async cancellationToken =>
+                {
+                    report = await _fileSearchService.RefreshScopeAsync(
+                            scope,
+                            refreshPath,
+                            progress,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                }).ConfigureAwait(true);
+
+            if (report is null)
+            {
+                throw new InvalidOperationException(L(
+                    "Loc.Files.Error.NoIndexResult",
+                    "인덱싱 결과를 받지 못했습니다."));
+            }
+
+            var incomplete = report.Status != IndexScanStatus.Completed || report.Errors.Count > 0;
+            var title = incomplete
+                ? L("Loc.Files.PartialRefresh.Partial", "부분 새로 고침 일부 완료")
+                : L("Loc.Files.PartialRefresh.Completed", "부분 새로 고침 완료");
+            var message = F(
+                "Loc.Files.PartialRefresh.Result",
+                "'{0}' 아래에서 {1:N0}개 항목을 확인했습니다. 오류 {2:N0}개",
+                refreshPath,
+                report.Progress.Entries,
+                report.Errors.Count);
+            ShowStatus(
+                title,
+                message,
+                incomplete ? InfoBarSeverity.Warning : InfoBarSeverity.Success);
+            _snackbarService.Show(
+                title,
+                message,
+                incomplete ? ControlAppearance.Caution : ControlAppearance.Success,
+                null,
+                TimeSpan.FromSeconds(4));
+            refreshResults = await RefreshStatusAsync(CancellationToken.None).ConfigureAwait(true)
+                && HasIndex;
+            completionNotice = new ScanCompletionNotice(title, message, incomplete);
+        }
+        catch (OperationCanceledException)
+        {
+            ShowStatus(
+                L("Loc.Files.PartialRefresh.Cancelled", "부분 새로 고침 취소"),
+                L(
+                    "Loc.Files.PartialRefresh.Cancelled.Detail",
+                    "기존에 게시된 인덱스는 그대로 유지됩니다."),
+                InfoBarSeverity.Warning);
+            ProgressMessage = L("Loc.Common.Cancelled", "취소됨");
+        }
+        catch (FileSearchIndexUnavailableException exception)
+        {
+            _logger.LogWarning(exception, "Could not refresh a file-index subtree.");
+            ShowStatus(
+                L("Loc.Files.PartialRefresh.Failed", "부분 새로 고침 실패"),
+                L(
+                    "Loc.Files.PartialRefresh.Error.IndexUnavailable",
+                    "부분 새로 고침 전에 전체 인덱스를 한 번 만들어 주세요."),
+                InfoBarSeverity.Error);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Could not refresh a file-index subtree.");
+            ShowStatus(
+                L("Loc.Files.PartialRefresh.Failed", "부분 새로 고침 실패"),
+                UserFacingExceptionLocalizer.TranslateOperationFailure(_localizer, exception),
+                InfoBarSeverity.Error);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+
+        if (completionNotice is not null)
+        {
+            _scanCompletionNotifier.Notify(completionNotice);
+        }
+
+        if (refreshResults)
+        {
+            await StartLoadAsync(refreshStatus: false, debounce: false).ConfigureAwait(true);
+        }
+    }
+
     [RelayCommand(CanExecute = nameof(CanCancel))]
     private void Cancel()
     {
@@ -866,6 +1068,29 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
 
     private bool CanRefreshIndex() => !IsBusy && HasRoot;
 
+    private bool CanBrowseRefreshScope() => !IsBusy && HasRoot && HasIndex;
+
+    private bool CanRefreshScope() =>
+        !IsBusy && HasRoot && HasIndex && !string.IsNullOrWhiteSpace(RefreshScopePath);
+
+    private bool CanRefreshItemScope(FileSearchItemViewModel? item)
+    {
+        if (IsBusy || !HasRoot || !HasIndex || item is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            return !PathsEqual(item.FolderPath, RootPath!);
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException or IOException or NotSupportedException)
+        {
+            return false;
+        }
+    }
+
     private bool CanChangeWorkspace() => !IsBusy;
 
     private bool CanUseDefaultDatabasePath() => !IsBusy && !IsUsingDefaultDatabasePath;
@@ -975,15 +1200,26 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
                     : L("Loc.Files.Status.Ready", "검색 준비 완료");
                 var published = status.LastPublishedUtc?.LocalDateTime.ToString("g")
                     ?? L("Loc.Common.TimeUnavailable", "시간 정보 없음");
-                IndexStatusDetail = F(
-                    "Loc.Files.Status.IndexDetail",
-                    "{0:N0}개 항목 · 마지막 새로 고침 {1}",
-                    status.EntryCount,
-                    published);
+                IndexStatusDetail = status.LastScopePath is { Length: > 0 } lastScope
+                    && !PathsEqual(status.RootPath, lastScope)
+                        ? F(
+                            "Loc.Files.Status.PartialRefreshDetail",
+                            "{0:N0}개 항목 · '{1}' 부분 새로 고침 · {2}",
+                            status.EntryCount,
+                            lastScope,
+                            published)
+                        : F(
+                            "Loc.Files.Status.IndexDetail",
+                            "{0:N0}개 항목 · 마지막 새로 고침 {1}",
+                            status.EntryCount,
+                            published);
                 break;
         }
 
         RefreshIndexCommand.NotifyCanExecuteChanged();
+        BrowseRefreshScopeCommand.NotifyCanExecuteChanged();
+        RefreshScopeCommand.NotifyCanExecuteChanged();
+        RefreshItemScopeCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(IsSetupStateVisible));
         return true;
     }
@@ -1009,6 +1245,7 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
     {
         Interlocked.Increment(ref _scopeVersion);
         InvalidateSearch();
+        _loadedSearchSnapshot = null;
         HasIndex = false;
         HasMore = false;
         HasPendingScopes = false;
@@ -1077,7 +1314,9 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
                 refreshStatus
                     ? L("Loc.Files.Status.CheckFailed", "인덱스 상태 확인 실패")
                     : L("Loc.Files.Search.Failed", "검색 실패"),
-                exception.Message,
+                UserFacingExceptionLocalizer.TranslateOperationFailure(
+                    _localizer,
+                    exception),
                 refreshStatus ? InfoBarSeverity.Warning : InfoBarSeverity.Error);
         }
         finally
@@ -1128,67 +1367,57 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
         try
         {
             var scope = ValidateScope();
-            if (reset)
-            {
-                Items.Clear();
-                TotalCount = 0;
-                HasMore = false;
-                HasSearched = false;
-            }
-
-            var offset = reset ? 0 : Items.Count;
-            var loadNextPage = true;
-            while (loadNextPage)
+            for (var attempt = 0; attempt < 2; attempt++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var request = BuildSearchRequest(scope.RootPath, offset);
-                var result = await _fileSearchService.SearchAsync(scope, request, cancellationToken)
+                var before = await _fileSearchService.GetStatusAsync(scope, cancellationToken)
                     .ConfigureAwait(true);
+                var replaceExisting = reset
+                    || attempt > 0
+                    || _loadedSearchSnapshot is null
+                    || !Equals(_loadedSearchSnapshot, before);
+                if (replaceExisting)
+                {
+                    ClearSearchResults();
+                }
+
+                if (!await LoadSearchPagesAttemptAsync(
+                        scope,
+                        replaceExisting ? 0 : Items.Count,
+                        version,
+                        cancellationToken)
+                    .ConfigureAwait(true))
+                {
+                    return;
+                }
+
                 cancellationToken.ThrowIfCancellationRequested();
                 if (version != Volatile.Read(ref _queryVersion))
                 {
                     return;
                 }
 
-                foreach (var entry in result.Entries)
+                var after = await _fileSearchService.GetStatusAsync(scope, cancellationToken)
+                    .ConfigureAwait(true);
+                if (Equals(before, after))
                 {
-                    Items.Add(new FileSearchItemViewModel(entry, _localizer));
+                    _loadedSearchSnapshot = after;
+                    break;
                 }
 
-                TotalCount = result.TotalCount;
-                HasMore = result.HasMore;
-                HasPendingScopes = result.HasPendingScopes;
-                HasSearched = true;
-                offset = Items.Count;
-                ProgressMessage = HasMore
-                    ? F(
-                        "Loc.Files.Progress.Loading",
-                        "인덱스에서 {0:N0}/{1:N0}개를 불러오는 중…",
-                        Items.Count,
-                        TotalCount)
-                    : F(
-                        "Loc.Files.Progress.Loaded",
-                        "{0:N0}개 항목을 불러왔습니다.",
-                        Items.Count);
-                OnPropertyChanged(nameof(ResultSummary));
-                OnPropertyChanged(nameof(IsNoResultsVisible));
-                LoadMoreCommand.NotifyCanExecuteChanged();
-
-                if (result.HasMore && result.Entries.Count == 0)
+                if (attempt == 1)
                 {
-                    throw new InvalidDataException(
-                        L(
-                            "Loc.Files.Error.EmptyContinuationPage",
-                            "인덱스가 다음 결과가 있다고 응답했지만 현재 페이지가 비어 있습니다."));
+                    ClearSearchResults();
+                    throw new IndexSnapshotChangedException(
+                        scope.RootPath,
+                        before.LastScanId,
+                        after.LastScanId);
                 }
 
-                loadNextPage = result.HasMore;
-                if (loadNextPage)
-                {
-                    // Let WPF render every completed page before the next DB page is read.
-                    await System.Windows.Threading.Dispatcher.Yield(
-                        System.Windows.Threading.DispatcherPriority.Background);
-                }
+                _loadedSearchSnapshot = null;
+                ProgressMessage = L(
+                    "Loc.Files.Progress.IndexChangedRetry",
+                    "읽는 동안 인덱스가 갱신되어 처음부터 다시 불러옵니다…");
             }
 
             if (IsStatusOpen
@@ -1212,6 +1441,80 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
                 IsSearching = false;
             }
         }
+    }
+
+    private async Task<bool> LoadSearchPagesAttemptAsync(
+        FileSearchScope scope,
+        int offset,
+        long version,
+        CancellationToken cancellationToken)
+    {
+        var loadNextPage = true;
+        while (loadNextPage)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var request = BuildSearchRequest(scope.RootPath, offset);
+            var result = await _fileSearchService.SearchAsync(scope, request, cancellationToken)
+                .ConfigureAwait(true);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (version != Volatile.Read(ref _queryVersion))
+            {
+                return false;
+            }
+
+            foreach (var entry in result.Entries)
+            {
+                Items.Add(new FileSearchItemViewModel(entry, _localizer));
+            }
+
+            TotalCount = result.TotalCount;
+            HasMore = result.HasMore;
+            HasPendingScopes = result.HasPendingScopes;
+            HasSearched = true;
+            offset = Items.Count;
+            ProgressMessage = HasMore
+                ? F(
+                    "Loc.Files.Progress.Loading",
+                    "인덱스에서 {0:N0}/{1:N0}개를 불러오는 중…",
+                    Items.Count,
+                    TotalCount)
+                : F(
+                    "Loc.Files.Progress.Loaded",
+                    "{0:N0}개 항목을 불러왔습니다.",
+                    Items.Count);
+            OnPropertyChanged(nameof(ResultSummary));
+            OnPropertyChanged(nameof(IsNoResultsVisible));
+            LoadMoreCommand.NotifyCanExecuteChanged();
+
+            if (result.HasMore && result.Entries.Count == 0)
+            {
+                throw new InvalidDataException(
+                    L(
+                        "Loc.Files.Error.EmptyContinuationPage",
+                        "인덱스가 다음 결과가 있다고 응답했지만 현재 페이지가 비어 있습니다."));
+            }
+
+            loadNextPage = result.HasMore;
+            if (loadNextPage)
+            {
+                // Let WPF render every completed page before the next DB page is read.
+                await System.Windows.Threading.Dispatcher.Yield(
+                    System.Windows.Threading.DispatcherPriority.Background);
+            }
+        }
+
+        return true;
+    }
+
+    private void ClearSearchResults()
+    {
+        Items.Clear();
+        TotalCount = 0;
+        HasMore = false;
+        HasPendingScopes = false;
+        HasSearched = false;
+        OnPropertyChanged(nameof(ResultSummary));
+        OnPropertyChanged(nameof(IsNoResultsVisible));
     }
 
     private EntrySearchRequest BuildSearchRequest(string rootPath, int offset)
@@ -1267,6 +1570,57 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
         }
 
         return new FileSearchScope(root, Path.GetFullPath(DatabasePath));
+    }
+
+    private string ValidateRefreshScopePath(FileSearchScope scope, string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            throw new ArgumentException(L(
+                "Loc.Files.PartialRefresh.Error.Required",
+                "새로 고칠 하위 폴더를 선택하거나 입력하세요."));
+        }
+
+        var candidate = path.Trim();
+        if (!Path.IsPathFullyQualified(candidate))
+        {
+            throw new ArgumentException(L(
+                "Loc.Files.PartialRefresh.Error.Absolute",
+                "드라이브 또는 UNC 루트를 포함한 전체 폴더 경로를 입력하세요."));
+        }
+
+        var normalized = Path.TrimEndingDirectorySeparator(Path.GetFullPath(candidate));
+        if (PathsEqual(scope.RootPath, normalized))
+        {
+            throw new ArgumentException(L(
+                "Loc.Files.PartialRefresh.Error.Root",
+                "검색 위치 전체가 아닌 그 아래의 하위 폴더를 선택하세요. 전체 위치는 '인덱스 새로 고침'을 사용합니다."));
+        }
+
+        var relativePath = Path.GetRelativePath(scope.RootPath, normalized);
+        if (Path.IsPathRooted(relativePath)
+            || relativePath.Equals("..", StringComparison.Ordinal)
+            || relativePath.StartsWith(
+                $"..{Path.DirectorySeparatorChar}",
+                StringComparison.Ordinal)
+            || relativePath.StartsWith(
+                $"..{Path.AltDirectorySeparatorChar}",
+                StringComparison.Ordinal))
+        {
+            throw new ArgumentException(L(
+                "Loc.Files.PartialRefresh.Error.OutsideRoot",
+                "부분 새로 고침 폴더는 현재 검색 위치 안에 있어야 합니다."));
+        }
+
+        if (!Directory.Exists(normalized))
+        {
+            throw new DirectoryNotFoundException(F(
+                "Loc.Files.PartialRefresh.Error.NotFound",
+                "새로 고칠 폴더를 찾을 수 없습니다: {0}",
+                normalized));
+        }
+
+        return normalized;
     }
 
     private bool ScopeStillCurrent(FileSearchScope scope)

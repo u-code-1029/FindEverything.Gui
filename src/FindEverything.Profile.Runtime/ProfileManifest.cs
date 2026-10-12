@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace FindEverything.Profile.Runtime;
@@ -26,6 +27,12 @@ public static class ProfileManifestLimits
 
     public const int MaximumTextFileFieldCount = 16;
 
+    public const int MaximumUserInputFieldCount = 16;
+
+    public const int MaximumUserInputPlaceholderLength = 256;
+
+    public const int MaximumUserInputValueLength = 4096;
+
     public const int MaximumTextFileNamePatternLength = 4096;
 
     public const int MaximumValueMappingCount = 512;
@@ -52,6 +59,16 @@ public sealed class ProfileManifest
 
     public string? DisplayName { get; set; }
 
+    /// <summary>
+    /// Reads the removed v1 path-input switch only so the validator can reject it
+    /// explicitly. Contract v2 always supplies an absolute path; silently ignoring
+    /// this member would make an old relative-path profile appear valid while it
+    /// returns no matches.
+    /// </summary>
+    [JsonPropertyName("pathInput")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public JsonElement? LegacyPathInput { get; set; }
+
     public string? EntryAssembly { get; set; }
 
     public string? ModelType { get; set; }
@@ -64,6 +81,12 @@ public sealed class ProfileManifest
     /// </summary>
     public List<ProfileTextFileFieldManifest>? TextFileFields { get; set; }
 
+    /// <summary>
+    /// Optional editable string columns shown for every matched catalog row.
+    /// Values are user-owned metadata and are not produced by path parsing.
+    /// </summary>
+    public List<ProfileUserInputFieldManifest>? UserInputFields { get; set; }
+
     [JsonConverter(typeof(JsonStringEnumConverter<ProfileCandidateKind>))]
     public ProfileCandidateKind CandidateKind { get; set; } = ProfileCandidateKind.Directory;
 
@@ -74,6 +97,19 @@ public sealed class ProfileManifest
     public List<ProfileDirectoryNameExclusionRuleManifest>? ExcludedDirectoryNameRules { get; set; }
 
     public List<ProfileRegexRuleManifest>? Rules { get; set; }
+}
+
+public sealed class ProfileUserInputFieldManifest
+{
+    public string? FieldId { get; set; }
+
+    public string? Header { get; set; }
+
+    public int Order { get; set; }
+
+    public string? Placeholder { get; set; }
+
+    public string? DefaultValue { get; set; }
 }
 
 public sealed class ProfileTextFileFieldManifest

@@ -27,6 +27,15 @@
       "maxBytes": 262144
     }
   ],
+  "userInputFields": [
+    {
+      "fieldId": "review-note",
+      "header": "Review note",
+      "order": 30,
+      "placeholder": "Enter a note for this folder",
+      "defaultValue": "Pending review"
+    }
+  ],
   "candidateKind": "Directory",
   "rules": [
     {

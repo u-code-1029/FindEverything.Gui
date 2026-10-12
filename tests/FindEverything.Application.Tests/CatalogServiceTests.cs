@@ -396,6 +396,78 @@ public sealed class CatalogServiceTests
         Assert.Empty(trace.Events);
     }
 
+    [Fact]
+    public async Task LoadExisting_retries_with_a_fresh_accumulator_when_the_snapshot_changes()
+    {
+        var root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "catalog-snapshot-retry"));
+        var stalePath = Path.Combine(root, "good");
+        var freshPath = Path.Combine(root, "excluded");
+        var sessionFactory = new SnapshotChangingSessionFactory(
+            new IndexedDirectory(
+                stalePath,
+                "good",
+                root,
+                DateTimeOffset.MinValue,
+                DateTimeOffset.MinValue,
+                false),
+            new IndexedDirectory(
+                freshPath,
+                "excluded",
+                root,
+                DateTimeOffset.MinValue,
+                DateTimeOffset.MinValue,
+                true));
+        var services = new ServiceCollection();
+        services.AddFindEverythingApplication(new ConfigurationBuilder().Build());
+        services.AddSingleton<IIndexSessionFactory>(sessionFactory);
+        services.AddSingleton<IDirectoryDiscoveryService, UnsupportedDiscoveryService>();
+        services.AddSingleton<IProfileResolver>(new FakeProfileResolver(new FakeProfile()));
+
+        await using var provider = services.BuildServiceProvider();
+        var result = await provider.GetRequiredService<ICatalogService>().LoadExistingAsync(
+            new CatalogRequest("test", root, "index.db"));
+
+        Assert.Equal(2, sessionFactory.SearchCalls);
+        Assert.Equal(freshPath, Assert.Single(result.Items).FullPath);
+        Assert.DoesNotContain(result.Items, item => item.FullPath == stalePath);
+        Assert.Equal(2, result.CandidateCount);
+        Assert.True(result.HasPendingScopes);
+    }
+
+    [Fact]
+    public async Task LoadExisting_retries_a_snapshot_change_only_once()
+    {
+        var root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "catalog-snapshot-retry-limit"));
+        var sessionFactory = new SnapshotChangingSessionFactory(
+            new IndexedDirectory(
+                Path.Combine(root, "good"),
+                "good",
+                root,
+                DateTimeOffset.MinValue,
+                DateTimeOffset.MinValue,
+                false),
+            new IndexedDirectory(
+                Path.Combine(root, "excluded"),
+                "excluded",
+                root,
+                DateTimeOffset.MinValue,
+                DateTimeOffset.MinValue,
+                false),
+            changeEverySearch: true);
+        var services = new ServiceCollection();
+        services.AddFindEverythingApplication(new ConfigurationBuilder().Build());
+        services.AddSingleton<IIndexSessionFactory>(sessionFactory);
+        services.AddSingleton<IDirectoryDiscoveryService, UnsupportedDiscoveryService>();
+        services.AddSingleton<IProfileResolver>(new FakeProfileResolver(new FakeProfile()));
+
+        await using var provider = services.BuildServiceProvider();
+        await Assert.ThrowsAsync<IndexSnapshotChangedException>(() =>
+            provider.GetRequiredService<ICatalogService>().LoadExistingAsync(
+                new CatalogRequest("test", root, "index.db")));
+
+        Assert.Equal(2, sessionFactory.SearchCalls);
+    }
+
     [Theory]
     [InlineData(IndexRootAvailability.DatabaseMissing, "does not exist")]
     [InlineData(IndexRootAvailability.RootNotIndexed, "exact root")]
@@ -845,6 +917,81 @@ public sealed class CatalogServiceTests
                 rootAvailability);
     }
 
+    private sealed class SnapshotChangingSessionFactory(
+        IndexedDirectory staleDirectory,
+        IndexedDirectory freshDirectory,
+        bool changeEverySearch = false) : IIndexSessionFactory
+    {
+        private readonly Guid _firstScanId = Guid.NewGuid();
+        private readonly Guid _secondScanId = Guid.NewGuid();
+        private readonly IndexedDirectory _staleDirectory = staleDirectory;
+        private readonly IndexedDirectory _freshDirectory = freshDirectory;
+
+        private bool ChangeEverySearch { get; } = changeEverySearch;
+
+        public int SearchCalls { get; private set; }
+
+        public IIndexSession Create(string databasePath) => new Session(this, databasePath);
+
+        private sealed class Session(
+            SnapshotChangingSessionFactory owner,
+            string databasePath) : IIndexSession
+        {
+            public string DatabasePath { get; } = databasePath;
+
+            public Task<IndexScanReport> ScanAsync(
+                IndexScanRequest request,
+                IProgress<IndexScanProgress>? progress = null,
+                CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+            public async Task<DirectorySearchResult> SearchDirectoriesAsync(
+                DirectorySearchRequest request,
+                CancellationToken cancellationToken = default)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                owner.SearchCalls++;
+                var directories = owner.SearchCalls == 1
+                    ? new[] { owner._staleDirectory }
+                    : new[] { owner._freshDirectory };
+                if (request.PageConsumer is not null)
+                {
+                    await request.PageConsumer(directories, cancellationToken);
+                }
+
+                if (owner.SearchCalls == 1 || owner.ChangeEverySearch)
+                {
+                    throw new IndexSnapshotChangedException(
+                        request.RootPath,
+                        owner._firstScanId,
+                        owner._secondScanId);
+                }
+
+                return new DirectorySearchResult(
+                    request.IncludeDirectoriesInResult ? directories : [],
+                    HasPendingScopes: true);
+            }
+
+            public Task<EntrySearchResult> SearchEntriesAsync(
+                EntrySearchRequest request,
+                CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+            public Task<IndexRootStatus> GetRootStatusAsync(
+                string rootPath,
+                CancellationToken cancellationToken = default) => Task.FromResult(new IndexRootStatus(
+                    rootPath,
+                    IndexRootAvailability.Available,
+                    owner._firstScanId,
+                    rootPath,
+                    IndexScanStatus.Completed,
+                    DateTimeOffset.UtcNow,
+                    1,
+                    0,
+                    false));
+
+            public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        }
+    }
+
     private sealed class ThrowingSessionFactory : IIndexSessionFactory
     {
         public IIndexSession Create(string databasePath) =>
@@ -1114,15 +1261,19 @@ public sealed class CatalogServiceTests
                 []));
         }
 
-        public Task<DirectorySearchResult> SearchDirectoriesAsync(
+        public async Task<DirectorySearchResult> SearchDirectoriesAsync(
             DirectorySearchRequest request,
             CancellationToken cancellationToken = default)
         {
             onSearch(request.RootPath);
+            if (request.PageConsumer is not null)
+            {
+                await request.PageConsumer(directories, cancellationToken);
+            }
             request.PageProgress?.Report(directories);
-            return Task.FromResult(new DirectorySearchResult(
-                directories,
-                HasPendingScopes: false));
+            return new DirectorySearchResult(
+                request.IncludeDirectoriesInResult ? directories : [],
+                HasPendingScopes: false);
         }
 
         public Task<EntrySearchResult> SearchEntriesAsync(

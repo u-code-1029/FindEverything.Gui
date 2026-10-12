@@ -343,6 +343,7 @@
                 ItemsSource="{Binding Items}"
                 ContextMenuOpening="OnResultsGridContextMenuOpening"
                 MouseDoubleClick="OnResultsGridMouseDoubleClick"
+                PreviewMouseLeftButtonDown="OnResultsGridPreviewMouseLeftButtonDown"
                 PreviewMouseRightButtonDown="OnResultsGridPreviewMouseRightButtonDown"
                 SelectedItem="{Binding SelectedItem}"
                 SelectionChanged="OnResultsGridSelectionChanged"

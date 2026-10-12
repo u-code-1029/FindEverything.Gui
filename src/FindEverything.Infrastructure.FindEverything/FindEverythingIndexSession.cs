@@ -48,12 +48,23 @@ internal sealed class FindEverythingIndexSession : IIndexSession
                 request.PageSize,
                 "Page size must be between 1 and 1000.");
         }
+        if (!request.IncludeDirectoriesInResult && request.PageConsumer is null)
+        {
+            throw new ArgumentException(
+                "A page consumer is required when directories are not included in the result.",
+                nameof(request));
+        }
 
         return ExecuteSerializedAsync(async () =>
         {
-            var directories = new List<IndexedDirectory>();
+            var directories = request.IncludeDirectoriesInResult
+                ? new List<IndexedDirectory>()
+                : null;
             var hasPendingScopes = false;
             var offset = 0;
+            var snapshot = await _store.GetRootStatusAsync(
+                request.RootPath,
+                cancellationToken).ConfigureAwait(false);
 
             while (true)
             {
@@ -76,7 +87,12 @@ internal sealed class FindEverythingIndexSession : IIndexSession
                         entry.ModifiedUtc,
                         entry.CoveragePending))
                     .ToArray();
-                directories.AddRange(mappedPage);
+                directories?.AddRange(mappedPage);
+                hasPendingScopes |= mappedPage.Any(static directory => directory.CoveragePending);
+                if (request.PageConsumer is not null)
+                {
+                    await request.PageConsumer(mappedPage, cancellationToken).ConfigureAwait(false);
+                }
                 request.PageProgress?.Report(mappedPage);
 
                 if (!page.HasMore)
@@ -87,8 +103,36 @@ internal sealed class FindEverythingIndexSession : IIndexSession
                 offset = checked(offset + page.Entries.Count);
             }
 
-            return new DirectorySearchResult(directories.AsReadOnly(), hasPendingScopes);
+            // GetRootStatus includes the root entry count. Checking it after every
+            // page would turn a large paged read into repeated full-root counts.
+            // A before/after generation fence still detects every publish that can
+            // shift offset boundaries; the caller discards the whole attempt.
+            await EnsureSnapshotUnchangedAsync(
+                request.RootPath,
+                snapshot,
+                cancellationToken).ConfigureAwait(false);
+
+            return new DirectorySearchResult(
+                directories is null
+                    ? Array.Empty<IndexedDirectory>()
+                    : directories.AsReadOnly(),
+                hasPendingScopes);
         }, cancellationToken);
+    }
+
+    private async Task EnsureSnapshotUnchangedAsync(
+        string rootPath,
+        Engine.IndexRootStatus? expected,
+        CancellationToken cancellationToken)
+    {
+        var actual = await _store.GetRootStatusAsync(rootPath, cancellationToken).ConfigureAwait(false);
+        if (Equals(expected, actual))
+            return;
+
+        throw new IndexSnapshotChangedException(
+            rootPath,
+            expected?.LastScanId,
+            actual?.LastScanId);
     }
 
     public Task<EntrySearchResult> SearchEntriesAsync(

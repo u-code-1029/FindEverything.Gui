@@ -32,6 +32,47 @@ internal sealed class FileSearchService(
         return report;
     }
 
+    public async Task<IndexScanReport> RefreshScopeAsync(
+        FileSearchScope scope,
+        string refreshPath,
+        IProgress<IndexScanProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateScope(scope);
+        var normalizedRoot = NormalizeDirectory(scope.RootPath);
+        var normalizedRefreshPath = ValidateRefreshPath(normalizedRoot, refreshPath);
+        var operationSettings = indexingSettings.Current;
+        await using var session = sessionFactory.Create(scope.DatabasePath);
+        var rootStatus = await session.GetRootStatusAsync(
+            normalizedRoot,
+            cancellationToken).ConfigureAwait(false);
+        if (rootStatus.Availability != IndexRootAvailability.Available)
+        {
+            throw new FileSearchIndexUnavailableException(normalizedRoot);
+        }
+
+        var report = await session.ScanAsync(
+            new IndexScanRequest(normalizedRoot)
+            {
+                ScopePath = normalizedRefreshPath,
+                OnDemand = true,
+                Options = new IndexScanOptions
+                {
+                    MaxEntriesPerSecond = operationSettings.MaxEntriesPerSecond,
+                    DirectoryDelay = TimeSpan.FromMilliseconds(
+                        operationSettings.DirectoryDelayMilliseconds),
+                },
+            },
+            progress,
+            cancellationToken).ConfigureAwait(false);
+        if (report.Status == IndexScanStatus.Cancelled)
+        {
+            throw new OperationCanceledException(cancellationToken);
+        }
+
+        return report;
+    }
+
     public async Task<EntrySearchResult> SearchAsync(
         FileSearchScope scope,
         EntrySearchRequest request,
@@ -101,6 +142,52 @@ internal sealed class FileSearchService(
             Path.TrimEndingDirectorySeparator(Path.GetFullPath(second)),
             comparison);
     }
+
+    internal static string ValidateRefreshPath(string normalizedRoot, string refreshPath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(normalizedRoot);
+        ArgumentException.ThrowIfNullOrWhiteSpace(refreshPath);
+        if (!Path.IsPathFullyQualified(refreshPath))
+        {
+            throw new ArgumentException(
+                "The partial-refresh folder must be an absolute path.",
+                nameof(refreshPath));
+        }
+
+        var normalizedRefreshPath = NormalizeDirectory(refreshPath);
+        if (PathEquals(normalizedRoot, normalizedRefreshPath))
+        {
+            throw new ArgumentException(
+                "Choose a subfolder below the search root for a partial refresh.",
+                nameof(refreshPath));
+        }
+
+        var relativePath = Path.GetRelativePath(normalizedRoot, normalizedRefreshPath);
+        if (Path.IsPathRooted(relativePath)
+            || relativePath.Equals("..", StringComparison.Ordinal)
+            || relativePath.StartsWith(
+                $"..{Path.DirectorySeparatorChar}",
+                StringComparison.Ordinal)
+            || relativePath.StartsWith(
+                $"..{Path.AltDirectorySeparatorChar}",
+                StringComparison.Ordinal))
+        {
+            throw new ArgumentException(
+                "The partial-refresh folder must be inside the selected search root.",
+                nameof(refreshPath));
+        }
+
+        if (!Directory.Exists(normalizedRefreshPath))
+        {
+            throw new DirectoryNotFoundException(
+                $"Partial-refresh folder not found: {normalizedRefreshPath}");
+        }
+
+        return normalizedRefreshPath;
+    }
+
+    private static string NormalizeDirectory(string path) =>
+        Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
 
     private static void ValidateDateRange(
         DateTimeOffset? from,

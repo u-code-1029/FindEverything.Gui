@@ -108,6 +108,8 @@ public sealed class DesktopCompositionSmokeTests
             });
 
             window = provider.GetRequiredService<MainWindow>();
+            var homePage = provider.GetRequiredService<HomePage>();
+            Assert.NotNull(homePage);
             var filesPage = provider.GetRequiredService<FilesPage>();
             Assert.NotNull(filesPage);
             var catalogPage = provider.GetRequiredService<CatalogPage>();
@@ -144,6 +146,10 @@ public sealed class DesktopCompositionSmokeTests
                     Backdrop = BackdropPreference.None,
                 });
             var navigation = provider.GetRequiredService<INavigationService>();
+            Assert.True(navigation.Navigate(typeof(HomePage)));
+            Assert.NotNull(homePage.FindName("HomeScrollViewer"));
+            Assert.NotNull(homePage.FindName("FilesActionCard"));
+            Assert.NotNull(homePage.FindName("CatalogActionCard"));
             Assert.True(navigation.Navigate(typeof(FilesPage)));
             VerifyPageScrollContracts(filesPage, catalogPage);
             VerifyCompactSelectionPages(filesPage, catalogPage);
@@ -230,6 +236,11 @@ public sealed class DesktopCompositionSmokeTests
         Assert.Equal(DataGridSelectionMode.Extended, catalogGrid.SelectionMode);
         Assert.NotNull(filesGrid.ContextMenu);
         Assert.NotNull(catalogGrid.ContextMenu);
+        Assert.IsType<Wpf.Ui.Controls.TextBox>(
+            filesPage.FindName("PartialRefreshPathTextBox"));
+        var partialRefreshButton = Assert.IsType<Wpf.Ui.Controls.Button>(
+            filesPage.FindName("PartialRefreshButton"));
+        Assert.NotNull(partialRefreshButton.Command);
 
         var filesToolbar = Assert.IsType<Border>(filesPage.FindName("SelectionToolbar"));
         var catalogToolbar = Assert.IsType<Border>(catalogPage.FindName("SelectionToolbar"));
@@ -761,12 +772,23 @@ public sealed class DesktopCompositionSmokeTests
         Assert.IsType<Border>(page.FindName("ProfileEditorStepRail"));
         Assert.IsType<Wpf.Ui.Controls.Button>(page.FindName("PreviousProfileStepButton"));
         Assert.IsType<Wpf.Ui.Controls.Button>(page.FindName("NextProfileStepButton"));
+        var userInputEditor = Assert.IsType<Border>(page.FindName("UserInputFieldsEditor"));
+        Assert.True(viewModel.AddUserInputFieldCommand.CanExecute(null));
+        viewModel.AddUserInputFieldCommand.Execute(null);
+        Assert.Single(viewModel.DraftUserInputFields);
 
         viewModel.NextEditorStepCommand.Execute(null);
         PumpDispatcherFor(window.Dispatcher, TimeSpan.FromMilliseconds(20));
         Assert.Equal(ProfileEditorStep.PathAndFields, viewModel.CurrentEditorStep);
         Assert.True(viewModel.IsPathAndFieldsStep);
         Assert.Equal(0, editorScrollViewer.VerticalOffset);
+
+        viewModel.GoToEditorStepCommand.Execute(ProfileEditorStep.ScanOptions);
+        PumpDispatcherFor(window.Dispatcher, TimeSpan.FromMilliseconds(20));
+        Assert.Equal(Visibility.Visible, userInputEditor.Visibility);
+        Assert.Contains(
+            FindVisualChildren<System.Windows.Controls.TextBlock>(userInputEditor),
+            static text => text.Text == "행별 사용자 입력");
 
         viewModel.GoToEditorStepCommand.Execute(ProfileEditorStep.Review);
         PumpDispatcherFor(window.Dispatcher, TimeSpan.FromMilliseconds(20));
@@ -1002,6 +1024,20 @@ public sealed class DesktopCompositionSmokeTests
                 ["Apollo"] = "아폴로",
             },
         };
+        var userInputField = new ProfileFieldDescriptor(
+            "review-note",
+            string.Empty,
+            "검토 메모",
+            10,
+            Required: false,
+            ProfileFieldValueKind.String,
+            IsNullable: true,
+            ParseFormat: null,
+            DisplayFormat: null)
+        {
+            SourceKind = ProfileFieldSourceKind.UserInput,
+            Placeholder = "메모 입력",
+        };
         var item = new CatalogItemViewModel(
             new CatalogItem(
                 @"C:\Archive\Apollo",
@@ -1010,7 +1046,7 @@ public sealed class DesktopCompositionSmokeTests
                 new object(),
                 new Dictionary<string, object?> { ["client"] = "Apollo" },
                 CoveragePending: false),
-            [field],
+            [field, userInputField],
             new TestAppLocalizer());
         var grid = new System.Windows.Controls.DataGrid
         {
@@ -1031,7 +1067,7 @@ public sealed class DesktopCompositionSmokeTests
                     ["Loc.Catalog.Column.FolderPath"] = "Folder path",
                     ["Loc.Catalog.Selection.Item"] = "Select item",
                 }));
-        DynamicProfileGrid.SetFields(grid, new[] { field });
+        DynamicProfileGrid.SetFields(grid, new[] { field, userInputField });
         DynamicProfileGrid.SetLayoutStore(
             grid,
             new StubGridLayoutStore(new GridColumnLayout("client", 1, 180)));
@@ -1064,8 +1100,11 @@ public sealed class DesktopCompositionSmokeTests
             var clientColumn = Assert.Single(grid.Columns, column => Equals(column.Header, "고객"));
             Assert.Equal(2, clientColumn.DisplayIndex);
             Assert.Equal(180, clientColumn.Width.Value);
+            Assert.Single(grid.Columns, column => Equals(column.Header, "검토 메모"));
             var row = Assert.IsType<System.Windows.Controls.DataGridRow>(
                 grid.ItemContainerGenerator.ContainerFromItem(item));
+            var userInput = Assert.Single(FindVisualChildren<Wpf.Ui.Controls.TextBox>(row));
+            Assert.Equal("메모 입력", userInput.PlaceholderText);
             var selector = Assert.Single(
                 FindVisualChildren<System.Windows.Controls.CheckBox>(row));
             Assert.Equal("Select item", selector.ToolTip);

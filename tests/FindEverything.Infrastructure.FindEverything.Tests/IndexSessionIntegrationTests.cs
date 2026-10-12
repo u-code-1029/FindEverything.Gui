@@ -1,5 +1,6 @@
 using FindEverything.Application.Indexing;
 using FindEverything.Infrastructure.FindEverything;
+using Microsoft.Data.Sqlite;
 using Xunit;
 
 namespace FindEverything.Infrastructure.FindEverything.Tests;
@@ -62,6 +63,143 @@ public sealed class IndexSessionIntegrationTests
         Assert.Equal(
             result.Directories.Select(static directory => directory.FullPath),
             reportedPages.SelectMany(static page => page).Select(static directory => directory.FullPath));
+    }
+
+    [Fact]
+    public async Task SearchDirectories_CanStreamPagesWithoutRetainingASecondCopy()
+    {
+        using var workspace = new TestWorkspace();
+        for (var index = 0; index < 7; index++)
+            Directory.CreateDirectory(Path.Combine(workspace.SourcePath, $"folder-{index}"));
+
+        var factory = new FindEverythingIndexSessionFactory();
+        await using (var scanSession = factory.Create(workspace.DatabasePath))
+        {
+            await scanSession.ScanAsync(
+                FastScan(workspace.SourcePath),
+                cancellationToken: CancellationToken.None);
+        }
+
+        var streamed = new List<IndexedDirectory>();
+        var consumerStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseConsumer = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var searchSession = factory.Create(workspace.DatabasePath);
+        var search = searchSession.SearchDirectoriesAsync(
+            new DirectorySearchRequest(workspace.SourcePath)
+            {
+                PageSize = 3,
+                IncludeDirectoriesInResult = false,
+                PageConsumer = async (page, cancellationToken) =>
+                {
+                    consumerStarted.TrySetResult();
+                    await releaseConsumer.Task.WaitAsync(cancellationToken);
+                    streamed.AddRange(page);
+                },
+            },
+            CancellationToken.None);
+        await consumerStarted.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        Assert.False(search.IsCompleted);
+        releaseConsumer.SetResult();
+        var result = await search;
+
+        Assert.Empty(result.Directories);
+        Assert.Equal(7, streamed.Count);
+        Assert.Equal(7, streamed.Select(static item => item.FullPath).Distinct(PathComparer).Count());
+    }
+
+    [Fact]
+    public async Task SearchDirectories_RequiresAwaitedConsumerWhenResultDoesNotRetainDirectories()
+    {
+        using var workspace = new TestWorkspace();
+        var factory = new FindEverythingIndexSessionFactory();
+        await using var session = factory.Create(workspace.DatabasePath);
+
+        var exception = await Assert.ThrowsAsync<ArgumentException>(() =>
+            session.SearchDirectoriesAsync(
+                new DirectorySearchRequest(workspace.SourcePath)
+                {
+                    IncludeDirectoriesInResult = false,
+                    PageProgress = new InlineProgress<IReadOnlyList<IndexedDirectory>>(static _ => { }),
+                },
+                CancellationToken.None));
+
+        Assert.Equal("request", exception.ParamName);
+        Assert.Contains("page consumer", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.False(File.Exists(workspace.DatabasePath));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task SearchDirectories_RejectsResultWhenPublishedSnapshotChanges(
+        bool changeGeneration)
+    {
+        using var workspace = new TestWorkspace();
+        for (var index = 0; index < 3; index++)
+            Directory.CreateDirectory(Path.Combine(workspace.SourcePath, $"folder-{index}"));
+
+        var factory = new FindEverythingIndexSessionFactory();
+        IndexScanReport report;
+        await using (var scanSession = factory.Create(workspace.DatabasePath))
+        {
+            report = await scanSession.ScanAsync(
+                FastScan(workspace.SourcePath),
+                cancellationToken: CancellationToken.None);
+        }
+        Assert.Equal(IndexScanStatus.Completed, report.Status);
+
+        var replacementScanId = Guid.NewGuid();
+        var mutated = false;
+        var consumerCalls = 0;
+        await using var searchSession = factory.Create(workspace.DatabasePath);
+        var exception = await Assert.ThrowsAsync<IndexSnapshotChangedException>(() =>
+            searchSession.SearchDirectoriesAsync(
+                new DirectorySearchRequest(workspace.SourcePath)
+                {
+                    PageSize = 1,
+                    IncludeDirectoriesInResult = false,
+                    PageConsumer = (_, _) =>
+                    {
+                        consumerCalls++;
+                        if (!mutated)
+                        {
+                            using var connection = new SqliteConnection(
+                                $"Data Source={workspace.DatabasePath}");
+                            connection.Open();
+                            using var command = connection.CreateCommand();
+                            command.CommandText = changeGeneration
+                                ? "UPDATE roots SET last_scan_id=$scan;"
+                                : "UPDATE roots SET last_status=$status;";
+                            if (changeGeneration)
+                            {
+                                command.Parameters.AddWithValue(
+                                    "$scan",
+                                    replacementScanId.ToString("N"));
+                            }
+                            else
+                            {
+                                command.Parameters.AddWithValue(
+                                    "$status",
+                                    (int)IndexScanStatus.Partial);
+                            }
+                            Assert.Equal(1, command.ExecuteNonQuery());
+                            mutated = true;
+                        }
+
+                        return ValueTask.CompletedTask;
+                    },
+                },
+                CancellationToken.None));
+
+        Assert.True(mutated);
+        Assert.Equal(3, consumerCalls);
+        Assert.Equal(Path.GetFullPath(workspace.SourcePath), exception.RootPath);
+        Assert.Equal(report.ScanId, exception.ExpectedScanId);
+        Assert.Equal(
+            changeGeneration ? replacementScanId : report.ScanId,
+            exception.ActualScanId);
     }
 
     [Fact]
@@ -270,6 +408,65 @@ public sealed class IndexSessionIntegrationTests
         Assert.Equal(Path.GetFullPath(firstPath), Assert.Single(secondPage.Entries).FullPath);
         Assert.Equal(2, secondPage.TotalCount);
         Assert.False(secondPage.HasMore);
+    }
+
+    [Fact]
+    public async Task OnDemandScopedRefresh_ReplacesOnlyTheSelectedSubtree()
+    {
+        using var workspace = new TestWorkspace();
+        var selectedScope = Directory.CreateDirectory(
+            Path.Combine(workspace.SourcePath, "selected")).FullName;
+        var siblingScope = Directory.CreateDirectory(
+            Path.Combine(workspace.SourcePath, "sibling")).FullName;
+        var staleSelectedPath = Path.Combine(selectedScope, "stale.txt");
+        var retainedSiblingPath = Path.Combine(siblingScope, "retained.txt");
+        await File.WriteAllTextAsync(staleSelectedPath, "stale");
+        await File.WriteAllTextAsync(retainedSiblingPath, "retained");
+
+        var factory = new FindEverythingIndexSessionFactory();
+        await using var session = factory.Create(workspace.DatabasePath);
+        var initial = await session.ScanAsync(
+            FastScan(workspace.SourcePath),
+            cancellationToken: CancellationToken.None);
+        Assert.Equal(IndexScanStatus.Completed, initial.Status);
+
+        File.Delete(staleSelectedPath);
+        var addedSelectedPath = Path.Combine(selectedScope, "added.txt");
+        var unseenSiblingPath = Path.Combine(siblingScope, "not-yet-indexed.txt");
+        await File.WriteAllTextAsync(addedSelectedPath, "added");
+        await File.WriteAllTextAsync(unseenSiblingPath, "outside selected scope");
+
+        var scopedRequest = FastScan(workspace.SourcePath) with
+        {
+            ScopePath = selectedScope,
+            OnDemand = true,
+        };
+        var scoped = await session.ScanAsync(
+            scopedRequest,
+            cancellationToken: CancellationToken.None);
+        var result = await session.SearchEntriesAsync(
+            new EntrySearchRequest(workspace.SourcePath)
+            {
+                SortBy = EntrySortField.Path,
+                Limit = 1000,
+            },
+            CancellationToken.None);
+        var rootStatus = await session.GetRootStatusAsync(
+            workspace.SourcePath,
+            CancellationToken.None);
+        var indexedPaths = result.Entries
+            .Select(static entry => entry.FullPath)
+            .ToHashSet(PathComparer);
+
+        Assert.Equal(IndexScanStatus.Completed, scoped.Status);
+        Assert.Equal(Path.GetFullPath(workspace.SourcePath), scoped.RootPath);
+        Assert.Equal(Path.GetFullPath(selectedScope), scoped.ScopePath);
+        Assert.DoesNotContain(Path.GetFullPath(staleSelectedPath), indexedPaths);
+        Assert.Contains(Path.GetFullPath(addedSelectedPath), indexedPaths);
+        Assert.Contains(Path.GetFullPath(retainedSiblingPath), indexedPaths);
+        Assert.DoesNotContain(Path.GetFullPath(unseenSiblingPath), indexedPaths);
+        Assert.Equal(IndexRootAvailability.Available, rootStatus.Availability);
+        Assert.Equal(result.TotalCount, rootStatus.EntryCount);
     }
 
     [Fact]

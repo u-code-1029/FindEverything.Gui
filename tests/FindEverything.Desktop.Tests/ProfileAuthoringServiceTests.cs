@@ -54,6 +54,9 @@ public sealed class ProfileAuthoringServiceTests
         var exclusion = Assert.Single(profile.Descriptor.ExcludedDirectoryNameRules);
         Assert.Equal("skip-node-modules", exclusion.Id);
         Assert.Equal("node_modules", exclusion.Pattern);
+        var userInput = Assert.Single(profile.Descriptor.UserInputFields);
+        Assert.Equal("review-note", userInput.FieldId);
+        Assert.Equal("Enter a review note", userInput.Placeholder);
 
         var mapping = profile.Map(new ProfilePathCandidate(
             @"C:\Archive\Acme\2026"));
@@ -71,6 +74,9 @@ public sealed class ProfileAuthoringServiceTests
         Assert.Equal(
             "skip-node-modules",
             Assert.Single(savedManifest.ExcludedDirectoryNameRules!).Id);
+        Assert.Equal(
+            "review-note",
+            Assert.Single(savedManifest.UserInputFields!).FieldId);
 
         var samplePath = Path.GetFullPath(Path.Combine(directory.Path, "Beta", "2025"));
         var sample = service.Test(savedManifest, samplePath);
@@ -336,6 +342,17 @@ public sealed class ProfileAuthoringServiceTests
                     Required = true,
                     Kind = ProfileFieldValueKind.Int32,
                     DisplayFormat = "D4",
+                },
+            ],
+            UserInputFields =
+            [
+                new ProfileUserInputFieldManifest
+                {
+                    FieldId = "review-note",
+                    Header = "Review note",
+                    Order = 30,
+                    Placeholder = "Enter a review note",
+                    DefaultValue = "Pending",
                 },
             ],
             Rules =

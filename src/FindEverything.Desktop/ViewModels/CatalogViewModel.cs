@@ -30,6 +30,7 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
     private readonly ISelectionOutputFormatter _outputFormatter;
     private readonly ICatalogSelectionExporter _selectionExporter;
     private readonly IClipboardService _clipboardService;
+    private readonly IProfileUserInputValueStore? _userInputValueStore;
     private readonly IAppLocalizer _localizer;
     private readonly ILogger<CatalogViewModel> _logger;
     private readonly Dispatcher _dispatcher;
@@ -149,7 +150,8 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
         ICatalogSelectionExporter selectionExporter,
         IClipboardService clipboardService,
         IAppLocalizer localizer,
-        ILogger<CatalogViewModel> logger)
+        ILogger<CatalogViewModel> logger,
+        IProfileUserInputValueStore? userInputValueStore = null)
     {
         _catalogService = catalogService;
         _profileCatalog = profileCatalog;
@@ -164,6 +166,7 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
         _outputFormatter = outputFormatter;
         _selectionExporter = selectionExporter;
         _clipboardService = clipboardService;
+        _userInputValueStore = userInputValueStore;
         _localizer = localizer;
         _logger = logger;
         _filterSummary = F("Loc.Catalog.Filter.Empty", "{0:N0}개 항목", 0);
@@ -229,12 +232,36 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
         }
 
         _disposed = true;
+        FlushPendingUserInputValues();
         CancelWorkspacePersistenceDebounce();
         _profileCatalog.Changed -= OnProfileCatalogChanged;
         _workspaceContext.Changed -= OnWorkspaceChanged;
         _outputFormatStore.Changed -= OnOutputFormatsChanged;
         _operationCoordinator.StateChanged -= OnOperationCoordinatorStateChanged;
         GC.SuppressFinalize(this);
+    }
+
+    private void FlushPendingUserInputValues()
+    {
+        foreach (var input in _loadedItems
+                     .SelectMany(static item => item.UserInputValues.Values)
+                     .Where(static input => input.HasPendingSave))
+        {
+            try
+            {
+                input.CommitAsync().GetAwaiter().GetResult();
+            }
+            catch (Exception exception) when (
+                exception is IOException
+                    or UnauthorizedAccessException
+                    or ArgumentException
+                    or NotSupportedException)
+            {
+                _logger.LogWarning(
+                    exception,
+                    "Could not flush a pending profile user-input value during shutdown.");
+            }
+        }
     }
 
     partial void OnSelectedProfileChanged(ProfileChoiceViewModel? value)
@@ -953,6 +980,17 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
         {
             progress?.FlushAndClose();
             _logger.LogError(exception, "{OperationName} operation failed.", operationName);
+            if (exception is IndexSnapshotChangedException
+                && resultSession is not null
+                && ReferenceEquals(_activeResultSession, resultSession)
+                && ReferenceEquals(_loadedItems, resultSession.Items))
+            {
+                resultSession.Items.Clear();
+                HasLoadedItems = false;
+                SelectedItem = null;
+                ApplyFilter();
+            }
+
             var partialResultCount = resultSession?.Items.Count ?? 0;
             var partialResultMessage = CreatePartialResultMessage(partialResultCount);
             var failureMessage = UserFacingExceptionLocalizer.TranslateOperationFailure(
@@ -1444,9 +1482,80 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
         CatalogItem item,
         IReadOnlyList<ProfileFieldDescriptor> fields)
     {
-        var viewModel = new CatalogItemViewModel(item, fields, _localizer);
+        var profileId = SelectedProfile?.Id;
+        var persistedValues = profileId is not null && _userInputValueStore is not null
+            ? _userInputValueStore.GetValues(profileId, item.FullPath)
+            : null;
+        var viewModel = new CatalogItemViewModel(
+            item,
+            fields,
+            _localizer,
+            persistedValues,
+            profileId is not null && _userInputValueStore is not null
+                ? (fieldId, value) => PersistUserInputAsync(
+                    profileId,
+                    item.FullPath,
+                    fieldId,
+                    value)
+                : null,
+            () => ApplyFilter());
         viewModel.SetShowOriginalValues(ShowOriginalValues);
         return viewModel;
+    }
+
+    private async Task PersistUserInputAsync(
+        string profileId,
+        string absolutePath,
+        string fieldId,
+        string value)
+    {
+        try
+        {
+            await _userInputValueStore!.SetValueAsync(
+                    profileId,
+                    absolutePath,
+                    fieldId,
+                    value)
+                .ConfigureAwait(false);
+        }
+        catch (Exception exception) when (
+            exception is IOException
+                or UnauthorizedAccessException
+                or ArgumentException
+                or NotSupportedException)
+        {
+            _logger.LogWarning(
+                exception,
+                "Could not save profile user input for {ProfileId}, {Path}, {FieldId}.",
+                profileId,
+                absolutePath,
+                fieldId);
+            if (_disposed)
+            {
+                throw;
+            }
+
+            if (_dispatcher.CheckAccess())
+            {
+                SetStatus(
+                    L("Loc.Catalog.UserInput.SaveFailed", "입력 저장 실패"),
+                    L(
+                        "Loc.Catalog.UserInput.SaveFailed.Message",
+                        "사용자 입력 값을 저장하지 못했습니다. 디스크 권한과 여유 공간을 확인하세요."),
+                    InfoBarSeverity.Warning);
+            }
+            else if (!_dispatcher.HasShutdownStarted && !_dispatcher.HasShutdownFinished)
+            {
+                await _dispatcher.InvokeAsync(() => SetStatus(
+                    L("Loc.Catalog.UserInput.SaveFailed", "입력 저장 실패"),
+                    L(
+                        "Loc.Catalog.UserInput.SaveFailed.Message",
+                        "사용자 입력 값을 저장하지 못했습니다. 디스크 권한과 여유 공간을 확인하세요."),
+                    InfoBarSeverity.Warning));
+            }
+
+            throw;
+        }
     }
 
     private WorkspaceSelection ValidateWorkspace()

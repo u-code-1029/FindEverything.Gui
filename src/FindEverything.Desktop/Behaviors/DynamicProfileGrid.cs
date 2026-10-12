@@ -120,6 +120,22 @@ public static class DynamicProfileGrid
         {
             foreach (var field in fields.OfType<ProfileFieldDescriptor>().OrderBy(static field => field.Order))
             {
+                if (field.SourceKind == ProfileFieldSourceKind.UserInput)
+                {
+                    var inputColumn = new UserInputTextColumn(field)
+                    {
+                        Header = field.Header,
+                        IsReadOnly = false,
+                        SortMemberPath = $"UserInputValues[{field.FieldId}].Value",
+                        Width = new DataGridLength(180, DataGridLengthUnitType.Pixel),
+                        MinWidth = 140,
+                        MaxWidth = 360,
+                    };
+                    inputColumn.SetValue(FieldIdProperty, field.FieldId);
+                    dataGrid.Columns.Add(inputColumn);
+                    continue;
+                }
+
                 var column = new MappedHighlightingTextColumn(field.FieldId)
                 {
                     Header = field.Header,
@@ -487,6 +503,71 @@ public static class DynamicProfileGrid
             Grid.SetColumn(mappingBadge, 1);
             panel.Children.Add(mappingBadge);
             return panel;
+        }
+    }
+
+    private sealed class UserInputTextColumn(ProfileFieldDescriptor field) : DataGridColumn
+    {
+        protected override FrameworkElement GenerateElement(DataGridCell cell, object dataItem) =>
+            CreateTextBox();
+
+        protected override FrameworkElement GenerateEditingElement(
+            DataGridCell cell,
+            object dataItem) => CreateTextBox();
+
+        private FrameworkElement CreateTextBox()
+        {
+            var textBox = new Wpf.Ui.Controls.TextBox
+            {
+                Margin = new Thickness(4, 2, 4, 2),
+                MinWidth = 96,
+                MaxLength = ProfileManifestLimits.MaximumUserInputValueLength,
+                ClearButtonEnabled = true,
+                PlaceholderText = field.Placeholder ?? string.Empty,
+                ToolTip = field.Placeholder,
+            };
+            BindingOperations.SetBinding(
+                textBox,
+                System.Windows.Controls.TextBox.TextProperty,
+                new Binding($"UserInputValues[{field.FieldId}].Value")
+                {
+                    Mode = BindingMode.TwoWay,
+                    UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged,
+                });
+            textBox.LostKeyboardFocus += OnLostKeyboardFocus;
+            return textBox;
+        }
+
+        private async void OnLostKeyboardFocus(
+            object sender,
+            KeyboardFocusChangedEventArgs eventArgs)
+        {
+            if (sender is FrameworkElement element
+                && element.DataContext is ViewModels.CatalogItemViewModel item
+                && element is Wpf.Ui.Controls.TextBox textBox)
+            {
+                var binding = BindingOperations.GetBindingExpression(
+                    textBox,
+                    System.Windows.Controls.TextBox.TextProperty);
+                binding?.UpdateSource();
+                if (item.UserInputValues.TryGetValue(field.FieldId, out var input))
+                {
+                    try
+                    {
+                        await input.CommitAsync().ConfigureAwait(true);
+                    }
+                    catch (Exception exception) when (
+                        exception is IOException
+                            or UnauthorizedAccessException
+                            or ArgumentException
+                            or NotSupportedException)
+                    {
+                        // CatalogViewModel already logged and surfaced the save
+                        // failure. Keep the value dirty so the next focus loss or
+                        // shutdown flush can retry it without crashing the UI.
+                    }
+                }
+            }
         }
     }
 }

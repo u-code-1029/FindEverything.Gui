@@ -81,7 +81,9 @@ public static class DependencyInjection
         services.AddSingleton<IProfileAuthoringService, ProfileAuthoringService>();
         services.AddSingleton<IProfilePlaygroundEvaluator, ProfilePlaygroundEvaluator>();
         services.AddSingleton<IProfilePlaygroundNavigator, ProfilePlaygroundNavigator>();
+        services.AddSingleton<IHomeNavigationService, HomeNavigationService>();
         services.AddSingleton<ISelectionOutputFormatStore, SelectionOutputFormatStore>();
+        services.AddSingleton<IProfileUserInputValueStore, ProfileUserInputValueStore>();
         services.AddSingleton<ISelectionOutputFormatter, SelectionOutputFormatter>();
         services.AddSingleton<ICatalogSelectionExporter, CatalogSelectionExporter>();
         services.AddSingleton<IClipboardService, WpfClipboardService>();
@@ -111,6 +113,8 @@ public static class DependencyInjection
             static provider => provider.GetRequiredService<ScanConsoleViewModel>());
         services.Replace(ServiceDescriptor.Singleton<ICatalogScanTraceSink>(
             static provider => provider.GetRequiredService<ScanConsoleViewModel>()));
+        services.AddSingleton<HomePage>();
+        services.AddSingleton<HomeViewModel>();
         services.AddSingleton<FilesPage>();
         services.AddSingleton<FileSearchViewModel>();
         services.AddSingleton<CatalogPage>();

@@ -136,6 +136,35 @@ internal sealed class ProfileModelCompiler
         var textFileFields = CompileTextFileFields(
             manifest.TextFileFields,
             diagnostics);
+        var userInputFields = manifest.UserInputFields
+            .Select(static field => new ProfileFieldDescriptor(
+                field.FieldId,
+                string.Empty,
+                field.Header,
+                field.Order,
+                Required: false,
+                ProfileFieldValueKind.String,
+                IsNullable: true,
+                ParseFormat: null,
+                DisplayFormat: null)
+            {
+                SourceKind = ProfileFieldSourceKind.UserInput,
+                Placeholder = field.Placeholder,
+                DefaultValue = field.DefaultValue,
+            })
+            .ToArray();
+        var descriptorIds = new HashSet<string>(
+            fields.Select(static field => field.Descriptor.FieldId),
+            StringComparer.OrdinalIgnoreCase);
+        foreach (var userInputField in userInputFields)
+        {
+            if (!descriptorIds.Add(userInputField.FieldId))
+            {
+                diagnostics.Add(Error(
+                    "user_input_field_id_duplicate",
+                    $"파싱 값과 사용자 입력 값을 포함해 fieldId가 중복되었습니다: {userInputField.FieldId}"));
+            }
+        }
         if (diagnostics.Any(static diagnostic =>
                 diagnostic.Severity == ProfileDiagnosticSeverity.Error))
         {
@@ -154,6 +183,7 @@ internal sealed class ProfileModelCompiler
         var descriptors = fields
             .Select(static field => field.Descriptor)
             .Concat(textFileFields.Select(static field => field.Descriptor))
+            .Concat(userInputFields)
             .OrderBy(static field => field.Order)
             .ThenBy(static field => field.FieldId, StringComparer.Ordinal)
             .ToArray();
@@ -189,6 +219,14 @@ internal sealed class ProfileModelCompiler
                     field.TimeoutMilliseconds,
                     field.Required,
                     field.MaxBytes))
+                .ToArray()),
+            UserInputFields = Array.AsReadOnly(manifest.UserInputFields
+                .Select(static field => new ProfileUserInputFieldDescriptor(
+                    field.Order,
+                    field.FieldId,
+                    field.Header,
+                    field.Placeholder,
+                    field.DefaultValue))
                 .ToArray()),
             ExcludedDirectoryNameRules = Array.AsReadOnly(manifest.ExcludedDirectoryNameRules
                 .Select(static (rule, index) =>

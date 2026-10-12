@@ -1,0 +1,384 @@
+<Page
+    x:Class="FindEverything.Desktop.Views.Pages.HomePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+    Title="{DynamicResource Loc.Home.Nav}"
+    Background="Transparent"
+    Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+    mc:Ignorable="d">
+    <Page.Resources>
+        <Style x:Key="HomeCardStyle" BasedOn="{StaticResource FluentSurfaceStyle}" TargetType="Border">
+            <Setter Property="Padding" Value="20" />
+        </Style>
+        <Style x:Key="HomeActionCardStyle" BasedOn="{StaticResource HomeCardStyle}" TargetType="Border">
+            <Setter Property="MinHeight" Value="214" />
+            <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
+        </Style>
+        <Style x:Key="HomeStateBadgeStyle" TargetType="Border">
+            <Setter Property="Padding" Value="8,3" />
+            <Setter Property="Background" Value="{DynamicResource ControlFillColorSecondaryBrush}" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style x:Key="HomeStepNumberStyle" TargetType="Border">
+            <Setter Property="Width" Value="32" />
+            <Setter Property="Height" Value="32" />
+            <Setter Property="Background" Value="{DynamicResource AccentFillColorSecondaryBrush}" />
+            <Setter Property="CornerRadius" Value="16" />
+            <Setter Property="VerticalAlignment" Value="Top" />
+        </Style>
+    </Page.Resources>
+
+    <ScrollViewer
+        x:Name="HomeScrollViewer"
+        HorizontalScrollBarVisibility="Disabled"
+        Style="{StaticResource FluentGutteredScrollViewerStyle}"
+        VerticalScrollBarVisibility="Auto">
+        <StackPanel
+            x:Name="DashboardContent"
+            Margin="24,20,8,28"
+            SizeChanged="OnDashboardContentSizeChanged">
+            <Border
+                Padding="24"
+                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{DynamicResource AccentFillColorDefaultBrush}"
+                BorderThickness="4,1,1,1"
+                CornerRadius="8">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel MaxWidth="760" HorizontalAlignment="Left">
+                        <TextBlock
+                            FontSize="12"
+                            FontWeight="SemiBold"
+                            Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                            Text="{DynamicResource Loc.Home.Hero.Kicker}" />
+                        <TextBlock
+                            Margin="0,8,0,0"
+                            AutomationProperties.HeadingLevel="Level1"
+                            FontFamily="Segoe UI Variable Display, Segoe UI"
+                            FontSize="32"
+                            FontWeight="SemiBold"
+                            LineHeight="40"
+                            Text="{DynamicResource Loc.Home.Hero.Title}"
+                            TextWrapping="Wrap" />
+                        <TextBlock
+                            Margin="0,10,0,0"
+                            MaxWidth="720"
+                            Style="{StaticResource PageSubtitleTextStyle}"
+                            Text="{DynamicResource Loc.Home.Hero.Subtitle}" />
+                    </StackPanel>
+                    <Border
+                        x:Name="HeroVisual"
+                        Grid.Column="1"
+                        Width="88"
+                        Height="88"
+                        Margin="28,0,0,0"
+                        VerticalAlignment="Center"
+                        Background="{DynamicResource AccentFillColorSecondaryBrush}"
+                        CornerRadius="24">
+                        <ui:SymbolIcon
+                            FontSize="42"
+                            Foreground="{DynamicResource TextOnAccentFillColorPrimaryBrush}"
+                            Symbol="Search48" />
+                    </Border>
+                </Grid>
+            </Border>
+
+            <ui:InfoBar
+                Margin="0,12,0,0"
+                AutomationProperties.LiveSetting="Polite"
+                IsClosable="False"
+                IsOpen="{Binding IsOperationRunning}"
+                Message="{Binding OperationStatus}"
+                Severity="Informational"
+                Title="{DynamicResource Loc.Home.Operation.Title}" />
+
+            <TextBlock
+                Margin="0,28,0,0"
+                AutomationProperties.HeadingLevel="Level2"
+                Style="{StaticResource SectionTitleTextStyle}"
+                Text="{DynamicResource Loc.Home.Actions.Title}" />
+            <TextBlock
+                Margin="0,4,0,12"
+                Style="{StaticResource PageSubtitleTextStyle}"
+                Text="{DynamicResource Loc.Home.Actions.Subtitle}" />
+
+            <WrapPanel x:Name="PrimaryCardsHost">
+                <Border
+                    x:Name="FilesActionCard"
+                    Margin="0,0,12,12"
+                    AutomationProperties.Name="{DynamicResource Loc.Home.Files.Title}"
+                    Style="{StaticResource HomeActionCardStyle}">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Border
+                                Width="44"
+                                Height="44"
+                                Background="{DynamicResource ControlFillColorSecondaryBrush}"
+                                CornerRadius="10">
+                                <ui:SymbolIcon FontSize="24" Symbol="Search24" />
+                            </Border>
+                            <StackPanel Grid.Column="1" Margin="14,0,0,0">
+                                <TextBlock FontSize="18" FontWeight="SemiBold" Text="{DynamicResource Loc.Home.Files.Title}" />
+                                <TextBlock Margin="0,3,0,0" Style="{StaticResource CaptionTextStyle}" Text="{Binding RootStateText}" />
+                            </StackPanel>
+                        </Grid>
+                        <TextBlock
+                            Grid.Row="1"
+                            Margin="0,14,0,18"
+                            Style="{StaticResource BodyTextStyle}"
+                            Text="{DynamicResource Loc.Home.Files.Description}" />
+                        <ui:Button
+                            Grid.Row="2"
+                            MinHeight="40"
+                            HorizontalAlignment="Stretch"
+                            Appearance="Primary"
+                            AutomationProperties.Name="{DynamicResource Loc.Home.Files.Action.Automation}"
+                            Command="{Binding OpenFilesCommand}"
+                            Content="{DynamicResource Loc.Home.Files.Action}"
+                            Icon="{ui:SymbolIcon Symbol=ArrowRight20}" />
+                    </Grid>
+                </Border>
+
+                <Border
+                    x:Name="CatalogActionCard"
+                    Margin="0,0,12,12"
+                    AutomationProperties.Name="{DynamicResource Loc.Home.Catalog.Title}"
+                    Style="{StaticResource HomeActionCardStyle}">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Border
+                                Width="44"
+                                Height="44"
+                                Background="{DynamicResource ControlFillColorSecondaryBrush}"
+                                CornerRadius="10">
+                                <ui:SymbolIcon FontSize="24" Symbol="TableSimple24" />
+                            </Border>
+                            <StackPanel Grid.Column="1" Margin="14,0,0,0">
+                                <TextBlock FontSize="18" FontWeight="SemiBold" Text="{DynamicResource Loc.Home.Catalog.Title}" />
+                                <TextBlock Margin="0,3,0,0" Style="{StaticResource CaptionTextStyle}" Text="{Binding ProfileStateText}" />
+                            </StackPanel>
+                        </Grid>
+                        <TextBlock
+                            Grid.Row="1"
+                            Margin="0,14,0,18"
+                            Style="{StaticResource BodyTextStyle}"
+                            Text="{DynamicResource Loc.Home.Catalog.Description}" />
+                        <ui:Button
+                            Grid.Row="2"
+                            MinHeight="40"
+                            HorizontalAlignment="Stretch"
+                            Appearance="Secondary"
+                            AutomationProperties.Name="{DynamicResource Loc.Home.Catalog.Action.Automation}"
+                            Command="{Binding OpenCatalogCommand}"
+                            Content="{DynamicResource Loc.Home.Catalog.Action}"
+                            Icon="{ui:SymbolIcon Symbol=ArrowRight20}" />
+                    </Grid>
+                </Border>
+            </WrapPanel>
+
+            <WrapPanel x:Name="OverviewCardsHost" Margin="0,12,0,0">
+                <Border
+                    x:Name="WorkspaceOverviewCard"
+                    MinHeight="334"
+                    Margin="0,0,12,12"
+                    Style="{StaticResource HomeCardStyle}">
+                    <StackPanel>
+                        <TextBlock
+                            AutomationProperties.HeadingLevel="Level2"
+                            Style="{StaticResource SectionTitleTextStyle}"
+                            Text="{DynamicResource Loc.Home.Workspace.Title}" />
+                        <TextBlock
+                            Margin="0,4,0,16"
+                            Style="{StaticResource CaptionTextStyle}"
+                            Text="{DynamicResource Loc.Home.Workspace.Subtitle}" />
+
+                        <Grid Margin="0,0,0,14">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock FontWeight="SemiBold" Text="{DynamicResource Loc.Home.Workspace.Root}" />
+                                <TextBlock
+                                    Margin="0,3,12,0"
+                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                    Text="{Binding RootPathText}"
+                                    TextTrimming="CharacterEllipsis"
+                                    ToolTip="{Binding RootPathText}" />
+                            </StackPanel>
+                            <Border Grid.Column="1" Style="{StaticResource HomeStateBadgeStyle}">
+                                <TextBlock FontSize="12" FontWeight="SemiBold" Text="{Binding RootStateText}" />
+                            </Border>
+                        </Grid>
+
+                        <Grid Margin="0,0,0,14">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock FontWeight="SemiBold" Text="{DynamicResource Loc.Home.Workspace.Profile}" />
+                                <TextBlock Margin="0,3,12,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding ProfileName}" TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                            <Border Grid.Column="1" Style="{StaticResource HomeStateBadgeStyle}">
+                                <TextBlock FontSize="12" FontWeight="SemiBold" Text="{Binding ProfileCountText}" />
+                            </Border>
+                        </Grid>
+
+                        <StackPanel Margin="0,0,0,14">
+                            <TextBlock FontWeight="SemiBold" Text="{DynamicResource Loc.Home.Workspace.FileDatabase}" />
+                            <TextBlock Margin="0,3,0,0" Style="{StaticResource CaptionTextStyle}" Text="{Binding FileDatabaseStateText}" />
+                            <TextBlock
+                                Margin="0,3,0,0"
+                                FontFamily="Consolas"
+                                FontSize="12"
+                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                Text="{Binding FileDatabasePath}"
+                                TextTrimming="CharacterEllipsis"
+                                ToolTip="{Binding FileDatabasePath}" />
+                        </StackPanel>
+
+                        <StackPanel>
+                            <TextBlock FontWeight="SemiBold" Text="{DynamicResource Loc.Home.Workspace.ProfileDatabase}" />
+                            <TextBlock Margin="0,3,0,0" Style="{StaticResource CaptionTextStyle}" Text="{Binding ProfileDatabaseStateText}" />
+                            <TextBlock
+                                Margin="0,3,0,0"
+                                FontFamily="Consolas"
+                                FontSize="12"
+                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                Text="{Binding ProfileDatabasePath}"
+                                TextTrimming="CharacterEllipsis"
+                                ToolTip="{Binding ProfileDatabasePath}" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <Border
+                    x:Name="SetupOverviewCard"
+                    MinHeight="334"
+                    Margin="0,0,12,12"
+                    Style="{StaticResource HomeCardStyle}">
+                    <StackPanel>
+                        <TextBlock
+                            AutomationProperties.HeadingLevel="Level2"
+                            Style="{StaticResource SectionTitleTextStyle}"
+                            Text="{Binding SetupTitle}" />
+                        <TextBlock Margin="0,4,0,16" Style="{StaticResource CaptionTextStyle}" Text="{Binding SetupMessage}" />
+
+                        <Grid Margin="0,0,0,14">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Border Style="{StaticResource HomeStepNumberStyle}">
+                                <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="{DynamicResource TextOnAccentFillColorPrimaryBrush}" Text="1" />
+                            </Border>
+                            <StackPanel Grid.Column="1" Margin="12,0">
+                                <TextBlock FontWeight="SemiBold" Text="{DynamicResource Loc.Home.Setup.Location.Title}" />
+                                <TextBlock Margin="0,2,0,0" Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.Home.Setup.Location.Description}" />
+                            </StackPanel>
+                            <TextBlock Grid.Column="2" VerticalAlignment="Center" FontWeight="SemiBold" Text="{Binding LocationStepState}" />
+                        </Grid>
+
+                        <Grid Margin="0,0,0,14">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Border Style="{StaticResource HomeStepNumberStyle}">
+                                <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="{DynamicResource TextOnAccentFillColorPrimaryBrush}" Text="2" />
+                            </Border>
+                            <StackPanel Grid.Column="1" Margin="12,0">
+                                <TextBlock FontWeight="SemiBold" Text="{DynamicResource Loc.Home.Setup.Profile.Title}" />
+                                <TextBlock Margin="0,2,0,0" Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.Home.Setup.Profile.Description}" />
+                            </StackPanel>
+                            <TextBlock Grid.Column="2" VerticalAlignment="Center" FontWeight="SemiBold" Text="{Binding ProfileStepState}" />
+                        </Grid>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Border Style="{StaticResource HomeStepNumberStyle}">
+                                <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="{DynamicResource TextOnAccentFillColorPrimaryBrush}" Text="3" />
+                            </Border>
+                            <StackPanel Grid.Column="1" Margin="12,0">
+                                <TextBlock FontWeight="SemiBold" Text="{DynamicResource Loc.Home.Setup.Scan.Title}" />
+                                <TextBlock Margin="0,2,0,0" Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.Home.Setup.Scan.Description}" />
+                            </StackPanel>
+                            <TextBlock Grid.Column="2" VerticalAlignment="Center" FontWeight="SemiBold" Text="{Binding ScanStepState}" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+            </WrapPanel>
+
+            <Border Margin="0,12,12,0" Style="{StaticResource HomeCardStyle}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <StackPanel>
+                        <TextBlock
+                            AutomationProperties.HeadingLevel="Level2"
+                            Style="{StaticResource SectionTitleTextStyle}"
+                            Text="{DynamicResource Loc.Home.Tools.Title}" />
+                        <TextBlock Margin="0,4,0,0" Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.Home.Tools.Subtitle}" />
+                    </StackPanel>
+                    <WrapPanel Grid.Row="1" Margin="0,16,0,0">
+                        <ui:Button
+                            MinWidth="180"
+                            MinHeight="40"
+                            Margin="0,0,8,8"
+                            Command="{Binding OpenProfilesCommand}"
+                            Content="{DynamicResource Loc.Home.Tools.Profiles}"
+                            Icon="{ui:SymbolIcon Symbol=DocumentEdit20}" />
+                        <ui:Button
+                            MinWidth="180"
+                            MinHeight="40"
+                            Margin="0,0,8,8"
+                            Command="{Binding OpenPlaygroundCommand}"
+                            Content="{DynamicResource Loc.Home.Tools.Playground}"
+                            Icon="{ui:SymbolIcon Symbol=DocumentSearch20}" />
+                        <ui:Button
+                            MinWidth="180"
+                            MinHeight="40"
+                            Margin="0,0,8,8"
+                            Command="{Binding OpenOutputFormatsCommand}"
+                            Content="{DynamicResource Loc.Home.Tools.OutputFormats}"
+                            Icon="{ui:SymbolIcon Symbol=ClipboardTask20}" />
+                    </WrapPanel>
+                </Grid>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

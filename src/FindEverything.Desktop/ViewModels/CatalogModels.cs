@@ -22,9 +22,10 @@ public sealed class ProfileChoiceViewModel(ILoadedProfile profile)
 
 public sealed class CatalogItemViewModel : ObservableObject
 {
-    private readonly IReadOnlyDictionary<string, string> _rawDisplayValues;
-    private readonly IReadOnlyDictionary<string, string> _mappedDisplayValues;
-    private readonly IReadOnlyDictionary<string, object?> _mappedOutputValues;
+    private readonly Dictionary<string, string> _rawDisplayValues;
+    private readonly Dictionary<string, string> _mappedDisplayValues;
+    private readonly Dictionary<string, object?> _rawOutputValues;
+    private readonly Dictionary<string, object?> _mappedOutputValues;
     private readonly string[] _rawSearchableValues;
     private readonly string[] _mappedSearchableValues;
     private readonly string _coverageText;
@@ -34,6 +35,17 @@ public sealed class CatalogItemViewModel : ObservableObject
         CatalogItem item,
         IReadOnlyList<ProfileFieldDescriptor> fields,
         IAppLocalizer localizer)
+        : this(item, fields, localizer, null, null, null)
+    {
+    }
+
+    public CatalogItemViewModel(
+        CatalogItem item,
+        IReadOnlyList<ProfileFieldDescriptor> fields,
+        IAppLocalizer localizer,
+        IReadOnlyDictionary<string, string>? persistedUserInputValues,
+        Func<string, string, Task>? persistUserInput,
+        Action? userInputChanged)
     {
         ArgumentNullException.ThrowIfNull(item);
         ArgumentNullException.ThrowIfNull(fields);
@@ -54,6 +66,12 @@ public sealed class CatalogItemViewModel : ObservableObject
             static pair => pair.Key,
             static pair => pair.Value,
             StringComparer.OrdinalIgnoreCase);
+        var rawOutputValues = Values.ToDictionary(
+            static pair => pair.Key,
+            static pair => pair.Value,
+            StringComparer.OrdinalIgnoreCase);
+        var userInputValues = new Dictionary<string, CatalogUserInputValueViewModel>(
+            StringComparer.OrdinalIgnoreCase);
         var mappedValueIndicators = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
         var mappedValueTooltips = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var rawSearchableValues = new List<string>(fields.Count + 2)
@@ -66,6 +84,40 @@ public sealed class CatalogItemViewModel : ObservableObject
         };
         foreach (var field in fields)
         {
+            if (field.SourceKind == ProfileFieldSourceKind.UserInput)
+            {
+                var initialValue = persistedUserInputValues is not null
+                    && persistedUserInputValues.TryGetValue(field.FieldId, out var savedValue)
+                        ? savedValue
+                        : field.DefaultValue ?? string.Empty;
+                CatalogUserInputValueViewModel? input = null;
+                input = new CatalogUserInputValueViewModel(
+                    field.FieldId,
+                    field.Placeholder,
+                    initialValue,
+                    persistUserInput,
+                    () =>
+                    {
+                        var current = input!;
+                        rawDisplayValues[field.FieldId] = current.Value;
+                        mappedDisplayValues[field.FieldId] = current.Value;
+                        rawOutputValues[field.FieldId] = current.Value;
+                        mappedOutputValues[field.FieldId] = current.Value;
+                        OnPropertyChanged(nameof(DisplayValues));
+                        OnPropertyChanged(nameof(OutputValues));
+                        OnPropertyChanged(nameof(ExportDisplayValues));
+                        userInputChanged?.Invoke();
+                    });
+                userInputValues[field.FieldId] = input;
+                rawDisplayValues[field.FieldId] = initialValue;
+                mappedDisplayValues[field.FieldId] = initialValue;
+                rawOutputValues[field.FieldId] = initialValue;
+                mappedOutputValues[field.FieldId] = initialValue;
+                mappedValueIndicators[field.FieldId] = false;
+                mappedValueTooltips[field.FieldId] = string.Empty;
+                continue;
+            }
+
             Values.TryGetValue(field.FieldId, out var value);
             var rawDisplayValue = FormatValue(value, field.DisplayFormat);
             var mappedDisplayValue = rawDisplayValue;
@@ -101,7 +153,9 @@ public sealed class CatalogItemViewModel : ObservableObject
         mappedSearchableValues.Add(FullPath);
         _rawDisplayValues = rawDisplayValues;
         _mappedDisplayValues = mappedDisplayValues;
+        _rawOutputValues = rawOutputValues;
         _mappedOutputValues = mappedOutputValues;
+        UserInputValues = userInputValues;
         MappedValueIndicators = mappedValueIndicators;
         MappedValueTooltips = mappedValueTooltips;
         HasMappedValues = mappedValueIndicators.Values.Any(static value => value);
@@ -121,11 +175,13 @@ public sealed class CatalogItemViewModel : ObservableObject
 
     public IReadOnlyDictionary<string, object?> Values { get; }
 
+    public IReadOnlyDictionary<string, CatalogUserInputValueViewModel> UserInputValues { get; }
+
     public IReadOnlyDictionary<string, string> DisplayValues =>
         _showOriginalValues ? _rawDisplayValues : _mappedDisplayValues;
 
     public IReadOnlyDictionary<string, object?> OutputValues =>
-        _showOriginalValues ? Values : _mappedOutputValues;
+        _showOriginalValues ? _rawOutputValues : _mappedOutputValues;
 
     public IReadOnlyDictionary<string, bool> MappedValueIndicators { get; }
 
@@ -143,7 +199,8 @@ public sealed class CatalogItemViewModel : ObservableObject
     public bool Matches(string? filterText)
     {
         return TextFilter.MatchesAll(
-            _showOriginalValues ? _rawSearchableValues : _mappedSearchableValues,
+            (_showOriginalValues ? _rawSearchableValues : _mappedSearchableValues)
+                .Concat(UserInputValues.Values.Select(static value => value.Value)),
             filterText);
     }
 
@@ -176,6 +233,155 @@ public sealed class CatalogItemViewModel : ObservableObject
         catch (FormatException)
         {
             return Convert.ToString(value, CultureInfo.CurrentCulture) ?? string.Empty;
+        }
+    }
+}
+
+public sealed class CatalogUserInputValueViewModel : ObservableObject
+{
+    private readonly Func<string, string, Task>? _persist;
+    private readonly Action _changed;
+    private readonly SemaphoreSlim _persistGate = new(1, 1);
+    private CancellationTokenSource? _saveDebounce;
+    private string _value;
+    private int _changeVersion;
+    private int _savedVersion;
+
+    public CatalogUserInputValueViewModel(
+        string fieldId,
+        string? placeholder,
+        string value,
+        Func<string, string, Task>? persist,
+        Action changed)
+    {
+        FieldId = fieldId;
+        Placeholder = placeholder ?? string.Empty;
+        _value = value;
+        _persist = persist;
+        _changed = changed;
+    }
+
+    public string FieldId { get; }
+
+    public string Placeholder { get; }
+
+    public bool HasPendingSave =>
+        Volatile.Read(ref _changeVersion) != Volatile.Read(ref _savedVersion);
+
+    public string Value
+    {
+        get => _value;
+        set
+        {
+            value ??= string.Empty;
+            if (!SetProperty(ref _value, value))
+            {
+                return;
+            }
+
+            _changed();
+            if (_persist is not null)
+            {
+                _ = Interlocked.Increment(ref _changeVersion);
+                OnPropertyChanged(nameof(HasPendingSave));
+                ScheduleSave();
+            }
+        }
+    }
+
+    public async Task CommitAsync()
+    {
+        _saveDebounce?.Cancel();
+        _saveDebounce = null;
+        var version = Volatile.Read(ref _changeVersion);
+        if (_persist is not null && version != Volatile.Read(ref _savedVersion))
+        {
+            await PersistVersionAsync(version, Value).ConfigureAwait(false);
+        }
+    }
+
+    private void ScheduleSave()
+    {
+        _saveDebounce?.Cancel();
+        if (_persist is null)
+        {
+            _saveDebounce = null;
+            return;
+        }
+
+        var cancellation = new CancellationTokenSource();
+        _saveDebounce = cancellation;
+        _ = SaveAfterDelayAsync(
+            cancellation,
+            Volatile.Read(ref _changeVersion),
+            Value);
+    }
+
+    private async Task SaveAfterDelayAsync(
+        CancellationTokenSource cancellation,
+        int version,
+        string value)
+    {
+        try
+        {
+            await Task.Delay(400, cancellation.Token).ConfigureAwait(false);
+            await PersistVersionAsync(version, value).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception) when (
+            exception is IOException
+                or UnauthorizedAccessException
+                or ArgumentException
+                or NotSupportedException)
+        {
+            // The owning view model reports the failure. Keep the version dirty
+            // so LostFocus or shutdown can retry the latest value.
+        }
+        finally
+        {
+            if (ReferenceEquals(_saveDebounce, cancellation))
+            {
+                _saveDebounce = null;
+            }
+
+            cancellation.Dispose();
+        }
+    }
+
+    private async Task PersistVersionAsync(int version, string value)
+    {
+        await _persistGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            // A cancelled debounce can race with an explicit LostFocus/shutdown
+            // commit. Never let that older task overwrite a value that was typed
+            // and queued later.
+            if (version < Volatile.Read(ref _changeVersion))
+            {
+                return;
+            }
+
+            await _persist!(FieldId, value).ConfigureAwait(false);
+            var observed = Volatile.Read(ref _savedVersion);
+            while (version > observed)
+            {
+                var original = Interlocked.CompareExchange(
+                    ref _savedVersion,
+                    version,
+                    observed);
+                if (original == observed)
+                {
+                    break;
+                }
+
+                observed = original;
+            }
+        }
+        finally
+        {
+            _persistGate.Release();
         }
     }
 }

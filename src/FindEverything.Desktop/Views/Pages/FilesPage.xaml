@@ -100,6 +100,7 @@
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
                     <TextBlock
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
@@ -129,6 +130,58 @@
                         Icon="{ui:SymbolIcon Symbol=ArrowReset20}"
                         ToolTip="{Binding DefaultDatabasePath}" />
                     </WrapPanel>
+
+                    <Border
+                        Grid.Row="2"
+                        Margin="0,12,0,0"
+                        Padding="12"
+                        Background="{DynamicResource ControlFillColorSecondaryBrush}"
+                        CornerRadius="6">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <StackPanel>
+                                <TextBlock FontWeight="SemiBold" Text="부분 새로 고침" />
+                                <TextBlock
+                                    Margin="0,2,0,0"
+                                    Style="{StaticResource CaptionTextStyle}"
+                                    Text="루트 아래의 한 폴더만 다시 읽어 전체 디스크를 다시 탐색하는 시간을 줄입니다."
+                                    TextWrapping="Wrap" />
+                            </StackPanel>
+                            <Grid Grid.Row="1" Margin="0,8,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <ui:TextBox
+                                    x:Name="PartialRefreshPathTextBox"
+                                    MinWidth="120"
+                                    AutomationProperties.Name="새로 고칠 하위 폴더"
+                                    ClearButtonEnabled="True"
+                                    PlaceholderText="현재 검색 위치 아래의 전체 폴더 경로"
+                                    Text="{Binding RefreshScopePath, UpdateSourceTrigger=PropertyChanged}" />
+                                <ui:Button
+                                    Grid.Column="1"
+                                    MinWidth="96"
+                                    Margin="8,0,0,0"
+                                    Command="{Binding BrowseRefreshScopeCommand}"
+                                    Content="폴더 선택"
+                                    Icon="{ui:SymbolIcon Symbol=FolderOpen20}" />
+                                <ui:Button
+                                    x:Name="PartialRefreshButton"
+                                    Grid.Column="2"
+                                    MinWidth="140"
+                                    Margin="8,0,0,0"
+                                    Appearance="Primary"
+                                    Command="{Binding RefreshScopeCommand}"
+                                    Content="이 폴더 새로 고침"
+                                    Icon="{ui:SymbolIcon Symbol=ArrowSync20}" />
+                            </Grid>
+                        </Grid>
+                    </Border>
                 </Grid>
             </Grid>
         </Border>
@@ -353,6 +406,8 @@
                 Visibility="{Binding HasIndex, Converter={StaticResource BooleanToVisibilityConverter}}">
                 <DataGrid.ContextMenu>
                     <ContextMenu DataContext="{Binding PlacementTarget, RelativeSource={RelativeSource Self}}">
+                        <MenuItem Command="{Binding DataContext.RefreshItemScopeCommand}" CommandParameter="{Binding CurrentItem}" Header="이 폴더만 새로 고침" />
+                        <Separator />
                         <MenuItem Command="{Binding DataContext.OpenItemFolderCommand}" CommandParameter="{Binding CurrentItem}" Header="폴더 경로 열기" />
                         <MenuItem Command="{Binding DataContext.CopyItemFolderPathCommand}" CommandParameter="{Binding CurrentItem}" Header="폴더 경로 복사" />
                         <Separator />

@@ -1041,6 +1041,42 @@ public partial class ProfileTextFileFieldDraftViewModel : ObservableObject
 }
 
 /// <summary>
+/// An editable string column whose value is entered by the user for each
+/// matched catalog row and persisted independently of the scan result.
+/// </summary>
+public partial class ProfileUserInputFieldDraftViewModel : ObservableObject
+{
+    [ObservableProperty]
+    private string _header = string.Empty;
+
+    [ObservableProperty]
+    private string _fieldId = string.Empty;
+
+    [ObservableProperty]
+    private int _order;
+
+    [ObservableProperty]
+    private string _placeholder = string.Empty;
+
+    [ObservableProperty]
+    private string _defaultValue = string.Empty;
+
+    public ProfileUserInputFieldDraftViewModel()
+    {
+    }
+
+    public ProfileUserInputFieldDraftViewModel(ProfileUserInputFieldManifest field)
+    {
+        ArgumentNullException.ThrowIfNull(field);
+        Header = field.Header ?? string.Empty;
+        FieldId = field.FieldId ?? string.Empty;
+        Order = field.Order;
+        Placeholder = field.Placeholder ?? string.Empty;
+        DefaultValue = field.DefaultValue ?? string.Empty;
+    }
+}
+
+/// <summary>
 /// A single value produced by testing an example path in the profile editor.
 /// </summary>
 public sealed class ProfileTestResultViewModel

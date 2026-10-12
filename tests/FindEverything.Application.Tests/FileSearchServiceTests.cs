@@ -33,6 +33,117 @@ public sealed class FileSearchServiceTests
     }
 
     [Fact]
+    public async Task PartialRefresh_UsesAnOnDemandScopedScanWithLatestSettings()
+    {
+        var temporaryRoot = CreateTemporaryDirectory();
+        try
+        {
+            var refreshPath = Directory.CreateDirectory(
+                Path.Combine(temporaryRoot, "selected-subtree")).FullName;
+            var scope = new FileSearchScope(
+                temporaryRoot,
+                Path.Combine(Path.GetTempPath(), $"file-search-{Guid.NewGuid():N}.db"));
+            var factory = new RecordingSessionFactory();
+            await using var provider = CreateProvider(factory);
+            provider.GetRequiredService<IValidatedSettingsUpdater<IndexingOptions>>().Publish(
+                new IndexingOptions
+                {
+                    MaxEntriesPerSecond = 789,
+                    DirectoryDelayMilliseconds = 13,
+                });
+
+            await provider.GetRequiredService<IFileSearchService>().RefreshScopeAsync(
+                scope,
+                refreshPath);
+
+            var request = Assert.IsType<IndexScanRequest>(factory.Session.ScanRequest);
+            Assert.Equal(Path.GetFullPath(temporaryRoot), request.RootPath);
+            Assert.Equal(Path.GetFullPath(refreshPath), request.ScopePath);
+            Assert.True(request.OnDemand);
+            Assert.Null(request.InspectDirectory);
+            Assert.Equal(789, request.Options.MaxEntriesPerSecond);
+            Assert.Equal(TimeSpan.FromMilliseconds(13), request.Options.DirectoryDelay);
+            Assert.Equal(Path.GetFullPath(temporaryRoot), factory.Session.StatusRootPath);
+            Assert.Equal(scope.DatabasePath, factory.LastDatabasePath);
+        }
+        finally
+        {
+            Directory.Delete(temporaryRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task PartialRefresh_RejectsInvalidFoldersBeforeOpeningDatabase()
+    {
+        var temporaryRoot = CreateTemporaryDirectory();
+        var outside = CreateTemporaryDirectory();
+        try
+        {
+            var scope = new FileSearchScope(
+                temporaryRoot,
+                Path.Combine(Path.GetTempPath(), $"file-search-{Guid.NewGuid():N}.db"));
+            var factory = new RecordingSessionFactory();
+            await using var provider = CreateProvider(factory);
+            var service = provider.GetRequiredService<IFileSearchService>();
+
+            await Assert.ThrowsAsync<ArgumentException>(() =>
+                service.RefreshScopeAsync(scope, temporaryRoot));
+            await Assert.ThrowsAsync<ArgumentException>(() =>
+                service.RefreshScopeAsync(scope, outside));
+            await Assert.ThrowsAsync<ArgumentException>(() =>
+                service.RefreshScopeAsync(scope, "relative-subtree"));
+            await Assert.ThrowsAsync<DirectoryNotFoundException>(() =>
+                service.RefreshScopeAsync(scope, Path.Combine(temporaryRoot, "missing")));
+
+            Assert.Empty(factory.DatabasePaths);
+        }
+        finally
+        {
+            Directory.Delete(temporaryRoot, recursive: true);
+            Directory.Delete(outside, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task PartialRefresh_RequiresAnExistingIndexAndDoesNotStartAScan()
+    {
+        var temporaryRoot = CreateTemporaryDirectory();
+        try
+        {
+            var refreshPath = Directory.CreateDirectory(
+                Path.Combine(temporaryRoot, "selected-subtree")).FullName;
+            var scope = new FileSearchScope(
+                temporaryRoot,
+                Path.Combine(Path.GetTempPath(), $"file-search-{Guid.NewGuid():N}.db"));
+            var factory = new RecordingSessionFactory();
+            factory.Session.StatusResult = new IndexRootStatus(
+                temporaryRoot,
+                IndexRootAvailability.DatabaseMissing,
+                null,
+                null,
+                null,
+                null,
+                0,
+                0,
+                false);
+            await using var provider = CreateProvider(factory);
+
+            var exception = await Assert.ThrowsAsync<FileSearchIndexUnavailableException>(() =>
+                provider.GetRequiredService<IFileSearchService>().RefreshScopeAsync(
+                    scope,
+                    refreshPath));
+
+            Assert.Equal(Path.GetFullPath(temporaryRoot), exception.RootPath);
+            Assert.Null(factory.Session.ScanRequest);
+            Assert.Equal(scope.DatabasePath, factory.LastDatabasePath);
+        }
+        finally
+        {
+            Directory.Delete(temporaryRoot, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task Search_ForwardsAllServerSideFiltersAndResultMetadata()
     {
         var factory = new RecordingSessionFactory();
@@ -192,6 +303,16 @@ public sealed class FileSearchServiceTests
     {
         var root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "file-search-root"));
         return new FileSearchScope(root, Path.Combine(Path.GetTempPath(), "file-search-index.db"));
+    }
+
+    private static string CreateTemporaryDirectory()
+    {
+        var path = Path.Combine(
+            Path.GetTempPath(),
+            "FindEverything.Application.Tests",
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(path);
+        return path;
     }
 
     private sealed class RecordingSessionFactory : IIndexSessionFactory

@@ -470,6 +470,25 @@ public sealed class ProfilePluginLoaderTests
     }
 
     [Fact]
+    public async Task LoadAsync_RejectsLegacyPathInputEvenWhenManifestClaimsCurrentContract()
+    {
+        using var packages = new TestProfilePackages();
+        packages.AddDeclarative(
+            "legacy-path-input",
+            "legacy-path-input-profile",
+            ValidPattern,
+            pathInput: "Relative");
+        using var host = BuildHost(packages.RootPath);
+
+        var snapshot = await LoadAsync(host);
+
+        Assert.Empty(snapshot.Profiles);
+        var report = Assert.Single(snapshot.Reports);
+        Assert.Equal(ProfilePluginStatus.Disabled, report.Status);
+        Assert.Contains(report.Diagnostics, static item => item.Code == "path_input_removed");
+    }
+
+    [Fact]
     public async Task LoadAsync_DisablesValidAndInvalidManifestsThatShareAnId()
     {
         using var packages = new TestProfilePackages();
@@ -622,7 +641,8 @@ public sealed class ProfilePluginLoaderTests
             string pattern,
             bool includeFields = true,
             IReadOnlyList<object>? fields = null,
-            IReadOnlyList<object>? textFileFields = null)
+            IReadOnlyList<object>? textFileFields = null,
+            string? pathInput = null)
         {
             var directory = Path.Combine(RootPath, directoryName);
             Directory.CreateDirectory(directory);
@@ -634,6 +654,7 @@ public sealed class ProfilePluginLoaderTests
                 id = profileId,
                 version = "1.0.0",
                 displayName = profileId,
+                pathInput,
                 candidateKind = "Directory",
                 fields = includeFields
                     ? fields ?? CreateDeclarativeFields()

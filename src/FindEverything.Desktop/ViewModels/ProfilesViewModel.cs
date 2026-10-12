@@ -245,6 +245,9 @@ public partial class ProfilesViewModel : ObservableObject
     public ObservableCollection<ProfileTextFileFieldDraftViewModel>
         DraftTextFileFields { get; } = [];
 
+    public ObservableCollection<ProfileUserInputFieldDraftViewModel>
+        DraftUserInputFields { get; } = [];
+
     public event EventHandler? AssignmentPickerRequested;
 
     public event EventHandler? EditorStepChanged;
@@ -334,6 +337,7 @@ public partial class ProfilesViewModel : ObservableObject
         UseGuidedModeCommand.NotifyCanExecuteChanged();
         AddDirectoryExclusionRuleCommand.NotifyCanExecuteChanged();
         AddTextFileFieldCommand.NotifyCanExecuteChanged();
+        AddUserInputFieldCommand.NotifyCanExecuteChanged();
         PreviousEditorStepCommand.NotifyCanExecuteChanged();
         NextEditorStepCommand.NotifyCanExecuteChanged();
         OpenSavedProfileInPlaygroundCommand.NotifyCanExecuteChanged();
@@ -390,6 +394,7 @@ public partial class ProfilesViewModel : ObservableObject
             DraftRules.Clear();
             DraftExcludedDirectoryNameRules.Clear();
             DraftTextFileFields.Clear();
+            DraftUserInputFields.Clear();
             AddFieldRow(new ProfileFieldDraftViewModel
             {
                 Header = L("Loc.Profiles.New.DefaultField", "이름"),
@@ -419,6 +424,7 @@ public partial class ProfilesViewModel : ObservableObject
             RebuildGuidedTemplate();
             AddDirectoryExclusionRuleCommand.NotifyCanExecuteChanged();
             AddTextFileFieldCommand.NotifyCanExecuteChanged();
+            AddUserInputFieldCommand.NotifyCanExecuteChanged();
             SetEditorStatus(
                 L(
                     "Loc.Profiles.Status.NewDraft",
@@ -859,11 +865,14 @@ public partial class ProfilesViewModel : ObservableObject
         while (DraftFields.Any(field =>
                    string.Equals(field.FieldId, fieldId, StringComparison.OrdinalIgnoreCase))
                || DraftTextFileFields.Any(field =>
+                   string.Equals(field.FieldId, fieldId, StringComparison.OrdinalIgnoreCase))
+               || DraftUserInputFields.Any(field =>
                    string.Equals(field.FieldId, fieldId, StringComparison.OrdinalIgnoreCase)));
 
         var nextOrder = DraftFields
             .Select(static (_, index) => (index + 1) * 10)
             .Concat(DraftTextFileFields.Select(static field => field.Order))
+            .Concat(DraftUserInputFields.Select(static field => field.Order))
             .DefaultIfEmpty(0)
             .Max() + 10;
         AddTextFileFieldRow(new ProfileTextFileFieldDraftViewModel
@@ -887,6 +896,49 @@ public partial class ProfilesViewModel : ObservableObject
         {
             field.PropertyChanged -= OnDraftRowChanged;
             AddTextFileFieldCommand.NotifyCanExecuteChanged();
+            MarkDraftChanged();
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanAddUserInputField))]
+    private void AddUserInputField()
+    {
+        var suffix = 1;
+        string fieldId;
+        do
+        {
+            fieldId = $"user-note-{suffix++}";
+        }
+        while (DraftFields.Any(field =>
+                   string.Equals(field.FieldId, fieldId, StringComparison.OrdinalIgnoreCase))
+               || DraftTextFileFields.Any(field =>
+                   string.Equals(field.FieldId, fieldId, StringComparison.OrdinalIgnoreCase))
+               || DraftUserInputFields.Any(field =>
+                   string.Equals(field.FieldId, fieldId, StringComparison.OrdinalIgnoreCase)));
+
+        var nextOrder = DraftFields
+            .Select(static (_, index) => (index + 1) * 10)
+            .Concat(DraftTextFileFields.Select(static field => field.Order))
+            .Concat(DraftUserInputFields.Select(static field => field.Order))
+            .DefaultIfEmpty(0)
+            .Max() + 10;
+        AddUserInputFieldRow(new ProfileUserInputFieldDraftViewModel
+        {
+            Header = L("Loc.Profiles.New.UserInputField", "사용자 메모"),
+            FieldId = fieldId,
+            Order = nextOrder,
+            Placeholder = L("Loc.Profiles.New.UserInputPlaceholder", "이 항목에 메모 입력"),
+        });
+        AddUserInputFieldCommand.NotifyCanExecuteChanged();
+    }
+
+    [RelayCommand]
+    private void RemoveUserInputField(ProfileUserInputFieldDraftViewModel? field)
+    {
+        if (field is not null && DraftUserInputFields.Remove(field))
+        {
+            field.PropertyChanged -= OnDraftRowChanged;
+            AddUserInputFieldCommand.NotifyCanExecuteChanged();
             MarkDraftChanged();
         }
     }
@@ -1077,6 +1129,10 @@ public partial class ProfilesViewModel : ObservableObject
         !IsEditorBusy
         && DraftTextFileFields.Count < ProfileManifestLimits.MaximumTextFileFieldCount;
 
+    private bool CanAddUserInputField() =>
+        !IsEditorBusy
+        && DraftUserInputFields.Count < ProfileManifestLimits.MaximumUserInputFieldCount;
+
     private ProfileManifest BuildManifest()
     {
         var fields = BuildFieldManifests();
@@ -1149,6 +1205,18 @@ public partial class ProfilesViewModel : ObservableObject
                     TimeoutMilliseconds = field.TimeoutMilliseconds,
                     MaxBytes = field.MaxBytes,
                 }).ToList(),
+            UserInputFields = DraftUserInputFields.Count == 0
+                ? null
+                : DraftUserInputFields.Select(field => new ProfileUserInputFieldManifest
+                {
+                    FieldId = field.FieldId.Trim(),
+                    Header = field.Header.Trim(),
+                    Order = field.Order,
+                    Placeholder = NormalizeOptional(field.Placeholder),
+                    DefaultValue = string.IsNullOrEmpty(field.DefaultValue)
+                        ? null
+                        : field.DefaultValue,
+                }).ToList(),
             ExcludedDirectoryNameRules = DraftExcludedDirectoryNameRules.Count == 0
                 ? null
                 : DraftExcludedDirectoryNameRules.Select(rule =>
@@ -1182,6 +1250,7 @@ public partial class ProfilesViewModel : ObservableObject
             DraftRules.Clear();
             DraftExcludedDirectoryNameRules.Clear();
             DraftTextFileFields.Clear();
+            DraftUserInputFields.Clear();
             GuidedPathSegments = [];
             HasAnalyzedPath = false;
             IsAssignmentPickerOpen = false;
@@ -1209,8 +1278,14 @@ public partial class ProfilesViewModel : ObservableObject
                 AddTextFileFieldRow(new ProfileTextFileFieldDraftViewModel(field));
             }
 
+            foreach (var field in manifest.UserInputFields ?? [])
+            {
+                AddUserInputFieldRow(new ProfileUserInputFieldDraftViewModel(field));
+            }
+
             AddDirectoryExclusionRuleCommand.NotifyCanExecuteChanged();
             AddTextFileFieldCommand.NotifyCanExecuteChanged();
+            AddUserInputFieldCommand.NotifyCanExecuteChanged();
 
             RestoreTerminalField(manifest.Rules?.FirstOrDefault()?.StopTraversalWhenCapturedGroups);
 
@@ -1386,6 +1461,13 @@ public partial class ProfilesViewModel : ObservableObject
         MarkDraftChanged();
     }
 
+    private void AddUserInputFieldRow(ProfileUserInputFieldDraftViewModel field)
+    {
+        field.PropertyChanged += OnDraftRowChanged;
+        DraftUserInputFields.Add(field);
+        MarkDraftChanged();
+    }
+
     private void DetachRows()
     {
         foreach (var field in DraftFields)
@@ -1408,6 +1490,11 @@ public partial class ProfilesViewModel : ObservableObject
         {
             field.PropertyChanged -= OnDraftRowChanged;
         }
+
+        foreach (var field in DraftUserInputFields)
+        {
+            field.PropertyChanged -= OnDraftRowChanged;
+        }
     }
 
     private void OnDraftRowChanged(object? sender, PropertyChangedEventArgs eventArgs)
@@ -1418,7 +1505,8 @@ public partial class ProfilesViewModel : ObservableObject
         }
 
         if (sender is ProfileDirectoryNameExclusionRuleDraftViewModel
-            or ProfileTextFileFieldDraftViewModel)
+            or ProfileTextFileFieldDraftViewModel
+            or ProfileUserInputFieldDraftViewModel)
         {
             MarkDraftChanged();
             return;
@@ -1874,7 +1962,11 @@ public partial class ProfilesViewModel : ObservableObject
         var number = 1;
         while (DraftFields.Any(field =>
                    string.Equals(field.FieldId, $"field-{number}", StringComparison.OrdinalIgnoreCase) ||
-                   string.Equals(field.GroupName, $"field{number}", StringComparison.OrdinalIgnoreCase)))
+                   string.Equals(field.GroupName, $"field{number}", StringComparison.OrdinalIgnoreCase))
+               || DraftTextFileFields.Any(field =>
+                   string.Equals(field.FieldId, $"field-{number}", StringComparison.OrdinalIgnoreCase))
+               || DraftUserInputFields.Any(field =>
+                   string.Equals(field.FieldId, $"field-{number}", StringComparison.OrdinalIgnoreCase)))
         {
             number++;
         }
@@ -1952,6 +2044,8 @@ public sealed class ProfileSummaryViewModel(
 
     public int TextFileFieldCount => Descriptor.TextFileFields.Count;
 
+    public int UserInputFieldCount => Descriptor.UserInputFields.Count;
+
     private string Get(string key, string koreanFallback) =>
         localizer?.Get(key, koreanFallback) ?? koreanFallback;
 }
@@ -1966,13 +2060,23 @@ public sealed class ProfileFieldInspectionViewModel(
 
     public string FieldId => descriptor.FieldId;
 
-    public string CaptureGroups => descriptor.SourceKind == ProfileFieldSourceKind.TextFileContent
-        ? Get("Loc.Profiles.Field.TextFileContent", "텍스트 파일 내용")
-        : string.Join(" → ", descriptor.EffectiveGroupNames);
+    public string CaptureGroups => descriptor.SourceKind switch
+    {
+        ProfileFieldSourceKind.TextFileContent =>
+            Get("Loc.Profiles.Field.TextFileContent", "텍스트 파일 내용"),
+        ProfileFieldSourceKind.UserInput =>
+            Get("Loc.Profiles.Field.UserInput", "행별 사용자 입력"),
+        _ => string.Join(" → ", descriptor.EffectiveGroupNames),
+    };
 
-    public string Source => descriptor.SourceKind == ProfileFieldSourceKind.TextFileContent
-        ? Get("Loc.Profile.Source.TextFile", "텍스트 파일")
-        : Get("Loc.Profiles.Field.PathRegex", "경로 정규식");
+    public string Source => descriptor.SourceKind switch
+    {
+        ProfileFieldSourceKind.TextFileContent =>
+            Get("Loc.Profile.Source.TextFile", "텍스트 파일"),
+        ProfileFieldSourceKind.UserInput =>
+            Get("Loc.Profile.Source.UserInput", "사용자 입력"),
+        _ => Get("Loc.Profiles.Field.PathRegex", "경로 정규식"),
+    };
 
     public ProfileFieldValueKind Kind => descriptor.Kind;
 

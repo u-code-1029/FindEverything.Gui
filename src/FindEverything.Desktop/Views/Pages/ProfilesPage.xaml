@@ -664,6 +664,108 @@
                                 </StackPanel>
                             </Border>
 
+                            <Border
+                                x:Name="UserInputFieldsEditor"
+                                IsEnabled="{Binding IsEditorReady}"
+                                Style="{StaticResource EditorSectionStyle}"
+                                Visibility="{Binding IsScanOptionsStep, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <StackPanel>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Margin="0,0,16,0">
+                                            <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="행별 사용자 입력" />
+                                            <TextBlock
+                                                Margin="0,4,0,0"
+                                                Style="{StaticResource CaptionTextStyle}"
+                                                Text="구조화 결과의 각 행에 직접 입력하는 메모 컬럼입니다. 값은 프로필·절대 경로·Field ID별로 자동 저장되어 다시 스캔하거나 앱을 다시 열어도 유지됩니다."
+                                                TextWrapping="Wrap" />
+                                        </StackPanel>
+                                        <ui:Button
+                                            Grid.Column="1"
+                                            VerticalAlignment="Top"
+                                            AutomationProperties.Name="사용자 입력 필드 추가"
+                                            Command="{Binding AddUserInputFieldCommand}"
+                                            Content="입력 컬럼 추가"
+                                            Icon="{ui:SymbolIcon Symbol=DocumentEdit20}" />
+                                    </Grid>
+
+                                    <ItemsControl Margin="0,12,0,0" ItemsSource="{Binding DraftUserInputFields}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Style="{StaticResource FieldCardStyle}">
+                                                    <Grid>
+                                                        <Grid.RowDefinitions>
+                                                            <RowDefinition Height="Auto" />
+                                                            <RowDefinition Height="Auto" />
+                                                        </Grid.RowDefinitions>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="16" />
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="16" />
+                                                            <ColumnDefinition Width="120" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <StackPanel>
+                                                            <TextBlock Style="{StaticResource FieldLabelStyle}" Text="표시 이름 *" />
+                                                            <ui:TextBox
+                                                                AutomationProperties.Name="사용자 입력 표시 이름"
+                                                                PlaceholderText="예: 검토 메모"
+                                                                Text="{Binding Header, UpdateSourceTrigger=PropertyChanged}" />
+                                                        </StackPanel>
+                                                        <StackPanel Grid.Column="2">
+                                                            <TextBlock Style="{StaticResource FieldLabelStyle}" Text="Field ID *" />
+                                                            <ui:TextBox
+                                                                AutomationProperties.Name="사용자 입력 Field ID"
+                                                                PlaceholderText="예: review-note"
+                                                                Text="{Binding FieldId, UpdateSourceTrigger=PropertyChanged}" />
+                                                        </StackPanel>
+                                                        <StackPanel Grid.Column="4">
+                                                            <TextBlock Style="{StaticResource FieldLabelStyle}" Text="컬럼 순서" />
+                                                            <ui:TextBox Text="{Binding Order, UpdateSourceTrigger=PropertyChanged}" />
+                                                        </StackPanel>
+                                                        <ui:Button
+                                                            Grid.Column="5"
+                                                            Width="34"
+                                                            Height="32"
+                                                            Margin="10,22,0,0"
+                                                            VerticalAlignment="Top"
+                                                            Appearance="Caution"
+                                                            AutomationProperties.Name="사용자 입력 필드 삭제"
+                                                            Command="{Binding DataContext.RemoveUserInputFieldCommand, RelativeSource={RelativeSource AncestorType={x:Type Page}}}"
+                                                            CommandParameter="{Binding}"
+                                                            Icon="{ui:SymbolIcon Symbol=Delete12}"
+                                                            Style="{StaticResource IconOnlyButtonStyle}"
+                                                            ToolTip="입력 컬럼 삭제" />
+                                                        <StackPanel Grid.Row="1" Grid.ColumnSpan="3" Margin="0,12,0,0">
+                                                            <TextBlock Style="{StaticResource FieldLabelStyle}" Text="입력 안내 문구" />
+                                                            <ui:TextBox
+                                                                MaxLength="256"
+                                                                PlaceholderText="예: 이 항목에 메모 입력"
+                                                                Text="{Binding Placeholder, UpdateSourceTrigger=PropertyChanged}" />
+                                                        </StackPanel>
+                                                        <StackPanel Grid.Row="1" Grid.Column="4" Grid.ColumnSpan="2" Margin="0,12,0,0">
+                                                            <TextBlock Style="{StaticResource FieldLabelStyle}" Text="선택 기본값" />
+                                                            <ui:TextBox
+                                                                MaxLength="4096"
+                                                                PlaceholderText="비워 두면 빈 입력칸"
+                                                                Text="{Binding DefaultValue, UpdateSourceTrigger=PropertyChanged}" />
+                                                        </StackPanel>
+                                                    </Grid>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <TextBlock
+                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                        Text="최대 16개입니다. Field ID는 경로 값 및 텍스트 파일 값과 중복될 수 없습니다."
+                                        TextWrapping="Wrap" />
+                                </StackPanel>
+                            </Border>
+
                             <Border IsEnabled="{Binding IsEditorReady}" Style="{StaticResource GuidedEditorSectionStyle}">
                                 <StackPanel>
                                     <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="2. 실제 경로에서 결과 값 고르기" />
@@ -1250,6 +1352,7 @@
                                                 <TextBlock Style="{StaticResource CaptionTextStyle}" Text="구조화된 결과" />
                                                 <TextBlock Margin="0,4,0,0" FontSize="16" FontWeight="SemiBold" Text="{Binding DraftFields.Count, StringFormat={StaticResource Loc.Profiles.PathColumnCountFormat}}" />
                                                 <TextBlock Margin="0,2,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding DraftTextFileFields.Count, StringFormat={StaticResource Loc.Profiles.TextFileColumnCountFormat}}" />
+                                                <TextBlock Margin="0,2,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding DraftUserInputFields.Count, StringFormat={StaticResource Loc.Profiles.UserInputColumnCountFormat}}" />
                                             </StackPanel>
                                         </Border>
                                         <Border Margin="8,8,0,0" Style="{StaticResource FieldCardStyle}">

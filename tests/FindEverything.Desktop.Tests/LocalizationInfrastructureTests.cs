@@ -114,6 +114,8 @@ public sealed class LocalizationInfrastructureTests
                     "Index database '{0}' does not exist. Run 'Start scan' or choose the correct database.",
                 ["Loc.Catalog.Error.RootNotIndexed"] =
                     "Database '{1}' has no index registered for the exact search root '{0}'. Run 'Start scan' with the same search location.",
+                ["Loc.Index.Error.SnapshotChanged"] =
+                    "The index kept changing. Try loading again shortly.",
             });
         var mappedDriveException = new MappedDrivePathResolutionException(
             @"Z:\Projects",
@@ -139,6 +141,12 @@ public sealed class LocalizationInfrastructureTests
                 IndexRootAvailability.RootNotIndexed,
                 @"C:\Index\metadata.db",
                 @"D:\Archive"));
+        var changedSnapshotMessage = UserFacingExceptionLocalizer.TranslateOperationFailure(
+            localizer,
+            new IndexSnapshotChangedException(
+                @"D:\Archive",
+                Guid.NewGuid(),
+                Guid.NewGuid()));
 
         Assert.Equal(
             "Could not convert mapped network path 'Z:\\Projects' to a UNC path.",
@@ -150,6 +158,9 @@ public sealed class LocalizationInfrastructureTests
         Assert.Contains("C:\\Index\\metadata.db", missingIndexMessage, StringComparison.Ordinal);
         Assert.Contains("D:\\Archive", wrongRootMessage, StringComparison.Ordinal);
         Assert.Contains("exact search root", wrongRootMessage, StringComparison.Ordinal);
+        Assert.Equal(
+            "The index kept changing. Try loading again shortly.",
+            changedSnapshotMessage);
         Assert.DoesNotContain("공급자", mappedDriveMessage, StringComparison.Ordinal);
         Assert.Contains("공급자 원시 상세", mappedDriveException.Message, StringComparison.Ordinal);
     }

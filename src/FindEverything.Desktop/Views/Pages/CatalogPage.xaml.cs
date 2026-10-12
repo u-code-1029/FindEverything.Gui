@@ -55,6 +55,7 @@ public partial class CatalogPage
     private void OnResultsGridMouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
         if (e.OriginalSource is not System.Windows.DependencyObject source
+            || FindAncestor<TextBoxBase>(source) is not null
             || System.Windows.Controls.ItemsControl.ContainerFromElement(ResultsGrid, source)
                 is not System.Windows.Controls.DataGridRow row
             || row.Item is not CatalogItemViewModel item)
@@ -67,6 +68,57 @@ public partial class CatalogPage
         {
             _viewModel.OpenItemCommand.Execute(item);
         }
+    }
+
+    private void OnResultsGridPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.OriginalSource is not System.Windows.DependencyObject source
+            || FindAncestor<TextBoxBase>(source) is null)
+        {
+            return;
+        }
+
+        // Text input is an interactive child, not a row-selection gesture. Let
+        // the TextBox receive the click/caret normally, then restore the exact
+        // checkbox-backed selection that existed before the routed DataGrid click.
+        var selected = ResultsGrid.SelectedItems.Cast<object>().ToArray();
+        _ = ResultsGrid.Dispatcher.BeginInvoke(
+            System.Windows.Threading.DispatcherPriority.Input,
+            new Action(() =>
+            {
+                ResultsGrid.SelectionChanged -= OnResultsGridSelectionChanged;
+                try
+                {
+                    ResultsGrid.SelectedItems.Clear();
+                    foreach (var item in selected)
+                    {
+                        ResultsGrid.SelectedItems.Add(item);
+                    }
+                }
+                finally
+                {
+                    ResultsGrid.SelectionChanged += OnResultsGridSelectionChanged;
+                    UpdateSelectionSnapshot();
+                }
+            }));
+    }
+
+    private static T? FindAncestor<T>(System.Windows.DependencyObject? source)
+        where T : System.Windows.DependencyObject
+    {
+        while (source is not null)
+        {
+            if (source is T match)
+            {
+                return match;
+            }
+
+            source = source is System.Windows.Media.Visual or System.Windows.Media.Media3D.Visual3D
+                ? System.Windows.Media.VisualTreeHelper.GetParent(source)
+                : System.Windows.LogicalTreeHelper.GetParent(source);
+        }
+
+        return null;
     }
 
     private void OnResultsGridSelectionChanged(

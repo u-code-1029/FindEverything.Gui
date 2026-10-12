@@ -312,6 +312,46 @@ internal sealed class CatalogService(
         ScanTraceWriter? trace,
         CancellationToken cancellationToken)
     {
+        try
+        {
+            return await LoadFromIndexSessionAttemptAsync(
+                request,
+                profileRootPath,
+                profile,
+                session,
+                operationSettings,
+                progress,
+                scanReport,
+                trace,
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (IndexSnapshotChangedException)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return await LoadFromIndexSessionAttemptAsync(
+                request,
+                profileRootPath,
+                profile,
+                session,
+                operationSettings,
+                progress,
+                scanReport,
+                trace,
+                cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private async Task<CatalogResult> LoadFromIndexSessionAttemptAsync(
+        CatalogRequest request,
+        string profileRootPath,
+        ILoadedProfile profile,
+        IIndexSession session,
+        IndexingOptions operationSettings,
+        IProgress<CatalogOperationProgress>? progress,
+        IndexScanReport? scanReport,
+        ScanTraceWriter? trace,
+        CancellationToken cancellationToken)
+    {
         var accumulator = new MappingAccumulator(
             profile,
             request.RootPath,
@@ -328,11 +368,13 @@ internal sealed class CatalogService(
             CatalogOperationPhase.Searching,
             "인덱스에서 폴더를 조회하고 있습니다."));
         var reportedDirectoryCount = 0;
-        var pageProgress = new InlineProgress<IReadOnlyList<IndexedDirectory>>(directories =>
+        ValueTask ConsumePageAsync(
+            IReadOnlyList<IndexedDirectory> directories,
+            CancellationToken pageCancellationToken)
         {
             foreach (var directory in directories)
             {
-                cancellationToken.ThrowIfCancellationRequested();
+                pageCancellationToken.ThrowIfCancellationRequested();
                 accumulator.Visit(new DiscoveredDirectory(
                     directory.FullPath,
                     directory.Name,
@@ -342,15 +384,19 @@ internal sealed class CatalogService(
                     directory.CoveragePending);
                 reportedDirectoryCount++;
             }
-        });
+
+            return ValueTask.CompletedTask;
+        }
+
         var searchResult = await session.SearchDirectoriesAsync(
             new DirectorySearchRequest(request.RootPath)
             {
                 PageSize = operationSettings.SearchPageSize,
-                PageProgress = pageProgress,
+                IncludeDirectoriesInResult = false,
+                PageConsumer = ConsumePageAsync,
             },
             cancellationToken).ConfigureAwait(false);
-        // Keep custom/test index providers that predate PageProgress compatible.
+        // Keep custom/test index providers that predate PageConsumer compatible.
         if (reportedDirectoryCount == 0)
         {
             foreach (var directory in searchResult.Directories)

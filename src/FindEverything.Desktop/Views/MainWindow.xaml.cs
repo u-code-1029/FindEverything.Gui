@@ -10,6 +10,8 @@ namespace FindEverything.Desktop.Views;
 
 public partial class MainWindow
 {
+    private ShellLayoutMode? _shellLayoutMode;
+
     public MainWindow(
         MainWindowViewModel viewModel,
         INavigationService navigationService,
@@ -32,6 +34,43 @@ public partial class MainWindow
         // reject the old inheritance context.
         appearanceService.Attach(this);
         appearanceService.Apply(this, appearanceSettings.Current);
+
+        ApplyAdaptiveShellLayout(Width);
+    }
+
+    private void OnWindowSizeChanged(object sender, SizeChangedEventArgs eventArgs)
+    {
+        ApplyAdaptiveShellLayout(eventArgs.NewSize.Width);
+    }
+
+    private void ApplyAdaptiveShellLayout(double width)
+    {
+        var state = AdaptiveShellLayout.Resolve(width);
+
+        // Keep the two language actions and scan-console action available before
+        // reserving title text. Window.Title remains populated for the taskbar and
+        // assistive technology even when the visual title is omitted.
+        AppTitleBar.Title = state.ShowApplicationTitle
+            ? ((MainWindowViewModel)DataContext).ApplicationTitle
+            : string.Empty;
+
+        if (_shellLayoutMode == state.Mode)
+        {
+            return;
+        }
+
+        _shellLayoutMode = state.Mode;
+        // WPF-UI 4.3 has no LeftCompact enum. Left + a closed pane is its
+        // supported compact-rail state; unlike LeftMinimal it keeps the rail,
+        // selection marker, and scan InfoBadge visible and aligned.
+        RootNavigation.PaneDisplayMode = NavigationViewPaneDisplayMode.Left;
+        if (state.Mode == ShellLayoutMode.Compact)
+        {
+            RootNavigation.IsPaneOpen = false;
+            return;
+        }
+
+        RootNavigation.IsPaneOpen = true;
     }
 
     protected override void SetWindowChrome()

@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Windows.Controls;
 using System.Windows.Documents;
+using System.IO;
 using FindEverything.Application.Catalog;
 using FindEverything.Desktop.Behaviors;
 using FindEverything.Desktop.ViewModels;
@@ -127,6 +128,115 @@ public sealed class CatalogFilteringTests
 
         var exception = await completion.Task.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.Null(exception);
+    }
+
+    [Fact]
+    public void User_input_fields_participate_in_filter_copy_and_export_values()
+    {
+        var field = new ProfileFieldDescriptor(
+            "review-note",
+            string.Empty,
+            "검토 메모",
+            10,
+            Required: false,
+            ProfileFieldValueKind.String,
+            IsNullable: true,
+            ParseFormat: null,
+            DisplayFormat: null)
+        {
+            SourceKind = ProfileFieldSourceKind.UserInput,
+            Placeholder = "메모 입력",
+            DefaultValue = "확인 필요",
+        };
+        var changes = 0;
+        var item = new CatalogItemViewModel(
+            new CatalogItem(
+                Path.GetFullPath(Path.Combine(Path.GetTempPath(), "catalog-user-input")),
+                "catalog-user-input",
+                "sample",
+                new object(),
+                new Dictionary<string, object?>(),
+                CoveragePending: false),
+            [field],
+            new TestAppLocalizer(),
+            persistedUserInputValues: null,
+            persistUserInput: null,
+            userInputChanged: () => changes++);
+
+        Assert.Equal("확인 필요", item.DisplayValues["review-note"]);
+        Assert.True(item.Matches("확인"));
+
+        item.UserInputValues["review-note"].Value = "승인 완료";
+
+        Assert.Equal(1, changes);
+        Assert.Equal("승인 완료", item.OutputValues["review-note"]);
+        Assert.Equal("승인 완료", item.ExportDisplayValues["review-note"]);
+        Assert.True(item.Matches("승인"));
+        Assert.False(item.Matches("확인 필요"));
+    }
+
+    [Fact]
+    public async Task User_input_commit_flushes_the_latest_debounced_value()
+    {
+        var writes = new List<(string FieldId, string Value)>();
+        var input = new CatalogUserInputValueViewModel(
+            "note",
+            "메모 입력",
+            string.Empty,
+            (fieldId, value) =>
+            {
+                writes.Add((fieldId, value));
+                return Task.CompletedTask;
+            },
+            static () => { });
+
+        input.Value = "first";
+        input.Value = "latest";
+        Assert.True(input.HasPendingSave);
+
+        await input.CommitAsync();
+
+        Assert.False(input.HasPendingSave);
+        Assert.Equal(("note", "latest"), Assert.Single(writes));
+    }
+
+    [Fact]
+    public async Task Older_user_input_save_cannot_overwrite_a_newer_commit()
+    {
+        var firstWriteStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFirstWrite = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var writes = new List<string>();
+        var input = new CatalogUserInputValueViewModel(
+            "note",
+            null,
+            string.Empty,
+            async (_, value) =>
+            {
+                if (value == "first")
+                {
+                    firstWriteStarted.TrySetResult();
+                    await releaseFirstWrite.Task;
+                }
+
+                lock (writes)
+                {
+                    writes.Add(value);
+                }
+            },
+            static () => { });
+
+        input.Value = "first";
+        await firstWriteStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        input.Value = "latest";
+        var latestCommit = input.CommitAsync();
+        releaseFirstWrite.TrySetResult();
+
+        await latestCommit.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Equal(["first", "latest"], writes);
+        Assert.False(input.HasPendingSave);
     }
 
     private static ProfileFieldDescriptor Field(

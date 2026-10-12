@@ -162,11 +162,51 @@ public sealed record DirectorySearchRequest(string RootPath)
     public int PageSize { get; init; } = 1000;
 
     /// <summary>
-    /// Receives each completed database page before the complete result is returned.
-    /// Implementations report pages synchronously and in index order so callers can
-    /// render large indexes progressively without issuing a second query.
+    /// Keeps every reported directory in the final result. Callers that consume
+    /// <see cref="PageConsumer"/> should set this to <see langword="false"/> so a
+    /// large index is not retained twice while it is being processed.
+    /// </summary>
+    public bool IncludeDirectoriesInResult { get; init; } = true;
+
+    /// <summary>
+    /// Consumes each completed database page in index order. Implementations await
+    /// the consumer before reading another page or completing the search. This is
+    /// required when <see cref="IncludeDirectoriesInResult"/> is <see langword="false"/>.
+    /// </summary>
+    public Func<IReadOnlyList<IndexedDirectory>, CancellationToken, ValueTask>? PageConsumer { get; init; }
+
+    /// <summary>
+    /// Receives a notification for each completed database page. Because
+    /// <see cref="Progress{T}"/> may dispatch reports asynchronously, callers that
+    /// depend on consumption finishing before this method returns should use
+    /// <see cref="PageConsumer"/> instead.
     /// </summary>
     public IProgress<IReadOnlyList<IndexedDirectory>>? PageProgress { get; init; }
+}
+
+/// <summary>
+/// Indicates that a published index changed while an offset-paged result was being read.
+/// The partial result must be discarded before the operation is retried.
+/// </summary>
+public sealed class IndexSnapshotChangedException : InvalidOperationException
+{
+    public IndexSnapshotChangedException(
+        string rootPath,
+        Guid? expectedScanId,
+        Guid? actualScanId)
+        : base($"The published index for root '{rootPath}' changed while paged results were being read.")
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(rootPath);
+        RootPath = rootPath;
+        ExpectedScanId = expectedScanId;
+        ActualScanId = actualScanId;
+    }
+
+    public string RootPath { get; }
+
+    public Guid? ExpectedScanId { get; }
+
+    public Guid? ActualScanId { get; }
 }
 
 public sealed record IndexedDirectory(

@@ -11,11 +11,14 @@
     Width="1360"
     Height="860"
     Language="{StaticResource Loc.Culture.XmlLanguage}"
-    MinWidth="960"
+    MinWidth="760"
     MinHeight="640"
     localization:LocalizationScope.IsEnabled="True"
     ExtendsContentIntoTitleBar="True"
     Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+    SizeChanged="OnWindowSizeChanged"
+    SnapsToDevicePixels="True"
+    UseLayoutRounding="True"
     WindowBackdropType="None"
     WindowCornerPreference="Default"
     WindowStartupLocation="CenterScreen"
@@ -35,25 +38,36 @@
             Transition="FadeInWithSlide">
             <ui:NavigationView.MenuItems>
                 <ui:NavigationViewItem
-                    Content="파일 찾기"
+                    AutomationProperties.Name="{DynamicResource Loc.Home.Nav}"
+                    Content="{DynamicResource Loc.Home.Nav}"
+                    Icon="{ui:SymbolIcon Symbol=HomeDatabase24}"
+                    NavigationCacheMode="Required"
+                    TargetPageTag="home"
+                    TargetPageType="{x:Type pages:HomePage}"
+                    ToolTip="{DynamicResource Loc.Home.Nav}" />
+                <ui:NavigationViewItem
+                    AutomationProperties.Name="{DynamicResource Loc.Shell.Nav.Files}"
+                    Content="{DynamicResource Loc.Shell.Nav.Files}"
                     Icon="{ui:SymbolIcon Symbol=Search24}"
                     NavigationCacheMode="Required"
                     TargetPageTag="files"
-                    TargetPageType="{x:Type pages:FilesPage}" />
+                    TargetPageType="{x:Type pages:FilesPage}"
+                    ToolTip="{DynamicResource Loc.Shell.Nav.Files}" />
                 <ui:NavigationViewItem
                     x:Name="CatalogNavigationItem"
-                    AutomationProperties.Name="구조화 보기"
-                    Content="구조화 보기"
+                    AutomationProperties.Name="{DynamicResource Loc.Shell.Nav.Catalog}"
+                    Content="{DynamicResource Loc.Shell.Nav.Catalog}"
                     Icon="{ui:SymbolIcon Symbol=TableSimple24}"
                     NavigationCacheMode="Required"
                     TargetPageTag="catalog"
-                    TargetPageType="{x:Type pages:CatalogPage}">
+                    TargetPageType="{x:Type pages:CatalogPage}"
+                    ToolTip="{DynamicResource Loc.Shell.Nav.Catalog}">
                     <ui:NavigationViewItem.InfoBadge>
                         <ui:InfoBadge
                             x:Name="CatalogScanBadge"
-                            AutomationProperties.Name="구조화 보기 스캔 진행 중"
+                            AutomationProperties.Name="{DynamicResource Loc.Shell.Catalog.ScanInProgress.Name}"
                             AutomationProperties.LiveSetting="Polite"
-                            ToolTip="구조화 보기에서 폴더를 스캔하고 있습니다."
+                            ToolTip="{DynamicResource Loc.Shell.Catalog.ScanInProgress.ToolTip}"
                             Visibility="{Binding Catalog.IsScanning, Converter={StaticResource BooleanToVisibilityConverter}}">
                             <ui:InfoBadge.Style>
                                 <Style TargetType="{x:Type ui:InfoBadge}">
@@ -81,31 +95,39 @@
                     </ui:NavigationViewItem.InfoBadge>
                 </ui:NavigationViewItem>
                 <ui:NavigationViewItem
-                    Content="프로필"
+                    AutomationProperties.Name="{DynamicResource Loc.Shell.Nav.Profiles}"
+                    Content="{DynamicResource Loc.Shell.Nav.Profiles}"
                     Icon="{ui:SymbolIcon Symbol=DocumentEdit24}"
                     NavigationCacheMode="Required"
                     TargetPageTag="profiles"
-                    TargetPageType="{x:Type pages:ProfilesPage}" />
+                    TargetPageType="{x:Type pages:ProfilesPage}"
+                    ToolTip="{DynamicResource Loc.Shell.Nav.Profiles}" />
                 <ui:NavigationViewItem
-                    Content="프로필 Playground"
+                    AutomationProperties.Name="{DynamicResource Loc.Shell.Nav.Playground}"
+                    Content="{DynamicResource Loc.Shell.Nav.Playground}"
                     Icon="{ui:SymbolIcon Symbol=DocumentSearch24}"
                     NavigationCacheMode="Required"
                     TargetPageTag="profile-playground"
-                    TargetPageType="{x:Type pages:ProfilePlaygroundPage}" />
+                    TargetPageType="{x:Type pages:ProfilePlaygroundPage}"
+                    ToolTip="{DynamicResource Loc.Shell.Nav.Playground}" />
                 <ui:NavigationViewItem
-                    Content="출력 포맷"
+                    AutomationProperties.Name="{DynamicResource Loc.Shell.Nav.OutputFormats}"
+                    Content="{DynamicResource Loc.Shell.Nav.OutputFormats}"
                     Icon="{ui:SymbolIcon Symbol=ClipboardTask24}"
                     NavigationCacheMode="Required"
                     TargetPageTag="output-formats"
-                    TargetPageType="{x:Type pages:OutputFormatsPage}" />
+                    TargetPageType="{x:Type pages:OutputFormatsPage}"
+                    ToolTip="{DynamicResource Loc.Shell.Nav.OutputFormats}" />
             </ui:NavigationView.MenuItems>
             <ui:NavigationView.FooterMenuItems>
                 <ui:NavigationViewItem
-                    Content="설정"
+                    AutomationProperties.Name="{DynamicResource Loc.Shell.Nav.Settings}"
+                    Content="{DynamicResource Loc.Shell.Nav.Settings}"
                     Icon="{ui:SymbolIcon Symbol=Settings24}"
                     NavigationCacheMode="Required"
                     TargetPageTag="settings"
-                    TargetPageType="{x:Type pages:SettingsPage}" />
+                    TargetPageType="{x:Type pages:SettingsPage}"
+                    ToolTip="{DynamicResource Loc.Shell.Nav.Settings}" />
             </ui:NavigationView.FooterMenuItems>
             <ui:NavigationView.ContentOverlay>
                 <ui:SnackbarPresenter x:Name="SnackbarPresenter" />
@@ -117,7 +139,11 @@
             Panel.ZIndex="1"
             Title="{Binding ApplicationTitle}">
             <ui:TitleBar.TrailingContent>
-                <StackPanel Orientation="Horizontal">
+                <StackPanel
+                    x:Name="TitleBarActions"
+                    MinWidth="124"
+                    HorizontalAlignment="Right"
+                    Orientation="Horizontal">
                     <Border
                         Margin="0,0,8,0"
                         Padding="2"
@@ -127,10 +153,10 @@
                         ToolTip="{Binding LanguageRestartHint}">
                         <StackPanel Orientation="Horizontal">
                             <ui:Button
-                                MinWidth="38"
+                                MinWidth="36"
                                 Height="28"
                                 Padding="8,0"
-                                AutomationProperties.Name="한국어로 전환"
+                                AutomationProperties.Name="{DynamicResource Loc.Shell.Language.Korean}"
                                 Command="{Binding ChangeLanguageCommand}"
                                 CommandParameter="ko-KR"
                                 Content="KO">
@@ -146,10 +172,10 @@
                                 </ui:Button.Style>
                             </ui:Button>
                             <ui:Button
-                                MinWidth="38"
+                                MinWidth="36"
                                 Height="28"
                                 Padding="8,0"
-                                AutomationProperties.Name="영어로 전환"
+                                AutomationProperties.Name="{DynamicResource Loc.Shell.Language.English}"
                                 Command="{Binding ChangeLanguageCommand}"
                                 CommandParameter="en-US"
                                 Content="EN">
@@ -168,7 +194,7 @@
                     </Border>
                     <ui:Button
                         x:Name="ScanConsoleToggleButton"
-                        Width="40"
+                        Width="36"
                         Height="32"
                         Margin="0,0,8,0"
                         Padding="0"
