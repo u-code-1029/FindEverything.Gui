@@ -10,11 +10,13 @@
     Foreground="{DynamicResource TextFillColorPrimaryBrush}"
     mc:Ignorable="d">
     <Page.Resources>
-        <Style x:Key="HomeCardStyle" BasedOn="{StaticResource FluentSurfaceStyle}" TargetType="Border">
+        <Style x:Key="HomeCardStyle" BasedOn="{StaticResource FluentCardStyle}" TargetType="ui:CardControl">
             <Setter Property="Padding" Value="20" />
         </Style>
-        <Style x:Key="HomeActionCardStyle" BasedOn="{StaticResource HomeCardStyle}" TargetType="Border">
+        <Style x:Key="HomeActionCardStyle" BasedOn="{StaticResource DefaultUiCardActionStyle}" TargetType="ui:CardAction">
             <Setter Property="MinHeight" Value="176" />
+            <Setter Property="Padding" Value="20" />
+            <Setter Property="VerticalAlignment" Value="Stretch" />
             <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
         </Style>
         <Style x:Key="HomeStateBadgeStyle" TargetType="Border">
@@ -41,12 +43,8 @@
             x:Name="DashboardContent"
             Margin="24,20,8,28"
             SizeChanged="OnDashboardContentSizeChanged">
-            <Border
-                Padding="16"
-                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
-                BorderBrush="{DynamicResource SurfaceStrokeColorDefaultBrush}"
-                BorderThickness="1"
-                CornerRadius="8">
+            <ui:CardControl Padding="16" Style="{StaticResource FluentCardStyle}">
+                <ui:CardControl.Header>
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
@@ -88,7 +86,8 @@
                             Symbol="Search48" />
                     </Border>
                 </Grid>
-            </Border>
+                </ui:CardControl.Header>
+            </ui:CardControl>
 
             <ui:InfoBar
                 Margin="0,12,0,0"
@@ -110,8 +109,10 @@
                 Text="{DynamicResource Loc.Home.Actions.Subtitle}" />
 
             <WrapPanel x:Name="PrimaryCardsHost">
-                <Border
+                <ui:CardAction
                     x:Name="FilesActionCard"
+                    Command="{Binding OpenFilesCommand}"
+                    ToolTip="{DynamicResource Loc.Home.Files.Description}"
                     Margin="0,0,12,12"
                     AutomationProperties.Name="{DynamicResource Loc.Home.Files.Title}"
                     Style="{StaticResource HomeActionCardStyle}">
@@ -143,20 +144,16 @@
                             Margin="0,14,0,18"
                             Style="{StaticResource BodyTextStyle}"
                             Text="{DynamicResource Loc.Home.Files.Description}" />
-                        <ui:Button
-                            Grid.Row="2"
-                            MinHeight="40"
-                            HorizontalAlignment="Stretch"
-                            Appearance="Primary"
-                            AutomationProperties.Name="{DynamicResource Loc.Home.Files.Action.Automation}"
-                            Command="{Binding OpenFilesCommand}"
-                            Content="{DynamicResource Loc.Home.Files.Action}"
-                            Icon="{ui:SymbolIcon Symbol=ArrowRight20}" />
+                        <TextBlock Grid.Row="2" FontWeight="SemiBold"
+                            Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                            Text="{DynamicResource Loc.Home.Files.Action}" />
                     </Grid>
-                </Border>
+                </ui:CardAction>
 
-                <Border
+                <ui:CardAction
                     x:Name="CatalogActionCard"
+                    Command="{Binding OpenCatalogCommand}"
+                    ToolTip="{DynamicResource Loc.Home.Catalog.Description}"
                     Margin="0,0,12,12"
                     AutomationProperties.Name="{DynamicResource Loc.Home.Catalog.Title}"
                     Style="{StaticResource HomeActionCardStyle}">
@@ -188,25 +185,20 @@
                             Margin="0,14,0,18"
                             Style="{StaticResource BodyTextStyle}"
                             Text="{DynamicResource Loc.Home.Catalog.Description}" />
-                        <ui:Button
-                            Grid.Row="2"
-                            MinHeight="40"
-                            HorizontalAlignment="Stretch"
-                            Appearance="Secondary"
-                            AutomationProperties.Name="{DynamicResource Loc.Home.Catalog.Action.Automation}"
-                            Command="{Binding OpenCatalogCommand}"
-                            Content="{DynamicResource Loc.Home.Catalog.Action}"
-                            Icon="{ui:SymbolIcon Symbol=ArrowRight20}" />
+                        <TextBlock Grid.Row="2" FontWeight="SemiBold"
+                            Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                            Text="{DynamicResource Loc.Home.Catalog.Action}" />
                     </Grid>
-                </Border>
+                </ui:CardAction>
             </WrapPanel>
 
             <WrapPanel x:Name="OverviewCardsHost" Margin="0,12,0,0">
-                <Border
+                <ui:CardControl
                     x:Name="WorkspaceOverviewCard"
                     MinHeight="334"
                     Margin="0,0,12,12"
                     Style="{StaticResource HomeCardStyle}">
+                    <ui:CardControl.Header>
                     <StackPanel>
                         <TextBlock
                             AutomationProperties.HeadingLevel="Level2"
@@ -276,13 +268,15 @@
                                 ToolTip="{Binding ProfileDatabasePath}" />
                         </StackPanel>
                     </StackPanel>
-                </Border>
+                    </ui:CardControl.Header>
+                </ui:CardControl>
 
-                <Border
+                <ui:CardControl
                     x:Name="SetupOverviewCard"
                     MinHeight="334"
                     Margin="0,0,12,12"
                     Style="{StaticResource HomeCardStyle}">
+                    <ui:CardControl.Header>
                     <StackPanel>
                         <TextBlock
                             AutomationProperties.HeadingLevel="Level2"
@@ -338,10 +332,12 @@
                             <TextBlock Grid.Column="2" VerticalAlignment="Center" FontWeight="SemiBold" Text="{Binding ScanStepState}" />
                         </Grid>
                     </StackPanel>
-                </Border>
+                    </ui:CardControl.Header>
+                </ui:CardControl>
             </WrapPanel>
 
-            <Border Margin="0,12,12,0" Style="{StaticResource HomeCardStyle}">
+            <ui:CardControl Margin="0,12,12,0" Style="{StaticResource HomeCardStyle}">
+                <ui:CardControl.Header>
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -355,21 +351,21 @@
                         <TextBlock Margin="0,4,0,0" Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.Home.Tools.Subtitle}" />
                     </StackPanel>
                     <WrapPanel Grid.Row="1" Margin="0,16,0,0">
-                        <ui:Button
+                        <ui:CardAction
                             MinWidth="180"
                             MinHeight="40"
                             Margin="0,0,8,8"
                             Command="{Binding OpenProfilesCommand}"
                             Content="{DynamicResource Loc.Home.Tools.Profiles}"
                             Icon="{ui:SymbolIcon Symbol=DocumentEdit20}" />
-                        <ui:Button
+                        <ui:CardAction
                             MinWidth="180"
                             MinHeight="40"
                             Margin="0,0,8,8"
                             Command="{Binding OpenPlaygroundCommand}"
                             Content="{DynamicResource Loc.Home.Tools.Playground}"
                             Icon="{ui:SymbolIcon Symbol=DocumentSearch20}" />
-                        <ui:Button
+                        <ui:CardAction
                             MinWidth="180"
                             MinHeight="40"
                             Margin="0,0,8,8"
@@ -378,7 +374,8 @@
                             Icon="{ui:SymbolIcon Symbol=ClipboardTask20}" />
                     </WrapPanel>
                 </Grid>
-            </Border>
+                </ui:CardControl.Header>
+            </ui:CardControl>
         </StackPanel>
     </ScrollViewer>
 </Page>

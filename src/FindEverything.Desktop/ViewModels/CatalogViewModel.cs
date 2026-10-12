@@ -823,7 +823,14 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
     {
         if (UsesQuerySelection) return;
         ArgumentNullException.ThrowIfNull(items);
-        _selectedItems = items.Distinct().ToArray();
+        var selected = items.Where(static item => !item.IsPlaceholder).Distinct().ToArray();
+        var selectedSet = selected.ToHashSet();
+        foreach (var item in _selectedItems)
+        {
+            if (!selectedSet.Contains(item)) item.IsSelected = false;
+        }
+        foreach (var item in selected) item.IsSelected = true;
+        _selectedItems = selected;
         SelectedCount = _selectedItems.Count;
         CopySelectionCommand.NotifyCanExecuteChanged();
         ExportSelectionCommand.NotifyCanExecuteChanged();

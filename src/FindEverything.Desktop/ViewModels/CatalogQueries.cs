@@ -531,22 +531,43 @@ public partial class CatalogViewModel
     {
         try
         {
-        if (value is not CatalogItemViewModel { IsPlaceholder: false } row || _projectionQuery is not { } query) return;
-        var index = _virtualItems!.IndexOf(row);
-        if (!additive) _querySelection.Clear();
-        if (range && _selectionAnchor >= 0 && index >= 0)
-        {
-            for (var start = Math.Min(index, _selectionAnchor); start <= Math.Max(index, _selectionAnchor); start += 500)
+            if (value is not CatalogItemViewModel { IsPlaceholder: false } row) return;
+            if (_projectionQuery is not { } query)
             {
-                var page = await Task.Run(() => query.ReadRangeAsync(start,
-                    Math.Min(500, Math.Max(index, _selectionAnchor) - start + 1)));
-                if (!ReferenceEquals(query, _projectionQuery)) return;
-                foreach (var item in page.Items) _querySelection.Set(item.FullPath, true);
+                var visibleItems = Items.Cast<CatalogItemViewModel>().ToArray();
+                var visibleIndex = Array.IndexOf(visibleItems, row);
+                if (visibleIndex < 0) return;
+                var selected = additive ? _selectedItems.ToHashSet() : [];
+                if (range && _selectionAnchor >= 0 && _selectionAnchor < visibleItems.Length)
+                {
+                    for (var rangeIndex = Math.Min(visibleIndex, _selectionAnchor);
+                         rangeIndex <= Math.Max(visibleIndex, _selectionAnchor); rangeIndex++)
+                        selected.Add(visibleItems[rangeIndex]);
+                }
+                else
+                {
+                    if (!additive || !selected.Remove(row)) selected.Add(row);
+                    _selectionAnchor = visibleIndex;
+                }
+                SelectedItem = row;
+                SetSelection(selected);
+                return;
             }
-        }
-        else { _querySelection.Set(row.FullPath, !additive || !_querySelection.Contains(row.FullPath)); _selectionAnchor = index; }
-        SelectedItem = row;
-        UpdateProjectionSelection();
+            var index = _virtualItems!.IndexOf(row);
+            if (!additive) _querySelection.Clear();
+            if (range && _selectionAnchor >= 0 && index >= 0)
+            {
+                for (var start = Math.Min(index, _selectionAnchor); start <= Math.Max(index, _selectionAnchor); start += 500)
+                {
+                    var page = await Task.Run(() => query.ReadRangeAsync(start,
+                        Math.Min(500, Math.Max(index, _selectionAnchor) - start + 1)));
+                    if (!ReferenceEquals(query, _projectionQuery)) return;
+                    foreach (var item in page.Items) _querySelection.Set(item.FullPath, true);
+                }
+            }
+            else { _querySelection.Set(row.FullPath, !additive || !_querySelection.Contains(row.FullPath)); _selectionAnchor = index; }
+            SelectedItem = row;
+            UpdateProjectionSelection();
         }
         catch (Exception exception) when (exception is OperationCanceledException
             or ResultQueryChangedException or ObjectDisposedException)

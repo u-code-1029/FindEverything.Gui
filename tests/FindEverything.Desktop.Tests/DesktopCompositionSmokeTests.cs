@@ -164,8 +164,9 @@ public sealed class DesktopCompositionSmokeTests
                 profilesPage, profilePlaygroundPage, outputFormatsPage, settingsPage);
             Assert.True(navigation.Navigate(typeof(HomePage)));
             Assert.NotNull(homePage.FindName("HomeScrollViewer"));
-            Assert.NotNull(homePage.FindName("FilesActionCard"));
-            Assert.NotNull(homePage.FindName("CatalogActionCard"));
+            Assert.IsType<CardAction>(homePage.FindName("FilesActionCard"));
+            Assert.IsType<CardAction>(homePage.FindName("CatalogActionCard"));
+            Assert.IsType<CardControl>(homePage.FindName("WorkspaceOverviewCard"));
             Assert.True(navigation.Navigate(typeof(FilesPage)));
             VerifyPageScrollContracts(filesPage, catalogPage);
             VerifyCompactSelectionPages(filesPage, catalogPage);
@@ -268,6 +269,24 @@ public sealed class DesktopCompositionSmokeTests
         var exportButton = Assert.IsType<Wpf.Ui.Controls.Button>(
             catalogPage.FindName("ExportSelectionButton"));
         Assert.NotNull(exportButton.Command);
+        foreach (var page in new Page[] { filesPage, catalogPage })
+        {
+            foreach (var (name, content) in new[]
+            {
+                ("SelectAllResultsButton", "전체 선택"),
+                ("ClearAllResultsButton", "전체 선택 해제"),
+                ("InvertResultsSelectionButton", "선택 반전"),
+            })
+            {
+                var button = Assert.IsType<Wpf.Ui.Controls.Button>(page.FindName(name));
+                Assert.Equal(content, button.Content);
+                Assert.NotNull(button.Command);
+            }
+        }
+        var profileLabel = Assert.IsType<System.Windows.Controls.Label>(
+            catalogPage.FindName("CatalogProfileLabel"));
+        Assert.Equal("프로필", profileLabel.Content);
+        Assert.Same(catalogPage.FindName("CatalogProfileComboBox"), profileLabel.Target);
     }
 
     private static void VerifyCoreWorkspaceBounds(IServiceProvider provider, MainWindow window)
@@ -1053,6 +1072,7 @@ public sealed class DesktopCompositionSmokeTests
         Complete(viewModel.RefreshTextColumnCommand.ExecuteAsync("notes"));
         Assert.Equal(1200, profile.TextReadCount); // The one selected row is not the refresh scope.
         Assert.Equal(1200, viewModel.Items.Count);
+        VerifyCatalogPointerSelection(provider, window, viewModel);
 
         void Complete(Task operation)
         {
@@ -1098,6 +1118,90 @@ public sealed class DesktopCompositionSmokeTests
         Assert.True(condition(), $"조건이 {timeout.TotalSeconds:0.#}초 안에 충족되지 않았습니다.");
     }
 
+    private static void VerifyCatalogPointerSelection(
+        IServiceProvider provider, Window mainWindow, CatalogViewModel viewModel)
+    {
+        var page = new CatalogPage(viewModel, provider.GetRequiredService<ScanConsoleViewModel>(),
+            provider.GetRequiredService<IGridLayoutStore>());
+        var host = new Window { Width = 1000, Height = 600, Content = page };
+        try
+        {
+            host.Show();
+            PumpLayout(host, page);
+            var grid = Assert.IsType<System.Windows.Controls.DataGrid>(page.FindName("ResultsGrid"));
+            viewModel.ClearSelectionCommand.Execute(null);
+            var first = Assert.IsType<CatalogItemViewModel>(grid.Items[0]);
+            var second = Assert.IsType<CatalogItemViewModel>(grid.Items[1]);
+            ClickRow(0);
+            Assert.True(first.IsSelected);
+            Assert.Equal(1, viewModel.SelectedCount);
+            ClickRow(1);
+            Assert.True(first.IsSelected);
+            Assert.True(second.IsSelected);
+            Assert.Equal(2, viewModel.SelectedCount);
+            ClickRow(0);
+            Assert.False(first.IsSelected);
+            Assert.True(second.IsSelected);
+            Assert.Equal(1, viewModel.SelectedCount);
+
+            var header = Assert.IsType<Wpf.Ui.Controls.Button>(grid.Columns[0].Header);
+            Assert.Same(viewModel.InvertSelectionCommand, header.Command);
+            header.Command!.Execute(null);
+            Assert.Equal(1199, viewModel.SelectedCount);
+            Assert.True(first.IsSelected);
+            Assert.False(second.IsSelected);
+            var row = Assert.IsType<System.Windows.Controls.DataGridRow>(
+                grid.ItemContainerGenerator.ContainerFromIndex(0));
+            var checkbox = Assert.Single(FindVisualChildren<System.Windows.Controls.CheckBox>(row));
+            Assert.True(checkbox.IsChecked == true);
+            Assert.Equal(new Thickness(0, 2, 0, 2), row.Margin);
+            Assert.Equal(new Thickness(0, 4, 0, 4), row.Padding);
+
+            // Interactive descendants must never reach the ordinary row gesture.
+            var count = viewModel.SelectedCount;
+            InvokePointer("OnResultsGridPreviewMouseLeftButtonDown", checkbox);
+            InvokePointer("OnResultsGridPreviewMouseLeftButtonUp", checkbox);
+            Assert.Equal(count, viewModel.SelectedCount);
+            viewModel.ClearSelectionCommand.Execute(null);
+
+            void ClickRow(int index)
+            {
+                grid.ScrollIntoView(grid.Items[index]);
+                PumpLayout(host, page);
+                var container = Assert.IsType<System.Windows.Controls.DataGridRow>(
+                    grid.ItemContainerGenerator.ContainerFromIndex(index));
+                var text = FindVisualChildren<System.Windows.Controls.TextBlock>(container)
+                    .First(block => !string.IsNullOrEmpty(block.Text));
+                InvokePointer("OnResultsGridPreviewMouseLeftButtonDown", text);
+                InvokePointer("OnResultsGridPreviewMouseLeftButtonUp", text);
+                PumpLayout(host, page);
+            }
+
+            void InvokePointer(string methodName, UIElement source)
+            {
+                var args = new System.Windows.Input.MouseButtonEventArgs(
+                    System.Windows.Input.Mouse.PrimaryDevice, Environment.TickCount,
+                    System.Windows.Input.MouseButton.Left)
+                {
+                    RoutedEvent = methodName.EndsWith("Down", StringComparison.Ordinal)
+                        ? System.Windows.Input.Mouse.PreviewMouseDownEvent
+                        : System.Windows.Input.Mouse.PreviewMouseUpEvent,
+                    Source = source,
+                };
+                typeof(System.Windows.Input.MouseButtonEventArgs).GetProperty("ClickCount")!
+                    .SetValue(args, 1);
+                typeof(CatalogPage).GetMethod(methodName,
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+                    .Invoke(page, [grid, args]);
+            }
+        }
+        finally
+        {
+            host.Close();
+            mainWindow.Activate();
+        }
+    }
+
     private static bool PathsEqual(string? first, string? second)
     {
         if (first is null || second is null)
@@ -1127,7 +1231,7 @@ public sealed class DesktopCompositionSmokeTests
         var templateBox = Assert.IsType<Wpf.Ui.Controls.TextBox>(
             page.FindName("ProfilePathTemplateTextBox"));
         Assert.True(templateBox.IsReadOnly);
-        Assert.IsType<Border>(page.FindName("AssignmentPickerPanel"));
+        Assert.IsType<CardControl>(page.FindName("AssignmentPickerPanel"));
         Assert.NotEmpty(viewModel.GuidedPathSegments);
         VerifyGuidedPathButtonAuthoring(window, viewModel);
 
@@ -1136,10 +1240,10 @@ public sealed class DesktopCompositionSmokeTests
         var editorScrollViewer = Assert.IsType<ScrollViewer>(
             page.FindName("ProfileEditorScrollViewer"));
         Assert.Equal(new Thickness(0, 0, 16, 0), editorScrollViewer.Padding);
-        Assert.IsType<Border>(page.FindName("ProfileEditorStepRail"));
+        Assert.IsType<CardControl>(page.FindName("ProfileEditorStepRail"));
         Assert.IsType<Wpf.Ui.Controls.Button>(page.FindName("PreviousProfileStepButton"));
         Assert.IsType<Wpf.Ui.Controls.Button>(page.FindName("NextProfileStepButton"));
-        var userInputEditor = Assert.IsType<Border>(page.FindName("UserInputFieldsEditor"));
+        var userInputEditor = Assert.IsType<CardControl>(page.FindName("UserInputFieldsEditor"));
         Assert.True(viewModel.AddUserInputFieldCommand.CanExecute(null));
         viewModel.AddUserInputFieldCommand.Execute(null);
         Assert.Single(viewModel.DraftUserInputFields);
@@ -1162,7 +1266,7 @@ public sealed class DesktopCompositionSmokeTests
         Assert.True(viewModel.IsReviewStep);
         Assert.Equal(
             Visibility.Visible,
-            Assert.IsType<Border>(page.FindName("ProfileReviewPanel")).Visibility);
+            Assert.IsType<CardControl>(page.FindName("ProfileReviewPanel")).Visibility);
 
         tabControl.SelectedIndex = 1;
         PumpLayout(window, page);
@@ -1286,7 +1390,7 @@ public sealed class DesktopCompositionSmokeTests
             Assert.NotNull(style.BasedOn);
         }
 
-        var editorFooter = Assert.IsType<Border>(page.FindName("EditorFooter"));
+        var editorFooter = Assert.IsType<CardControl>(page.FindName("EditorFooter"));
         Assert.IsType<System.Windows.Controls.TextBlock>(page.FindName("EditorFooterStatusText"));
         Assert.Empty(FindVisualChildren<Wpf.Ui.Controls.InfoBar>(editorFooter));
 
@@ -1414,9 +1518,9 @@ public sealed class DesktopCompositionSmokeTests
         Assert.Equal(new Thickness(0, 0, 16, 0), scrollViewer.Padding);
         Assert.True(scrollViewer.ActualWidth > 0);
 
-        var indexingCard = Assert.IsType<Border>(page.FindName("IndexingSettingsCard"));
-        var notificationsCard = Assert.IsType<Border>(page.FindName("NotificationSettingsCard"));
-        var appearanceCard = Assert.IsType<Border>(page.FindName("AppearanceSettingsCard"));
+        var indexingCard = Assert.IsType<CardControl>(page.FindName("IndexingSettingsCard"));
+        var notificationsCard = Assert.IsType<CardControl>(page.FindName("NotificationSettingsCard"));
+        var appearanceCard = Assert.IsType<CardControl>(page.FindName("AppearanceSettingsCard"));
         foreach (var card in new[] { indexingCard, notificationsCard, appearanceCard })
         {
             Assert.Equal(new CornerRadius(8), card.CornerRadius);
@@ -1479,40 +1583,122 @@ public sealed class DesktopCompositionSmokeTests
         var notifications = provider.GetRequiredService<OperationNotificationService>();
         Assert.Same(notifications, provider.GetRequiredService<ISnackbarService>());
         var infoBar = Assert.IsType<Wpf.Ui.Controls.InfoBar>(window.FindName("OperationInfoBar"));
+        var navigation = Assert.IsType<NavigationView>(window.FindName("RootNavigation"));
+        var overlay = Assert.IsType<Grid>(window.FindName("PageNotificationOverlay"));
+        Assert.Same(overlay, navigation.ContentOverlay);
+        Assert.Same(overlay, infoBar.Parent);
         Assert.Same(notifications, infoBar.DataContext);
         Assert.True(infoBar.IsClosable);
-        Assert.Equal(1, Grid.GetRow(infoBar));
+        Assert.Equal(VerticalAlignment.Bottom, infoBar.VerticalAlignment);
         Assert.Equal(Visibility.Collapsed,
             Assert.IsType<SnackbarPresenter>(window.FindName("SnackbarPresenter")).Visibility);
 
-        // Legacy callers cannot replace the user's configured timeout. Timing
-        // itself uses a fake clock in OperationNotificationServiceTests.
-        notifications.Show("UI verification", "Operation completed", ControlAppearance.Caution,
-            null, TimeSpan.FromHours(1));
-        PumpLayout(window, infoBar);
-        Assert.True(notifications.IsOpen);
-        Assert.True(infoBar.IsOpen);
-        Assert.Equal(Visibility.Visible, infoBar.Visibility);
-        Assert.Equal("UI verification", infoBar.Title);
-        Assert.Equal("Operation completed", infoBar.Message);
-        Assert.Equal(InfoBarSeverity.Warning, infoBar.Severity);
-        var dismiss = Assert.Single(FindVisualChildren<Wpf.Ui.Controls.Button>(infoBar),
-            button => ReferenceEquals(button.Command, notifications.DismissCommand));
-        Assert.False(string.IsNullOrWhiteSpace(System.Windows.Automation.AutomationProperties.GetName(dismiss)));
-        dismiss.Command!.Execute(null);
-        PumpLayout(window, infoBar);
-        Assert.False(notifications.IsOpen);
-        Assert.False(infoBar.IsOpen);
-        Assert.Equal(Visibility.Collapsed, infoBar.Visibility);
+        var originalWidth = window.Width;
+        var originalHeight = window.Height;
+        try
+        {
+            foreach (var (width, expanded, label) in new[]
+                     {
+                         (1360d, true, "wide"),
+                         (760d, false, "compact"),
+                     })
+            {
+                notifications.DismissCommand.Execute(null);
+                window.Width = width;
+                window.Height = 640;
+                // Finish the pane's Fluent animation before taking stable bounds.
+                PumpDispatcherFor(window.Dispatcher, TimeSpan.FromMilliseconds(250));
+                PumpLayout(window, window);
+                Assert.Equal(expanded, navigation.IsPaneOpen);
+                var presenter = Assert.IsAssignableFrom<FrameworkElement>(navigation.Template.FindName(
+                    "PART_NavigationViewContentPresenter", navigation));
+                var pane = Assert.IsType<Grid>(navigation.Template.FindName("PaneGrid", navigation));
+                var settingsItem = Assert.Single(navigation.FooterMenuItems.OfType<NavigationViewItem>(),
+                    item => item.TargetPageType == typeof(SettingsPage));
+                var footer = Assert.IsAssignableFrom<FrameworkElement>(settingsItem);
+                var navigationBounds = Bounds(navigation);
+                var paneBounds = Bounds(pane);
+                var footerBounds = Bounds(footer);
+                var pageBounds = Bounds(presenter);
+                Assert.Equal(0, presenter.Margin.Bottom);
 
-        notifications.Show("Dismiss", "Two-way close binding", ControlAppearance.Secondary,
-            null, TimeSpan.Zero);
-        PumpLayout(window, infoBar);
-        infoBar.SetCurrentValue(Wpf.Ui.Controls.InfoBar.IsOpenProperty, false);
-        infoBar.GetBindingExpression(Wpf.Ui.Controls.InfoBar.IsOpenProperty)!.UpdateSource();
-        Assert.False(notifications.IsOpen);
-        PumpLayout(window, infoBar);
-        Assert.Equal(Visibility.Collapsed, infoBar.Visibility);
+                // Legacy callers cannot replace the user's configured timeout.
+                // Timing itself uses a fake clock in OperationNotificationServiceTests.
+                notifications.Show("UI verification", "Operation completed", ControlAppearance.Caution,
+                    null, TimeSpan.FromHours(1));
+                PumpLayout(window, window);
+                Assert.True(notifications.IsOpen);
+                Assert.True(infoBar.IsOpen);
+                Assert.Equal(Visibility.Visible, infoBar.Visibility);
+                Assert.Equal("UI verification", infoBar.Title);
+                Assert.Equal("Operation completed", infoBar.Message);
+                Assert.Equal(InfoBarSeverity.Warning, infoBar.Severity);
+                Assert.True(infoBar.ActualHeight > 0);
+                Assert.True(presenter.Margin.Bottom >= infoBar.ActualHeight,
+                    "The page must reserve notification space instead of overlaying its footer or scan log.");
+                AssertBoundsUnchanged(navigationBounds, Bounds(navigation));
+                AssertBoundsUnchanged(paneBounds, Bounds(pane));
+                AssertBoundsUnchanged(footerBounds, Bounds(footer));
+                Assert.Equal(0, navigation.FrameMargin.Bottom);
+                Assert.Equal(0, navigation.Padding.Bottom);
+                var notificationBounds = Bounds(infoBar);
+                var remainingPageBounds = Bounds(presenter);
+                Assert.True(notificationBounds.Left >= paneBounds.Right,
+                    "Notifications must never extend into the navigation pane.");
+                Assert.True(notificationBounds.Left >= remainingPageBounds.Left);
+                Assert.True(notificationBounds.Right <= remainingPageBounds.Right + 1);
+                Assert.True(remainingPageBounds.Bottom <= notificationBounds.Top + 1,
+                    "The page content, selection footer and scan log must finish above the notification.");
+                Assert.True(remainingPageBounds.Height < pageBounds.Height);
+                SaveQaImage(Assert.IsAssignableFrom<FrameworkElement>(window.Content),
+                    $"notifications-{label}-open.png");
+
+                var dismiss = Assert.Single(FindVisualChildren<Wpf.Ui.Controls.Button>(infoBar),
+                    button => ReferenceEquals(button.Command, notifications.DismissCommand));
+                Assert.False(string.IsNullOrWhiteSpace(System.Windows.Automation.AutomationProperties.GetName(dismiss)));
+                dismiss.Command!.Execute(null);
+                PumpLayout(window, window);
+                Assert.False(notifications.IsOpen);
+                Assert.False(infoBar.IsOpen);
+                Assert.Equal(Visibility.Collapsed, infoBar.Visibility);
+                Assert.Equal(0, presenter.Margin.Bottom);
+                AssertBoundsUnchanged(navigationBounds, Bounds(navigation));
+                AssertBoundsUnchanged(paneBounds, Bounds(pane));
+                AssertBoundsUnchanged(footerBounds, Bounds(footer));
+                AssertBoundsUnchanged(pageBounds, Bounds(presenter));
+                SaveQaImage(Assert.IsAssignableFrom<FrameworkElement>(window.Content),
+                    $"notifications-{label}-closed.png");
+
+                notifications.Show("Dismiss", "Two-way close binding", ControlAppearance.Secondary,
+                    null, TimeSpan.Zero);
+                PumpLayout(window, window);
+                infoBar.SetCurrentValue(Wpf.Ui.Controls.InfoBar.IsOpenProperty, false);
+                infoBar.GetBindingExpression(Wpf.Ui.Controls.InfoBar.IsOpenProperty)!.UpdateSource();
+                Assert.False(notifications.IsOpen);
+                PumpLayout(window, window);
+                Assert.Equal(Visibility.Collapsed, infoBar.Visibility);
+                Assert.Equal(0, presenter.Margin.Bottom);
+            }
+        }
+        finally
+        {
+            notifications.DismissCommand.Execute(null);
+            window.Width = originalWidth;
+            window.Height = originalHeight;
+            PumpDispatcherFor(window.Dispatcher, TimeSpan.FromMilliseconds(250));
+            PumpLayout(window, window);
+        }
+
+        Rect Bounds(FrameworkElement element)
+            => new(element.TranslatePoint(new Point(), window), element.RenderSize);
+
+        static void AssertBoundsUnchanged(Rect expected, Rect actual)
+        {
+            Assert.InRange(Math.Abs(expected.Left - actual.Left), 0, 1);
+            Assert.InRange(Math.Abs(expected.Top - actual.Top), 0, 1);
+            Assert.InRange(Math.Abs(expected.Width - actual.Width), 0, 1);
+            Assert.InRange(Math.Abs(expected.Height - actual.Height), 0, 1);
+        }
     }
 
     private static void VerifyOutputFormatEditor(IServiceProvider provider, Window window, OutputFormatsPage page)

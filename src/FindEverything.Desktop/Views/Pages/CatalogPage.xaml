@@ -29,8 +29,11 @@
             </controls:PageHeader>
             <controls:CommandStrip Grid.Row="1">
                 <Grid>
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="180" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                    <ComboBox AutomationProperties.Name="{DynamicResource Loc.Workspace.Profile}" ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}" DisplayMemberPath="DisplayName" IsEnabled="{Binding CanEditWorkspace}" ToolTip="{DynamicResource Loc.Workspace.Catalog.Profile.Help}" />
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Label x:Name="CatalogProfileLabel" Padding="0" Margin="0,0,8,0" VerticalAlignment="Center" Content="{DynamicResource Loc.Workspace.Profile.Label}" Target="{Binding ElementName=CatalogProfileComboBox}" />
+                        <ComboBox x:Name="CatalogProfileComboBox" Width="140" AutomationProperties.Name="{DynamicResource Loc.Workspace.Profile}" ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}" DisplayMemberPath="DisplayName" IsEnabled="{Binding CanEditWorkspace}" ToolTip="{DynamicResource Loc.Workspace.Catalog.Profile.Help}" />
+                    </StackPanel>
                     <TextBlock Grid.Column="1" Margin="12,0" VerticalAlignment="Center" Text="{Binding RootPath, TargetNullValue={StaticResource Loc.Catalog.Root.None}}" TextTrimming="CharacterEllipsis" ToolTip="{Binding RootPath}" />
                     <WrapPanel Grid.Column="2">
                         <ui:Button MinWidth="76" Margin="0,0,8,0" Command="{Binding BrowseRootCommand}" Content="{DynamicResource Loc.Workspace.Location.Change}" Icon="{ui:SymbolIcon Symbol=FolderOpen20}" ToolTip="{DynamicResource Loc.Workspace.Location.Change.Help}" ToolTipService.ShowOnDisabled="True" />
@@ -111,21 +114,30 @@
                 PreviewMouseLeftButtonDown="OnResultsGridPreviewMouseLeftButtonDown"
                 PreviewMouseRightButtonDown="OnResultsGridPreviewMouseRightButtonDown"
                 SelectedItem="{Binding SelectedItem}"
-                SelectionChanged="OnResultsGridSelectionChanged"
                 SelectionMode="Extended"
                 SelectionUnit="FullRow"
+                RowHeight="48"
                 ScrollViewer.HorizontalScrollBarVisibility="Visible"
                 ScrollViewer.PanningMode="Both"
                 ScrollViewer.VerticalScrollBarVisibility="Auto"
                 Sorting="OnResultsGridSorting"
                 Style="{StaticResource FluentDataGridStyle}"
                 Visibility="{Binding HasLoadedItems, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <DataGrid.CellStyle>
+                    <Style BasedOn="{StaticResource DefaultDataGridCellStyle}" TargetType="DataGridCell">
+                        <Setter Property="Padding" Value="12,4" />
+                        <Setter Property="VerticalContentAlignment" Value="Center" />
+                    </Style>
+                </DataGrid.CellStyle>
                 <DataGrid.RowStyle>
                     <Style BasedOn="{StaticResource FluentResultRowStyle}" TargetType="DataGridRow">
+                        <Setter Property="Margin" Value="0,2" />
+                        <Setter Property="Padding" Value="0,4" />
                         <Style.Triggers>
                             <DataTrigger Binding="{Binding IsPlaceholder}" Value="True"><Setter Property="IsEnabled" Value="False" /><Setter Property="Opacity" Value="0.45" /></DataTrigger>
-                            <MultiDataTrigger><MultiDataTrigger.Conditions><Condition Binding="{Binding DataContext.UsesQuerySelection, RelativeSource={RelativeSource AncestorType=DataGrid}}" Value="True" /><Condition Binding="{Binding IsSelected}" Value="True" /></MultiDataTrigger.Conditions><Setter Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}" /></MultiDataTrigger>
-                            <MultiDataTrigger><MultiDataTrigger.Conditions><Condition Binding="{Binding DataContext.UsesQuerySelection, RelativeSource={RelativeSource AncestorType=DataGrid}}" Value="True" /><Condition Binding="{Binding IsSelected}" Value="False" /></MultiDataTrigger.Conditions><Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" /></MultiDataTrigger>
+                            <DataTrigger Binding="{Binding IsSelected}" Value="True"><Setter Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}" /></DataTrigger>
+                            <DataTrigger Binding="{Binding IsSelected}" Value="False"><Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" /></DataTrigger>
+                            <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}" /></Trigger>
                         </Style.Triggers>
                     </Style>
                 </DataGrid.RowStyle>
@@ -150,13 +162,15 @@
                 Style="{StaticResource FluentToolbarSurfaceStyle}"
                 Visibility="{Binding HasSelection, Converter={StaticResource BooleanToVisibilityConverter}}">
                 <WrapPanel HorizontalAlignment="Right" VerticalAlignment="Center">
-                    <StackPanel Margin="0,0,0,0" Orientation="Horizontal">
+                    <StackPanel Margin="0,0,0,4" Orientation="Horizontal">
                         <TextBlock
                             Margin="4,0,12,0"
                             VerticalAlignment="Center"
                             FontWeight="SemiBold"
                             Text="{Binding SelectedCount, StringFormat={StaticResource Loc.Common.SelectedCountFormat}}" />
+                        <Label Padding="0" Margin="0,0,8,0" VerticalAlignment="Center" Content="{DynamicResource Loc.Workspace.Output.Format.Label}" Target="{Binding ElementName=CatalogOutputFormatComboBox}" />
                         <ComboBox
+                            x:Name="CatalogOutputFormatComboBox"
                             Width="140"
                             Margin="0,0,8,0"
                             AutomationProperties.Name="{DynamicResource Loc.View.Files.AutomationName.SelectionOutputFormat}"
@@ -190,16 +204,29 @@
                         Icon="{ui:SymbolIcon Symbol=FolderOpen20}" />
 
                     <ui:Button
-                        Margin="0,0,6,0"
+                        x:Name="SelectAllResultsButton"
+                        Margin="0,0,6,4"
+                        Padding="8,4"
+                        Command="{Binding SelectAllCommand}"
+                        Content="{DynamicResource Loc.Selection.All}"
+                        Icon="{ui:SymbolIcon Symbol=CheckboxChecked20}"
+                        AutomationProperties.Name="{DynamicResource Loc.Selection.All}"
+                        ToolTip="{DynamicResource Loc.Selection.All.ToolTip}" />
+                    <ui:Button
+                        x:Name="ClearAllResultsButton"
+                        Margin="0,0,6,4"
                         Command="{Binding ClearSelectionCommand}"
-                        Width="28" Padding="0"
+                        Padding="8,4"
+                        Content="{DynamicResource Loc.Workspace.Selection.Clear}"
                         Icon="{ui:SymbolIcon Symbol=CheckboxUnchecked20}"
                         AutomationProperties.Name="{DynamicResource Loc.Workspace.Selection.Clear}"
                         ToolTip="{DynamicResource Loc.Workspace.Selection.Clear}" />
                     <ui:Button
-                        Margin="0,0,0,0"
+                        x:Name="InvertResultsSelectionButton"
+                        Margin="0,0,0,4"
                         Command="{Binding InvertSelectionCommand}"
-                        Width="28" Padding="0"
+                        Padding="8,4"
+                        Content="{DynamicResource Loc.Workspace.Selection.Invert}"
                         Icon="{ui:SymbolIcon Symbol=ArrowSwap20}"
                         AutomationProperties.Name="{DynamicResource Loc.Workspace.Selection.Invert}"
                         ToolTip="{DynamicResource Loc.Selection.Invert.ToolTip}" />
@@ -245,7 +272,8 @@
                     <TextBlock Grid.Column="1" MaxWidth="260" Margin="12,0,0,0" Text="{Binding ResultSourceDescription}" Style="{StaticResource CaptionTextStyle}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" ToolTip="{Binding ResultSourceDescription}" AutomationProperties.Name="{DynamicResource Loc.Workspace.ResultSource}" />
                 </Grid>
             </Border>
-            <Border x:Name="CatalogDetailsPanel" Grid.Row="2" Width="340" HorizontalAlignment="Right" Panel.ZIndex="8" Style="{StaticResource FluentSurfaceStyle}" Visibility="{Binding IsDetailsOpen, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <ui:CardControl x:Name="CatalogDetailsPanel" Grid.Row="2" Width="340" HorizontalAlignment="Right" Panel.ZIndex="8" Style="{StaticResource FluentSectionCardStyle}" Visibility="{Binding IsDetailsOpen, Converter={StaticResource BooleanToVisibilityConverter}}">
+              <ui:CardControl.Header>
                 <ScrollViewer Style="{StaticResource FluentGutteredScrollViewerStyle}">
                     <StackPanel>
                         <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.Workspace.Details}" />
@@ -258,7 +286,8 @@
                         <TextBlock Style="{StaticResource CaptionTextStyle}" Text="{Binding DatabasePath}" TextWrapping="Wrap" />
                     </StackPanel>
                 </ScrollViewer>
-            </Border>
+              </ui:CardControl.Header>
+            </ui:CardControl>
         </controls:WorkspacePageFrame>
         <controls:ScanConsolePanel x:Name="ScanConsolePanel" Grid.Row="1" Height="220" Margin="24,0,24,16" DataContext="{x:Null}" Visibility="{Binding IsPanelOpen, Converter={StaticResource BooleanToVisibilityConverter}}" />
     </Grid>

@@ -34,6 +34,7 @@ public partial class MainWindow
 
         InitializeComponent();
         OperationInfoBar.DataContext = operationNotifications ?? snackbarService as OperationNotificationService;
+        Loaded += (_, _) => UpdatePageNotificationSpace();
 
         navigationService.SetNavigationControl(RootNavigation);
         snackbarService.SetSnackbarPresenter(SnackbarPresenter);
@@ -89,6 +90,37 @@ public partial class MainWindow
     private void OnWindowSizeChanged(object sender, SizeChangedEventArgs eventArgs)
     {
         ApplyAdaptiveShellLayout(eventArgs.NewSize.Width);
+    }
+
+    private void OnOperationInfoBarSizeChanged(object sender, SizeChangedEventArgs eventArgs)
+        => UpdatePageNotificationSpace();
+
+    private void OnOperationInfoBarVisibilityChanged(object sender, DependencyPropertyChangedEventArgs eventArgs)
+        => UpdatePageNotificationSpace();
+
+    private void UpdatePageNotificationSpace()
+    {
+        // FrameMargin belongs to the whole content-column border, including its
+        // overlay. Only reserve space on the page presenter: this keeps the bar
+        // at the page bottom without resizing or covering the navigation pane.
+        RootNavigation.ApplyTemplate();
+        if (RootNavigation.Template?.FindName("PART_NavigationViewContentPresenter", RootNavigation)
+            is not FrameworkElement pagePresenter)
+        {
+            return;
+        }
+
+        var reservedHeight = OperationInfoBar.IsVisible && OperationInfoBar.IsOpen
+            ? OperationInfoBar.ActualHeight + OperationInfoBar.Margin.Top + OperationInfoBar.Margin.Bottom
+            : 0;
+        var currentMargin = pagePresenter.Margin;
+        if (Math.Abs(currentMargin.Bottom - reservedHeight) < 0.01)
+        {
+            return;
+        }
+
+        pagePresenter.SetCurrentValue(FrameworkElement.MarginProperty,
+            new Thickness(currentMargin.Left, currentMargin.Top, currentMargin.Right, reservedHeight));
     }
 
     private void ApplyAdaptiveShellLayout(double width)

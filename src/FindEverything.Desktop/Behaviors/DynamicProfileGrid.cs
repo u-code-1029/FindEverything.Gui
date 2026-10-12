@@ -341,19 +341,20 @@ public static class DynamicProfileGrid
                 localizer,
                 "Loc.Catalog.Selection.Item",
                 "항목 선택");
-            var allButton = new Wpf.Ui.Controls.Button
+            var invertButton = new Wpf.Ui.Controls.Button
             {
                 Width = 32, Height = 28, Padding = new Thickness(0),
                 Appearance = Wpf.Ui.Controls.ControlAppearance.Transparent,
-                Icon = new Wpf.Ui.Controls.SymbolIcon(Wpf.Ui.Controls.SymbolRegular.CheckboxChecked20),
-                ToolTip = L(localizer, "Loc.Selection.All.ToolTip", "아직 화면에 불러오지 않은 항목까지 현재 검색 결과 전체를 선택합니다. (Ctrl+A)"),
+                Icon = new Wpf.Ui.Controls.SymbolIcon(Wpf.Ui.Controls.SymbolRegular.ArrowSwap20),
+                ToolTip = L(localizer, "Loc.Selection.Invert.ToolTip", "현재 검색 결과 전체에서 선택을 반전합니다. 미로딩 항목도 포함됩니다."),
             };
-            System.Windows.Automation.AutomationProperties.SetName(allButton, L(localizer, "Loc.Selection.All", "전체 선택"));
-            allButton.SetBinding(Button.CommandProperty, new Binding("DataContext.SelectAllCommand")
+            System.Windows.Automation.AutomationProperties.SetName(invertButton,
+                L(localizer, "Loc.Workspace.Selection.Invert", "선택 반전"));
+            invertButton.SetBinding(Button.CommandProperty, new Binding("DataContext.InvertSelectionCommand")
             {
                 RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor, typeof(DataGrid), 1),
             });
-            Header = allButton;
+            Header = invertButton;
             // This column stays frozen at the leading edge. The extra width is
             // intentional: WPF's focus chrome and the vertical grid line must
             // not crop the Fluent checkbox at the minimum window width.
@@ -391,11 +392,11 @@ public static class DynamicProfileGrid
                 ToolTip = _selectionLabel,
             };
             System.Windows.Automation.AutomationProperties.SetName(checkBox, _selectionLabel);
-            var usesQuerySelection = FindAncestor<DataGrid>(cell)?.DataContext is ViewModels.CatalogViewModel { UsesQuerySelection: true };
+            var hasCatalogSelection = FindAncestor<DataGrid>(cell)?.DataContext is ViewModels.CatalogViewModel;
             BindingOperations.SetBinding(
                 checkBox,
                 ToggleButton.IsCheckedProperty,
-                usesQuerySelection
+                hasCatalogSelection
                     ? new Binding(nameof(ViewModels.CatalogItemViewModel.IsSelected)) { Mode = BindingMode.OneWay }
                     : new Binding(nameof(DataGridRow.IsSelected))
                     {
@@ -412,7 +413,7 @@ public static class DynamicProfileGrid
         private static async void OnCheckBoxStateChanged(object sender, RoutedEventArgs e)
         {
             if (sender is not CheckBox checkBox
-                || FindAncestor<DataGrid>(checkBox)?.DataContext is not ViewModels.CatalogViewModel { UsesQuerySelection: true } viewModel
+                || FindAncestor<DataGrid>(checkBox)?.DataContext is not ViewModels.CatalogViewModel viewModel
                 || checkBox.DataContext is not ViewModels.CatalogItemViewModel { IsPlaceholder: false } item
                 || checkBox.IsChecked == item.IsSelected) return;
             // UI Automation invokes TogglePattern without a pointer event. A
@@ -423,7 +424,7 @@ public static class DynamicProfileGrid
         private static async void OnCheckBoxPreviewKeyDown(object sender, KeyEventArgs e)
         {
             if (e.Key != Key.Space || sender is not CheckBox checkBox
-                || FindAncestor<DataGrid>(checkBox)?.DataContext is not ViewModels.CatalogViewModel { UsesQuerySelection: true } viewModel
+                || FindAncestor<DataGrid>(checkBox)?.DataContext is not ViewModels.CatalogViewModel viewModel
                 || FindAncestor<DataGridRow>(checkBox)?.Item is not ViewModels.CatalogItemViewModel { IsPlaceholder: false } item) return;
             e.Handled = true;
             await viewModel.SelectRowAsync(item, additive: true, range: Keyboard.Modifiers.HasFlag(ModifierKeys.Shift));
@@ -439,7 +440,7 @@ public static class DynamicProfileGrid
                 return;
             }
 
-            if (FindAncestor<DataGrid>(checkBox)?.DataContext is ViewModels.CatalogViewModel { UsesQuerySelection: true } viewModel)
+            if (FindAncestor<DataGrid>(checkBox)?.DataContext is ViewModels.CatalogViewModel viewModel)
             {
                 eventArgs.Handled = true;
                 if (row.Item is not ViewModels.CatalogItemViewModel { IsPlaceholder: false } item) return;

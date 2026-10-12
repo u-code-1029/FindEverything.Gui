@@ -10,6 +10,10 @@ public partial class CatalogPage
 {
     private readonly CatalogViewModel _viewModel;
     private CatalogItemViewModel? _pointerContextItem;
+    private PendingRowClick? _pendingRowClick;
+
+    private sealed record PendingRowClick(CatalogItemViewModel Item, System.Windows.Point Start,
+        bool Range, int ClickCount);
 
     public CatalogPage(
         CatalogViewModel viewModel,
@@ -19,6 +23,10 @@ public partial class CatalogPage
         _viewModel = viewModel;
         DataContext = viewModel;
         InitializeComponent();
+        ResultsGrid.AddHandler(System.Windows.UIElement.PreviewMouseLeftButtonUpEvent,
+            new MouseButtonEventHandler(OnResultsGridPreviewMouseLeftButtonUp), handledEventsToo: true);
+        ResultsGrid.AddHandler(System.Windows.UIElement.PreviewMouseMoveEvent,
+            new MouseEventHandler(OnResultsGridPreviewMouseMove), handledEventsToo: true);
         ScanConsolePanel.DataContext = scanConsoleViewModel;
         DynamicProfileGrid.SetLayoutStore(ResultsGrid, gridLayoutStore);
         viewModel.PropertyChanged += (_, e) =>
@@ -57,7 +65,7 @@ public partial class CatalogPage
             && !ResultGridInput.IsInteractiveOrigin(focused)
             && ResultsGrid.CurrentItem is CatalogItemViewModel { IsPlaceholder: false } current)
         {
-            if (_viewModel.UsesQuerySelection && e.Key == Key.Space)
+            if (e.Key == Key.Space)
             {
                 e.Handled = true;
                 await _viewModel.SelectRowAsync(current, additive: true, range: Keyboard.Modifiers.HasFlag(ModifierKeys.Shift));
@@ -122,80 +130,60 @@ public partial class CatalogPage
             return;
         }
 
-        ResultsGrid.SelectedItem = item;
+        if (item.IsPlaceholder) return;
+        ResultsGrid.CurrentItem = item;
+        _viewModel.SelectedItem = item;
         if (_viewModel.OpenItemCommand.CanExecute(item))
         {
             _viewModel.OpenItemCommand.Execute(item);
         }
     }
 
-    private async void OnResultsGridPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    private void OnResultsGridPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (_viewModel.UsesQuerySelection && e.OriginalSource is System.Windows.DependencyObject querySource
-            && !ResultGridInput.IsInteractiveOrigin(querySource)
-            && System.Windows.Controls.ItemsControl.ContainerFromElement(ResultsGrid, querySource) is System.Windows.Controls.DataGridRow row)
-        {
-            e.Handled = true;
-            if (row.Item is not CatalogItemViewModel { IsPlaceholder: false } item) return;
-            ResultsGrid.SelectedItem = item;
-            ResultsGrid.CurrentItem = item;
-            row.Focus();
-            await _viewModel.SelectRowAsync(item, Keyboard.Modifiers.HasFlag(ModifierKeys.Control), Keyboard.Modifiers.HasFlag(ModifierKeys.Shift));
-            return;
-        }
+        _pendingRowClick = null;
         if (e.OriginalSource is not System.Windows.DependencyObject source
-            || FindAncestor<TextBoxBase>(source) is null)
+            || ResultGridInput.IsInteractiveOrigin(source)
+            || System.Windows.Controls.ItemsControl.ContainerFromElement(ResultsGrid, source)
+                is not System.Windows.Controls.DataGridRow row)
         {
             return;
         }
 
-        // Text input is an interactive child, not a row-selection gesture. Let
-        // the TextBox receive the click/caret normally, then restore the exact
-        // checkbox-backed selection that existed before the routed DataGrid click.
-        var selected = ResultsGrid.SelectedItems.Cast<object>().ToArray();
-        _ = ResultsGrid.Dispatcher.BeginInvoke(
-            System.Windows.Threading.DispatcherPriority.Input,
-            new Action(() =>
-            {
-                ResultsGrid.SelectionChanged -= OnResultsGridSelectionChanged;
-                try
-                {
-                    ResultsGrid.SelectedItems.Clear();
-                    foreach (var item in selected)
-                    {
-                        ResultsGrid.SelectedItems.Add(item);
-                    }
-                }
-                finally
-                {
-                    ResultsGrid.SelectionChanged += OnResultsGridSelectionChanged;
-                    UpdateSelectionSnapshot();
-                }
-            }));
+        // Grid focus is independent of the checkbox-backed multi-selection.
+        // Delay the toggle until release so dragging or the second click of a
+        // folder-opening double-click cannot undo an already checked item.
+        e.Handled = true;
+        if (row.Item is not CatalogItemViewModel { IsPlaceholder: false } item) return;
+        ResultsGrid.CurrentItem = item;
+        _viewModel.SelectedItem = item;
+        row.Focus();
+        if (e.ClickCount == 1)
+            _pendingRowClick = new(item, e.GetPosition(ResultsGrid),
+                Keyboard.Modifiers.HasFlag(ModifierKeys.Shift), e.ClickCount);
     }
 
-    private static T? FindAncestor<T>(System.Windows.DependencyObject? source)
-        where T : System.Windows.DependencyObject
+    private async void OnResultsGridPreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
-        while (source is not null)
-        {
-            if (source is T match)
-            {
-                return match;
-            }
+        var pending = _pendingRowClick;
+        _pendingRowClick = null;
+        if (pending is null || e.OriginalSource is not System.Windows.DependencyObject source
+            || ResultGridInput.IsInteractiveOrigin(source)
+            || !ResultGridInput.IsClickGesture(pending.Start, e.GetPosition(ResultsGrid), pending.ClickCount)
+            || System.Windows.Controls.ItemsControl.ContainerFromElement(ResultsGrid, source)
+                is not System.Windows.Controls.DataGridRow { Item: CatalogItemViewModel item }
+            || !ReferenceEquals(item, pending.Item)) return;
 
-            source = source is System.Windows.Media.Visual or System.Windows.Media.Media3D.Visual3D
-                ? System.Windows.Media.VisualTreeHelper.GetParent(source)
-                : System.Windows.LogicalTreeHelper.GetParent(source);
-        }
-
-        return null;
+        e.Handled = true;
+        await _viewModel.SelectRowAsync(item, additive: true, range: pending.Range);
     }
 
-    private void OnResultsGridSelectionChanged(
-        object sender,
-        System.Windows.Controls.SelectionChangedEventArgs e) =>
-        UpdateSelectionSnapshot();
+    private void OnResultsGridPreviewMouseMove(object sender, MouseEventArgs e)
+    {
+        if (_pendingRowClick is { } pending
+            && !ResultGridInput.IsClickGesture(pending.Start, e.GetPosition(ResultsGrid), pending.ClickCount))
+            _pendingRowClick = null;
+    }
 
     private async void OnResultsGridPreviewMouseRightButtonDown(
         object sender,
@@ -211,25 +199,13 @@ public partial class CatalogPage
 
         _pointerContextItem = row.Item as CatalogItemViewModel;
         if (_pointerContextItem?.IsPlaceholder != false) { _pointerContextItem = null; return; }
-        if (_viewModel.UsesQuerySelection)
-        {
-            ResultsGrid.CurrentItem = row.Item;
-            row.Focus();
-            if (!_pointerContextItem.IsSelected) await _viewModel.SelectRowAsync(_pointerContextItem, additive: false, range: false);
-            return;
-        }
-
-        if (!row.IsSelected)
-        {
-            ResultsGrid.SelectedItems.Clear();
-            row.IsSelected = true;
-            ResultsGrid.SelectedItem = row.Item;
-        }
-
         // Keep an existing multi-selection intact. Context-menu actions receive
-        // CurrentItem, while selection-wide actions continue to use SelectedItems.
+        // CurrentItem, while selection-wide actions use the checked models.
         ResultsGrid.CurrentItem = row.Item;
+        _viewModel.SelectedItem = _pointerContextItem;
         row.Focus();
+        if (!_pointerContextItem.IsSelected)
+            await _viewModel.SelectRowAsync(_pointerContextItem, additive: true, range: false);
     }
 
     private void OnResultsGridContextMenuOpening(
@@ -246,12 +222,6 @@ public partial class CatalogPage
         // The menu is row-specific. Do not reuse the previous CurrentItem when
         // the pointer is over a header, scrollbar, or empty grid area.
         e.Handled = _pointerContextItem is null;
-    }
-
-    private void UpdateSelectionSnapshot()
-    {
-        if (_viewModel.UsesQuerySelection) return;
-        _viewModel.SetSelection(ResultsGrid.SelectedItems.OfType<CatalogItemViewModel>());
     }
 
     private void OnResultsGridSorting(object sender, System.Windows.Controls.DataGridSortingEventArgs e)
