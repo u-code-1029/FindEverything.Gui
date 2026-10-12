@@ -160,7 +160,8 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
         ICatalogProjectionStore? projectionStore = null,
         IIndexSessionFactory? indexSessions = null,
         ICatalogMissingDataPrompt? missingDataPrompt = null,
-        IValidatedSettingsState<IndexingOptions>? indexingSettings = null)
+        IValidatedSettingsState<IndexingOptions>? indexingSettings = null,
+        Dispatcher? dispatcher = null)
     {
         _catalogService = catalogService;
         _profileCatalog = profileCatalog;
@@ -190,7 +191,8 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
         _statusMessage = L(
             "Loc.Catalog.Status.Ready.Message",
             "스캔하면 결과를 바로 보여주고 파일과 폴더 메타데이터를 DB에 저장합니다.");
-        _dispatcher = System.Windows.Application.Current?.Dispatcher
+        // A presentation host may own a dispatcher independently of Application.Current.
+        _dispatcher = dispatcher ?? System.Windows.Application.Current?.Dispatcher
             ?? Dispatcher.CurrentDispatcher;
         Items = CreateItemsView(_loadedItems);
 

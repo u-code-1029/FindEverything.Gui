@@ -170,12 +170,14 @@ public sealed class CatalogMissingDataAndCancellationTests
             Store = new Store(cacheExists, cacheCount, Query);
             Prompt = new Prompt(decision, waitForPromptCancellation);
             Service = new CatalogService();
+            // The composition smoke test owns the process-wide Application.
+            // Keep this fixture's callbacks on its own running STA dispatcher.
             ViewModel = new CatalogViewModel(Service, new Profiles(), new Workspace(_databasePath),
                 new DatabaseResolver(_databasePath), null!, null!,
                 new ApplicationOperationCoordinator(NullLogger<ApplicationOperationCoordinator>.Instance),
                 new Notifier(), new Snackbar(), new Formats(), null!, null!, null!,
                 new TestAppLocalizer(), NullLogger<CatalogViewModel>.Instance,
-                projectionStore: Store, missingDataPrompt: Prompt);
+                projectionStore: Store, missingDataPrompt: Prompt, dispatcher: Dispatcher.CurrentDispatcher);
         }
 
         public CatalogViewModel ViewModel { get; }
