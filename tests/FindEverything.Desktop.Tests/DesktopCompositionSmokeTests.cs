@@ -1607,6 +1607,9 @@ public sealed class DesktopCompositionSmokeTests
                 notifications.DismissCommand.Execute(null);
                 window.Width = width;
                 window.Height = 640;
+                // A user may keep the rail collapsed at a wide width. Set both
+                // states explicitly instead of relying on a shell-mode change.
+                navigation.IsPaneOpen = expanded;
                 // Finish the pane's Fluent animation before taking stable bounds.
                 PumpDispatcherFor(window.Dispatcher, TimeSpan.FromMilliseconds(250));
                 PumpLayout(window, window);
