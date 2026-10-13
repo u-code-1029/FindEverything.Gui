@@ -30,6 +30,7 @@ internal static class WorkspaceTransferUiChecks
             Assert.True(navigation.Navigate(page.GetType()));
             window.UpdateLayout();
             window.Dispatcher.Invoke(static () => { }, DispatcherPriority.DataBind);
+            WaitForPageArrangement(window, page);
             var panel = Assert.IsType<WorkspaceTransferPanel>(page.FindName(name));
             Assert.Same(transfer, panel.DataContext);
             Assert.True(panel.AllowDrop);
@@ -70,6 +71,52 @@ internal static class WorkspaceTransferUiChecks
         }
     }
 
+    private static void WaitForPageArrangement(MainWindow window, Page page)
+    {
+        // Earlier QA cases resize the HWND and manually arrange cached pages.
+        // Capture the real, connected viewport only after those native size and
+        // navigation/load messages settle, not the last QA fixture's RenderSize.
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(3);
+        var earliest = DateTime.UtcNow + TimeSpan.FromMilliseconds(80);
+        Size previous = default;
+        var stablePasses = 0;
+        bool Ready()
+        {
+            if (!window.IsLoaded || !page.IsLoaded || PresentationSource.FromVisual(page) is null
+                || !page.IsMeasureValid || !page.IsArrangeValid || page.ActualWidth <= 0 || page.ActualHeight <= 0)
+                return false;
+            var origin = page.TranslatePoint(new Point(), window);
+            return origin.X >= -1 && origin.Y >= -1
+                && origin.X + page.ActualWidth <= window.ActualWidth + 1
+                && origin.Y + page.ActualHeight <= window.ActualHeight + 1;
+        }
+        while (DateTime.UtcNow < deadline)
+        {
+            PumpNativeLayout(window.Dispatcher);
+            window.UpdateLayout();
+            page.UpdateLayout();
+            if (Ready() && page.RenderSize == previous) stablePasses++;
+            else stablePasses = 0;
+            previous = page.RenderSize;
+            if (stablePasses >= 2 && DateTime.UtcNow >= earliest) return;
+        }
+        Assert.Fail($"Page must settle before opening sharing: loaded={page.IsLoaded}, connected={PresentationSource.FromVisual(page) is not null}, "
+            + $"page={page.RenderSize}, window={window.ActualWidth:0.##}×{window.ActualHeight:0.##}, requested={window.Width:0.##}×{window.Height:0.##}.");
+    }
+
+    private static void PumpNativeLayout(Dispatcher dispatcher)
+    {
+        var frame = new DispatcherFrame();
+        var timer = new DispatcherTimer(DispatcherPriority.ApplicationIdle, dispatcher)
+        {
+            Interval = TimeSpan.FromMilliseconds(10),
+        };
+        timer.Tick += (_, _) => { timer.Stop(); frame.Continue = false; };
+        timer.Start();
+        try { Dispatcher.PushFrame(frame); }
+        finally { timer.Stop(); }
+    }
+
     private static void WaitForPopupArrangement(Dispatcher dispatcher, Popup popup, FrameworkElement content)
     {
         // Popup creates a separate HWND. A synchronous UpdateLayout on its
@@ -80,15 +127,7 @@ internal static class WorkspaceTransferUiChecks
             && content.ActualWidth > 0 && content.ActualHeight > 0;
         while (!Ready() && DateTime.UtcNow < deadline)
         {
-            var frame = new DispatcherFrame();
-            var timer = new DispatcherTimer(DispatcherPriority.ApplicationIdle, dispatcher)
-            {
-                Interval = TimeSpan.FromMilliseconds(10),
-            };
-            timer.Tick += (_, _) => { timer.Stop(); frame.Continue = false; };
-            timer.Start();
-            try { Dispatcher.PushFrame(frame); }
-            finally { timer.Stop(); }
+            PumpNativeLayout(dispatcher);
             content.UpdateLayout();
         }
         Assert.True(Ready(), $"Shared-data popup must actually arrange: open={popup.IsOpen}, "

@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Data;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
@@ -62,17 +63,31 @@ internal static class CatalogColumnFilterUiChecks
             var state = grid.GetValue(stateProperty);
             Assert.NotNull(state);
             var flyout = (Ui.Flyout)state.GetType().GetField("Flyout")!.GetValue(state)!;
-            var open = typeof(DynamicProfileGrid).GetMethod("OpenColumnFlyoutAsync", BindingFlags.NonPublic | BindingFlags.Static)!;
-            void Show(int columnIndex, CatalogColumnTarget target)
+            var nativeSorts = 0;
+            grid.Sorting += (_, _) => nativeSorts++;
+            DataGridColumnHeader Header(int columnIndex)
             {
                 grid.UpdateLayout();
-                var header = Descendants<DataGridColumnHeader>(grid).First(candidate => candidate.Column == grid.Columns[columnIndex]);
-                ((Task)open.Invoke(null, [grid, state, owner, header, target])!).GetAwaiter().GetResult();
-                Assert.True(flyout.IsOpen);
+                return Descendants<DataGridColumnHeader>(grid).First(candidate => candidate.Column == grid.Columns[columnIndex]);
+            }
+            void Show(int columnIndex, Key? key = null)
+            {
+                flyout.Hide();
+                var header = Header(columnIndex);
+                // Exercise real routed input. Calling the private opener directly
+                // would miss guards which mistake the header for a nested button.
+                if (key is { } activation) Assert.True(RaiseHeaderKey(header, activation).Handled);
+                else
+                {
+                    RaiseHeaderMouse(header, UIElement.PreviewMouseLeftButtonDownEvent);
+                    Assert.True(RaiseHeaderMouse(header, UIElement.PreviewMouseLeftButtonUpEvent).Handled);
+                }
+                PumpUntil(() => flyout.IsOpen);
                 Assert.Same(header, Assert.IsType<Popup>(flyout.Template.FindName("PART_Popup", flyout)).PlacementTarget);
                 Assert.False(grid.Columns[columnIndex].CanUserSort);
+                Assert.Equal(0, nativeSorts);
             }
-            Show(2, CatalogColumnTarget.Field("name"));
+            Show(2);
             var body = Assert.IsType<StackPanel>(flyout.Content);
             var mode = body.Children.OfType<ComboBox>().Single();
             mode.SelectedIndex = 1;
@@ -80,7 +95,7 @@ internal static class CatalogColumnFilterUiChecks
             text.Text = "Apollo";
             Assert.Equal("Apollo", Assert.Single(owner.ActiveColumnFilters).Filter.Text);
             CaptureFlyoutQa(grid, flyout, "catalog-filter-text.png");
-            Show(3, CatalogColumnTarget.Field("amount"));
+            Show(3, Key.Enter);
             body = Assert.IsType<StackPanel>(flyout.Content); mode = body.Children.OfType<ComboBox>().Single(); mode.SelectedIndex = 1;
             Assert.Equal(2, body.Children.OfType<StackPanel>().SelectMany(panel => panel.Children.OfType<Slider>()).Count());
             var numbers = body.Children.OfType<StackPanel>().SelectMany(panel => panel.Children.OfType<Ui.TextBox>()).ToArray();
@@ -89,7 +104,7 @@ internal static class CatalogColumnFilterUiChecks
             CaptureFlyoutQa(grid, flyout, "catalog-filter-number.png");
             numbers[0].Text = "3";
             Assert.Equal(1m, owner.GetColumnFilter(CatalogColumnTarget.Field("amount"))!.Minimum);
-            Show(4, CatalogColumnTarget.Field("date"));
+            Show(4, Key.F4);
             body = Assert.IsType<StackPanel>(flyout.Content); mode = body.Children.OfType<ComboBox>().Single(); mode.SelectedIndex = 1;
             var dates = body.Children.OfType<StackPanel>().SelectMany(panel => panel.Children.OfType<Ui.CalendarDatePicker>()).ToArray();
             Assert.Equal(2, dates.Length);
@@ -97,7 +112,7 @@ internal static class CatalogColumnFilterUiChecks
             dates[1].SetCurrentValue(Ui.CalendarDatePicker.DateProperty, new DateTime(2026, 5, 22));
             Assert.Equal(new DateTime(2026, 5, 22), owner.GetColumnFilter(CatalogColumnTarget.Field("date"))!.EndDate);
             CaptureFlyoutQa(grid, flyout, "catalog-filter-date.png");
-            Show(5, CatalogColumnTarget.Field("flag"));
+            Show(5, Key.Space);
             body = Assert.IsType<StackPanel>(flyout.Content); mode = body.Children.OfType<ComboBox>().Single(); mode.SelectedIndex = 1;
             Assert.True(owner.GetColumnFilter(CatalogColumnTarget.Field("flag"))!.Boolean);
             CaptureFlyoutQa(grid, flyout, "catalog-filter-boolean.png");
@@ -106,11 +121,48 @@ internal static class CatalogColumnFilterUiChecks
             owner.ClearColumnFiltersCommand.Execute(null);
             Assert.False(owner.HasColumnFilters);
             Assert.Empty(owner.ActiveColumnFilters);
+            flyout.Hide();
+            RaiseHeaderMouse(documentRefresh, UIElement.PreviewMouseLeftButtonDownEvent);
+            Assert.False(RaiseHeaderMouse(documentRefresh, UIElement.PreviewMouseLeftButtonUpEvent).Handled);
+            Assert.False(flyout.IsOpen);
+            Assert.False(RaiseHeaderKey(documentRefresh, Key.F4).Handled);
+            Assert.False(flyout.IsOpen);
+
+            var dragHeader = Header(2);
+            var down = RaiseHeaderMouse(dragHeader, UIElement.PreviewMouseLeftButtonDownEvent);
+            // Simulate displacement without changing the machine's mouse state.
+            // The actual routed Up must reject a drag even if Move was missed.
+            var position = down.GetPosition(grid);
+            state.GetType().GetField("Start")!.SetValue(state, new Point(
+                position.X - SystemParameters.MinimumHorizontalDragDistance - 1, position.Y));
+            Assert.False(RaiseHeaderMouse(dragHeader, UIElement.PreviewMouseLeftButtonUpEvent).Handled);
+            Assert.False(flyout.IsOpen);
+            var resizeThumb = Descendants<Thumb>(dragHeader).First();
+            RaiseHeaderMouse(resizeThumb, UIElement.PreviewMouseLeftButtonDownEvent);
+            Assert.False(RaiseHeaderMouse(resizeThumb, UIElement.PreviewMouseLeftButtonUpEvent).Handled);
+            Assert.False(flyout.IsOpen);
+            Assert.Equal(0, nativeSorts);
             VerifyLoadedSchemaReplacementWhilePaging(grid, owner, fields);
         }
         finally { window.Close(); }
         VerifyLiveFullText(services);
         VerifySupersededNumericRange(services);
+    }
+
+    private static MouseButtonEventArgs RaiseHeaderMouse(UIElement source, RoutedEvent routedEvent)
+    {
+        var args = new MouseButtonEventArgs(Mouse.PrimaryDevice, Environment.TickCount, MouseButton.Left)
+            { RoutedEvent = routedEvent };
+        source.RaiseEvent(args);
+        return args;
+    }
+
+    private static KeyEventArgs RaiseHeaderKey(UIElement source, Key key)
+    {
+        var args = new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(source)!, Environment.TickCount, key)
+            { RoutedEvent = UIElement.PreviewKeyDownEvent };
+        source.RaiseEvent(args);
+        return args;
     }
 
     private static void CaptureFlyoutQa(Ui.DataGrid grid, Ui.Flyout flyout, string fileName)

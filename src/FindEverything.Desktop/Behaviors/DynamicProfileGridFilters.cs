@@ -74,21 +74,22 @@ public static partial class DynamicProfileGrid
         {
             var source = e.OriginalSource as DependencyObject;
             state.PressedHeader = Ancestor<DataGridColumnHeader>(source);
-            if (Ancestor<ButtonBase>(source) is not null || Ancestor<Thumb>(source) is not null) state.PressedHeader = null;
+            if (state.PressedHeader is { } header && IsNestedHeaderControl(source, header)) state.PressedHeader = null;
             state.Start = e.GetPosition(grid); state.Dragged = false;
         }), true);
         grid.AddHandler(UIElement.PreviewMouseMoveEvent, new MouseEventHandler((_, e) =>
         {
             if (state.PressedHeader is null || e.LeftButton != MouseButtonState.Pressed) return;
             var point = e.GetPosition(grid);
-            if (Math.Abs(point.X - state.Start.X) >= SystemParameters.MinimumHorizontalDragDistance ||
-                Math.Abs(point.Y - state.Start.Y) >= SystemParameters.MinimumVerticalDragDistance) state.Dragged = true;
+            if (ExceedsHeaderClickDistance(state.Start, point)) state.Dragged = true;
         }), true);
         grid.AddHandler(UIElement.PreviewMouseLeftButtonUpEvent, new MouseButtonEventHandler((_, e) =>
         {
             var header = state.PressedHeader;
             state.PressedHeader = null;
-            if (header is null || state.Dragged || header != Ancestor<DataGridColumnHeader>(e.OriginalSource as DependencyObject)
+            var source = e.OriginalSource as DependencyObject;
+            if (header is null || state.Dragged || ExceedsHeaderClickDistance(state.Start, e.GetPosition(grid))
+                || IsNestedHeaderControl(source, header) || header != Ancestor<DataGridColumnHeader>(source)
                 || grid.DataContext is not CatalogViewModel owner || Target(header.Column) is not { } target) return;
             e.Handled = true;
             _ = OpenColumnFlyoutAsync(grid, state, owner, header, target);
@@ -96,13 +97,23 @@ public static partial class DynamicProfileGrid
         grid.AddHandler(UIElement.PreviewKeyDownEvent, new KeyEventHandler((_, e) =>
         {
             if (e.Key is not (Key.Enter or Key.Space or Key.F4)
-                || Ancestor<ButtonBase>(e.OriginalSource as DependencyObject) is not null
                 || Ancestor<DataGridColumnHeader>(e.OriginalSource as DependencyObject) is not { } header
+                || IsNestedHeaderControl(e.OriginalSource as DependencyObject, header)
                 || grid.DataContext is not CatalogViewModel owner || Target(header.Column) is not { } target) return;
             e.Handled = true;
             _ = OpenColumnFlyoutAsync(grid, state, owner, header, target);
         }), true);
     }
+
+    private static bool IsNestedHeaderControl(DependencyObject? source, DataGridColumnHeader header) =>
+        // DataGridColumnHeader itself inherits ButtonBase. Only its embedded
+        // controls (for example the text-column refresh button) own their input.
+        (Ancestor<ButtonBase>(source) is { } button && !ReferenceEquals(button, header))
+        || Ancestor<Thumb>(source) is not null;
+
+    private static bool ExceedsHeaderClickDistance(Point start, Point end) =>
+        Math.Abs(end.X - start.X) >= SystemParameters.MinimumHorizontalDragDistance
+        || Math.Abs(end.Y - start.Y) >= SystemParameters.MinimumVerticalDragDistance;
 
     private static void ScheduleFilterHeaders(DataGrid grid, ColumnFiltersState state)
     {
