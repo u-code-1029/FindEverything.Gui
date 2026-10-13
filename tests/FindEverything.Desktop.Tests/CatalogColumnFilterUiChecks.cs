@@ -67,6 +67,10 @@ internal static class CatalogColumnFilterUiChecks
             var state = grid.GetValue(stateProperty);
             Assert.NotNull(state);
             var flyout = (Ui.Flyout)state.GetType().GetField("Flyout")!.GetValue(state)!;
+            // Headers are now decorated before insertion, without forcing a
+            // layout. Wait for the separately scheduled Loaded host before
+            // raising synthetic input that otherwise bypasses dispatcher order.
+            PumpUntil(() => flyout.IsLoaded);
             var nativeSorts = 0;
             grid.Sorting += (_, _) => nativeSorts++;
             DataGridColumnHeader Header(int columnIndex)

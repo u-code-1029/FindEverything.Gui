@@ -92,16 +92,16 @@ public partial class CatalogViewModel
         _liveRefreshPending = true;
         var cancellation = new CancellationTokenSource();
         _liveFilterCancellation = cancellation;
-        _ = RefreshLiveFilterAsync(live, criteriaChanged, cancellation, Volatile.Read(ref _liveFilterVersion));
+        _ = RefreshLiveFilterAsync(live, cancellation, Volatile.Read(ref _liveFilterVersion));
     }
 
-    private async Task RefreshLiveFilterAsync(LiveProjectionState live, bool debounce,
+    private async Task RefreshLiveFilterAsync(LiveProjectionState live,
         CancellationTokenSource cancellation, long version)
     {
         var token = cancellation.Token;
         try
         {
-            if (debounce) await Task.Delay(300, token);
+            token.ThrowIfCancellationRequested();
             var paths = _loadedItems.Select(item => item.FullPath).Take(500).ToArray();
             var definition = _queryDefinition with { Keyword = AppliedHighlightQuery, ShowOriginalValues = ShowOriginalValues };
             var matches = await _projectionStore!.FindMatchingPathsAsync(live.Snapshot, definition, paths, token);

@@ -321,15 +321,27 @@ public partial class CatalogViewModel
             // Queued callbacks must not touch the disposed staging writer.
             Interlocked.Increment(ref _resultSessionVersion);
             ResetLiveFilters();
-            writer?.Dispose();
-            _projectionCancellation = null;
-            IsScanning = false;
-            IsLoadingExistingIndex = false;
-            _isAutomaticIndexLoad = false;
-            IsBusy = false;
-            _activeOperationMode = default;
-            ApplyPendingProfileSnapshot();
-            if (automatic && _isActive) ScheduleAutomaticLoad();
+            try
+            {
+                // Abandoned stages cascade-delete persisted rows/cells and can
+                // wait for the write gate. Cleanup must not run on the UI thread.
+                if (writer is not null) await Task.Run(writer.Dispose);
+            }
+            catch (Exception cleanupFailure)
+            {
+                _logger.LogWarning(cleanupFailure, "Could not discard an unpublished catalog stage.");
+            }
+            finally
+            {
+                _projectionCancellation = null;
+                IsScanning = false;
+                IsLoadingExistingIndex = false;
+                _isAutomaticIndexLoad = false;
+                IsBusy = false;
+                _activeOperationMode = default;
+                ApplyPendingProfileSnapshot();
+                if (automatic && _isActive) ScheduleAutomaticLoad();
+            }
         }
         if (followUp != CatalogMissingDataDecision.Later && !cancellation.IsCancellationRequested
             && !_disposed && requestedWorkspace is { } requested

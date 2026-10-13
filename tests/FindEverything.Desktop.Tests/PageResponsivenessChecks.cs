@@ -122,6 +122,7 @@ internal static class PageResponsivenessChecks
                 samples.Sort();
                 phases.Add(new(name, Stopwatch.GetElapsedTime(started).TotalMilliseconds,
                     GC.GetAllocatedBytesForCurrentThread() - allocated,
+                    samples.Count,
                     samples.Count == 0 ? 0 : samples[(int)Math.Ceiling(samples.Count * .95) - 1],
                     samples.Count == 0 ? 0 : samples[^1]));
             }
@@ -199,5 +200,6 @@ internal static class PageResponsivenessChecks
     }
 
     private sealed record Measurement(string Scenario, double ElapsedMilliseconds,
-        long UiAllocatedBytes, double HeartbeatDelayP95Milliseconds, double HeartbeatDelayMaximumMilliseconds);
+        long UiAllocatedBytes, int HeartbeatSampleCount,
+        double HeartbeatDelayP95Milliseconds, double HeartbeatDelayMaximumMilliseconds);
 }

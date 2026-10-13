@@ -145,6 +145,8 @@
     <sys:String x:Key="Loc.Files.Status.Checking.Detail">Checking the existing index for the selected location.</sys:String>
     <sys:String x:Key="Loc.Files.Status.CheckFailed">Couldn’t check index status</sys:String>
     <sys:String x:Key="Loc.Files.Search.Failed">Search failed</sys:String>
+    <sys:String x:Key="Loc.Files.Count.Retry">Retry result count</sys:String>
+    <sys:String x:Key="Loc.Files.Count.Retry.Help">Keep the displayed results and retry calculating the total number of matches.</sys:String>
     <sys:String x:Key="Loc.Files.Progress.CancelIndexLoad">Cancelling the existing-index load…</sys:String>
     <sys:String x:Key="Loc.Files.Progress.PreparingIndex">Preparing the index…</sys:String>
     <sys:String x:Key="Loc.Files.Progress.Scanning">{0:N0} items · {1:N0} folders</sys:String>

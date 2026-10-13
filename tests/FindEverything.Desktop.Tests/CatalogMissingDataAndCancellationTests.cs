@@ -2,6 +2,8 @@ using System.IO;
 using System.Runtime.CompilerServices;
 using System.Windows.Threading;
 using FindEverything.Application.Catalog;
+using FindEverything.Application.FileSearch;
+using FindEverything.Application.Indexing;
 using FindEverything.Application.Options;
 using FindEverything.Application.Results;
 using FindEverything.Desktop.Configuration;
@@ -96,6 +98,105 @@ public sealed class CatalogMissingDataAndCancellationTests
         Assert.True(retriedRow.IsSelected);
         Assert.Equal(1, fixture.ViewModel.SelectedCount);
         Assert.False(fixture.ViewModel.IsResultCountPending);
+    });
+
+    [Fact]
+    public Task File_count_failure_retains_usable_rows_and_can_retry_without_scanning() => OnStaAsync(async () =>
+    {
+        var databasePath = Path.Combine(Path.GetTempPath(), "file-count-fixture.db");
+        var service = new FileService();
+        using var viewModel = new FileSearchViewModel(service, new IndexingSettings(), new Workspace(databasePath),
+            new DatabaseResolver(databasePath), null!, null!,
+            new ApplicationOperationCoordinator(NullLogger<ApplicationOperationCoordinator>.Instance),
+            new Notifier(), new Snackbar(), new Formats(), null!, null!, new Profiles(), null!,
+            new TestAppLocalizer(), NullLogger<FileSearchViewModel>.Instance);
+        var loading = viewModel.ActivateAsync();
+        await service.Query.CountStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var row = Assert.Single(viewModel.Items);
+        await viewModel.SelectRowAsync(row, additive: true, range: false);
+        Assert.True(row.IsSelected);
+        Assert.True(viewModel.CopySelectionCommand.CanExecute(null));
+        service.Query.ReleaseCount.TrySetException(new IOException("Simulated count failure."));
+        await loading.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Same(row, Assert.Single(viewModel.Items));
+        Assert.True(row.IsSelected);
+        Assert.False(service.Query.IsDisposed);
+        Assert.False(viewModel.IsSearching);
+        Assert.False(viewModel.IsResultCountPending);
+        Assert.False(viewModel.SelectAllCommand.CanExecute(null));
+        Assert.True(viewModel.CanRetryResultCount);
+        Assert.True(viewModel.RetryResultCountCommand.CanExecute(null));
+        Assert.True(viewModel.CopySelectionCommand.CanExecute(null));
+
+        var oldQuery = service.Query;
+        service.Query = new FileQuery();
+        var retrying = viewModel.RetryResultCountCommand.ExecuteAsync(null);
+        await service.Query.CountStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        service.Query.ReleaseCount.TrySetResult(1);
+        await retrying.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.True(oldQuery.IsDisposed);
+        Assert.True(Assert.Single(viewModel.Items).IsSelected);
+        Assert.Equal(1, viewModel.SelectedCount);
+        Assert.True(viewModel.SelectAllCommand.CanExecute(null));
+        Assert.False(viewModel.CanRetryResultCount);
+        Assert.Equal(2, service.OpenCalls);
+        Assert.Equal(0, service.ScanCalls);
+    });
+
+    [Fact]
+    public Task Live_filter_eligibility_starts_without_a_second_debounce() => OnStaAsync(() =>
+    {
+        using var fixture = new Fixture(cacheExists: false);
+        var owner = fixture.ViewModel;
+        var fields = new SampleProfile().Descriptor.Fields;
+        var scope = new CatalogProjectionScope("live", "sample", Path.GetTempPath(), "live.db", "fingerprint", "ko-KR", null);
+        using var writer = new Writer(scope, fields);
+        writer.Append(new(Path.Combine(Path.GetTempPath(), "sample"), "sample", "rule", new object(), new Dictionary<string, object?>(), false));
+        owner.ApplyColumnFilter(new(CatalogColumnTarget.Field("client"), CatalogFilterOperator.Contains) { Text = "Example" });
+        const System.Reflection.BindingFlags instancePrivate = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+        var version = (long)typeof(CatalogViewModel).GetField("_resultSessionVersion", instancePrivate)!.GetValue(owner)!;
+        typeof(CatalogViewModel).GetMethod("CaptureLiveFilterSnapshot", instancePrivate)!.Invoke(owner, [writer, scope, fields, version]);
+        typeof(CatalogViewModel).GetMethod("ScheduleLiveFilterRefresh", instancePrivate)!.Invoke(owner, [true]);
+        // No clock threshold: the eligibility provider must have been invoked
+        // synchronously before scheduling returns (input has its own debounce).
+        Assert.Equal(1, fixture.Store.LiveFilterCalls);
+        return Task.CompletedTask;
+    });
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public Task Cancelled_scan_disposes_staging_rows_off_the_dispatcher_and_always_resets_busy_state(bool cleanupThrows) => OnStaAsync(async () =>
+    {
+        using var fixture = new Fixture(cacheExists: false);
+        var writer = new BlockingWriter(cleanupThrows);
+        fixture.Store.WriterFactory = (_, _) => writer;
+        var scanStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Service.ScanOverride = async (_, token) =>
+        {
+            scanStarted.TrySetResult();
+            await Task.Delay(Timeout.Infinite, token);
+            throw new InvalidOperationException("A cancelled scan cannot publish.");
+        };
+        var dispatcherThread = Environment.CurrentManagedThreadId;
+        var scanning = fixture.ViewModel.ScanCommand.ExecuteAsync(null);
+        try
+        {
+            await scanStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            fixture.ViewModel.CancelCommand.Execute(null);
+            await writer.DisposalStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.NotEqual(dispatcherThread, writer.DisposalThread);
+            var markerRan = false;
+            await Dispatcher.CurrentDispatcher.InvokeAsync(() => markerRan = true);
+            Assert.True(markerRan);
+            Assert.True(fixture.ViewModel.IsBusy); // Cleanup is awaited, not abandoned.
+        }
+        finally { writer.ReleaseDisposal.TrySetResult(); }
+        await scanning.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.False(fixture.ViewModel.IsBusy);
+        Assert.False(fixture.ViewModel.IsScanning);
+        Assert.False(fixture.ViewModel.IsLoadingExistingIndex);
+        Assert.False(fixture.ViewModel.CancelCommand.CanExecute(null));
     });
 
     [Fact]
@@ -302,12 +403,13 @@ public sealed class CatalogMissingDataAndCancellationTests
     {
         public int LoadCalls { get; private set; }
         public int ScanCalls { get; private set; }
+        public Func<CatalogRequest, CancellationToken, Task<CatalogResult>>? ScanOverride { get; set; }
         public Task<CatalogResult> LoadExistingAsync(CatalogRequest request,
             IProgress<CatalogOperationProgress>? progress = null, CancellationToken cancellationToken = default)
         { LoadCalls++; return Result(request); }
         public Task<CatalogResult> ScanAndLoadAsync(CatalogRequest request,
             IProgress<CatalogOperationProgress>? progress = null, CancellationToken cancellationToken = default)
-        { ScanCalls++; return Result(request); }
+        { ScanCalls++; return ScanOverride?.Invoke(request, cancellationToken) ?? Result(request); }
         public Task<CatalogResult> DiscoverAsync(CatalogRequest request,
             IProgress<CatalogOperationProgress>? progress = null, CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException("The missing-data dialog must never invoke legacy discovery.");
@@ -326,7 +428,9 @@ public sealed class CatalogMissingDataAndCancellationTests
         public int FindCalls { get; private set; }
         public int OpenQueryCalls { get; private set; }
         public int BeginCalls { get; private set; }
+        public int LiveFilterCalls { get; private set; }
         public Query? ReplacementQuery { get; set; }
+        public Func<CatalogProjectionScope, IReadOnlyList<ProfileFieldDescriptor>, ICatalogProjectionWriter>? WriterFactory { get; set; }
         public Task<CatalogProjectionSnapshot?> FindAsync(CatalogProjectionScope scope, CancellationToken cancellationToken = default)
         {
             FindCalls++;
@@ -335,7 +439,7 @@ public sealed class CatalogMissingDataAndCancellationTests
                     new SampleProfile().Descriptor.Fields) : null);
         }
         public ICatalogProjectionWriter Begin(CatalogProjectionScope scope, IReadOnlyList<ProfileFieldDescriptor> fields)
-        { BeginCalls++; return new Writer(scope, fields); }
+        { BeginCalls++; return WriterFactory?.Invoke(scope, fields) ?? new Writer(scope, fields); }
         public IResultQuerySession<CatalogProjectionRow> OpenQuery(CatalogProjectionSnapshot snapshot, CatalogProjectionQuery definition)
         {
             OpenQueryCalls++;
@@ -345,6 +449,9 @@ public sealed class CatalogMissingDataAndCancellationTests
         }
         public IResultQuerySession<CatalogProjectionRow> OpenBuildingQuery(ICatalogProjectionWriter writer, CatalogProjectionScope scope,
             IReadOnlyList<ProfileFieldDescriptor> fields, CatalogProjectionQuery definition) => throw new NotSupportedException();
+        public Task<IReadOnlySet<string>?> FindMatchingPathsAsync(CatalogProjectionSnapshot snapshot,
+            CatalogProjectionQuery query, IReadOnlyList<string> paths, CancellationToken cancellationToken = default)
+        { LiveFilterCalls++; return Task.FromResult<IReadOnlySet<string>?>(new HashSet<string>(StringComparer.OrdinalIgnoreCase)); }
         public Task<CatalogProjectionSnapshot> RefreshColumnAsync(CatalogProjectionSnapshot snapshot, string fieldId,
             Func<string, CancellationToken, Task<TextColumnReadResult>> readValue,
             IProgress<TextColumnRefreshProgress>? progress = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
@@ -360,6 +467,64 @@ public sealed class CatalogMissingDataAndCancellationTests
         public CatalogProjectionSnapshot Publish(CatalogProjectionSummary summary, CatalogProjectionScope? publishedScope = null) =>
             new(Generation, publishedScope ?? scope, summary, fields);
         public void Dispose() { }
+    }
+
+    private sealed class BlockingWriter(bool cleanupThrows) : ICatalogProjectionWriter
+    {
+        public string Generation => "blocked-stage";
+        public int Count => 0;
+        public int DisposalThread { get; private set; }
+        public TaskCompletionSource DisposalStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource ReleaseDisposal { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public void Append(CatalogItem item) { }
+        public void Flush() { }
+        public void Reset() { }
+        public CatalogProjectionSnapshot Publish(CatalogProjectionSummary summary, CatalogProjectionScope? publishedScope = null) => throw new NotSupportedException();
+        public void Dispose()
+        {
+            DisposalThread = Environment.CurrentManagedThreadId;
+            DisposalStarted.TrySetResult();
+            ReleaseDisposal.Task.WaitAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult();
+            if (cleanupThrows) throw new IOException("Simulated stage cleanup failure.");
+        }
+    }
+
+    private sealed class IndexingSettings : IValidatedSettingsState<IndexingOptions>
+    {
+        public IndexingOptions Current { get; } = new();
+    }
+
+    private sealed class FileService : IFileSearchService
+    {
+        public FileQuery Query { get; set; } = new();
+        public int OpenCalls { get; private set; }
+        public int ScanCalls { get; private set; }
+        public Task<IResultQuerySession<IndexedPathEntry>> OpenQueryAsync(FileSearchScope scope, EntrySearchRequest query, CancellationToken cancellationToken = default)
+        { OpenCalls++; return Task.FromResult<IResultQuerySession<IndexedPathEntry>>(Query); }
+        public Task<IndexRootStatus> GetStatusAsync(FileSearchScope scope, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new IndexRootStatus(scope.RootPath, IndexRootAvailability.Available, null, null,
+                IndexScanStatus.Completed, DateTimeOffset.UtcNow, 1, 0, false));
+        public Task<IndexScanReport> ScanAsync(FileSearchScope scope, IProgress<IndexScanProgress>? progress = null, CancellationToken cancellationToken = default)
+        { ScanCalls++; throw new NotSupportedException(); }
+        public Task<IndexScanReport> RefreshScopeAsync(FileSearchScope scope, string refreshPath, IProgress<IndexScanProgress>? progress = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<EntrySearchResult> SearchAsync(FileSearchScope scope, EntrySearchRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    }
+
+    private sealed class FileQuery : IResultQuerySession<IndexedPathEntry>
+    {
+        public string Identity => "file-count-fixture";
+        public bool IsDisposed { get; private set; }
+        public TaskCompletionSource CountStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource<long> ReleaseCount { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public Task<long> CountAsync(CancellationToken cancellationToken = default)
+        { CountStarted.TrySetResult(); return ReleaseCount.Task; }
+        public Task<ResultPage<IndexedPathEntry>> ReadRangeAsync(int offset, int limit, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new ResultPage<IndexedPathEntry>([new(Path.Combine(Path.GetTempPath(), "count-row.txt"), "count-row.txt", ".txt",
+                IndexedPathKind.File, 12, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, false)], offset, true));
+        public async IAsyncEnumerable<IndexedPathEntry> EnumerateSelectionAsync(QuerySelection selection,
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        { await Task.CompletedTask; yield break; }
+        public ValueTask DisposeAsync() { IsDisposed = true; return ValueTask.CompletedTask; }
     }
 
     private sealed class Query(bool ignoreCountCancellation, int cacheCount) : IResultQuerySession<CatalogProjectionRow>

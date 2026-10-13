@@ -439,6 +439,7 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
         InvertSelectionCommand.NotifyCanExecuteChanged();
         LoadMoreCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(CanSearch));
+        NotifyResultCountRetryAvailability();
     }
 
     partial void OnIsSearchingChanged(bool value)
@@ -448,6 +449,7 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
         CancelCommand.NotifyCanExecuteChanged();
         SelectAllCommand.NotifyCanExecuteChanged();
         InvertSelectionCommand.NotifyCanExecuteChanged();
+        NotifyResultCountRetryAvailability();
     }
 
     partial void OnIsResultCountPendingChanged(bool value)
@@ -455,7 +457,21 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
         CancelCommand.NotifyCanExecuteChanged();
         SelectAllCommand.NotifyCanExecuteChanged();
         InvertSelectionCommand.NotifyCanExecuteChanged();
+        NotifyResultCountRetryAvailability();
     }
+
+    public bool CanRetryResultCount => _fileQuery is not null && !_hasExactResultCount
+        && !IsResultCountPending && !IsSearching && !IsBusy;
+
+    private void NotifyResultCountRetryAvailability()
+    {
+        OnPropertyChanged(nameof(CanRetryResultCount));
+        RetryResultCountCommand.NotifyCanExecuteChanged();
+    }
+
+    [RelayCommand(CanExecute = nameof(CanRetryResultCount))]
+    private Task RetryResultCountAsync() => StartLoadAsync(
+        refreshStatus: false, debounce: false, preserveSelection: true);
 
     partial void OnIsCopyingSelectionChanged(bool value) => CopySelectionCommand.NotifyCanExecuteChanged();
 
@@ -1588,7 +1604,24 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
                     OnPropertyChanged(nameof(ResultSourceDescription));
                     OnPropertyChanged(nameof(UsesQuerySelection));
                     OnPropertyChanged(nameof(ResultSummary));
-                    var total = await Task.Run(() => query.CountAsync(cancellationToken), cancellationToken).WaitAsync(cancellationToken);
+                    long total;
+                    try
+                    {
+                        total = await Task.Run(() => query.CountAsync(cancellationToken), cancellationToken).WaitAsync(cancellationToken);
+                    }
+                    catch (Exception exception) when (exception is not OperationCanceledException and not IndexSnapshotChangedException)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        if (version != Volatile.Read(ref _queryVersion) || !ReferenceEquals(query, _fileQuery)) return;
+                        // A count is auxiliary. Already-published rows remain
+                        // usable and explicitly selected rows can still be copied.
+                        _logger.LogWarning(exception, "Could not count file results; keeping the first page.");
+                        IsResultCountPending = false;
+                        ShowStatus(L("Loc.Files.Search.Failed", "검색 실패"),
+                            F("Loc.Files.Results.CountIncomplete", "{0:N0}개 불러옴 · 전체 개수 확인이 중지되었습니다.", collection.CachedItemCount),
+                            InfoBarSeverity.Warning);
+                        return;
+                    }
                     if (version != Volatile.Read(ref _queryVersion)) return;
                     collection.SetCount(total);
                     TotalCount = total;
@@ -1642,6 +1675,7 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
         IsResultCountPending = false;
         OnPropertyChanged(nameof(UsesQuerySelection));
         OnPropertyChanged(nameof(ResultSourceDescription));
+        NotifyResultCountRetryAvailability();
     }
 
     private static bool SameResultFilters(EntrySearchRequest left, EntrySearchRequest right) =>
