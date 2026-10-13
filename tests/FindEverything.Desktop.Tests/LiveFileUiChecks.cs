@@ -247,15 +247,22 @@ internal static class LiveFileUiChecks
 
             Assert.Empty(fileNode.ContextMenu!.Items); // Optional actions do not allocate on folder expansion.
             Assert.Empty(directoryNode.ContextMenu!.Items);
+            Assert.Same(fileNode, fileNode.ContextMenu.PlacementTarget);
+            Assert.Same(directoryNode, directoryNode.ContextMenu.PlacementTarget);
+            Assert.True(tree.IsLoaded && PresentationSource.FromVisual(tree) is not null,
+                "The live directory tree must be attached before opening its nested context menu.");
             fileNode.ContextMenu.IsOpen = true; Pump();
             Assert.Equal(3, fileNode.ContextMenu.Items.Count); // Open file, copy path, reveal in Explorer.
             fileNode.ContextMenu.IsOpen = false;
             directoryNode.ContextMenu.IsOpen = true; Pump();
             Assert.Equal(2, directoryNode.ContextMenu.Items.Count);
             directoryNode.ContextMenu.IsOpen = false; Pump();
+            Assert.True(tree.IsLoaded && PresentationSource.FromVisual(tree) is not null,
+                "Opening a node context menu must not dismiss the enclosing directory flyout.");
             paths.Failure = new System.IO.IOException("The default application could not open this file.");
             fileNode.IsSelected = true;
-            tree.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(tree)!,
+            var inputSource = Assert.IsAssignableFrom<PresentationSource>(PresentationSource.FromVisual(tree));
+            tree.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, inputSource,
                 Environment.TickCount, Key.Enter) { RoutedEvent = UIElement.KeyDownEvent });
             PumpUntil(() => Descendants(browser).OfType<Ui.TextBlock>().Any(text => text.Text.Contains("default application", StringComparison.Ordinal)));
             Assert.Single(paths.Opened); Assert.Equal(request + 1, reads.Requests.Count);

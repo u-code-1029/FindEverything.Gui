@@ -114,7 +114,7 @@ public sealed class ProfilePlaygroundEvaluatorTests
             "FindEverything.Playground.Tests",
             "A"));
         var profile = new RecordingLoadedProfile(canonicalPath);
-        using var evaluator = new BlockingPlaygroundEvaluator(canonicalPath);
+        using var evaluator = new DeferredPlaygroundEvaluator(canonicalPath);
         var viewModel = new ProfilePlaygroundViewModel(
             new StubProfileCatalog(new ProfileCatalogSnapshot(
                 [profile],
@@ -155,8 +155,8 @@ public sealed class ProfilePlaygroundEvaluatorTests
     {
         var canonicalPath = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "FindEverything.Playground.Tests", "A"));
         var profile = new RecordingLoadedProfile(canonicalPath);
-        using var first = new BlockingPlaygroundEvaluator(canonicalPath);
-        using var second = new BlockingPlaygroundEvaluator(canonicalPath);
+        using var first = new DeferredPlaygroundEvaluator(canonicalPath);
+        using var second = new DeferredPlaygroundEvaluator(canonicalPath);
         using var viewModel = new ProfilePlaygroundViewModel(
             new StubProfileCatalog(new([profile], [], DateTimeOffset.UtcNow)),
             new SequencedPlaygroundEvaluator(first, second), new StubDesktopPickerService(),
@@ -329,23 +329,25 @@ public sealed class ProfilePlaygroundEvaluatorTests
         }
     }
 
-    private sealed class BlockingPlaygroundEvaluator(string canonicalPath)
+    private sealed class DeferredPlaygroundEvaluator(string canonicalPath)
         : IProfilePlaygroundEvaluator, IDisposable
     {
-        private readonly ManualResetEventSlim _release = new(initialState: false);
+        private readonly TaskCompletionSource<ProfilePlaygroundEvaluation> _completion = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
 
         public TaskCompletionSource Started { get; } = new(
             TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public ProfilePlaygroundEvaluation Evaluate(ILoadedProfile profile, string inputPath)
+        public ProfilePlaygroundEvaluation Evaluate(ILoadedProfile profile, string inputPath) =>
+            throw new NotSupportedException("This test exercises the asynchronous evaluation boundary.");
+
+        public Task<ProfilePlaygroundEvaluation> EvaluateAsync(ILoadedProfile profile, string inputPath)
         {
             Started.TrySetResult();
-            if (!_release.Wait(TimeSpan.FromSeconds(5)))
-            {
-                throw new TimeoutException("The test did not release the playground evaluation.");
-            }
+            return _completion.Task;
+        }
 
-            return new ProfilePlaygroundEvaluation(
+        public void Release() => _completion.TrySetResult(new ProfilePlaygroundEvaluation(
                 canonicalPath,
                 "old result",
                 InfoBarSeverity.Success,
@@ -356,12 +358,9 @@ public sealed class ProfilePlaygroundEvaluatorTests
                     "not excluded",
                     "test",
                     InfoBarSeverity.Informational),
-                []);
-        }
+                []));
 
-        public void Release() => _release.Set();
-
-        public void Dispose() => _release.Dispose();
+        public void Dispose() => Release();
     }
 
     private sealed class SequencedPlaygroundEvaluator(
@@ -369,7 +368,9 @@ public sealed class ProfilePlaygroundEvaluatorTests
     {
         private int _calls;
         public ProfilePlaygroundEvaluation Evaluate(ILoadedProfile profile, string inputPath) =>
-            (Interlocked.Increment(ref _calls) == 1 ? first : second).Evaluate(profile, inputPath);
+            throw new NotSupportedException("This test exercises the asynchronous evaluation boundary.");
+        public Task<ProfilePlaygroundEvaluation> EvaluateAsync(ILoadedProfile profile, string inputPath) =>
+            (Interlocked.Increment(ref _calls) == 1 ? first : second).EvaluateAsync(profile, inputPath);
     }
 
     private sealed class StubDesktopPickerService : IDesktopPickerService

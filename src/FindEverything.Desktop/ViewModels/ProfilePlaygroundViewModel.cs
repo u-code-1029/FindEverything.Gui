@@ -198,8 +198,7 @@ public partial class ProfilePlaygroundViewModel : ObservableObject, IPageSession
         SummarySeverity = InfoBarSeverity.Informational;
         try
         {
-            var evaluation = await Task.Run(() =>
-                _evaluator.Evaluate(selectedProfile.Profile, inputPath)).ConfigureAwait(true);
+            var evaluation = await _evaluator.EvaluateAsync(selectedProfile.Profile, inputPath).ConfigureAwait(true);
 
             if (evaluationGeneration != Volatile.Read(ref _evaluationGeneration))
             {

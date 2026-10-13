@@ -153,7 +153,10 @@ public sealed class LiveDirectoryBrowser : UserControl
     }
     private void AddContextMenu(TreeViewItem node, string path, bool isFile = false)
     {
-        var menu = new ContextMenu();
+        // Keep nested popup ownership explicit. ContextMenuService supplies
+        // this on a native right-click, but keyboard/programmatic openings
+        // must also stay anchored inside the enclosing directory flyout.
+        var menu = new ContextMenu { PlacementTarget = node };
         node.ContextMenu = menu;
         node.ContextMenuOpening += (_, _) => Populate();
         menu.Opened += (_, _) => Populate();

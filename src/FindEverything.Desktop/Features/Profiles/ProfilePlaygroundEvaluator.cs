@@ -21,6 +21,10 @@ public sealed record ProfilePlaygroundEvaluation(
 public interface IProfilePlaygroundEvaluator
 {
     ProfilePlaygroundEvaluation Evaluate(ILoadedProfile profile, string inputPath);
+
+    /// <summary>Runs synchronous profile/file evaluation away from the caller's UI context.</summary>
+    Task<ProfilePlaygroundEvaluation> EvaluateAsync(ILoadedProfile profile, string inputPath) =>
+        Task.Run(() => Evaluate(profile, inputPath));
 }
 
 /// <summary>
