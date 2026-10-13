@@ -633,6 +633,13 @@ public sealed class DesktopCompositionSmokeTests
                     navigation.Navigate(page.GetType());
                     PumpDispatcherFor(window.Dispatcher, TimeSpan.FromMilliseconds(120));
                     PumpLayout(window, page);
+                    if (page.FindName("ResultsGrid") is System.Windows.Controls.DataGrid sampleGrid)
+                    {
+                        sampleGrid.SelectAll();
+                        foreach (var item in sampleGrid.Items.OfType<FileSearchItemViewModel>()) item.IsSelected = true;
+                        PumpDispatcherFor(window.Dispatcher, TimeSpan.FromMilliseconds(250));
+                        PumpLayout(window, page);
+                    }
                     var name = $"{(page is CatalogPage ? "catalog" : "files")}-en-{(size.Width > 900 ? "wide" : "small")}";
                     SaveQaImage(Assert.IsAssignableFrom<FrameworkElement>(window.Content), name + ".png");
                     if (size.Width < 900) SaveQaImage(Assert.IsAssignableFrom<FrameworkElement>(window.Content), name + "-200percent-render.png", 2);
@@ -2455,8 +2462,8 @@ public sealed class DesktopCompositionSmokeTests
             SynchronizationContext.SetSynchronizationContext(_previous);
     }
 
-    private sealed record FilterContext(string FilterText);
-    private sealed record SharedFilterContext(string FilterText, bool IsReadOnlyDataSource);
+    private sealed record FilterContext(string AppliedHighlightQuery);
+    private sealed record SharedFilterContext(string AppliedHighlightQuery, bool IsReadOnlyDataSource);
 
     private sealed class WorkspaceLayoutFixture
     {
