@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Media;
 using System.Windows.Threading;
 using FindEverything.Desktop.Localization;
@@ -17,8 +18,36 @@ internal static class UiRenderingLifetimeChecks
     public static void Verify()
     {
         VerifyLocalizationDoesNotReadVirtualRows();
+        VerifyEditorEntryTemplateKeepsMetadataContext();
         VerifyOnlyTheActiveProfileStepIsConstructed();
         VerifyProfileCardsRecycleWithoutLosingDraftEdits();
+    }
+
+    private static void VerifyEditorEntryTemplateKeepsMetadataContext()
+    {
+        using var vm = ProfilesValidationTests.CreateForUi();
+        var resourcePage = new ProfilesPage(vm);
+        var list = new ProfileEditorList { Style = (Style)resourcePage.Resources["ProfileEditorVirtualListStyle"] };
+        var field = new ProfileFieldDraftViewModel { Header = "Payload, not template metadata" };
+        var cardFactory = new FrameworkElementFactory(typeof(SectionCard));
+        var textFactory = new FrameworkElementFactory(typeof(TextBlock));
+        textFactory.SetBinding(TextBlock.TextProperty, new Binding(nameof(ProfileFieldDraftViewModel.Header)));
+        cardFactory.AppendChild(textFactory);
+        list.Sections.Add(new ProfileEditorSection
+        {
+            IsCollection = true, ItemsSource = new[] { field },
+            Template = new DataTemplate { VisualTree = cardFactory },
+        });
+        var window = new Window { Content = list, Width = 700, Height = 400, ShowInTaskbar = false };
+        try
+        {
+            window.Show(); Pump(); window.UpdateLayout(); Pump();
+            Assert.Single(list.Items);
+            var card = Assert.Single(Descendants<SectionCard>(list));
+            Assert.Same(field, card.DataContext);
+            Assert.Contains(Descendants<TextBlock>(card), text => text.Text == field.Header);
+        }
+        finally { window.Close(); Pump(); }
     }
 
     private static void VerifyLocalizationDoesNotReadVirtualRows()

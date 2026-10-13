@@ -74,7 +74,13 @@
             <Setter Property="VirtualizingPanel.CacheLengthUnit" Value="Page" />
             <Setter Property="ItemsPanel"><Setter.Value><ItemsPanelTemplate><VirtualizingStackPanel /></ItemsPanelTemplate></Setter.Value></Setter>
             <Setter Property="ItemTemplate">
-                <Setter.Value><DataTemplate><ContentPresenter Content="{Binding Value}" ContentTemplate="{Binding Template}" /></DataTemplate></Setter.Value>
+                <Setter.Value><DataTemplate>
+                    <!-- ContentPresenter adopts Content as its own DataContext;
+                         keep the entry-level template binding on a control. -->
+                    <ContentControl Content="{Binding Value}" ContentTemplate="{Binding Template}"
+                        HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"
+                        Focusable="False" IsTabStop="False" />
+                </DataTemplate></Setter.Value>
             </Setter>
             <Setter Property="ItemContainerStyle">
                 <Setter.Value><Style TargetType="ListBoxItem">

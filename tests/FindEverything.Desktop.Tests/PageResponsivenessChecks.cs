@@ -48,6 +48,8 @@ internal static class PageResponsivenessChecks
         }
         vm.GoToEditorStepCommand.Execute(ProfileEditorStep.PathAndFields);
         Pump(Task.Delay(40));
+        ShowTemplateEditor(page);
+        ShowFirstFieldEditor(page, vm.DraftFields[0]);
         Measure("FieldCaptionTyping20Columns", () =>
         {
             // This exercises the production binding target/notifications and rendered cards,
@@ -68,6 +70,7 @@ internal static class PageResponsivenessChecks
                 Pump(Task.Delay(5));
             }
         });
+        ShowTemplateEditor(page);
         Measure("TemplateTyping20Columns", () =>
         {
             for (var i = 0; i < 30; i++)
@@ -123,6 +126,48 @@ internal static class PageResponsivenessChecks
                     samples.Count == 0 ? 0 : samples[^1]));
             }
             finally { timer.Stop(); }
+        }
+    }
+
+    private static void ShowFirstFieldEditor(ProfilesPage page, object field)
+    {
+        // Both revisions use the same visible field. Newer versions recycle
+        // offscreen cards, so realize it before timing bound edits.
+        foreach (var list in Descendants<System.Windows.Controls.ListBox>(page))
+        {
+            var entry = list.Items.Cast<object>().FirstOrDefault(item =>
+                ReferenceEquals(item.GetType().GetProperty("Value")?.GetValue(item), field));
+            if (entry is not null) list.ScrollIntoView(entry);
+        }
+        Pump(Task.Delay(40));
+        var editor = Descendants<System.Windows.Controls.TextBox>(page).FirstOrDefault(box =>
+            ReferenceEquals(box.DataContext, field) && box.IsVisible
+            && box.GetBindingExpression(System.Windows.Controls.TextBox.TextProperty)?.ParentBinding.Path?.Path == "Header");
+        if (editor is null) throw new InvalidOperationException("The measured profile field editor was not rendered.");
+        editor.BringIntoView();
+        Pump(Task.Delay(40));
+    }
+
+    private static void ShowTemplateEditor(ProfilesPage page)
+    {
+        foreach (var scroll in Descendants<System.Windows.Controls.ScrollViewer>(page))
+            if (scroll.Name == "ProfileEditorScrollViewer" || scroll.TemplatedParent?.GetType().Name == "ProfileEditorList")
+                scroll.ScrollToTop();
+        Pump(Task.Delay(40));
+        var editor = Descendants<System.Windows.Controls.TextBox>(page).FirstOrDefault(box =>
+            box.Name == "ProfilePathTemplateTextBox" && box.IsVisible);
+        if (editor is null) throw new InvalidOperationException("The measured profile path editor was not rendered.");
+        editor.BringIntoView();
+        Pump(Task.Delay(40));
+    }
+
+    private static IEnumerable<T> Descendants<T>(DependencyObject root) where T : DependencyObject
+    {
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(root); index++)
+        {
+            var child = VisualTreeHelper.GetChild(root, index);
+            if (child is T match) yield return match;
+            foreach (var descendant in Descendants<T>(child)) yield return descendant;
         }
     }
 
