@@ -11,7 +11,7 @@ using FindEverything.Profile.Runtime;
 
 namespace FindEverything.Desktop.Behaviors;
 
-public static class DynamicProfileGrid
+public static partial class DynamicProfileGrid
 {
     private const int SelectionColumnOffset = 1;
     private static readonly DependencyProperty ActiveEditorOwnerProperty = DependencyProperty.RegisterAttached(
@@ -100,6 +100,15 @@ public static class DynamicProfileGrid
     private static void RebuildColumns(DataGrid dataGrid)
     {
         var localizer = GetLocalizer(dataGrid);
+        InitializeSizing(dataGrid);
+        var fieldsSnapshot = (GetFields(dataGrid) as IEnumerable)?.OfType<ProfileFieldDescriptor>()
+            .OrderBy(static field => field.Order).ToArray() ?? [];
+        var signature = GetSchemaSignature(dataGrid, fieldsSnapshot);
+        var sizing = GetSizing(dataGrid);
+        if (sizing.Schema == signature && dataGrid.Columns.Count > 0) return;
+        sizing.Schema = signature;
+        sizing.MeasuredWidths.Clear();
+        sizing.HasMeasured = false;
         dataGrid.FrozenColumnCount = 0;
         dataGrid.Columns.Clear();
         dataGrid.ColumnReordered -= OnColumnReordered;
@@ -108,19 +117,21 @@ public static class DynamicProfileGrid
         dataGrid.PreviewMouseLeftButtonUp += OnGridMouseLeftButtonUp;
         dataGrid.Columns.Add(new SelectionCheckBoxColumn(localizer));
         dataGrid.FrozenColumnCount = SelectionColumnOffset;
-        dataGrid.Columns.Add(new HighlightingTextColumn
+        var statusColumn = new HighlightingTextColumn
         {
             Header = L(localizer, "Loc.Catalog.Column.Status", "상태"),
             Binding = new Binding(nameof(ViewModels.CatalogItemViewModel.CoverageText)),
             IsReadOnly = true,
             Width = DataGridLength.Auto,
-            MinWidth = 84,
-            MaxWidth = 140,
-        });
+            MinWidth = 80,
+            MaxWidth = 160,
+        };
+        statusColumn.SetValue(FieldIdProperty, StatusColumnId);
+        dataGrid.Columns.Add(statusColumn);
 
         if (GetFields(dataGrid) is IEnumerable fields)
         {
-            foreach (var field in fields.OfType<ProfileFieldDescriptor>().OrderBy(static field => field.Order))
+            foreach (var field in fieldsSnapshot)
             {
                 if (field.SourceKind == ProfileFieldSourceKind.UserInput)
                 {
@@ -130,8 +141,8 @@ public static class DynamicProfileGrid
                         IsReadOnly = false,
                         SortMemberPath = $"UserInputValues[{field.FieldId}].Value",
                         Width = new DataGridLength(180, DataGridLengthUnitType.Pixel),
-                        MinWidth = 140,
-                        MaxWidth = 360,
+                        MinWidth = 120,
+                        MaxWidth = 560,
                     };
                     inputColumn.SetValue(FieldIdProperty, field.FieldId);
                     dataGrid.Columns.Add(inputColumn);
@@ -152,16 +163,20 @@ public static class DynamicProfileGrid
             }
         }
 
-        dataGrid.Columns.Add(new HighlightingTextColumn
+        var pathColumn = new HighlightingTextColumn
         {
             Header = L(localizer, "Loc.Catalog.Column.FolderPath", "폴더 경로"),
             Binding = new Binding(nameof(ViewModels.CatalogItemViewModel.FullPath)),
             IsReadOnly = true,
-            Width = new DataGridLength(1, DataGridLengthUnitType.Star),
-            MinWidth = 240,
-        });
+            Width = new DataGridLength(240),
+            MinWidth = 180,
+            MaxWidth = 720,
+        };
+        pathColumn.SetValue(FieldIdProperty, PathColumnId);
+        dataGrid.Columns.Add(pathColumn);
 
         ApplyLayout(dataGrid);
+        ScheduleSizing(dataGrid);
     }
 
     private static object CreateFieldHeader(ProfileFieldDescriptor field, IAppLocalizer? localizer)
@@ -204,7 +219,9 @@ public static class DynamicProfileGrid
     {
         if (dependencyObject is DataGrid dataGrid)
         {
+            InitializeSizing(dataGrid);
             ApplyLayout(dataGrid);
+            if (GetSizing(dataGrid).ProfileId != GetProfileId(dataGrid)) _ = LoadPresetsAsync(dataGrid);
         }
     }
 
@@ -221,6 +238,7 @@ public static class DynamicProfileGrid
         try
         {
             var saved = store.Get(profileId);
+            foreach (var column in dataGrid.Columns.Skip(1)) column.SetValue(IsManualWidthProperty, false);
             var columns = dataGrid.Columns
                 .Select(column => new
                 {
@@ -240,7 +258,8 @@ public static class DynamicProfileGrid
             foreach (var value in columns)
             {
                 var state = value.State!;
-                if (double.IsFinite(state.Width) && state.Width >= 24)
+                value.Column.SetValue(IsManualWidthProperty, state.WidthMode == GridColumnWidthMode.Manual);
+                if (state.WidthMode == GridColumnWidthMode.Manual && double.IsFinite(state.Width) && state.Width >= 24)
                 {
                     value.Column.Width = new DataGridLength(state.Width, DataGridLengthUnitType.Pixel);
                 }
@@ -259,6 +278,7 @@ public static class DynamicProfileGrid
         {
             dataGrid.SetValue(IsApplyingLayoutProperty, false);
         }
+        ScheduleSizing(dataGrid);
     }
 
     private static void OnColumnReordered(object? sender, DataGridColumnEventArgs eventArgs)
@@ -276,6 +296,8 @@ public static class DynamicProfileGrid
             && FindAncestor<Thumb>(source) is { } resizeThumb
             && FindAncestor<DataGridColumnHeader>(resizeThumb) is not null)
         {
+            if (FindAncestor<DataGridColumnHeader>(resizeThumb)?.Column is { CanUserResize: true } column)
+                column.SetValue(IsManualWidthProperty, true);
             SaveLayout(dataGrid);
         }
     }
@@ -304,7 +326,8 @@ public static class DynamicProfileGrid
             .Select(static value => new GridColumnLayout(
                 value.FieldId!,
                 Math.Max(0, value.Column.DisplayIndex - SelectionColumnOffset),
-                value.Column.ActualWidth))
+                value.Column.ActualWidth,
+                (bool)value.Column.GetValue(IsManualWidthProperty) ? GridColumnWidthMode.Manual : GridColumnWidthMode.Auto))
             .ToArray();
         store.Save(profileId, columns);
     }
@@ -478,6 +501,8 @@ public static class DynamicProfileGrid
             {
                 return element;
             }
+            textBlock.TextTrimming = TextTrimming.CharacterEllipsis;
+            if (Binding is not null) BindingOperations.SetBinding(textBlock, FrameworkElement.ToolTipProperty, Binding);
 
             var displayBinding = BindingOperations.GetBindingBase(textBlock, TextBlock.TextProperty);
             BindingOperations.ClearBinding(textBlock, TextBlock.TextProperty);
@@ -530,6 +555,7 @@ public static class DynamicProfileGrid
             var valueText = new TextBlock
             {
                 VerticalAlignment = VerticalAlignment.Center,
+                TextTrimming = TextTrimming.CharacterEllipsis,
             };
             BindingOperations.SetBinding(
                 valueText,
@@ -552,13 +578,13 @@ public static class DynamicProfileGrid
             panel.Children.Add(valueText);
             valueText.SetBinding(FrameworkElement.ToolTipProperty, new Binding($"DisplayValues[{fieldId}]") { Mode = BindingMode.OneWay });
 
-            var mappingBadge = new Border
+            var mappingBadge = new Views.Controls.DisplayBadge
             {
                 Margin = new Thickness(6, 0, 0, 0),
                 Padding = new Thickness(4, 0, 4, 0),
                 VerticalAlignment = VerticalAlignment.Center,
                 CornerRadius = new CornerRadius(4),
-                Child = new TextBlock
+                Content = new TextBlock
                 {
                     Text = "↔",
                     FontSize = 10,
@@ -566,10 +592,10 @@ public static class DynamicProfileGrid
                 },
             };
             mappingBadge.SetResourceReference(
-                Border.BackgroundProperty,
+                Control.BackgroundProperty,
                 "ControlFillColorSecondaryBrush");
             mappingBadge.SetResourceReference(
-                Border.BorderBrushProperty,
+                Control.BorderBrushProperty,
                 "ControlStrokeColorDefaultBrush");
             mappingBadge.BorderThickness = new Thickness(1);
             BindingOperations.SetBinding(
@@ -608,13 +634,13 @@ public static class DynamicProfileGrid
             });
             Grid.SetColumn(errorBadge, 2);
             panel.Children.Add(errorBadge);
-            var previewBadge = new Border
+            var previewBadge = new Views.Controls.DisplayBadge
             {
                 Margin = new Thickness(6, 0, 0, 0), Padding = new Thickness(4, 0, 4, 0), CornerRadius = new CornerRadius(4),
                 VerticalAlignment = VerticalAlignment.Center,
-                Child = new TextBlock { Text = "…", FontWeight = FontWeights.SemiBold },
+                Content = new TextBlock { Text = "…", FontWeight = FontWeights.SemiBold },
             };
-            previewBadge.SetResourceReference(Border.BackgroundProperty, "ControlFillColorSecondaryBrush");
+            previewBadge.SetResourceReference(Control.BackgroundProperty, "ControlFillColorSecondaryBrush");
             previewBadge.SetBinding(UIElement.VisibilityProperty, new Binding("PreviewTooltips")
             {
                 Converter = new FieldErrorConverter(visibility: true), ConverterParameter = fieldId,

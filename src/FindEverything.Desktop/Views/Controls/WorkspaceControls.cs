@@ -36,9 +36,50 @@ public sealed class PageHeader : ContentControl
 }
 
 /// <summary>The same compact command surface on every workspace.</summary>
-public sealed class CommandStrip : Border
+public sealed class CommandStrip : ContentControl
 {
     public CommandStrip() => SetResourceReference(StyleProperty, "WorkspaceCommandStripStyle");
+}
+
+/// <summary>A non-interactive badge or highlight; it never introduces button semantics.</summary>
+public sealed class DisplayBadge : ContentControl
+{
+    public static readonly DependencyProperty CornerRadiusProperty = DependencyProperty.Register(
+        nameof(CornerRadius), typeof(CornerRadius), typeof(DisplayBadge), new PropertyMetadata(new CornerRadius(4)));
+
+    public DisplayBadge() => SetResourceReference(StyleProperty, "WorkspaceDisplayBadgeStyle");
+    public CornerRadius CornerRadius { get => (CornerRadius)GetValue(CornerRadiusProperty); set => SetValue(CornerRadiusProperty, value); }
+}
+
+/// <summary>Separates selection management from output actions without shrinking editors.</summary>
+public sealed class PurposeFooterPanel : Panel
+{
+    private bool _stacked;
+
+    protected override Size MeasureOverride(Size availableSize)
+    {
+        var width = double.IsInfinity(availableSize.Width) ? 2000 : availableSize.Width;
+        foreach (UIElement child in InternalChildren) child.Measure(new Size(width, double.PositiveInfinity));
+        if (InternalChildren.Count != 2) return new Size();
+        var left = InternalChildren[0].DesiredSize;
+        var right = InternalChildren[1].DesiredSize;
+        var gap = width < 1040 ? 8 : 16;
+        _stacked = left.Width + right.Width + gap > width;
+        return new Size(Math.Min(width, _stacked ? Math.Max(left.Width, right.Width) : left.Width + right.Width + gap),
+            _stacked ? left.Height + right.Height + 8 : Math.Max(left.Height, right.Height));
+    }
+
+    protected override Size ArrangeOverride(Size finalSize)
+    {
+        if (InternalChildren.Count != 2) return finalSize;
+        var left = InternalChildren[0];
+        var right = InternalChildren[1];
+        left.Arrange(new Rect(0, 0, Math.Min(finalSize.Width, left.DesiredSize.Width), left.DesiredSize.Height));
+        var rightWidth = Math.Min(finalSize.Width, right.DesiredSize.Width);
+        right.Arrange(new Rect(finalSize.Width - rightWidth, _stacked ? left.DesiredSize.Height + 8 : 0,
+            rightWidth, right.DesiredSize.Height));
+        return finalSize;
+    }
 }
 
 /// <summary>A responsive PowerToys-style settings row with a stretching editor.</summary>
@@ -68,13 +109,15 @@ public sealed class WorkspacePageFrame : Grid
 {
     public WorkspacePageFrame()
     {
-        Margin = new Thickness(24, 0, 24, 16);
+        SetResourceReference(MarginProperty, "PagePadding");
         SizeChanged += (_, _) =>
         {
             var inset = ActualWidth < 900 ? 16 : 24;
             if (Margin.Left != inset)
             {
-                Margin = new Thickness(inset, 0, inset, Margin.Bottom);
+                var token = TryFindResource(inset == 16 ? "CompactPagePadding" : "PagePadding") is Thickness padding
+                    ? padding : new Thickness(inset, 0, inset, 16);
+                Margin = new Thickness(token.Left, Margin.Top, token.Right, Margin.Bottom);
             }
         };
     }

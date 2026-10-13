@@ -102,7 +102,10 @@ public static class DependencyInjection
             WindowsProfilePathCanonicalizer>());
         services.AddSingleton<IAppearanceService, AppearanceService>();
         services.AddSingleton<IUserSettingsWriter, AtomicUserSettingsWriter>();
-        services.AddSingleton<IGridLayoutStore, GridLayoutStore>();
+        services.AddSingleton<GridLayoutStore>();
+        services.AddSingleton<IGridLayoutStore>(static provider => provider.GetRequiredService<GridLayoutStore>());
+        services.AddHostedService(static provider => provider.GetRequiredService<GridLayoutStore>());
+        services.AddSingleton<IProfilePresentationStore, ProfilePresentationStore>();
         services.AddSingleton<WindowsAppNotificationService>();
         services.AddSingleton<IWindowsAppNotificationSink>(
             static provider => provider.GetRequiredService<WindowsAppNotificationService>());

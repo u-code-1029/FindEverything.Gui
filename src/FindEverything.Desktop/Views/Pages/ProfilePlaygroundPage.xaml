@@ -14,7 +14,7 @@
     ScrollViewer.CanContentScroll="False"
     mc:Ignorable="d">
     <Page.Resources>
-        <Style x:Key="PlaygroundFieldCardStyle" TargetType="Border">
+        <Style x:Key="PlaygroundFieldCardStyle" TargetType="ui:CardControl" BasedOn="{StaticResource FluentCardStyle}">
             <Setter Property="Margin" Value="0,0,0,10" />
             <Setter Property="Padding" Value="14" />
             <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
@@ -26,13 +26,13 @@
             <Setter Property="ItemTemplate">
                 <Setter.Value>
                     <DataTemplate>
-                        <Border
+                        <controls:SectionCard
                             Margin="0,0,0,12"
                             Padding="14"
                             Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
                             BorderBrush="{Binding AccentBrush}"
                             BorderThickness="3,1,1,1"
-                            CornerRadius="7">
+                            CornerRadius="7"><controls:SectionCard.Header>
                             <StackPanel>
                                 <Grid>
                                     <Grid.ColumnDefinitions>
@@ -67,7 +67,7 @@
                                                 </Grid.ColumnDefinitions>
                                                 <StackPanel Margin="0,1,12,0">
                                                     <StackPanel Orientation="Horizontal">
-                                                        <Border
+                                                        <controls:DisplayBadge
                                                             Width="10"
                                                             Height="10"
                                                             Margin="0,0,7,0"
@@ -98,13 +98,13 @@
                                                         </ItemsControl.ItemsPanel>
                                                         <ItemsControl.ItemTemplate>
                                                             <DataTemplate>
-                                                                <Border Background="{Binding BackgroundBrush}">
+                                                                <controls:DisplayBadge Background="{Binding BackgroundBrush}">
                                                                     <TextBlock
                                                                         Padding="1,3"
                                                                         FontFamily="Consolas"
                                                                         Text="{Binding Text}"
                                                                         ToolTip="{Binding ToolTip}" />
-                                                                </Border>
+                                                                </controls:DisplayBadge>
                                                             </DataTemplate>
                                                         </ItemsControl.ItemTemplate>
                                                     </ItemsControl>
@@ -114,7 +114,7 @@
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
                             </StackPanel>
-                        </Border>
+                        </controls:SectionCard.Header></controls:SectionCard>
                     </DataTemplate>
                 </Setter.Value>
             </Setter>
@@ -151,7 +151,7 @@
                         <ItemsControl ItemsSource="{Binding Rows}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <Border Style="{StaticResource PlaygroundFieldCardStyle}">
+                                    <controls:SectionCard Style="{StaticResource PlaygroundFieldCardStyle}"><controls:SectionCard.Header>
                                         <Grid>
                                             <Grid.RowDefinitions>
                                                 <RowDefinition Height="Auto" />
@@ -181,7 +181,7 @@
                                                 Text="{Binding RawValue, StringFormat={StaticResource Loc.Playground.RawValueFormat}}"
                                                 Visibility="{Binding HasMappedValue, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                         </Grid>
-                                    </Border>
+                                    </controls:SectionCard.Header></controls:SectionCard>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
@@ -279,11 +279,11 @@
                 </ScrollViewer>
             </controls:SplitWorkspace.SecondaryContent>
         </controls:SplitWorkspace>
-        <Border Grid.Row="3" Padding="0,8" Background="Transparent">
+        <Grid Grid.Row="3" Margin="0,8" Background="Transparent">
             <StackPanel Orientation="Horizontal">
                 <ui:ProgressRing Width="18" Height="18" Margin="0,0,8,0" IsIndeterminate="True" Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}" />
                 <TextBlock Text="{Binding Summary}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Summary}" AutomationProperties.LiveSetting="Polite" />
             </StackPanel>
-        </Border>
+        </Grid>
     </controls:WorkspacePageFrame>
 </Page>

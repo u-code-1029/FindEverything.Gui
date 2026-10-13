@@ -1,30 +1,30 @@
 using System.Text.Json;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace FindEverything.Desktop.Configuration;
 
-public sealed record GridColumnLayout(string FieldId, int DisplayIndex, double Width);
+public enum GridColumnWidthMode { Auto, Manual }
+
+// Missing WidthMode in old files becomes Auto: old measured widths aren't user resize intent.
+public sealed record GridColumnLayout(string FieldId, int DisplayIndex, double Width,
+    GridColumnWidthMode WidthMode = GridColumnWidthMode.Auto);
 
 public interface IGridLayoutStore
 {
     IReadOnlyDictionary<string, GridColumnLayout> Get(string profileId);
-
     void Save(string profileId, IEnumerable<GridColumnLayout> columns);
 }
 
-public sealed class GridLayoutStore : IGridLayoutStore
+public sealed class GridLayoutStore(AppPaths paths, ILogger<GridLayoutStore> logger) : IGridLayoutStore, IHostedService
 {
-    private static readonly JsonSerializerOptions SerializerOptions = new() { WriteIndented = true };
+    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
     private readonly object _sync = new();
-    private readonly AppPaths _paths;
-    private readonly ILogger<GridLayoutStore> _logger;
+    private readonly SemaphoreSlim _writer = new(1, 1);
     private Dictionary<string, Dictionary<string, GridColumnLayout>>? _layouts;
-
-    public GridLayoutStore(AppPaths paths, ILogger<GridLayoutStore> logger)
-    {
-        _paths = paths;
-        _logger = logger;
-    }
+    private CancellationTokenSource? _debounce;
+    private long _revision;
+    private long _writtenRevision;
 
     public IReadOnlyDictionary<string, GridColumnLayout> Get(string profileId)
     {
@@ -45,69 +45,84 @@ public sealed class GridLayoutStore : IGridLayoutStore
         lock (_sync)
         {
             EnsureLoaded();
-            _layouts![profileId] = columns.ToDictionary(
-                static column => column.FieldId,
-                StringComparer.OrdinalIgnoreCase);
-            WriteAtomically();
+            _layouts![profileId] = columns.ToDictionary(static column => column.FieldId, StringComparer.OrdinalIgnoreCase);
+            _revision++;
+            _debounce?.Cancel();
+            _debounce?.Dispose();
+            _debounce = new CancellationTokenSource();
+            _ = WriteDebouncedAsync(_debounce.Token);
         }
+    }
+
+    private async Task WriteDebouncedAsync(CancellationToken token)
+    {
+        try
+        {
+            await Task.Delay(300, token).ConfigureAwait(false);
+            await FlushAsync(token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    public async Task FlushAsync(CancellationToken cancellationToken = default)
+    {
+        await _writer.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            Dictionary<string, Dictionary<string, GridColumnLayout>> snapshot;
+            long revision;
+            lock (_sync)
+            {
+                if (_layouts is null || _writtenRevision == _revision) return;
+                revision = _revision;
+                snapshot = _layouts.ToDictionary(static p => p.Key,
+                    static p => new Dictionary<string, GridColumnLayout>(p.Value), StringComparer.OrdinalIgnoreCase);
+            }
+            Directory.CreateDirectory(paths.LocalDataDirectory);
+            var temporaryFile = paths.GridLayoutFile + $".{Guid.NewGuid():N}.tmp";
+            try
+            {
+                await File.WriteAllTextAsync(temporaryFile, JsonSerializer.Serialize(snapshot, JsonOptions), cancellationToken).ConfigureAwait(false);
+                cancellationToken.ThrowIfCancellationRequested();
+                File.Move(temporaryFile, paths.GridLayoutFile, overwrite: true);
+                lock (_sync) _writtenRevision = revision;
+            }
+            finally { if (File.Exists(temporaryFile)) File.Delete(temporaryFile); }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        { logger.LogWarning(ex, "Could not save grid layout file {File}.", paths.GridLayoutFile); }
+        finally { _writer.Release(); }
     }
 
     private void EnsureLoaded()
     {
-        if (_layouts is not null)
-        {
-            return;
-        }
-
+        if (_layouts is not null) return;
         try
         {
-            if (!File.Exists(_paths.GridLayoutFile))
+            var source = File.Exists(paths.GridLayoutFile)
+                ? JsonSerializer.Deserialize<Dictionary<string, Dictionary<string, GridColumnLayout>>>(File.ReadAllText(paths.GridLayoutFile), JsonOptions) ?? [] : [];
+            _layouts = new(StringComparer.OrdinalIgnoreCase);
+            foreach (var (profileId, columns) in source)
             {
-                _layouts = new Dictionary<string, Dictionary<string, GridColumnLayout>>(
-                    StringComparer.OrdinalIgnoreCase);
-                return;
+                if (string.IsNullOrWhiteSpace(profileId) || columns is null) continue;
+                var normalized = new Dictionary<string, GridColumnLayout>(StringComparer.OrdinalIgnoreCase);
+                foreach (var (fieldId, column) in columns)
+                    if (!string.IsNullOrWhiteSpace(fieldId) && column is not null && !string.IsNullOrWhiteSpace(column.FieldId))
+                        normalized[fieldId] = column;
+                _layouts[profileId] = normalized;
             }
-
-            var source = JsonSerializer.Deserialize<Dictionary<string, Dictionary<string, GridColumnLayout>>>(
-                File.ReadAllText(_paths.GridLayoutFile),
-                SerializerOptions) ?? [];
-            _layouts = new Dictionary<string, Dictionary<string, GridColumnLayout>>(
-                source,
-                StringComparer.OrdinalIgnoreCase);
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
         {
-            _logger.LogWarning(exception, "Could not read grid layout file {LayoutFile}.", _paths.GridLayoutFile);
-            _layouts = new Dictionary<string, Dictionary<string, GridColumnLayout>>(
-                StringComparer.OrdinalIgnoreCase);
+            logger.LogWarning(ex, "Could not read grid layout file {File}.", paths.GridLayoutFile);
+            _layouts = new(StringComparer.OrdinalIgnoreCase);
         }
     }
 
-    private void WriteAtomically()
+    public Task StartAsync(CancellationToken cancellationToken) => Task.Run(() => { lock (_sync) EnsureLoaded(); }, cancellationToken);
+    public async Task StopAsync(CancellationToken cancellationToken)
     {
-        Directory.CreateDirectory(_paths.LocalDataDirectory);
-        var temporaryPath = _paths.GridLayoutFile + $".{Guid.NewGuid():N}.tmp";
-        try
-        {
-            File.WriteAllText(temporaryPath, JsonSerializer.Serialize(_layouts, SerializerOptions));
-            File.Move(temporaryPath, _paths.GridLayoutFile, overwrite: true);
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
-            _logger.LogWarning(exception, "Could not save grid layout file {LayoutFile}.", _paths.GridLayoutFile);
-        }
-        finally
-        {
-            try
-            {
-                if (File.Exists(temporaryPath))
-                {
-                    File.Delete(temporaryPath);
-                }
-            }
-            catch (IOException)
-            {
-            }
-        }
+        lock (_sync) _debounce?.Cancel();
+        await FlushAsync(cancellationToken).ConfigureAwait(false);
     }
 }

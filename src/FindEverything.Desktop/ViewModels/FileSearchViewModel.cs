@@ -1469,7 +1469,14 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
                 }
                 try
                 {
-                    var first = await Task.Run(() => query.ReadRangeAsync(0, 500, cancellationToken), cancellationToken);
+                    var first = await Task.Run(async () =>
+                    {
+                        var page = await query.ReadRangeAsync(0, VirtualResultCollection<FileSearchItemViewModel>.PageSize,
+                            cancellationToken).ConfigureAwait(false);
+                        cancellationToken.ThrowIfCancellationRequested();
+                        return new ResultPage<FileSearchItemViewModel>(page.Items.Select(CreateFileRow).ToArray(),
+                            page.Offset, page.HasMore);
+                    }, cancellationToken);
                     if (version != Volatile.Read(ref _queryVersion)) { await query.DisposeAsync(); return; }
                     var retainedSelection = preserveSelection
                         && _fileQueryRequest is { } oldRequest && _fileQueryScope == scope
@@ -1496,9 +1503,12 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
                             null, DateTimeOffset.MinValue, DateTimeOffset.MinValue, false), _localizer) { IsPlaceholder = true },
                         Dispatch,
                         exception => { if (ReferenceEquals(query, _fileQuery)) OnFilePageFailed(exception); });
-                    collection.PageLoaded += (_, _) => UpdateQuerySelection();
-                    collection.Seed(new ResultPage<FileSearchItemViewModel>(
-                        first.Items.Select(CreateFileRow).ToArray(), 0, first.HasMore));
+                    collection.PageLoaded += (sender, page) =>
+                    {
+                        if (ReferenceEquals(sender, Items) && ReferenceEquals(query, _fileQuery))
+                            UpdateQuerySelection(page.Items);
+                    };
+                    collection.Seed(first);
                     Items = collection;
                     TotalCount = retainedItem is not null || retainedSelection.AllMatching
                         ? previousTotalCount : first.Items.Count;
@@ -1619,11 +1629,11 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
         using var cancellation = new CancellationTokenSource();
         _selectionCancellation = cancellation;
         var version = Volatile.Read(ref _queryVersion);
-        var captured = additive ? _selection.Capture() : new QuerySelection();
         try
         {
             if (range && _selectionAnchor >= 0 && index >= 0)
             {
+                var captured = additive ? _selection.Capture() : new QuerySelection();
                 var start = Math.Min(index, _selectionAnchor);
                 var end = Math.Max(index, _selectionAnchor);
                 for (var offset = start; offset <= end; offset += 500)
@@ -1633,16 +1643,18 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
                     if (!ReferenceEquals(query, _fileQuery) || version != Volatile.Read(ref _queryVersion)) return;
                     foreach (var entry in page.Items) captured.Set(entry.FullPath, true);
                 }
+                cancellation.Token.ThrowIfCancellationRequested();
+                RestoreSelection(captured);
             }
             else
             {
-                captured.Set(row.FullPath, additive ? !_selection.Contains(row.FullPath) : true);
+                if (!additive) _selection.Clear();
+                _selection.Set(row.FullPath, additive ? !_selection.Contains(row.FullPath) : true);
                 _selectionAnchor = index;
             }
             cancellation.Token.ThrowIfCancellationRequested();
-            RestoreSelection(captured);
             SelectedItem = row;
-            UpdateQuerySelection();
+            UpdateQuerySelection(additive && !range ? [row] : null);
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
         catch (Exception exception)
@@ -1652,11 +1664,11 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
         finally { if (ReferenceEquals(_selectionCancellation, cancellation)) _selectionCancellation = null; }
     }
 
-    private void UpdateQuerySelection()
+    private void UpdateQuerySelection(IReadOnlyList<FileSearchItemViewModel>? changedItems = null)
     {
         if (!UsesQuerySelection) return;
         if (Items is VirtualResultCollection<FileSearchItemViewModel> list)
-            foreach (var row in list.LoadedItems) row.IsSelected = _selection.Contains(row.FullPath);
+            foreach (var row in changedItems ?? list.LoadedItems) row.IsSelected = _selection.Contains(row.FullPath);
         SelectedCount = checked((int)_selection.Count(TotalCount));
         OnPropertyChanged(nameof(HasSelection));
         CopySelectionCommand.NotifyCanExecuteChanged();

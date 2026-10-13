@@ -19,6 +19,25 @@ public partial class ScanConsolePanel
         Unloaded += OnUnloaded;
         DataContextChanged += OnDataContextChanged;
         IsVisibleChanged += OnIsVisibleChanged;
+        SizeChanged += OnPanelSizeChanged;
+    }
+
+    private void OnPanelSizeChanged(object sender, SizeChangedEventArgs args)
+    {
+        var compact = args.NewSize.Width < 820;
+        SessionSummaryText.Visibility = LogLegendText.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        if (compact)
+        {
+            CopyAllLogsButton.Content = ClearLogsButton.Content = null;
+        }
+        else
+        {
+            CopyAllLogsButton.SetResourceReference(ContentControl.ContentProperty, "Loc.Scan.CopyAll");
+            ClearLogsButton.SetResourceReference(ContentControl.ContentProperty, "Loc.Scan.Clear");
+        }
+        CopyAllLogsButton.MinWidth = ClearLogsButton.MinWidth = compact ? 32 : 92;
+        CopyAllLogsButton.Width = ClearLogsButton.Width = compact ? 32 : double.NaN;
+        CopyAllLogsButton.Padding = ClearLogsButton.Padding = compact ? new Thickness(0) : new Thickness(10, 5, 10, 5);
     }
 
     private void OnLoaded(object sender, RoutedEventArgs eventArgs)

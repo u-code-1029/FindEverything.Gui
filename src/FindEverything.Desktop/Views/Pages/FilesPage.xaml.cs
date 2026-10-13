@@ -43,27 +43,34 @@ public partial class FilesPage
         FileRootPathText.FontSize = compact ? 12 : 14;
         FileLocationColumn.Width = compact ? new System.Windows.GridLength(1, System.Windows.GridUnitType.Star) : new System.Windows.GridLength(220);
         FileSearchColumn.Width = compact ? new System.Windows.GridLength(0) : new System.Windows.GridLength(1, System.Windows.GridUnitType.Star);
-        if (compact) CopySelectionButton.Content = null;
-        else CopySelectionButton.SetResourceReference(ContentControl.ContentProperty, "Loc.Workspace.Selection.Copy");
-        CopySelectionButton.Width = compact ? 32 : double.NaN;
-        if (_selectionCompactMode != compact)
-        {
-            _selectionCompactMode = compact;
-            FilesOutputFormatComboBox.Width = compact ? 80 : 140;
-            FilesOutputFormatLabel.SetResourceReference(ContentControl.ContentProperty,
-                compact ? "Loc.Workspace.Output.Format.ShortLabel" : "Loc.Workspace.Output.Format.Label");
-            foreach (var (button, symbol) in new[]
-            {
-                (SelectAllResultsButton, Wpf.Ui.Controls.SymbolRegular.CheckboxChecked20),
-                (ClearAllResultsButton, Wpf.Ui.Controls.SymbolRegular.CheckboxUnchecked20),
-                (InvertResultsSelectionButton, Wpf.Ui.Controls.SymbolRegular.ArrowSwap20),
-            })
-            {
-                button.Icon = compact ? null : new Wpf.Ui.Controls.SymbolIcon(symbol);
-                button.Padding = new System.Windows.Thickness(compact ? 4 : 8, 4, compact ? 4 : 8, 4);
-                button.FontSize = compact ? 13 : 14;
-            }
-        }
+        ApplySelectionToolbarLayout();
+    }
+
+    private void OnSelectionToolbarSizeChanged(object sender, System.Windows.SizeChangedEventArgs e) => ApplySelectionToolbarLayout();
+
+    private void ApplySelectionToolbarLayout()
+    {
+        if (SelectionToolbar is null || SelectionToolbar.ActualWidth <= 0) return;
+        var compact = SelectionToolbar.ActualWidth < 1040;
+        if (_selectionCompactMode == compact) return;
+        _selectionCompactMode = compact;
+        var full = compact ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
+        var menu = compact ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+        SelectAllResultsButton.Visibility = ClearAllResultsButton.Visibility = InvertResultsSelectionButton.Visibility = full;
+        SelectionActionsMenuButton.Visibility = AdditionalActionsMenuButton.Visibility = menu;
+        FilesOutputFormatLabel.Visibility = full;
+        CopySelectionButton.SetResourceReference(ContentControl.ContentProperty,
+            compact ? "Loc.View.Files.Content.Copy" : "Loc.Workspace.Selection.Copy");
+        OpenSelectionButton.Visibility = full;
+    }
+
+    private void OnFooterMenuClick(object sender, System.Windows.RoutedEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.Button button || button.ContextMenu is null) return;
+        button.ContextMenu.PlacementTarget = button;
+        button.ContextMenu.Placement = System.Windows.Controls.Primitives.PlacementMode.Top;
+        button.ContextMenu.IsOpen = true;
+        e.Handled = true;
     }
 
     private async void OnSelectionCheckBoxPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)

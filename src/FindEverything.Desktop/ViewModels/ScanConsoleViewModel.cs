@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using System.Windows.Media;
@@ -45,6 +46,7 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
 {
     private const int DrainBatchSize = 500;
     private static readonly TimeSpan DrainInterval = TimeSpan.FromMilliseconds(75);
+    private static readonly TimeSpan DrainTimeBudget = TimeSpan.FromMilliseconds(4);
     private const int MaximumPendingLines = 10_000;
     private const int MaximumVisibleLines = 20_000;
     private const int VisibleTrimChunk = 2_000;
@@ -56,6 +58,9 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
 
     private readonly object _pendingGate = new();
     private readonly LinkedList<ScanConsoleLineViewModel> _pending = [];
+    // The panel can remain closed for an entire scan. Retain its log independently
+    // of the bound collection so hidden diagnostics do not invalidate the UI.
+    private readonly Queue<ScanConsoleLineViewModel> _retained = new(MaximumVisibleLines);
     private readonly Dispatcher _dispatcher;
     private readonly DispatcherTimer _drainTimer;
     private readonly Action<string> _setClipboardText;
@@ -109,7 +114,7 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
     private long _prunedCount;
 
     [ObservableProperty]
-    private string _retentionSummary = $"표시 0 / 최대 {MaximumVisibleLines:N0}줄";
+    private string _retentionSummary = $"보관 0 / 최대 {MaximumVisibleLines:N0}줄";
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(CopySelectedMessageCommand))]
@@ -148,7 +153,8 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
             static (_, _, _) => Task.CompletedTask,
             static (_, _, _) => { },
             static _ => { },
-            null)
+            null,
+            Dispatcher.CurrentDispatcher)
     {
     }
 
@@ -158,7 +164,8 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
         Func<string, IReadOnlyList<string>, CancellationToken, Task> writeScanLogAsync,
         Action<string, string, ControlAppearance> showSnackbar,
         Action<Exception>? logExportFailure = null,
-        IAppLocalizer? localizer = null)
+        IAppLocalizer? localizer = null,
+        Dispatcher? dispatcher = null)
     {
         ArgumentNullException.ThrowIfNull(setClipboardText);
         ArgumentNullException.ThrowIfNull(pickScanLogPath);
@@ -170,7 +177,7 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
         _showSnackbar = showSnackbar;
         _logExportFailure = logExportFailure ?? (static _ => { });
         _localizer = localizer;
-        _dispatcher = System.Windows.Application.Current?.Dispatcher
+        _dispatcher = dispatcher ?? System.Windows.Application.Current?.Dispatcher
             ?? Dispatcher.CurrentDispatcher;
         _drainTimer = new DispatcherTimer(DispatcherPriority.Background, _dispatcher)
         {
@@ -183,7 +190,7 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
             "스캔을 시작하면 방문 경로가 여기에 표시됩니다.");
         RetentionSummary = F(
             "Loc.Scan.Retention.Empty",
-            "표시 0 / 최대 {0:N0}줄",
+            "보관 0 / 최대 {0:N0}줄",
             MaximumVisibleLines);
     }
 
@@ -204,6 +211,16 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
     {
         if (value)
         {
+            if (_retained.Count > 0)
+            {
+                var selected = SelectedLine;
+                ((ScanConsoleLineCollection)Lines).ReplaceAll(_retained);
+                if (selected is not null && _retained.Contains(selected))
+                {
+                    SelectedLine = selected;
+                }
+            }
+
             HasUnseenActivity = false;
         }
     }
@@ -250,7 +267,7 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
     [RelayCommand(CanExecute = nameof(CanCopyAll))]
     private void CopyAll()
     {
-        var text = string.Join(Environment.NewLine, Lines.Select(static line => line.Text));
+        var text = string.Join(Environment.NewLine, GetLogSnapshot());
         if (text.Length > 0)
         {
             TrySetClipboardText(text);
@@ -278,7 +295,7 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
     [RelayCommand(CanExecute = nameof(CanSaveLog))]
     private async Task SaveLogAsync()
     {
-        var snapshot = Lines.Select(static line => line.Text).ToArray();
+        var snapshot = GetLogSnapshot();
         if (snapshot.Length == 0)
         {
             return;
@@ -304,7 +321,7 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
                 L("Loc.Scan.Save.Completed", "탐색 로그 저장 완료"),
                 F(
                     "Loc.Scan.Save.Completed.Message",
-                    "현재 표시된 로그 {0:N0}줄을 저장했습니다.\n{1}",
+                    "보관 중인 로그 {0:N0}줄을 저장했습니다.\n{1}",
                     snapshot.Length,
                     selectedPath),
                 ControlAppearance.Success);
@@ -342,6 +359,7 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
             }
         }
 
+        _retained.Clear();
         Lines.Clear();
         SelectedLine = null;
         Interlocked.Exchange(ref _dropped, 0);
@@ -350,9 +368,13 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
         SaveLogCommand.NotifyCanExecuteChanged();
     }
 
-    private bool CanCopyAll() => Lines.Count > 0;
+    private bool CanCopyAll() => _retained.Count > 0 || Lines.Count > 0;
 
-    private bool CanSaveLog() => Lines.Count > 0 && !IsSavingLog;
+    private bool CanSaveLog() => CanCopyAll() && !IsSavingLog;
+
+    private string[] GetLogSnapshot() => (_retained.Count > 0 ? _retained : Lines.AsEnumerable())
+        .Select(static line => line.Text)
+        .ToArray();
 
     private bool CanCopySelectedMessage() => SelectedLine is { Text.Length: > 0 };
 
@@ -468,24 +490,7 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
 
     private void OnDrainTimerTick(object? sender, EventArgs eventArgs)
     {
-        List<ScanConsoleLineViewModel> batch = [];
-        lock (_pendingGate)
-        {
-            while (batch.Count < DrainBatchSize && _pending.First is { } node)
-            {
-                batch.Add(node.Value);
-                _pending.RemoveFirst();
-            }
-        }
-
-        foreach (var line in batch)
-        {
-            ApplyLine(line);
-        }
-
-        UpdateCounterProperties();
-        CopyAllCommand.NotifyCanExecuteChanged();
-        SaveLogCommand.NotifyCanExecuteChanged();
+        DrainPendingLines();
 
         lock (_pendingGate)
         {
@@ -499,6 +504,54 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
         }
     }
 
+    // A batch count alone does not bound time: a listener can spend significant
+    // time rendering each Add. Yield after a few milliseconds to let pointer and
+    // keyboard input run, without discarding the remainder of the pending queue.
+    internal int DrainPendingLines()
+    {
+        var started = Stopwatch.GetTimestamp();
+        var applied = 0;
+        while (applied < DrainBatchSize)
+        {
+            ScanConsoleLineViewModel line;
+            lock (_pendingGate)
+            {
+                if (_pending.First is not { } node)
+                {
+                    break;
+                }
+
+                line = node.Value;
+                _pending.RemoveFirst();
+            }
+
+            ApplyLine(line);
+            applied++;
+            if (Stopwatch.GetElapsedTime(started) >= DrainTimeBudget)
+            {
+                break;
+            }
+        }
+
+        UpdateCounterProperties();
+        CopyAllCommand.NotifyCanExecuteChanged();
+        SaveLogCommand.NotifyCanExecuteChanged();
+        return applied;
+    }
+
+    internal int PendingLineCount
+    {
+        get
+        {
+            lock (_pendingGate)
+            {
+                return _pending.Count;
+            }
+        }
+    }
+
+    internal int RetainedLineCount => _retained.Count;
+
     private void ApplyLine(ScanConsoleLineViewModel line)
     {
         if (!IsPanelOpen)
@@ -508,18 +561,47 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
 
         if (line.Kind == CatalogScanTraceKind.Started)
         {
-            Lines.Clear();
+            _retained.Clear();
+            if (IsPanelOpen)
+            {
+                Lines.Clear();
+            }
+
             SelectedLine = null;
         }
 
-        if (Lines.Count >= MaximumVisibleLines)
+        if (_retained.Count >= MaximumVisibleLines)
         {
-            var removeCount = Math.Min(VisibleTrimChunk, Lines.Count);
-            ((ScanConsoleLineCollection)Lines).RemoveFirst(removeCount);
+            var removeCount = Math.Min(VisibleTrimChunk, _retained.Count);
+            var removedSelection = false;
+            for (var index = 0; index < removeCount; index++)
+            {
+                removedSelection |= ReferenceEquals(_retained.Dequeue(), SelectedLine);
+            }
+
+            if (IsPanelOpen)
+            {
+                var selected = SelectedLine;
+                ((ScanConsoleLineCollection)Lines).RemoveFirst(removeCount);
+                if (!removedSelection)
+                {
+                    SelectedLine = selected;
+                }
+            }
+
+            if (removedSelection)
+            {
+                SelectedLine = null;
+            }
+
             _ = Interlocked.Add(ref _dropped, removeCount);
         }
 
-        Lines.Add(line);
+        _retained.Enqueue(line);
+        if (IsPanelOpen)
+        {
+            Lines.Add(line);
+        }
 
         switch (line.Kind)
         {
@@ -555,12 +637,12 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
             ? F(
                 "Loc.Scan.Retention.Dropped",
                 "최근 {0:N0}줄 · 이전 {1:N0}줄 생략",
-                Lines.Count,
+                _retained.Count,
                 dropped)
             : F(
                 "Loc.Scan.Retention.Visible",
-                "표시 {0:N0} / 최대 {1:N0}줄",
-                Lines.Count,
+                "보관 {0:N0} / 최대 {1:N0}줄",
+                _retained.Count,
                 MaximumVisibleLines);
     }
 
@@ -852,6 +934,18 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
 
     private sealed class ScanConsoleLineCollection : ObservableCollection<ScanConsoleLineViewModel>
     {
+        public void ReplaceAll(IEnumerable<ScanConsoleLineViewModel> lines)
+        {
+            CheckReentrancy();
+            Items.Clear();
+            foreach (var line in lines)
+            {
+                Items.Add(line);
+            }
+
+            NotifyReset();
+        }
+
         public void RemoveFirst(int count)
         {
             if (count <= 0)
@@ -861,11 +955,15 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
 
             CheckReentrancy();
             var actualCount = Math.Min(count, Items.Count);
-            for (var index = 0; index < actualCount; index++)
-            {
-                Items.RemoveAt(0);
-            }
+            // ObservableCollection's default backing list supports a single
+            // linear shift. Repeated RemoveAt(0) made every trim quadratic.
+            ((List<ScanConsoleLineViewModel>)Items).RemoveRange(0, actualCount);
 
+            NotifyReset();
+        }
+
+        private void NotifyReset()
+        {
             OnPropertyChanged(new PropertyChangedEventArgs(nameof(Count)));
             OnPropertyChanged(new PropertyChangedEventArgs("Item[]"));
             OnCollectionChanged(new NotifyCollectionChangedEventArgs(

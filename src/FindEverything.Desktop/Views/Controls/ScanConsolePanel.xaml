@@ -7,17 +7,18 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:localization="clr-namespace:FindEverything.Desktop.Localization"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+    xmlns:controls="clr-namespace:FindEverything.Desktop.Views.Controls"
     xmlns:viewModels="clr-namespace:FindEverything.Desktop.ViewModels"
     AutomationProperties.AutomationId="ScanConsolePanel"
     Background="Transparent"
     Foreground="{DynamicResource TextFillColorPrimaryBrush}"
     localization:LocalizationScope.IsEnabled="True"
     mc:Ignorable="d">
-    <Border
+    <controls:SectionCard Style="{StaticResource FluentCardStyle}" Padding="0"
         Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
         BorderBrush="{DynamicResource SurfaceStrokeColorDefaultBrush}"
         BorderThickness="1"
-        CornerRadius="8">
+        CornerRadius="8"><controls:SectionCard.Header>
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
@@ -56,12 +57,10 @@
                     ToolTip="하단 탐색 로그 닫기" />
             </Grid>
 
-            <Border
+            <Grid
                 Grid.Row="1"
-                Padding="12,8"
-                Background="{DynamicResource ControlFillColorSecondaryBrush}"
-                BorderBrush="{DynamicResource SurfaceStrokeColorDefaultBrush}"
-                BorderThickness="0,1,0,1">
+                Margin="12,8"
+                Background="{DynamicResource ControlFillColorSecondaryBrush}">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
@@ -72,17 +71,17 @@
                     </Grid.ColumnDefinitions>
 
                     <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
-                        <Border
+                        <Ellipse
                             Width="8"
                             Height="8"
                             Margin="0,0,8,0"
-                            Background="{Binding StatusBrush}"
-                            CornerRadius="4" />
+                            Fill="{Binding StatusBrush}" />
                         <TextBlock
                             VerticalAlignment="Center"
                             FontWeight="SemiBold"
                             Text="{Binding StatusText}" />
                         <TextBlock
+                            x:Name="SessionSummaryText"
                             Margin="12,0,0,0"
                             VerticalAlignment="Center"
                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
@@ -99,31 +98,37 @@
                         OffContent="자동 스크롤 끔"
                         OnContent="자동 스크롤" />
                     <ui:Button
+                        x:Name="CopyAllLogsButton"
                         Grid.Column="2"
                         MinWidth="92"
                         Margin="0,0,8,0"
                         Command="{Binding CopyAllCommand}"
+                        Icon="{ui:SymbolIcon Symbol=Copy20}"
+                        ToolTip="전체 복사"
                         Content="전체 복사" />
                     <ui:Button
                         Grid.Column="3"
                         x:Name="SaveScanLogButton"
                         MinWidth="112"
                         Margin="0,0,8,0"
-                        AutomationProperties.Name="현재 표시된 탐색 로그 파일로 저장"
+                        AutomationProperties.Name="{DynamicResource Loc.Scan.Save.Help}"
                         Command="{Binding SaveLogCommand}"
                         Content="로그 저장"
                         Icon="{ui:SymbolIcon Symbol=Save16}"
-                        ToolTip="현재 콘솔에 표시된 로그를 UTF-8 파일로 저장" />
+                        ToolTip="{DynamicResource Loc.Scan.Save.Help}" />
                     <ui:Button
+                        x:Name="ClearLogsButton"
                         Grid.Column="4"
                         MinWidth="92"
                         Appearance="Secondary"
                         Command="{Binding ClearCommand}"
+                        Icon="{ui:SymbolIcon Symbol=Delete20}"
+                        ToolTip="로그 지우기"
                         Content="로그 지우기" />
                 </Grid>
-            </Border>
+            </Grid>
 
-            <Border Grid.Row="2" Background="#1E1E1E">
+            <Grid Grid.Row="2" Background="#1E1E1E">
                 <ListBox
                     x:Name="TraceList"
                     Padding="8,6"
@@ -190,21 +195,19 @@
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
-            </Border>
+            </Grid>
 
-            <Border
+            <Grid
                 Grid.Row="3"
-                Padding="12,7"
-                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
-                BorderBrush="{DynamicResource SurfaceStrokeColorDefaultBrush}"
-                BorderThickness="0,1,0,0">
+                Margin="12,7"
+                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <StackPanel>
-                        <TextBlock Foreground="{DynamicResource TextFillColorSecondaryBrush}">
+                        <TextBlock Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextWrapping="Wrap">
                             <Run Text="방문 " />
                             <Run FontWeight="SemiBold" Text="{Binding VisitedCount}" />
                             <Run Text="  ·  일치 " />
@@ -217,10 +220,11 @@
                             <Run FontWeight="SemiBold" Text="{Binding PrunedCount}" />
                         </TextBlock>
                         <TextBlock
+                            x:Name="LogLegendText"
                             Margin="0,3,0,0"
                             FontSize="11"
                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="MATCH 일치 · NO MATCH 규칙 외 · INVALID 변환 오류 · EXCLUDED 이름 규칙 제외 · PRUNE 하위 탐색 중단" />
+                            Text="MATCH 일치 · NO MATCH 규칙 외 · INVALID 변환 오류 · EXCLUDED 이름 규칙 제외 · PRUNE 하위 탐색 중단" TextTrimming="CharacterEllipsis" />
                     </StackPanel>
                     <TextBlock
                         Grid.Column="1"
@@ -229,7 +233,7 @@
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                         Text="{Binding RetentionSummary}" />
                 </Grid>
-            </Border>
+            </Grid>
         </Grid>
-    </Border>
+    </controls:SectionCard.Header></controls:SectionCard>
 </UserControl>

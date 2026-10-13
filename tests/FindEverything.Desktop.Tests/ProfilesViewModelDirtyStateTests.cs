@@ -1,6 +1,7 @@
 using System.IO;
 using FindEverything.Application.Profiles;
 using FindEverything.Desktop.Services;
+using FindEverything.Desktop.Configuration;
 using FindEverything.Desktop.ViewModels;
 using FindEverything.Profile.Abstractions;
 using FindEverything.Profile.Runtime;
@@ -11,6 +12,52 @@ namespace FindEverything.Desktop.Tests;
 
 public sealed class ProfilesViewModelDirtyStateTests
 {
+    [Fact]
+    public async Task Invalid_guided_definition_save_shows_validation_without_escaping_the_command()
+    {
+        var vm = CreateFreshDraft(DraftLeaveDecision.Cancel);
+        vm.DraftPathTemplate = "{missing@missing}";
+        await vm.SaveDraftCommand.ExecuteAsync(null);
+        Assert.True(vm.IsDraftDirty);
+        Assert.Equal(Wpf.Ui.Controls.InfoBarSeverity.Error, vm.EditorStatusSeverity);
+    }
+    [Fact]
+    public async Task Width_only_save_does_not_validate_recompile_or_publish_profile_rules()
+    {
+        var field = new ProfileFieldManifest { FieldId = "name", GroupName = "name", Header = "Name", Kind = ProfileFieldValueKind.String };
+        var compiler = new ProfilePathTemplateCompiler();
+        var pattern = compiler.Compile("{name@name}", [field]).Pattern;
+        var manifest = new ProfileManifest
+        {
+            Id = "saved-profile", DisplayName = "Saved profile", Fields = [field],
+            Rules = [new() { Id = "default", PathTemplate = "{name@name}", Pattern = pattern }],
+        };
+        var presentation = new MemoryPresentationStore();
+        // Authoring stub throws if Validate or SaveAndApply is called. Operation coordinator is deliberately absent.
+        var vm = new ProfilesViewModel(new StubProfileCatalog(ProfileCatalogSnapshot.Empty),
+            new StubProfileAuthoringService(manifest), compiler, new FixedPathCanonicalizer(@"C:\Example"),
+            null!, null!, null!, null!, null!, new TestAppLocalizer(), NullLogger<ProfilesViewModel>.Instance,
+            presentationStore: presentation)
+        { SelectedEditableProfile = new("saved-profile", "Saved profile", "unused") };
+        await vm.LoadDraftCommand.ExecuteAsync(null);
+        var regex = vm.GeneratedPatternPreview;
+        vm.DraftFields[0].WidthPreset = ColumnWidthPreset.Wide;
+        Assert.True(vm.HasUnsavedChanges);
+        Assert.Equal(regex, vm.GeneratedPatternPreview);
+        await vm.SaveDraftCommand.ExecuteAsync(null);
+        Assert.False(vm.IsDraftDirty);
+        Assert.Equal(ColumnWidthPreset.Wide, presentation.Saved!["name"]);
+    }
+
+    private sealed class MemoryPresentationStore : IProfilePresentationStore
+    {
+        public event EventHandler<ProfilePresentationChangedEventArgs>? Changed { add { } remove { } }
+        public IReadOnlyDictionary<string, ColumnWidthPreset>? Saved;
+        public Task<IReadOnlyDictionary<string, ColumnWidthPreset>> LoadAsync(string id, CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyDictionary<string, ColumnWidthPreset>>(new Dictionary<string, ColumnWidthPreset>());
+        public Task SaveAsync(string id, IReadOnlyDictionary<string, ColumnWidthPreset> fields, CancellationToken ct = default)
+        { Saved = fields; return Task.CompletedTask; }
+    }
     [Fact]
     public async Task Analyzing_the_same_canonical_path_keeps_guided_assignments()
     {

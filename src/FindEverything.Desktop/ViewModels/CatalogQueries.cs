@@ -348,7 +348,16 @@ public partial class CatalogViewModel
             // definitions never allocate a grid or queue a count query.
             await Task.Delay(150, source.Token);
             query = await OpenProjectionQueryAsync(snapshot, definition, source.Token);
-            var first = await Task.Run(() => query.ReadRangeAsync(0, 500, source.Token), source.Token).WaitAsync(source.Token);
+            var localizer = _localizer;
+            var queryToken = source.Token;
+            var first = await Task.Run(async () =>
+            {
+                var page = await query.ReadRangeAsync(0, VirtualResultCollection<CatalogItemViewModel>.PageSize, queryToken)
+                    .ConfigureAwait(false);
+                queryToken.ThrowIfCancellationRequested();
+                var items = page.Items.Select(row => CreateProjectionItem(row, snapshot, definition, localizer)).ToArray();
+                return new ResultPage<CatalogItemViewModel>(items, page.Offset, page.HasMore);
+            }, queryToken).WaitAsync(queryToken);
             var total = await Task.Run(() => query.CountAsync(source.Token), source.Token).WaitAsync(source.Token);
             source.Token.ThrowIfCancellationRequested();
             if (version != Volatile.Read(ref _queryVersion) || _disposed) return;
@@ -367,14 +376,20 @@ public partial class CatalogViewModel
                 async (offset, limit, token) =>
                 {
                     var page = await adoptedQuery.ReadRangeAsync(offset, limit, token).ConfigureAwait(false);
-                    return new(page.Items.Select(row => CreateProjectionItem(row, snapshot)).ToArray(), offset, page.HasMore);
+                    token.ThrowIfCancellationRequested();
+                    return new(page.Items.Select(row => CreateProjectionItem(row, snapshot, definition, localizer)).ToArray(), offset, page.HasMore);
                 },
                 _ => new CatalogItemViewModel(new CatalogItem("", "", "", new object(),
                     new Dictionary<string, object?>(), false), snapshot.Fields, _localizer) { IsPlaceholder = true },
                 action => _dispatcher.BeginInvoke(DispatcherPriority.Background, action),
                 exception => { if (ReferenceEquals(adoptedQuery, _projectionQuery)) _ = RecoverProjectionAsync(snapshot, exception); });
-            _virtualItems.PageLoaded += (_, _) => UpdateProjectionSelection();
-            _virtualItems.Seed(new(first.Items.Select(row => CreateProjectionItem(row, snapshot)).ToArray(), 0, first.HasMore), total);
+            _virtualItems.PageLoaded += (sender, page) =>
+            {
+                if (!ReferenceEquals(sender, _virtualItems) || !ReferenceEquals(adoptedQuery, _projectionQuery)) return;
+                foreach (var item in page.Items) TrackNoteEditors(item, snapshot.Scope.ProfileId);
+                UpdateProjectionSelection(page.Items);
+            };
+            _virtualItems.Seed(first, total);
             Items = new ListCollectionView(_virtualItems);
             _loadedItems.Clear();
             SelectedItem = null;
@@ -422,21 +437,21 @@ public partial class CatalogViewModel
         }
     }
 
-    private CatalogItemViewModel CreateProjectionItem(CatalogProjectionRow row, CatalogProjectionSnapshot snapshot)
+    private CatalogItemViewModel CreateProjectionItem(CatalogProjectionRow row, CatalogProjectionSnapshot snapshot,
+        CatalogProjectionQuery definition, IAppLocalizer localizer)
     {
         var saved = snapshot.Fields.Where(field => field.SourceKind == ProfileFieldSourceKind.UserInput)
             .ToDictionary(field => field.FieldId,
-                field => Convert.ToString(row.Values.GetValueOrDefault(field.FieldId), _localizer.Culture) ?? "",
+                field => Convert.ToString(row.Values.GetValueOrDefault(field.FieldId), localizer.Culture) ?? "",
                 StringComparer.OrdinalIgnoreCase);
         CatalogItemViewModel? item = null;
-        item = new CatalogItemViewModel(row.ToItem(), snapshot.Fields, _localizer, saved,
+        item = new CatalogItemViewModel(row.ToItem(), snapshot.Fields, localizer, saved,
             (field, value) => PersistTrackedNoteAsync(snapshot.Scope.ProfileId, row.FullPath, field, value,
                 item!.UserInputValues[field]),
             () => _dispatcher.BeginInvoke(DispatcherPriority.Background,
                 new Action(() => { if (!_disposed) _ = RefreshProjectionQueryAsync(); })))
         { FieldErrors = row.FieldErrors ?? new Dictionary<string, string>(), PreviewFields = row.PreviewFields };
-        item.SetShowOriginalValues(_queryDefinition.ShowOriginalValues);
-        TrackNoteEditors(item, snapshot.Scope.ProfileId);
+        item.SetShowOriginalValues(definition.ShowOriginalValues);
         return item;
     }
 
@@ -567,7 +582,7 @@ public partial class CatalogViewModel
             }
             else { _querySelection.Set(row.FullPath, !additive || !_querySelection.Contains(row.FullPath)); _selectionAnchor = index; }
             SelectedItem = row;
-            UpdateProjectionSelection();
+            UpdateProjectionSelection(additive && !range ? [row] : null);
         }
         catch (Exception exception) when (exception is OperationCanceledException
             or ResultQueryChangedException or ObjectDisposedException)
@@ -575,10 +590,10 @@ public partial class CatalogViewModel
             _logger.LogDebug(exception, "Selection query changed before the range was selected.");
         }
     }
-    private void UpdateProjectionSelection()
+    private void UpdateProjectionSelection(IReadOnlyList<CatalogItemViewModel>? changedItems = null)
     {
         if (_virtualItems is null) return;
-        foreach (var item in _virtualItems.LoadedItems) item.IsSelected = _querySelection.Contains(item.FullPath);
+        foreach (var item in changedItems ?? _virtualItems.LoadedItems) item.IsSelected = _querySelection.Contains(item.FullPath);
         SelectedCount = checked((int)_querySelection.Count(_matchingCount));
         CopySelectionCommand.NotifyCanExecuteChanged();
         ExportSelectionCommand.NotifyCanExecuteChanged();
@@ -645,8 +660,7 @@ public partial class CatalogViewModel
             {
                 await foreach (var row in query.EnumerateSelectionAsync(selection, token))
                 {
-                    var item = CreateProjectionItem(row, snapshot);
-                    item.SetShowOriginalValues(definition.ShowOriginalValues);
+                    var item = CreateProjectionItem(row, snapshot, definition, _localizer);
                     yield return new(row.FullPath, row.FullPath,
                         Path.GetFileName(Path.TrimEndingDirectorySeparator(row.FullPath)), item.OutputValues);
                 }
@@ -686,8 +700,7 @@ public partial class CatalogViewModel
                 {
                     while (enumerator.MoveNextAsync().AsTask().GetAwaiter().GetResult())
                     {
-                        var item = CreateProjectionItem(enumerator.Current, snapshot);
-                        item.SetShowOriginalValues(definition.ShowOriginalValues);
+                        var item = CreateProjectionItem(enumerator.Current, snapshot, definition, _localizer);
                         yield return CreateExportRow(item, fields);
                     }
                 }

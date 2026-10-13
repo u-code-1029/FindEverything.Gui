@@ -19,7 +19,8 @@ public partial class CatalogPage
     public CatalogPage(
         CatalogViewModel viewModel,
         ScanConsoleViewModel scanConsoleViewModel,
-        IGridLayoutStore gridLayoutStore)
+        IGridLayoutStore gridLayoutStore,
+        IProfilePresentationStore? presentationStore = null)
     {
         _viewModel = viewModel;
         DataContext = viewModel;
@@ -30,6 +31,7 @@ public partial class CatalogPage
             new MouseEventHandler(OnResultsGridPreviewMouseMove), handledEventsToo: true);
         ScanConsolePanel.DataContext = scanConsoleViewModel;
         DynamicProfileGrid.SetLayoutStore(ResultsGrid, gridLayoutStore);
+        DynamicProfileGrid.SetPresentationStore(ResultsGrid, presentationStore);
         viewModel.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(CatalogViewModel.IsDetailsOpen)) ApplyWorkspaceLayout();
@@ -46,37 +48,35 @@ public partial class CatalogPage
         var reserveDetails = _viewModel.IsDetailsOpen && CatalogPageContent.ActualWidth >= 900;
         CatalogResultsWorkspace.Margin = new System.Windows.Thickness(0, 0, reserveDetails ? 348 : 0, 0);
         CatalogDetailsPanel.Width = Math.Min(340, Math.Max(200, CatalogPageContent.ActualWidth));
-        var compact = CatalogPageContent.ActualWidth < 900;
-        if (compact)
-        {
-            CopySelectionButton.Content = null;
-            ExportSelectionButton.Content = null;
-        }
-        else
-        {
-            CopySelectionButton.SetResourceReference(System.Windows.Controls.ContentControl.ContentProperty, "Loc.Workspace.Selection.Copy");
-            ExportSelectionButton.SetResourceReference(System.Windows.Controls.ContentControl.ContentProperty, "Loc.Workspace.Selection.Export");
-        }
-        CopySelectionButton.Width = ExportSelectionButton.Width = compact ? 32 : double.NaN;
-        if (_selectionCompactMode != compact)
-        {
-            _selectionCompactMode = compact;
-            CatalogOutputFormatComboBox.Width = compact ? 80 : 140;
-            CatalogOutputFormatLabel.SetResourceReference(System.Windows.Controls.ContentControl.ContentProperty,
-                compact ? "Loc.Workspace.Output.Format.ShortLabel" : "Loc.Workspace.Output.Format.Label");
-            foreach (var (button, symbol) in new[]
-            {
-                (SelectAllResultsButton, Wpf.Ui.Controls.SymbolRegular.CheckboxChecked20),
-                (ClearAllResultsButton, Wpf.Ui.Controls.SymbolRegular.CheckboxUnchecked20),
-                (InvertResultsSelectionButton, Wpf.Ui.Controls.SymbolRegular.ArrowSwap20),
-            })
-            {
-                // Keep all action words visible; omit redundant icons in a narrow footer.
-                button.Icon = compact ? null : new Wpf.Ui.Controls.SymbolIcon(symbol);
-                button.Padding = new System.Windows.Thickness(compact ? 4 : 8, 4, compact ? 4 : 8, 4);
-                button.FontSize = compact ? 13 : 14;
-            }
-        }
+        ApplySelectionToolbarLayout();
+    }
+
+    private void OnSelectionToolbarSizeChanged(object sender, System.Windows.SizeChangedEventArgs e) => ApplySelectionToolbarLayout();
+
+    private void ApplySelectionToolbarLayout()
+    {
+        if (SelectionToolbar is null || SelectionToolbar.ActualWidth <= 0) return;
+        var compact = SelectionToolbar.ActualWidth < 1040;
+        if (_selectionCompactMode == compact) return;
+        _selectionCompactMode = compact;
+        var full = compact ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
+        var menu = compact ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+        SelectAllResultsButton.Visibility = ClearAllResultsButton.Visibility = InvertResultsSelectionButton.Visibility = full;
+        SelectionActionsMenuButton.Visibility = AdditionalActionsMenuButton.Visibility = menu;
+        CatalogOutputFormatLabel.Visibility = full;
+        CopySelectionButton.SetResourceReference(System.Windows.Controls.ContentControl.ContentProperty,
+            compact ? "Loc.View.Files.Content.Copy" : "Loc.Workspace.Selection.Copy");
+        OpenSelectionButton.Visibility = full;
+        ExportSelectionButton.Visibility = full;
+    }
+
+    private void OnFooterMenuClick(object sender, System.Windows.RoutedEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.Button button || button.ContextMenu is null) return;
+        button.ContextMenu.PlacementTarget = button;
+        button.ContextMenu.Placement = System.Windows.Controls.Primitives.PlacementMode.Top;
+        button.ContextMenu.IsOpen = true;
+        e.Handled = true;
     }
 
     private async void OnPagePreviewKeyDown(object sender, KeyEventArgs e)

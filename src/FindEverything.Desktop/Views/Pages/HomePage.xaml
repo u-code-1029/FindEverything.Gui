@@ -20,13 +20,13 @@
             <Setter Property="VerticalAlignment" Value="Stretch" />
             <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
         </Style>
-        <Style x:Key="HomeStateBadgeStyle" TargetType="Border">
+        <Style x:Key="HomeStateBadgeStyle" TargetType="controls:DisplayBadge" BasedOn="{StaticResource WorkspaceDisplayBadgeStyle}">
             <Setter Property="Padding" Value="8,3" />
             <Setter Property="Background" Value="{DynamicResource ControlFillColorSecondaryBrush}" />
             <Setter Property="CornerRadius" Value="10" />
             <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
-        <Style x:Key="HomeStepNumberStyle" TargetType="Border">
+        <Style x:Key="HomeStepNumberStyle" TargetType="controls:DisplayBadge" BasedOn="{StaticResource WorkspaceDisplayBadgeStyle}">
             <Setter Property="Width" Value="32" />
             <Setter Property="Height" Value="32" />
             <Setter Property="Background" Value="{DynamicResource AccentFillColorSecondaryBrush}" />
@@ -72,7 +72,7 @@
                             Style="{StaticResource PageSubtitleTextStyle}"
                             Text="{DynamicResource Loc.Home.Hero.Subtitle}" />
                     </StackPanel>
-                    <Border
+                    <controls:DisplayBadge
                         x:Name="HeroVisual"
                         Grid.Column="1"
                         Width="88"
@@ -85,7 +85,7 @@
                             FontSize="42"
                             Foreground="{DynamicResource TextOnAccentFillColorPrimaryBrush}"
                             Symbol="Search48" />
-                    </Border>
+                    </controls:DisplayBadge>
                 </Grid>
                 </controls:SectionCard.Header>
             </controls:SectionCard>
@@ -128,13 +128,13 @@
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
-                            <Border
+                            <controls:DisplayBadge
                                 Width="44"
                                 Height="44"
                                 Background="{DynamicResource ControlFillColorSecondaryBrush}"
                                 CornerRadius="10">
                                 <ui:SymbolIcon FontSize="24" Symbol="Search24" />
-                            </Border>
+                            </controls:DisplayBadge>
                             <StackPanel Grid.Column="1" Margin="14,0,0,0">
                                 <TextBlock FontSize="18" FontWeight="SemiBold" Text="{DynamicResource Loc.Home.Files.Title}" />
                                 <TextBlock Margin="0,3,0,0" Style="{StaticResource CaptionTextStyle}" Text="{Binding RootStateText}" />
@@ -169,13 +169,13 @@
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
-                            <Border
+                            <controls:DisplayBadge
                                 Width="44"
                                 Height="44"
                                 Background="{DynamicResource ControlFillColorSecondaryBrush}"
                                 CornerRadius="10">
                                 <ui:SymbolIcon FontSize="24" Symbol="TableSimple24" />
-                            </Border>
+                            </controls:DisplayBadge>
                             <StackPanel Grid.Column="1" Margin="14,0,0,0">
                                 <TextBlock FontSize="18" FontWeight="SemiBold" Text="{DynamicResource Loc.Home.Catalog.Title}" />
                                 <TextBlock Margin="0,3,0,0" Style="{StaticResource CaptionTextStyle}" Text="{Binding ProfileStateText}" />
@@ -224,9 +224,9 @@
                                     TextTrimming="CharacterEllipsis"
                                     ToolTip="{Binding RootPathText}" />
                             </StackPanel>
-                            <Border Grid.Column="1" Style="{StaticResource HomeStateBadgeStyle}">
+                            <controls:DisplayBadge Grid.Column="1" Style="{StaticResource HomeStateBadgeStyle}">
                                 <TextBlock FontSize="12" FontWeight="SemiBold" Text="{Binding RootStateText}" />
-                            </Border>
+                            </controls:DisplayBadge>
                         </Grid>
 
                         <Grid Margin="0,0,0,14">
@@ -238,9 +238,9 @@
                                 <TextBlock FontWeight="SemiBold" Text="{DynamicResource Loc.Home.Workspace.Profile}" />
                                 <TextBlock Margin="0,3,12,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding ProfileName}" TextTrimming="CharacterEllipsis" />
                             </StackPanel>
-                            <Border Grid.Column="1" Style="{StaticResource HomeStateBadgeStyle}">
+                            <controls:DisplayBadge Grid.Column="1" Style="{StaticResource HomeStateBadgeStyle}">
                                 <TextBlock FontSize="12" FontWeight="SemiBold" Text="{Binding ProfileCountText}" />
-                            </Border>
+                            </controls:DisplayBadge>
                         </Grid>
 
                         <StackPanel Margin="0,0,0,14">
@@ -291,9 +291,9 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <Border Style="{StaticResource HomeStepNumberStyle}">
+                            <controls:DisplayBadge Style="{StaticResource HomeStepNumberStyle}">
                                 <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="{DynamicResource TextOnAccentFillColorPrimaryBrush}" Text="1" />
-                            </Border>
+                            </controls:DisplayBadge>
                             <StackPanel Grid.Column="1" Margin="12,0">
                                 <TextBlock FontWeight="SemiBold" Text="{DynamicResource Loc.Home.Setup.Location.Title}" />
                                 <TextBlock Margin="0,2,0,0" Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.Home.Setup.Location.Description}" />
@@ -307,9 +307,9 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <Border Style="{StaticResource HomeStepNumberStyle}">
+                            <controls:DisplayBadge Style="{StaticResource HomeStepNumberStyle}">
                                 <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="{DynamicResource TextOnAccentFillColorPrimaryBrush}" Text="2" />
-                            </Border>
+                            </controls:DisplayBadge>
                             <StackPanel Grid.Column="1" Margin="12,0">
                                 <TextBlock FontWeight="SemiBold" Text="{DynamicResource Loc.Home.Setup.Profile.Title}" />
                                 <TextBlock Margin="0,2,0,0" Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.Home.Setup.Profile.Description}" />
@@ -323,9 +323,9 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <Border Style="{StaticResource HomeStepNumberStyle}">
+                            <controls:DisplayBadge Style="{StaticResource HomeStepNumberStyle}">
                                 <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="{DynamicResource TextOnAccentFillColorPrimaryBrush}" Text="3" />
-                            </Border>
+                            </controls:DisplayBadge>
                             <StackPanel Grid.Column="1" Margin="12,0">
                                 <TextBlock FontWeight="SemiBold" Text="{DynamicResource Loc.Home.Setup.Scan.Title}" />
                                 <TextBlock Margin="0,2,0,0" Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.Home.Setup.Scan.Description}" />

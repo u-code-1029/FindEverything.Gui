@@ -6,6 +6,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:localization="clr-namespace:FindEverything.Desktop.Localization"
     xmlns:pages="clr-namespace:FindEverything.Desktop.Views.Pages"
+    xmlns:controls="clr-namespace:FindEverything.Desktop.Views.Controls"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
     Title="{Binding ApplicationTitle}"
     Width="1360"
@@ -204,7 +205,7 @@
                     MinWidth="124"
                     HorizontalAlignment="Right"
                     Orientation="Horizontal">
-                    <Border
+                    <controls:DisplayBadge
                         Margin="0,0,8,0"
                         Padding="2"
                         VerticalAlignment="Center"
@@ -251,7 +252,7 @@
                                 </ui:Button.Style>
                             </ui:Button>
                         </StackPanel>
-                    </Border>
+                    </controls:DisplayBadge>
                     <ui:Button
                         x:Name="ScanConsoleToggleButton"
                         Width="36"

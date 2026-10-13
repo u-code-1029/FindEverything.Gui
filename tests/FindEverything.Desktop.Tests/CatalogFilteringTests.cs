@@ -42,7 +42,7 @@ public sealed class CatalogFilteringTests
 
         var displayedAmount = ((IFormattable)values["amount"]!).ToString(
             "N2",
-            CultureInfo.CurrentCulture);
+            CultureInfo.GetCultureInfo("ko-KR"));
 
         Assert.Equal("2026-10-07", item.DisplayValues["collectedOn"]);
         Assert.Equal(displayedAmount, item.DisplayValues["amount"]);
@@ -57,6 +57,22 @@ public sealed class CatalogFilteringTests
         Assert.True(item.Matches("Apollo 2026-10-07"));
         Assert.False(item.Matches("Apollo not-present"));
         Assert.False(item.Matches("not-present"));
+    }
+
+    [Fact]
+    public void Worker_mapping_uses_the_captured_app_culture_not_the_worker_ambient_culture()
+    {
+        var ambient = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("de-DE");
+            var item = new CatalogItemViewModel(new CatalogItem(@"C:\culture-test", "culture-test", "rule",
+                new object(), new Dictionary<string, object?> { ["amount"] = 1234.5m }, false),
+                [Field("amount", "Amount", 0, ProfileFieldValueKind.Decimal, "N2")],
+                new TestAppLocalizer("en-US"));
+            Assert.Equal("1,234.50", item.DisplayValues["amount"]);
+        }
+        finally { CultureInfo.CurrentCulture = ambient; }
     }
 
     [Fact]
@@ -269,6 +285,14 @@ public sealed class CatalogFilteringTests
             Assert.Equal(source, string.Concat(runs.Select(static run => run.Text)));
             Assert.Equal(2, runs.Count(static run => run.Background is not null));
 
+            TextHighlighting.SetHighlightText(textBlock, "APOLLO");
+            Assert.Equal(runs, textBlock.Inlines.OfType<Run>().ToArray());
+
+            TextHighlighting.SetHighlightText(textBlock, "Apollo ollo");
+            runs = textBlock.Inlines.OfType<Run>().ToArray();
+            Assert.Equal(source, string.Concat(runs.Select(static run => run.Text)));
+            Assert.Equal(2, runs.Count(static run => run.Background is not null));
+
             TextHighlighting.SetHighlightText(textBlock, "Apollo [x]");
             runs = textBlock.Inlines.OfType<Run>().ToArray();
             Assert.Equal(source, string.Concat(runs.Select(static run => run.Text)));
@@ -283,6 +307,12 @@ public sealed class CatalogFilteringTests
             runs = textBlock.Inlines.OfType<Run>().ToArray();
             Assert.Single(runs);
             Assert.Equal(source, runs[0].Text);
+            Assert.Null(runs[0].Background);
+
+            TextHighlighting.SetHighlightText(textBlock, "no-match");
+            runs = textBlock.Inlines.OfType<Run>().ToArray();
+            Assert.Single(runs);
+            Assert.Equal(source, textBlock.Text);
             Assert.Null(runs[0].Background);
             completion.TrySetResult(null);
         }

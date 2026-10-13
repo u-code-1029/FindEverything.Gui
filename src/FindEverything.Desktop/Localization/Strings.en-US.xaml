@@ -344,12 +344,12 @@
     <sys:String x:Key="Loc.Scan.Panel.Close">Close bottom scan log</sys:String>
     <sys:String x:Key="Loc.Scan.Panel.Open">Open bottom scan log</sys:String>
     <sys:String x:Key="Loc.Scan.Save.Completed">Scan log saved</sys:String>
-    <sys:String x:Key="Loc.Scan.Save.Completed.Message">Saved {0:N0} visible log lines.&#10;{1}</sys:String>
+    <sys:String x:Key="Loc.Scan.Save.Completed.Message">Saved {0:N0} retained log lines.&#10;{1}</sys:String>
     <sys:String x:Key="Loc.Scan.Save.Failed">Couldn’t save scan log</sys:String>
     <sys:String x:Key="Loc.Scan.Save.DirectoryNotFound">The scan-log folder was not found: {0}</sys:String>
-    <sys:String x:Key="Loc.Scan.Retention.Empty">0 shown / {0:N0} maximum</sys:String>
+    <sys:String x:Key="Loc.Scan.Retention.Empty">0 retained / {0:N0} maximum</sys:String>
     <sys:String x:Key="Loc.Scan.Retention.Dropped">Latest {0:N0} lines · {1:N0} earlier lines omitted</sys:String>
-    <sys:String x:Key="Loc.Scan.Retention.Visible">{0:N0} shown / {1:N0} maximum</sys:String>
+    <sys:String x:Key="Loc.Scan.Retention.Visible">{0:N0} retained / {1:N0} maximum</sys:String>
     <sys:String x:Key="Loc.Scan.Session.Summary">{0} · absolute path · {1}</sys:String>
     <sys:String x:Key="Loc.Scan.Trace.Completed">Scan completed.</sys:String>
     <sys:String x:Key="Loc.Scan.Trace.Cancelled">The scan was cancelled.</sys:String>
@@ -1446,4 +1446,18 @@
     <sys:String x:Key="Loc.Output.Suffix">Suffix</sys:String>
     <sys:String x:Key="Loc.Output.Suffix.Help">Example: ] → [first item, next item]</sys:String>
     <sys:String x:Key="Loc.Output.Validation.AffixTooLong">Prefix and suffix must each be 16,384 characters or fewer.</sys:String>
+    <sys:String x:Key="Loc.Workspace.Selection.Manage">Selection</sys:String>
+    <sys:String x:Key="Loc.Workspace.Selection.Manage.Help">Select all, clear selection, or invert selection.</sys:String>
+    <sys:String x:Key="Loc.Workspace.Selection.More">More actions</sys:String>
+    <sys:String x:Key="Loc.Profiles.ColumnWidth.Label">Column width</sys:String>
+    <sys:String x:Key="Loc.Profiles.ColumnWidth.Narrow">Narrow</sys:String>
+    <sys:String x:Key="Loc.Profiles.ColumnWidth.Default">Default</sys:String>
+    <sys:String x:Key="Loc.Profiles.ColumnWidth.Wide">Wide</sys:String>
+    <sys:String x:Key="Loc.Profiles.ColumnWidth.Help">Initial width adapts to the viewport and number of columns. Long values use ellipsis and tooltips; you can also resize columns in the list.</sys:String>
+    <sys:String x:Key="Loc.Profiles.ColumnWidth.Saved">Column display settings saved. Rules and existing results are unchanged.</sys:String>
+    <sys:String x:Key="Loc.Profiles.ColumnWidth.Dirty">Column width changed. Save to apply it to existing results.</sys:String>
+    <sys:String x:Key="Loc.Catalog.Column.Width.Reset">Reset width to content</sys:String>
+    <sys:String x:Key="Loc.Scan.Save.Help">Save all retained scan logs to a UTF-8 file</sys:String>
+    <sys:String x:Key="Loc.Scan.CopyAll">Copy all</sys:String>
+    <sys:String x:Key="Loc.Scan.Clear">Clear log</sys:String>
 </ResourceDictionary>

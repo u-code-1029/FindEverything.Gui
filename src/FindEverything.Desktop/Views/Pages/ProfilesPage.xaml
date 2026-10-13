@@ -15,6 +15,21 @@
     ScrollViewer.CanContentScroll="False"
     mc:Ignorable="d">
     <Page.Resources>
+        <DataTemplate x:Key="ColumnWidthChoiceTemplate">
+            <ComboBox MinWidth="120" HorizontalAlignment="Stretch"
+                AutomationProperties.Name="{DynamicResource Loc.Profiles.ColumnWidth.Label}"
+                ToolTip="{DynamicResource Loc.Profiles.ColumnWidth.Help}"
+                DisplayMemberPath="DisplayName"
+                ItemsSource="{Binding DataContext.ColumnWidthChoices, RelativeSource={RelativeSource AncestorType={x:Type Page}}}"
+                SelectedValue="{Binding WidthPreset, UpdateSourceTrigger=PropertyChanged}"
+                SelectedValuePath="Value" />
+        </DataTemplate>
+        <DataTemplate x:Key="ColumnWidthEditorTemplate">
+            <StackPanel Margin="0,12,0,0">
+                <TextBlock Margin="0,0,0,4" FontSize="14" FontWeight="SemiBold" Text="{DynamicResource Loc.Profiles.ColumnWidth.Label}" />
+                <ContentControl Content="{Binding}" ContentTemplate="{StaticResource ColumnWidthChoiceTemplate}" HorizontalContentAlignment="Stretch" />
+            </StackPanel>
+        </DataTemplate>
         <Style x:Key="FieldLabelStyle" TargetType="TextBlock">
             <Setter Property="Margin" Value="0,0,0,4" />
             <Setter Property="FontSize" Value="14" />
@@ -248,16 +263,14 @@
                                                                     Text="{Binding ValueMappingDescription}"
                                                                     TextWrapping="Wrap" />
                                                             </StackPanel>
-                                                            <Border
+                                                            <controls:DisplayBadge
                                                                 Grid.Column="1"
                                                                 Margin="12,0,0,0"
                                                                 Padding="8,3"
                                                                 VerticalAlignment="Top"
-                                                                Background="{DynamicResource ControlFillColorSecondaryBrush}"
-                                                                CornerRadius="10"
                                                                 Visibility="{Binding HasAliasGroup, Converter={StaticResource BooleanToVisibilityConverter}}">
                                                                 <TextBlock FontFamily="Consolas" FontSize="12" FontWeight="SemiBold" Text="alias" />
-                                                            </Border>
+                                                            </controls:DisplayBadge>
                                                         </Grid>
 
                                                         <ItemsControl Margin="0,12,0,0" ItemsSource="{Binding ValueMappings}">
@@ -627,6 +640,7 @@
                                                             AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.TextFileNameRegularExpression}"
                                                             PlaceholderText="{DynamicResource Loc.View.Profiles.PlaceholderText.ExampleMetadataTxtOrInfoDTxt}"
                                                             Text="{Binding FileNamePattern, UpdateSourceTrigger=PropertyChanged}" />
+                                                        <ContentControl Content="{Binding}" ContentTemplate="{StaticResource ColumnWidthEditorTemplate}" HorizontalContentAlignment="Stretch" />
 
                                                         <Grid Margin="0,12,0,0">
                                                             <Grid.ColumnDefinitions>
@@ -728,6 +742,7 @@
                                                         <Grid.RowDefinitions>
                                                             <RowDefinition Height="Auto" />
                                                             <RowDefinition Height="Auto" />
+                                                            <RowDefinition Height="Auto" />
                                                         </Grid.RowDefinitions>
                                                         <Grid.ColumnDefinitions>
                                                             <ColumnDefinition Width="*" />
@@ -782,6 +797,7 @@
                                                                 PlaceholderText="{DynamicResource Loc.View.Profiles.PlaceholderText.LeaveBlankForAnEmptyInput}"
                                                                 Text="{Binding DefaultValue, UpdateSourceTrigger=PropertyChanged}" />
                                                         </StackPanel>
+                                                        <ContentControl Grid.Row="2" Grid.ColumnSpan="6" Content="{Binding}" ContentTemplate="{StaticResource ColumnWidthEditorTemplate}" HorizontalContentAlignment="Stretch" />
                                                     </Grid>
                                                     </controls:SectionCard.Header>
                                                 </controls:SectionCard>
@@ -931,6 +947,7 @@
                                                             ItemsSource="{Binding DataContext.FieldKindChoices, RelativeSource={RelativeSource AncestorType={x:Type ItemsControl}}}"
                                                             SelectedValue="{Binding Kind, UpdateSourceTrigger=PropertyChanged}"
                                                             SelectedValuePath="Value" />
+                                                        <ContentControl Content="{Binding}" ContentTemplate="{StaticResource ColumnWidthEditorTemplate}" HorizontalContentAlignment="Stretch" />
 
                                                         <StackPanel Margin="0,12,0,0">
                                                             <StackPanel.Style>
@@ -1245,6 +1262,11 @@
                                                 </DataGridTemplateColumn.CellEditingTemplate>
                                             </DataGridTemplateColumn>
                                             <DataGridCheckBoxColumn Width="70" Binding="{Binding Required, UpdateSourceTrigger=PropertyChanged}" Header="{DynamicResource Loc.View.Profiles.Header.Required}" />
+                                            <DataGridTemplateColumn Width="140" Header="{DynamicResource Loc.Profiles.ColumnWidth.Label}">
+                                                <DataGridTemplateColumn.CellTemplate>
+                                                    <DataTemplate><ContentControl Margin="4" Content="{Binding}" ContentTemplate="{StaticResource ColumnWidthChoiceTemplate}" HorizontalContentAlignment="Stretch" /></DataTemplate>
+                                                </DataGridTemplateColumn.CellTemplate>
+                                            </DataGridTemplateColumn>
                                             <DataGridTextColumn Width="110" Binding="{Binding ParseFormat, UpdateSourceTrigger=PropertyChanged}" Header="{DynamicResource Loc.View.Profiles.Header.InputFormat}" />
                                             <DataGridTextColumn Width="110" Binding="{Binding DisplayFormat, UpdateSourceTrigger=PropertyChanged}" Header="{DynamicResource Loc.View.Profiles.Text.DisplayFormat}" />
                                             <DataGridTemplateColumn Width="118" Header="{DynamicResource Loc.View.Profiles.Header.OrderDelete}">

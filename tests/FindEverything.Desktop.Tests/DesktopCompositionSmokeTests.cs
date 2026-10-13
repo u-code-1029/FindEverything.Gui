@@ -80,6 +80,7 @@ public sealed class DesktopCompositionSmokeTests
         {
             application = CreateTestApplication();
             SectionCardRegressionChecks.Verify();
+            GridSizingRegressionChecks.Verify();
 
             var configuration = new ConfigurationManager();
             configuration.AddInMemoryCollection(new Dictionary<string, string?>
@@ -184,6 +185,7 @@ public sealed class DesktopCompositionSmokeTests
             VerifyOperationInfoBar(provider, window);
             VerifyScanConsole(provider, window, catalogPage);
             VerifyProjectionQueries(provider, window);
+            WorkspacePerformanceChecks.Verify(provider);
             VerifyDynamicGridHighlighting();
             window.Close();
             window = null;
@@ -263,8 +265,8 @@ public sealed class DesktopCompositionSmokeTests
             filesPage.FindName("PartialRefreshButton"));
         Assert.NotNull(partialRefreshButton.Command);
 
-        var filesToolbar = Assert.IsType<Border>(filesPage.FindName("SelectionToolbar"));
-        var catalogToolbar = Assert.IsType<Border>(catalogPage.FindName("SelectionToolbar"));
+        var filesToolbar = Assert.IsAssignableFrom<Wpf.Ui.Controls.CardControl>(filesPage.FindName("SelectionToolbar"));
+        var catalogToolbar = Assert.IsAssignableFrom<Wpf.Ui.Controls.CardControl>(catalogPage.FindName("SelectionToolbar"));
         Assert.Equal(Visibility.Collapsed, filesToolbar.Visibility);
         Assert.Equal(Visibility.Collapsed, catalogToolbar.Visibility);
         var exportButton = Assert.IsType<Wpf.Ui.Controls.Button>(
@@ -320,10 +322,23 @@ public sealed class DesktopCompositionSmokeTests
                     Assert.InRange(page.ActualWidth, size.Width - 0.01, size.Width + 0.01);
                     Assert.InRange(page.ActualHeight, size.Height - 0.01, size.Height + 0.01);
                     var grid = Assert.IsType<System.Windows.Controls.DataGrid>(page.FindName("ResultsGrid"));
-                    var toolbar = Assert.IsType<Border>(page.FindName("SelectionToolbar"));
+                    var toolbar = Assert.IsAssignableFrom<Wpf.Ui.Controls.CardControl>(page.FindName("SelectionToolbar"));
                     Assert.True(grid.ActualHeight / page.ActualHeight >= minimumRatio,
                         $"{page.GetType().Name}: results occupy {grid.ActualHeight / page.ActualHeight:P1} at {size}.");
                     Assert.True(toolbar.ActualHeight > 0);
+                    var format = Assert.IsType<System.Windows.Controls.ComboBox>(page.FindName(
+                        page is CatalogPage ? "CatalogOutputFormatComboBox" : "FilesOutputFormatComboBox"));
+                    Assert.Equal(280, format.Width);
+                    Assert.Equal(240, format.MinWidth);
+                    Assert.True(format.ActualWidth >= 240, "Output formats must remain readable in a narrow footer.");
+                    var selectionMenu = Assert.IsType<Wpf.Ui.Controls.Button>(page.FindName("SelectionActionsMenuButton"));
+                    Assert.NotNull(selectionMenu.ContextMenu);
+                    Assert.Equal(3, selectionMenu.ContextMenu.Items.Count);
+                    Assert.Equal(size.Width < 1040 ? Visibility.Visible : Visibility.Collapsed, selectionMenu.Visibility);
+                    var additionalMenu = Assert.IsType<Wpf.Ui.Controls.Button>(page.FindName("AdditionalActionsMenuButton"));
+                    Assert.NotNull(additionalMenu.ContextMenu);
+                    Assert.Equal(page is CatalogPage ? 2 : 1, additionalMenu.ContextMenu.Items.Count);
+                    Assert.False(toolbar.Focusable);
                     var gridBottom = grid.TranslatePoint(new Point(0, grid.ActualHeight), page).Y;
                     var toolbarTop = toolbar.TranslatePoint(new Point(0, 0), page).Y;
                     Assert.True(toolbarTop >= gridBottom, "Selection actions must not cover the last row or scrollbar.");

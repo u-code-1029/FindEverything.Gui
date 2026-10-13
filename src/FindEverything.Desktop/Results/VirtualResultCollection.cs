@@ -6,6 +6,12 @@ using FindEverything.Application.Results;
 
 namespace FindEverything.Desktop.Results;
 
+public sealed class ResultPageLoadedEventArgs<T>(int offset, IReadOnlyList<T> items) : EventArgs
+{
+    public int Offset { get; } = offset;
+    public IReadOnlyList<T> Items { get; } = items;
+}
+
 /// <summary>A virtual IList with a bounded page cache. Index reads never block the UI.</summary>
 public sealed class VirtualResultCollection<T> : IList<T>, IList,
     INotifyCollectionChanged, INotifyPropertyChanged, IDisposable where T : class
@@ -16,7 +22,11 @@ public sealed class VirtualResultCollection<T> : IList<T>, IList,
     private readonly Func<int, T> _placeholder;
     private readonly Action<Action> _dispatch;
     private readonly Action<Exception> _failed;
-    private readonly Dictionary<int, T[]> _pages = [];
+    // Empty slots are cheap references; a heavy placeholder view model is only
+    // created when the virtualizing panel actually asks for that slot.
+    private readonly Dictionary<int, T?[]> _pages = [];
+    private readonly Dictionary<T, int> _indices = new(ReferenceEqualityComparer.Instance);
+    private readonly HashSet<T> _duplicateItems = new(ReferenceEqualityComparer.Instance);
     private readonly HashSet<int> _loading = [];
     private readonly HashSet<int> _ready = [];
     private readonly LinkedList<int> _recent = [];
@@ -44,13 +54,21 @@ public sealed class VirtualResultCollection<T> : IList<T>, IList,
 
     public event NotifyCollectionChangedEventHandler? CollectionChanged;
     public event PropertyChangedEventHandler? PropertyChanged;
-    public event EventHandler? PageLoaded;
+    public event EventHandler<ResultPageLoadedEventArgs<T>>? PageLoaded;
     public int Count => _count;
     public bool IsReadOnly => true;
     public int CachedItemCount { get { lock (_gate) return _pages.Where(p => _ready.Contains(p.Key)).Sum(p => p.Value.Length); } }
     public IReadOnlyList<T> LoadedItems
     {
-        get { lock (_gate) return _pages.OrderBy(p => p.Key).Where(p => _ready.Contains(p.Key)).SelectMany(p => p.Value).ToArray(); }
+        get { lock (_gate) return _pages.OrderBy(p => p.Key).Where(p => _ready.Contains(p.Key)).SelectMany(p => p.Value).OfType<T>().ToArray(); }
+    }
+
+    public IReadOnlyList<T> GetLoadedSample(int maximum)
+    {
+        if (maximum < 0) throw new ArgumentOutOfRangeException(nameof(maximum));
+        lock (_gate)
+            return _pages.OrderBy(p => p.Key).Where(p => _ready.Contains(p.Key))
+                .SelectMany(p => p.Value).OfType<T>().Take(maximum).ToArray();
     }
 
     public T this[int index]
@@ -64,7 +82,7 @@ public sealed class VirtualResultCollection<T> : IList<T>, IList,
             {
                 if (!_pages.TryGetValue(start, out var page))
                 {
-                    page = Enumerable.Range(start, Math.Min(PageSize, Count - start)).Select(_placeholder).ToArray();
+                    page = new T?[Math.Min(PageSize, Count - start)];
                     _pages[start] = page;
                 }
                 Touch(start);
@@ -74,7 +92,9 @@ public sealed class VirtualResultCollection<T> : IList<T>, IList,
                     _loading.Add(start);
                     if (!_pending.Writer.TryWrite(start)) _loading.Remove(start);
                 }
-                value = page[index - start];
+                value = page[index - start] ??= _placeholder(index);
+                if (_indices.TryGetValue(value, out var existing) && existing != index) _duplicateItems.Add(value);
+                _indices.TryAdd(value, index);
             }
             return value;
         }
@@ -91,8 +111,16 @@ public sealed class VirtualResultCollection<T> : IList<T>, IList,
         {
             foreach (var start in _pages.Keys.ToArray())
             {
-                if (start >= value) { _pages.Remove(start); _ready.Remove(start); _recent.Remove(start); }
-                else if (_pages[start].Length > value - start) _pages[start] = _pages[start][..(value - start)];
+                if (start >= value) { RemovePage(start); _recent.Remove(start); }
+                else if (_pages[start].Length > value - start)
+                {
+                    var trimmed = _pages[start][..(value - start)];
+                    var ready = _ready.Contains(start);
+                    RemovePage(start);
+                    _pages[start] = trimmed;
+                    IndexPage(start, trimmed);
+                    if (ready) _ready.Add(start);
+                }
             }
         }
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Count)));
@@ -101,20 +129,32 @@ public sealed class VirtualResultCollection<T> : IList<T>, IList,
 
     public void Seed(ResultPage<T> page, long? count = null)
     {
-        lock (_gate) { _pages[page.Offset] = page.Items.ToArray(); _ready.Add(page.Offset); _loading.Remove(page.Offset); Touch(page.Offset); }
+        var items = page.Items.ToArray();
+        lock (_gate)
+        {
+            RemovePage(page.Offset);
+            _pages[page.Offset] = items;
+            IndexPage(page.Offset, items);
+            _ready.Add(page.Offset); _loading.Remove(page.Offset); Touch(page.Offset);
+        }
         SetCount(count ?? page.Offset + page.Items.Count);
-        PageLoaded?.Invoke(this, EventArgs.Empty);
+        PageLoaded?.Invoke(this, new(page.Offset, items));
     }
 
     public int IndexOf(T item)
     {
         lock (_gate)
         {
+            if (_indices.TryGetValue(item, out var index)) return index;
+            // The normal view-model path is reference-indexed. Keep IList's
+            // equality semantics for an external, equivalent object as well.
+            var first = int.MaxValue;
             foreach (var (start, page) in _pages)
             {
                 var local = Array.IndexOf(page, item);
-                if (local >= 0) return start + local;
+                if (local >= 0) first = Math.Min(first, start + local);
             }
+            if (first != int.MaxValue) return first;
         }
         return -1;
     }
@@ -126,9 +166,45 @@ public sealed class VirtualResultCollection<T> : IList<T>, IList,
         {
             var first = _recent.First!.Value;
             _recent.RemoveFirst();
-            _pages.Remove(first);
-            _ready.Remove(first);
+            RemovePage(first);
         }
+    }
+
+    private void IndexPage(int start, T?[] items)
+    {
+        for (var index = 0; index < items.Length; index++)
+            if (items[index] is { } item)
+            {
+                if (_indices.TryGetValue(item, out var previous))
+                {
+                    if (previous != start + index) _duplicateItems.Add(item);
+                    if (start + index < previous) _indices[item] = start + index;
+                }
+                else _indices[item] = start + index;
+            }
+    }
+
+    private void RemovePage(int start)
+    {
+        if (!_pages.Remove(start, out var page)) return;
+        _ready.Remove(start);
+        HashSet<T>? duplicates = null;
+        for (var index = 0; index < page.Length; index++)
+            if (page[index] is { } item && _indices.TryGetValue(item, out var existing) && existing == start + index)
+            {
+                _indices.Remove(item);
+                if (_duplicateItems.Contains(item)) (duplicates ??= new(ReferenceEqualityComparer.Instance)).Add(item);
+            }
+        // Repeated object instances are unusual for view models, but IList's
+        // first-index contract also holds for simple/interned test values.
+        if (duplicates is null) return;
+        foreach (var (otherStart, otherPage) in _pages)
+            for (var index = 0; index < otherPage.Length; index++)
+                if (otherPage[index] is { } item && duplicates.Contains(item))
+                    if (!_indices.TryGetValue(item, out var existing) || otherStart + index < existing)
+                        _indices[item] = otherStart + index;
+        foreach (var item in duplicates)
+            if (!_indices.ContainsKey(item)) _duplicateItems.Remove(item);
     }
 
     private void QueueVisiblePages()
@@ -177,20 +253,24 @@ public sealed class VirtualResultCollection<T> : IList<T>, IList,
     private void Publish(int start, ResultPage<T> result)
     {
         if (_disposed) return;
-        T[]? previous;
+        T?[]? previous;
         T[] next;
         lock (_gate)
         {
             _loading.Remove(start);
             if (!_pages.TryGetValue(start, out previous) || start >= Count) return;
             next = result.Items.Take(Count - start).ToArray();
-            _pages[start] = next; _ready.Add(start); Touch(start);
+            RemovePage(start);
+            _pages[start] = next; IndexPage(start, next); _ready.Add(start); Touch(start);
             QueueVisiblePages();
         }
+        // WPF rejects range Replace events. Publish only individual slots that
+        // had been requested; unloaded slots need no collection notification.
         for (var index = 0; index < next.Length && index < previous.Length; index++)
-            CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(
-                NotifyCollectionChangedAction.Replace, next[index], previous[index], start + index));
-        PageLoaded?.Invoke(this, EventArgs.Empty);
+            if (previous[index] is { } oldItem)
+                CollectionChanged?.Invoke(this, new NotifyCollectionChangedEventArgs(
+                    NotifyCollectionChangedAction.Replace, next[index], oldItem, start + index));
+        PageLoaded?.Invoke(this, new(start, next));
     }
 
     public void Dispose()

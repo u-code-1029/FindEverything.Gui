@@ -5,7 +5,7 @@
     <Page.Resources>
         <!-- Related options share one card, rather than a separate border around every row. -->
         <Style x:Key="SettingsSectionCardStyle" TargetType="ui:CardControl" BasedOn="{StaticResource FluentCardStyle}">
-            <Setter Property="Margin" Value="0,0,0,16" />
+            <Setter Property="Margin" Value="{StaticResource SectionGap}" />
         </Style>
         <Style x:Key="GroupedSettingRowStyle" TargetType="controls:SettingRowCard">
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />

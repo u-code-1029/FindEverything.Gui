@@ -2,11 +2,13 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FindEverything.Application.Catalog;
 using FindEverything.Application.Profiles;
 using FindEverything.Desktop.Localization;
+using FindEverything.Desktop.Configuration;
 using FindEverything.Desktop.Services;
 using FindEverything.Profile.Abstractions;
 using FindEverything.Profile.Runtime;
@@ -44,6 +46,8 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
     private readonly IDraftProtectionService? _draftProtection;
     private bool _hasUserChanges;
     private readonly IUiScheduler _uiScheduler;
+    private readonly IProfilePresentationStore? _presentationStore;
+    private string? _savedRuleDefinition;
 
     [ObservableProperty]
     private IReadOnlyList<ProfileSummaryViewModel> _profiles = [];
@@ -151,7 +155,8 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
         IAppLocalizer localizer,
         ILogger<ProfilesViewModel> logger,
         IDraftProtectionService? draftProtection = null,
-        IUiScheduler? uiScheduler = null)
+        IUiScheduler? uiScheduler = null,
+        IProfilePresentationStore? presentationStore = null)
     {
         _profileCatalog = profileCatalog;
         _authoringService = authoringService;
@@ -166,6 +171,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
         _logger = logger;
         _draftProtection = draftProtection;
         _uiScheduler = uiScheduler ?? ImmediateUiScheduler.Instance;
+        _presentationStore = presentationStore;
         _draftProtection?.Register(this);
 
         FieldKindChoices =
@@ -175,6 +181,12 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
             new(ProfileFieldValueKind.Decimal, L("Loc.Profiles.Kind.Decimal", "소수")),
             new(ProfileFieldValueKind.DateTime, L("Loc.Profiles.Kind.DateTime", "날짜/시간")),
             new(ProfileFieldValueKind.Boolean, L("Loc.Profiles.Kind.Boolean", "참/거짓")),
+        ];
+        ColumnWidthChoices =
+        [
+            new(ColumnWidthPreset.Narrow, L("Loc.Profiles.ColumnWidth.Narrow", "좁게")),
+            new(ColumnWidthPreset.Default, L("Loc.Profiles.ColumnWidth.Default", "기본")),
+            new(ColumnWidthPreset.Wide, L("Loc.Profiles.ColumnWidth.Wide", "넓게")),
         ];
         MatchModeChoices =
         [
@@ -203,6 +215,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
     }
 
     public IReadOnlyList<SettingChoice<ProfileFieldValueKind>> FieldKindChoices { get; }
+    public IReadOnlyList<SettingChoice<ColumnWidthPreset>> ColumnWidthChoices { get; }
 
     public IReadOnlyList<SettingChoice<ProfileRegexMatchMode>> MatchModeChoices { get; }
 
@@ -421,6 +434,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
         {
             DetachRows();
             _originalProfileId = null;
+            _savedRuleDefinition = null;
             CurrentEditorStep = ProfileEditorStep.Profile;
             _draftVersion = "1.0.0";
             CanEditDraftId = true;
@@ -507,6 +521,18 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
             }
 
             PopulateDraft(manifest);
+            if (_presentationStore is not null)
+            {
+                var presentation = await _presentationStore.LoadAsync(manifest.Id!).ConfigureAwait(true);
+                _isPopulatingDraft = true;
+                try
+                {
+                    foreach (var field in DraftFields) field.WidthPreset = presentation.GetValueOrDefault(field.FieldId);
+                    foreach (var field in DraftTextFileFields) field.WidthPreset = presentation.GetValueOrDefault(field.FieldId);
+                    foreach (var field in DraftUserInputFields) field.WidthPreset = presentation.GetValueOrDefault(field.FieldId);
+                }
+                finally { _isPopulatingDraft = false; }
+            }
             SetEditorStatus(
                 F(
                     "Loc.Profiles.Status.Opened",
@@ -1051,6 +1077,26 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
             SetEditorStatus(NumericValidationMessage, InfoBarSeverity.Error);
             return;
         }
+        // A presentation-only edit must not publish a new compiled profile or invalidate cached results.
+        string definition;
+        try { definition = JsonSerializer.Serialize(BuildManifest()); }
+        catch (InvalidOperationException exception)
+        {
+            _logger.LogWarning(exception, "Could not build the profile draft.");
+            SetEditorStatus(exception.Message, InfoBarSeverity.Error);
+            return;
+        }
+        if (_presentationStore is not null && _originalProfileId is not null && definition == _savedRuleDefinition)
+        {
+            await RunEditorOperationAsync(async () =>
+            {
+                await SavePresentationAsync(_originalProfileId).ConfigureAwait(true);
+                IsDraftDirty = false;
+                _hasUserChanges = false;
+                SetEditorStatus(L("Loc.Profiles.ColumnWidth.Saved", "컬럼 표시 설정을 저장했습니다. 규칙과 기존 결과는 그대로 유지됩니다."), InfoBarSeverity.Success);
+            }).ConfigureAwait(true);
+            return;
+        }
         if (_operationCoordinator.IsRunning)
         {
             SetEditorStatus(
@@ -1124,6 +1170,8 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
 
             _originalProfileId = result.Review.Profile!.Descriptor.Id;
             CanEditDraftId = false;
+            _savedRuleDefinition = definition;
+            await SavePresentationAsync(_originalProfileId).ConfigureAwait(true);
             IsDraftDirty = false;
             _hasUserChanges = false;
             OpenSavedProfileInPlaygroundCommand.NotifyCanExecuteChanged();
@@ -1160,6 +1208,16 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
         }
 
         _ = _playgroundNavigator.Navigate(_originalProfileId);
+    }
+
+    private Task SavePresentationAsync(string profileId)
+    {
+        if (_presentationStore is null) return Task.CompletedTask;
+        var fields = DraftFields.Select(static f => (f.FieldId, f.WidthPreset))
+            .Concat(DraftTextFileFields.Select(static f => (f.FieldId, f.WidthPreset)))
+            .Concat(DraftUserInputFields.Select(static f => (f.FieldId, f.WidthPreset)))
+            .ToDictionary(static f => f.FieldId.Trim(), static f => f.WidthPreset, StringComparer.OrdinalIgnoreCase);
+        return _presentationStore.SaveAsync(profileId, fields);
     }
 
     [RelayCommand]
@@ -1388,6 +1446,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
         }
 
         IsDraftDirty = false;
+        _savedRuleDefinition = JsonSerializer.Serialize(BuildManifest());
         _hasUserChanges = false;
         RefreshNumericValidation();
         OpenSavedProfileInPlaygroundCommand.NotifyCanExecuteChanged();
@@ -1558,6 +1617,15 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
     {
         if (_isPopulatingDraft)
         {
+            return;
+        }
+
+        if (eventArgs.PropertyName == nameof(ProfileFieldDraftViewModel.WidthPreset))
+        {
+            // Width is GUI-only; do not rebuild the guided regex preview.
+            _hasUserChanges = true;
+            IsDraftDirty = true;
+            SetEditorStatus(L("Loc.Profiles.ColumnWidth.Dirty", "컬럼 너비를 변경했습니다. 저장하면 기존 결과에 적용됩니다."), InfoBarSeverity.Informational);
             return;
         }
 

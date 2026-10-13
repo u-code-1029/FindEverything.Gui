@@ -1,11 +1,108 @@
 using FindEverything.Application.Results;
 using FindEverything.Desktop.Results;
+using System.Collections.Specialized;
+using System.Collections.Concurrent;
 using Xunit;
 
 namespace FindEverything.Application.Tests;
 
 public sealed class VirtualResultCollectionTests
 {
+    [Fact]
+    public async Task One_requested_slot_creates_one_placeholder_and_publishes_one_single_replace()
+    {
+        var ready = new TaskCompletionSource<ResultPage<string>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var loaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var placeholders = 0;
+        var replacements = new ConcurrentQueue<NotifyCollectionChangedEventArgs>();
+        using var list = new VirtualResultCollection<string>((_, _, token) => ready.Task.WaitAsync(token),
+            index => { Interlocked.Increment(ref placeholders); return $"placeholder-{index}"; },
+            action => action(), exception => loaded.TrySetException(exception));
+        list.SetCount(1_000_000);
+        list.CollectionChanged += (_, args) => replacements.Enqueue(args);
+        list.PageLoaded += (_, page) =>
+        {
+            Assert.Equal(0, page.Offset);
+            Assert.Equal(500, page.Items.Count);
+            loaded.TrySetResult();
+        };
+
+        var first = list[42];
+        Assert.Same(first, list[42]);
+        Assert.Equal(42, list.IndexOf(first));
+        Assert.Equal(1, placeholders);
+        ready.SetResult(new(Enumerable.Range(0, 500).Select(index => $"row-{index}").ToArray(), 0, true));
+        await loaded.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        var replacement = Assert.Single(replacements);
+        Assert.Equal(NotifyCollectionChangedAction.Replace, replacement.Action);
+        Assert.Equal(42, replacement.NewStartingIndex);
+        Assert.Single(replacement.NewItems!);
+        Assert.Single(replacement.OldItems!);
+        Assert.Equal(-1, list.IndexOf(first));
+        Assert.Equal(42, list.IndexOf(list[42]));
+        Assert.Equal(1, placeholders);
+    }
+
+    [Fact]
+    public void Loaded_sample_never_materializes_unrequested_virtual_rows()
+    {
+        var placeholderCount = 0;
+        using var list = new VirtualResultCollection<string>((_, _, _) => throw new InvalidOperationException("No load expected"),
+            index => { placeholderCount++; return $"placeholder-{index}"; }, action => action(), _ => { });
+        list.Seed(new(Enumerable.Range(0, 500).Select(index => $"row-{index}").ToArray(), 0, true), 1_000_000);
+
+        var sample = list.GetLoadedSample(200);
+        Assert.Equal(200, sample.Count);
+        Assert.Equal("row-0", sample[0]);
+        Assert.Equal("row-199", sample[^1]);
+        Assert.Equal(500, list.CachedItemCount);
+        Assert.Equal(0, placeholderCount);
+        Assert.Empty(list.GetLoadedSample(0));
+        Assert.Throws<ArgumentOutOfRangeException>(() => list.GetLoadedSample(-1));
+    }
+
+    [Fact]
+    public void Trimming_and_eviction_remove_reverse_indices_and_keep_ready_rows()
+    {
+        using var list = new VirtualResultCollection<string>((_, _, _) => throw new InvalidOperationException("No load expected"),
+            index => $"placeholder-{index}", action => action(), _ => { });
+        var initial = Enumerable.Range(0, 500).Select(index => $"row-{index}").ToArray();
+        list.Seed(new(initial, 0, true), 1_000_000);
+        list.SetCount(100);
+        Assert.Equal(100, list.CachedItemCount);
+        Assert.Equal(99, list.IndexOf(initial[99]));
+        Assert.Equal(-1, list.IndexOf(initial[100]));
+        list.SetCount(1_000_000);
+        for (var page = 1; page <= 10; page++)
+            list.Seed(new(Enumerable.Range(page * 500, 500).Select(index => $"row-{index}").ToArray(), page * 500, true), 1_000_000);
+        Assert.Equal(5000, list.CachedItemCount);
+        Assert.Equal(-1, list.IndexOf(initial[99]));
+    }
+
+    [Fact]
+    public async Task A_disposed_collection_does_not_publish_a_late_provider_result()
+    {
+        var ready = new TaskCompletionSource<ResultPage<string>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var callbacks = new ConcurrentQueue<Action>();
+        var replacements = 0;
+        var list = new VirtualResultCollection<string>((_, _, _) => { started.TrySetResult(); return ready.Task; },
+            index => $"placeholder-{index}", action => callbacks.Enqueue(action), _ => { });
+        list.SetCount(500);
+        list.CollectionChanged += (_, _) => replacements++;
+        _ = list[0];
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        list.Dispose();
+        ready.SetResult(new(["late-row"], 0, false));
+        var timeout = DateTime.UtcNow.AddSeconds(10);
+        while (callbacks.IsEmpty && DateTime.UtcNow < timeout) await Task.Delay(10);
+        Assert.True(callbacks.TryDequeue(out var publish));
+        publish();
+        Assert.Equal(0, replacements);
+        Assert.Equal(0, list.CachedItemCount);
+    }
+
     [Fact]
     public async Task Synchronous_provider_work_does_not_block_indexer_and_cached_count_excludes_placeholders()
     {

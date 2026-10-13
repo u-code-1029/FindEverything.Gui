@@ -3,6 +3,7 @@ using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
+using FindEverything.Desktop.Configuration;
 using CommunityToolkit.Mvvm.Input;
 using FindEverything.Profile.Runtime;
 
@@ -157,6 +158,8 @@ public sealed record GuidedPathAssignmentViewModel(
 /// </summary>
 public partial class ProfileFieldDraftViewModel : ObservableObject
 {
+    [ObservableProperty]
+    private ColumnWidthPreset _widthPreset = ColumnWidthPreset.Default;
     private static readonly IReadOnlyList<GuidedDateFormatChoice> CommonDateFormats =
     [
         new("yyyyMMdd", ProfileEditorText.Get("Loc.Profiles.DateFormat.Digits", "20260521  ·  숫자 8자리")),
@@ -1035,6 +1038,8 @@ public partial class ProfileDirectoryNameExclusionRuleDraftViewModel : Observabl
 public partial class ProfileTextFileFieldDraftViewModel : ObservableObject
 {
     [ObservableProperty]
+    private ColumnWidthPreset _widthPreset = ColumnWidthPreset.Default;
+    [ObservableProperty]
     private string _header = string.Empty;
 
     [ObservableProperty]
@@ -1143,6 +1148,8 @@ public partial class ProfileTextFileFieldDraftViewModel : ObservableObject
 /// </summary>
 public partial class ProfileUserInputFieldDraftViewModel : ObservableObject
 {
+    [ObservableProperty]
+    private ColumnWidthPreset _widthPreset = ColumnWidthPreset.Default;
     [ObservableProperty]
     private string _header = string.Empty;
 

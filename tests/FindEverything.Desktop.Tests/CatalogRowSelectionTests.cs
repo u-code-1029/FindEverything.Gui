@@ -90,6 +90,21 @@ public sealed class CatalogRowSelectionTests
     }
 
     [Fact]
+    public async Task Single_persisted_toggle_does_not_resynchronize_unrelated_cached_rows()
+    {
+        using var fixture = new SelectionFixture(persisted: true);
+        // Page adoption and bulk commands own cache reconciliation. A single
+        // gesture must not read/rewrite every other row in the bounded cache.
+        fixture.Rows[4].IsSelected = true;
+        await fixture.ViewModel.SelectRowAsync(fixture.Rows[0], additive: true, range: false);
+        Assert.True(fixture.Rows[0].IsSelected);
+        Assert.True(fixture.Rows[4].IsSelected);
+        Assert.Equal(1, fixture.ViewModel.SelectedCount);
+        fixture.ViewModel.ClearSelectionCommand.Execute(null);
+        Assert.False(fixture.Rows[4].IsSelected);
+    }
+
+    [Fact]
     public void Copy_selection_model_does_not_depend_on_native_grid_focus_selection()
     {
         using var fixture = new SelectionFixture(persisted: false);

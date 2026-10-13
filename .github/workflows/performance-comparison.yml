@@ -1,0 +1,48 @@
+name: performance comparison
+
+on:
+  push:
+    branches: [codex/ui-performance-refactor]
+  workflow_dispatch:
+
+jobs:
+  compare:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.401
+      - name: Measure current UI on the existing application dispatcher
+        env:
+          FINDEVERYTHING_QA_DIR: ${{ github.workspace }}/artifacts/performance
+          FINDEVERYTHING_PERF_LABEL: current
+        run: dotnet test tests/FindEverything.Desktop.Tests/FindEverything.Desktop.Tests.csproj -c Release --filter FullyQualifiedName~Shell_pages_and_navigation_resolve_on_an_sta_thread
+      - uses: actions/checkout@v7
+        with:
+          ref: b78f75f05fa95ec0efd2c4e63bf873864f20d2b0
+          path: performance-baseline
+          submodules: recursive
+      - name: Apply the identical measurement fixture to the baseline
+        shell: pwsh
+        run: |
+          $fixture = 'tests/FindEverything.Desktop.Tests/WorkspacePerformanceChecks.cs'
+          Copy-Item $fixture (Join-Path 'performance-baseline' $fixture)
+          $smoke = 'performance-baseline/tests/FindEverything.Desktop.Tests/DesktopCompositionSmokeTests.cs'
+          $source = Get-Content $smoke -Raw
+          $source = $source.Replace('VerifyProjectionQueries(provider, window);', "VerifyProjectionQueries(provider, window);`n            WorkspacePerformanceChecks.Verify(provider);")
+          [IO.File]::WriteAllText((Join-Path $PWD $smoke), $source)
+      - name: Measure baseline UI on the same Windows runner
+        working-directory: performance-baseline
+        env:
+          FINDEVERYTHING_QA_DIR: ${{ github.workspace }}/artifacts/performance
+          FINDEVERYTHING_PERF_LABEL: baseline
+        run: dotnet test tests/FindEverything.Desktop.Tests/FindEverything.Desktop.Tests.csproj -c Release --filter FullyQualifiedName~Shell_pages_and_navigation_resolve_on_an_sta_thread
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: FindEverything.Gui-performance-comparison
+          path: artifacts/performance/performance-*.json
+          if-no-files-found: warn

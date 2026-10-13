@@ -344,12 +344,12 @@
     <sys:String x:Key="Loc.Scan.Panel.Close">하단 탐색 로그 닫기</sys:String>
     <sys:String x:Key="Loc.Scan.Panel.Open">하단 탐색 로그 열기</sys:String>
     <sys:String x:Key="Loc.Scan.Save.Completed">탐색 로그 저장 완료</sys:String>
-    <sys:String x:Key="Loc.Scan.Save.Completed.Message">현재 표시된 로그 {0:N0}줄을 저장했습니다.&#10;{1}</sys:String>
+    <sys:String x:Key="Loc.Scan.Save.Completed.Message">보관된 로그 {0:N0}줄을 저장했습니다.&#10;{1}</sys:String>
     <sys:String x:Key="Loc.Scan.Save.Failed">탐색 로그 저장 실패</sys:String>
     <sys:String x:Key="Loc.Scan.Save.DirectoryNotFound">로그를 저장할 폴더를 찾을 수 없습니다: {0}</sys:String>
-    <sys:String x:Key="Loc.Scan.Retention.Empty">표시 0 / 최대 {0:N0}줄</sys:String>
+    <sys:String x:Key="Loc.Scan.Retention.Empty">보관 0 / 최대 {0:N0}줄</sys:String>
     <sys:String x:Key="Loc.Scan.Retention.Dropped">최근 {0:N0}줄 · 이전 {1:N0}줄 생략</sys:String>
-    <sys:String x:Key="Loc.Scan.Retention.Visible">표시 {0:N0} / 최대 {1:N0}줄</sys:String>
+    <sys:String x:Key="Loc.Scan.Retention.Visible">보관 {0:N0} / 최대 {1:N0}줄</sys:String>
     <sys:String x:Key="Loc.Scan.Session.Summary">{0} · 절대 경로 · {1}</sys:String>
     <sys:String x:Key="Loc.Scan.Trace.Completed">스캔을 완료했습니다.</sys:String>
     <sys:String x:Key="Loc.Scan.Trace.Cancelled">스캔이 취소되었습니다.</sys:String>
@@ -1008,4 +1008,18 @@
     <sys:String x:Key="Loc.Output.Suffix">뒤 문구 (Suffix)</sys:String>
     <sys:String x:Key="Loc.Output.Suffix.Help">예: ] → [첫 항목, 다음 항목]</sys:String>
     <sys:String x:Key="Loc.Output.Validation.AffixTooLong">전체 결과의 앞·뒤 문구는 각각 16,384자 이하여야 합니다.</sys:String>
+    <sys:String x:Key="Loc.Workspace.Selection.Manage">선택 관리</sys:String>
+    <sys:String x:Key="Loc.Workspace.Selection.Manage.Help">전체 선택, 전체 선택 해제, 선택 반전을 실행합니다.</sys:String>
+    <sys:String x:Key="Loc.Workspace.Selection.More">추가 작업</sys:String>
+    <sys:String x:Key="Loc.Profiles.ColumnWidth.Label">컬럼 너비</sys:String>
+    <sys:String x:Key="Loc.Profiles.ColumnWidth.Narrow">좁게</sys:String>
+    <sys:String x:Key="Loc.Profiles.ColumnWidth.Default">기본</sys:String>
+    <sys:String x:Key="Loc.Profiles.ColumnWidth.Wide">넓게</sys:String>
+    <sys:String x:Key="Loc.Profiles.ColumnWidth.Help">화면과 컬럼 수에 맞춰 초기 너비를 정합니다. 긴 값은 줄임표와 툴팁으로 표시하며, 목록에서 직접 너비를 조정할 수 있습니다.</sys:String>
+    <sys:String x:Key="Loc.Profiles.ColumnWidth.Saved">컬럼 표시 설정을 저장했습니다. 규칙과 기존 결과는 그대로 유지됩니다.</sys:String>
+    <sys:String x:Key="Loc.Profiles.ColumnWidth.Dirty">컬럼 너비를 변경했습니다. 저장하면 기존 결과에 적용됩니다.</sys:String>
+    <sys:String x:Key="Loc.Catalog.Column.Width.Reset">내용에 맞춰 너비 초기화</sys:String>
+    <sys:String x:Key="Loc.Scan.Save.Help">보관된 탐색 로그 전체를 UTF-8 파일로 저장</sys:String>
+    <sys:String x:Key="Loc.Scan.CopyAll">전체 복사</sys:String>
+    <sys:String x:Key="Loc.Scan.Clear">로그 지우기</sys:String>
 </ResourceDictionary>

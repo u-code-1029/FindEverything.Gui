@@ -141,7 +141,9 @@ public sealed class CatalogItemViewModel : ObservableObject
             }
 
             Values.TryGetValue(field.FieldId, out var value);
-            var rawDisplayValue = FormatValue(value, field.DisplayFormat);
+            // A query page may be mapped on a worker whose ambient culture is
+            // different from the immutable locale selected for this app.
+            var rawDisplayValue = FormatValue(value, field.DisplayFormat, localizer.Culture);
             var mappedDisplayValue = rawDisplayValue;
             var isMapped = false;
             if (value is string source
@@ -239,7 +241,7 @@ public sealed class CatalogItemViewModel : ObservableObject
         OnPropertyChanged(nameof(ExportDisplayValues));
     }
 
-    private static string FormatValue(object? value, string? displayFormat)
+    private static string FormatValue(object? value, string? displayFormat, CultureInfo culture)
     {
         if (value is null)
         {
@@ -249,12 +251,12 @@ public sealed class CatalogItemViewModel : ObservableObject
         try
         {
             return value is IFormattable formattable
-                ? formattable.ToString(displayFormat, CultureInfo.CurrentCulture) ?? string.Empty
-                : Convert.ToString(value, CultureInfo.CurrentCulture) ?? string.Empty;
+                ? formattable.ToString(displayFormat, culture) ?? string.Empty
+                : Convert.ToString(value, culture) ?? string.Empty;
         }
         catch (FormatException)
         {
-            return Convert.ToString(value, CultureInfo.CurrentCulture) ?? string.Empty;
+            return Convert.ToString(value, culture) ?? string.Empty;
         }
     }
 }
