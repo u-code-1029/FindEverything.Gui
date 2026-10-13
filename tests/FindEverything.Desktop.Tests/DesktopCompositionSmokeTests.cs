@@ -877,7 +877,8 @@ public sealed class DesktopCompositionSmokeTests
             Assert.IsType<CatalogItemViewModel>(catalog.Items.GetItemAt(0))
                 .DisplayValues["client"]);
         catalog.FilterText = string.Empty;
-        mainWindow.Dispatcher.Invoke(static () => { }, DispatcherPriority.DataBind);
+        PumpDispatcherUntil(mainWindow.Dispatcher,
+            () => catalog.Items.Count == 2, TimeSpan.FromSeconds(3));
         Assert.Equal(2, catalog.Items.Count);
         Assert.Equal("2개 항목", catalog.FilterSummary);
 
