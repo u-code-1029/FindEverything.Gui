@@ -109,9 +109,24 @@ public sealed class SelectionImportReader
         token.ThrowIfCancellationRequested();
         if (rule.InputKind == ProfileSelectionInputKind.Regex)
         {
-            var options = RegexOptions.CultureInvariant | (rule.IgnoreCase ? RegexOptions.IgnoreCase : RegexOptions.None)
-                | (rule.Multiline ? RegexOptions.Multiline : RegexOptions.None);
-            var regex = new Regex(rule.RegexPattern ?? "", options, TimeSpan.FromMilliseconds(rule.TimeoutMilliseconds));
+            if (rule.Columns.Any(column => !string.IsNullOrWhiteSpace(column.RegexPattern)))
+            {
+                // Each complete input line is a record. Do not combine captures
+                // from different lines to make an AND condition appear satisfied.
+                var conditions = CompileColumnConditions(rule, useSharedPattern: true);
+                using var lineReader = new StringReader(text);
+                IEnumerable<string?[]> MatchingLines()
+                {
+                    foreach (var line in ReadLines(lineReader, token))
+                    {
+                        token.ThrowIfCancellationRequested();
+                        var values = Enumerable.Repeat(line[0], rule.Columns.Count).ToArray();
+                        if (TryExtract(values, rule, conditions, token)) yield return values;
+                    }
+                }
+                return BufferMapped(MatchingLines(), description, token, "No input rows match all regex conditions.");
+            }
+            var regex = CompileRegex(rule.RegexPattern ?? "", rule);
             IEnumerable<string?[]> Rows()
             {
                 foreach (Match match in regex.Matches(text))
@@ -245,13 +260,23 @@ public sealed class SelectionImportReader
         var indices = rule.Columns.Select(column => rule.InputKind == ProfileSelectionInputKind.TextLines ? 0
             : !string.IsNullOrWhiteSpace(column.InputHeader) ? FindHeader(headers, column.InputHeader)
             : column.InputColumnIndex ?? throw new InvalidDataException("The input column is not configured.")).ToArray();
+        var conditions = CompileColumnConditions(rule, useSharedPattern: false);
         IEnumerable<string?[]> Mapped()
         {
-            if (headers is null) yield return Map(first);
-            while (enumerator.MoveNext()) { token.ThrowIfCancellationRequested(); yield return Map(enumerator.Current); }
+            if (headers is null && Map(first) is { } firstValues) yield return firstValues;
+            while (enumerator.MoveNext())
+            {
+                token.ThrowIfCancellationRequested();
+                if (Map(enumerator.Current) is { } values) yield return values;
+            }
         }
-        string?[] Map(string?[] row) => indices.Select(index => index < row.Length ? row[index] : null).ToArray();
-        return BufferMapped(Mapped(), description, token);
+        string?[]? Map(string?[] row)
+        {
+            var values = indices.Select(index => index < row.Length ? row[index] : null).ToArray();
+            return TryExtract(values, rule, conditions, token) ? values : null;
+        }
+        return BufferMapped(Mapped(), description, token, conditions.Any(condition => condition is not null)
+            ? "No input rows match all regex conditions." : "There are no data rows after the header.");
 
         static int FindHeader(string?[]? headers, string name)
         {
@@ -262,7 +287,47 @@ public sealed class SelectionImportReader
         }
     }
 
-    private static SelectionImportDocument BufferMapped(IEnumerable<string?[]> rows, string description, CancellationToken token)
+    private static Regex CompileRegex(string pattern, ProfileSelectionMatchRuleManifest rule) => new(pattern,
+        RegexOptions.CultureInvariant | (rule.IgnoreCase ? RegexOptions.IgnoreCase : RegexOptions.None)
+        | (rule.Multiline ? RegexOptions.Multiline : RegexOptions.None), TimeSpan.FromMilliseconds(rule.TimeoutMilliseconds));
+
+    private static Regex?[] CompileColumnConditions(ProfileSelectionMatchRuleManifest rule, bool useSharedPattern)
+    {
+        // Identical patterns are compiled once, not once for every input row.
+        var cache = new Dictionary<string, Regex>(StringComparer.Ordinal);
+        return rule.Columns.Select(column =>
+        {
+            var pattern = !string.IsNullOrWhiteSpace(column.RegexPattern) ? column.RegexPattern
+                : useSharedPattern ? rule.RegexPattern : null;
+            if (string.IsNullOrWhiteSpace(pattern))
+            {
+                if (useSharedPattern) throw new InvalidDataException($"Field '{column.FieldId}' has no regex condition.");
+                return null;
+            }
+            if (!cache.TryGetValue(pattern, out var regex)) cache.Add(pattern, regex = CompileRegex(pattern, rule));
+            return regex;
+        }).ToArray();
+    }
+
+    private static bool TryExtract(string?[] values, ProfileSelectionMatchRuleManifest rule, Regex?[] conditions,
+        CancellationToken token)
+    {
+        for (var index = 0; index < conditions.Length; index++)
+        {
+            token.ThrowIfCancellationRequested();
+            if (conditions[index] is not { } regex) continue;
+            if (values[index] is not { } input) return false;
+            var match = regex.Match(input);
+            if (!match.Success) return false;
+            var group = match.Groups[string.IsNullOrWhiteSpace(rule.Columns[index].RegexGroup) ? "0" : rule.Columns[index].RegexGroup!];
+            if (!group.Success) return false;
+            values[index] = group.Value;
+        }
+        return true;
+    }
+
+    private static SelectionImportDocument BufferMapped(IEnumerable<string?[]> rows, string description, CancellationToken token,
+        string emptyMessage = "There are no data rows after the header.")
     {
         var directory = Directory.CreateTempSubdirectory("FindEverything-input-").FullName;
         var path = Path.Combine(directory, "input.db");
@@ -294,7 +359,7 @@ public sealed class SelectionImportReader
                 number.Value = count; json.Value = serialized; append.ExecuteNonQuery();
                 if (preview.Count < 100) preview.Add(new(count, row.Select(value => value is { Length: > 256 } ? value[..256] + "…" : value).ToArray()));
             }
-            if (count == 0) throw new InvalidDataException("There are no data rows after the header.");
+            if (count == 0) throw new InvalidDataException(emptyMessage);
             transaction.Commit();
             success = true;
             return new(directory, path, preview, count, description);

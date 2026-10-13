@@ -204,7 +204,7 @@ internal sealed class ProfileManifestValidator
         var modelType = NormalizeRequired(manifest.ModelType);
 
         if (manifest.ContractVersion != supportedContractMajor
-            && !(supportedContractMajor >= 3 && manifest.ContractVersion == 2))
+            && !(manifest.ContractVersion >= 2 && manifest.ContractVersion < supportedContractMajor))
         {
             diagnostics.Add(Error(
                 "contract_unsupported",
@@ -222,6 +222,10 @@ internal sealed class ProfileManifestValidator
             || manifest.SelectionMatchRules is { Count: > 0 } || manifest.MaxScanDepth != 256
             || manifest.TextFileFields?.Any(column => column?.EditOptions is not null) == true))
             diagnostics.Add(Error("profile_feature_requires_v3", "폴더 존재 여부, 외부 데이터 선택, 최대 탐색 깊이 및 파일 생성·수정 옵션은 계약 버전 3이 필요합니다. contractVersion을 3으로 변경하세요."));
+
+        if (manifest.ContractVersion < 4 && manifest.SelectionMatchRules?.Any(rule =>
+            rule?.Columns?.Any(column => !string.IsNullOrWhiteSpace(column?.RegexPattern)) == true) == true)
+            diagnostics.Add(Error("selection_regex_requires_v4", "외부 데이터의 컬럼별 정규식 AND 조건은 계약 버전 4가 필요합니다. GUI에서 다시 저장하거나 contractVersion을 4로 변경하세요."));
 
         if (id is null || !StableIdPattern.IsMatch(id))
         {

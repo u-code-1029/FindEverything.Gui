@@ -184,7 +184,44 @@
                         x:Name="ProfileEditorScrollViewer"
                         Grid.Row="1"
                         Style="{StaticResource FluentGutteredScrollViewerStyle}">
-                        <StackPanel Margin="0,8,0,0"><ui:TextBlock Margin="0,0,0,8" Text="{Binding NumericValidationMessage}" TextWrapping="Wrap" Foreground="{DynamicResource SystemFillColorCriticalBrush}" Visibility="{Binding HasNumericValidationError, Converter={StaticResource BooleanToVisibilityConverter}}" AutomationProperties.LiveSetting="Polite" />
+                        <StackPanel Margin="0,8,0,0">
+                            <controls:SectionCard x:Name="ProfileValidationIssuesCard"
+                                Margin="0,0,0,16" Style="{StaticResource FluentCardStyle}"
+                                Visibility="{Binding HasValidationIssues, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <controls:SectionCard.Header>
+                                    <StackPanel>
+                                        <ui:TextBlock Text="{DynamicResource Loc.Profiles.Validation.IssuesTitle}"
+                                            FontWeight="SemiBold" Foreground="{DynamicResource SystemFillColorCriticalBrush}"
+                                            AutomationProperties.LiveSetting="Polite" />
+                                        <ui:DynamicScrollViewer Margin="0,8,0,0" MaxHeight="240"
+                                            Style="{StaticResource FluentGutteredScrollViewerStyle}">
+                                        <ItemsControl ItemsSource="{Binding ValidationIssues}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate DataType="{x:Type viewModels:ProfileValidationIssueViewModel}">
+                                                    <Grid Margin="0,4,0,4">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <ui:TextBlock Margin="0,4,16,4" VerticalAlignment="Center"
+                                                            Text="{Binding Message}" TextWrapping="Wrap"
+                                                            Foreground="{DynamicResource SystemFillColorCriticalBrush}"
+                                                            ToolTip="{Binding Code}" />
+                                                        <ui:Button Grid.Column="1" Padding="12,8" VerticalAlignment="Center"
+                                                            Content="{Binding NavigationText}"
+                                                            Icon="{ui:SymbolIcon Symbol=ArrowRight16}"
+                                                            ToolTip="{DynamicResource Loc.Profiles.Validation.GoToStepHelp}"
+                                                            Command="{Binding DataContext.GoToEditorStepCommand, RelativeSource={RelativeSource AncestorType={x:Type Page}}}"
+                                                            CommandParameter="{Binding Step}"
+                                                            IsEnabled="{Binding DataContext.IsEditorReady, RelativeSource={RelativeSource AncestorType={x:Type Page}}}" />
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                        </ui:DynamicScrollViewer>
+                                    </StackPanel>
+                                </controls:SectionCard.Header>
+                            </controls:SectionCard>
                             <controls:SectionCard
                                 Style="{StaticResource EditorSectionStyle}"
                                 Visibility="{Binding IsProfileStep, Converter={StaticResource BooleanToVisibilityConverter}}">
@@ -783,7 +820,7 @@
                                                     <ui:TextBox Text="{Binding Delimiter, UpdateSourceTrigger=PropertyChanged}" />
                                                 </StackPanel>
                                                 <StackPanel Visibility="{Binding IsRegex, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                    <ui:TextBlock Margin="0,12,0,4" Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.FileNameRegularExpression}" />
+                                                    <ui:TextBlock Margin="0,12,0,4" Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.Profiles.Features.Selection.SharedRegex}" />
                                                     <ui:TextBox Text="{Binding RegexPattern, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" MinHeight="72" />
                                                     <CheckBox Margin="0,8,0,0" Content="{DynamicResource Loc.Profiles.Features.Selection.Multiline}" IsChecked="{Binding Multiline}" />
                                                 </StackPanel>
@@ -804,8 +841,10 @@
                                                             <ui:TextBox Text="{Binding InputHeader, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="{DynamicResource Loc.Profiles.Features.Selection.SourceHeader}" />
                                                             <ui:TextBox Grid.Column="2" Text="{Binding InputColumnIndexText, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="{DynamicResource Loc.Profiles.Features.Selection.SourceIndex}" />
                                                         </Grid>
-                                                        <ui:TextBox Margin="0,8,0,0" Text="{Binding RegexGroup, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="{DynamicResource Loc.Profiles.Features.Selection.SourceGroup}"
-                                                            Visibility="{Binding DataContext.IsRegex, RelativeSource={RelativeSource AncestorType=ItemsControl}, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                        <ui:TextBlock Margin="0,12,0,4" Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.Profiles.Features.Selection.ColumnRegex}" />
+                                                        <ui:TextBox Text="{Binding RegexPattern, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="{DynamicResource Loc.Profiles.Features.Selection.ColumnRegexExample}" />
+                                                        <ui:TextBlock Margin="0,4,0,8" Style="{StaticResource CaptionTextStyle}" TextWrapping="Wrap" Text="{DynamicResource Loc.Profiles.Features.Selection.ColumnRegexHelp}" />
+                                                        <ui:TextBox Text="{Binding RegexGroup, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="{DynamicResource Loc.Profiles.Features.Selection.SourceGroup}" />
                                                         <ui:TextBlock Margin="0,12,0,4" Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.Profiles.Features.Selection.ValueBasis}" />
                                                         <ComboBox ItemsSource="{Binding DataContext.SelectionValueSourceChoices, RelativeSource={RelativeSource AncestorType=Page}}" DisplayMemberPath="DisplayName" SelectedValuePath="Value" SelectedValue="{Binding ValueSource}" />
                                                         <ComboBox Margin="0,8,0,0" ItemsSource="{Binding DataContext.SelectionDateComparisonChoices, RelativeSource={RelativeSource AncestorType=Page}}" DisplayMemberPath="DisplayName" SelectedValuePath="Value" SelectedValue="{Binding DateComparison}" />

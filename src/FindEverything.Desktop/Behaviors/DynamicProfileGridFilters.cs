@@ -43,6 +43,8 @@ public static partial class DynamicProfileGrid
         public CancellationTokenSource? EditorCancellation;
         public DispatcherOperation? HeaderPreparation;
         public DispatcherOperation? HostUpdate;
+        public DataGridColumnHeader? FocusOrigin;
+        public Ui.CalendarDatePicker? ActiveCalendar;
         public Panel? HostPanel;
         public AdornerLayer? HostAdornerLayer;
         public ColumnFlyoutAdorner? HostAdorner;
@@ -53,6 +55,22 @@ public static partial class DynamicProfileGrid
         if (grid.GetValue(ColumnFiltersStateProperty) is ColumnFiltersState) return;
         var state = new ColumnFiltersState();
         grid.SetValue(ColumnFiltersStateProperty, state);
+        state.Flyout.Closed += (_, _) => { CloseActiveCalendar(state); state.EditorCancellation?.Cancel(); };
+        state.Flyout.KeyDown += (_, e) =>
+        {
+            // Let a ComboBox/calendar close its own nested popup first. Only
+            // an unhandled Escape bubbling from the outer editor dismisses it.
+            if (e.Key != Key.Escape || !state.Flyout.IsOpen) return;
+            e.Handled = true;
+            if (state.ActiveCalendar is { IsCalendarOpen: true } calendar)
+            {
+                calendar.SetCurrentValue(Ui.CalendarDatePicker.IsCalendarOpenProperty, false);
+                calendar.Focus();
+                return;
+            }
+            state.Flyout.Hide();
+            if (state.FocusOrigin is { IsLoaded: true, IsVisible: true } origin) origin.Focus();
+        };
         void ReconcileHost()
         {
             var next = grid.IsLoaded ? grid.DataContext as CatalogViewModel : null;
@@ -116,6 +134,13 @@ public static partial class DynamicProfileGrid
                 || IsNestedHeaderControl(source, header) || header != Ancestor<DataGridColumnHeader>(source)
                 || grid.DataContext is not CatalogViewModel owner || Target(header.Column) is not { } target) return;
             e.Handled = true;
+            // DataGridColumnHeader derives from ButtonBase and captures the
+            // pointer on MouseDown. Handling PreviewMouseUp bypasses its native
+            // MouseUp/ReleaseMouseCapture. Release only this header's capture
+            // before the popup establishes its own SubTree capture; otherwise
+            // every subsequent click is delivered back to the header, including
+            // clicks over the popup's TextBox, ComboBox and calendar.
+            if (header.IsMouseCaptured) header.ReleaseMouseCapture();
             _ = OpenColumnFlyoutAsync(grid, state, owner, header, target);
         }), true);
         grid.AddHandler(UIElement.PreviewKeyDownEvent, new KeyEventHandler((_, e) =>
@@ -157,9 +182,11 @@ public static partial class DynamicProfileGrid
 
     private static void DetachFlyoutHost(ColumnFiltersState state)
     {
+        CloseActiveCalendar(state);
         state.Flyout.Hide();
         state.EditorCancellation?.Cancel(); state.EditorCancellation?.Dispose(); state.EditorCancellation = null;
         state.PressedHeader = null;
+        state.FocusOrigin = null;
         state.Flyout.Content = null;
         state.HostPanel?.Children.Remove(state.Flyout); state.HostPanel = null;
         if (state.HostAdorner is { } adorner)
@@ -169,6 +196,12 @@ public static partial class DynamicProfileGrid
         }
         state.HostAdorner = null; state.HostAdornerLayer = null;
         state.Flyout.ClearValue(FrameworkElement.DataContextProperty);
+    }
+
+    private static void CloseActiveCalendar(ColumnFiltersState state)
+    {
+        state.ActiveCalendar?.SetCurrentValue(Ui.CalendarDatePicker.IsCalendarOpenProperty, false);
+        state.ActiveCalendar = null;
     }
 
     private sealed class ColumnFlyoutAdorner : Adorner
@@ -288,6 +321,7 @@ public static partial class DynamicProfileGrid
         DataGridColumnHeader header, CatalogColumnTarget target)
     {
         if (!ReferenceEquals(state.Owner, owner) || !EnsureFlyoutHost(grid, state)) return;
+        CloseActiveCalendar(state);
         state.Flyout.Hide();
         state.EditorCancellation?.Cancel();
         state.EditorCancellation?.Dispose();
@@ -300,6 +334,7 @@ public static partial class DynamicProfileGrid
         var kind = field?.Kind ?? (target.Kind == CatalogColumnTargetKind.Coverage ? ProfileFieldValueKind.Boolean : ProfileFieldValueKind.String);
         var filter = owner.GetColumnFilter(target);
         var body = new StackPanel { Width = 320 };
+        KeyboardNavigation.SetTabNavigation(body, KeyboardNavigationMode.Cycle);
         var title = target.Kind == CatalogColumnTargetKind.FullPath ? localizer.Get("Loc.Catalog.Column.FolderPath", "폴더 경로")
             : target.Kind == CatalogColumnTargetKind.Coverage ? localizer.Get("Loc.Catalog.Column.Status", "상태") : field?.Header ?? target.FieldId ?? "";
         body.Children.Add(new Ui.TextBlock { Text = title, FontWeight = FontWeights.SemiBold, FontSize = 16, Margin = new Thickness(0, 0, 0, 12) });
@@ -362,6 +397,7 @@ public static partial class DynamicProfileGrid
         CatalogNumericRange? range = null;
         async Task BuildEditor()
         {
+            CloseActiveCalendar(state);
             editors.Children.Clear(); error.Visibility = Visibility.Collapsed;
             var selected = (FilterChoice)mode.SelectedItem;
             if (selected.Operator is null) { Apply(null); return; }
@@ -379,6 +415,8 @@ public static partial class DynamicProfileGrid
                 var dates = new CalendarRangeDraft(filter?.StartDate, filter?.EndDate);
                 var start = new Ui.CalendarDatePicker { FirstDayOfWeek = localizer.Culture.DateTimeFormat.FirstDayOfWeek };
                 var end = new Ui.CalendarDatePicker { FirstDayOfWeek = localizer.Culture.DateTimeFormat.FirstDayOfWeek };
+                start.Click += (_, _) => state.ActiveCalendar = start;
+                end.Click += (_, _) => state.ActiveCalendar = end;
                 start.SetBinding(Ui.CalendarDatePicker.DateProperty, new Binding(nameof(CalendarRangeDraft.Start)) { Source = dates, Mode = BindingMode.TwoWay });
                 end.SetBinding(Ui.CalendarDatePicker.DateProperty, new Binding(nameof(CalendarRangeDraft.End)) { Source = dates, Mode = BindingMode.TwoWay });
                 AddLabel(editors, T("StartDate", "시작일"), start); AddLabel(editors, T("EndDate", "종료일"), end);
@@ -450,7 +488,14 @@ public static partial class DynamicProfileGrid
         {
             popup.PlacementTarget = header;
             popup.StaysOpen = false;
+            state.FocusOrigin = header;
             state.Flyout.Show();
+            // Popup HWND creation is queued. Focusing its real first control
+            // after opening gives keyboard users the same interactive editor.
+            _ = grid.Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() =>
+            {
+                if (!token.IsCancellationRequested && state.Flyout.IsOpen && mode.IsLoaded) mode.Focus();
+            }));
             await BuildEditor();
         }
     }

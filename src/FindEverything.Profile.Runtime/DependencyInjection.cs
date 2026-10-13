@@ -14,9 +14,9 @@ public static class DependencyInjection
             .AddOptions<PluginDiscoveryOptions>()
             .PostConfigure(static options =>
             {
-                // Existing installations configured v2 explicitly. The v3 host
-                // still reads v2 profiles; migrate this host setting in memory.
-                if (options.ContractMajor == 2) options.ContractMajor = ProfileContract.CurrentMajor;
+                // Older installations explicitly configured v2/v3. This host
+                // still reads those profiles; migrate the setting in memory.
+                if (options.ContractMajor is 2 or 3) options.ContractMajor = ProfileContract.CurrentMajor;
             })
             .ValidateDataAnnotations()
             .Validate(

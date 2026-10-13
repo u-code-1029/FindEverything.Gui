@@ -36,12 +36,15 @@ public sealed class ProfileAdditionalEditorModelsTests
             Id = "excel", DisplayName = "Excel", InputKind = ProfileSelectionInputKind.Table, HasHeaderRow = true,
             Delimiter = ";", IgnoreCase = false, TimeoutMilliseconds = 500,
             Columns = [new() { FieldId = "date", InputHeader = "Date", InputColumnIndex = 2,
+                RegexPattern = @"Date=(?<date>\d+)", RegexGroup = "date",
                 ValueSource = ProfileSelectionValueSource.Original, DateComparison = ProfileSelectionDateComparison.Exact, DateFormat = "yyyyMMdd" }],
         });
         var rule = draft.ToManifest(); Assert.Equal(";", rule.Delimiter); Assert.Equal(500, rule.TimeoutMilliseconds);
         Assert.Equal(ProfileSelectionValueSource.Original, rule.Columns[0].ValueSource);
         Assert.Equal(ProfileSelectionDateComparison.Exact, rule.Columns[0].DateComparison);
         Assert.Equal("yyyyMMdd", rule.Columns[0].DateFormat);
+        Assert.Equal(@"Date=(?<date>\d+)", rule.Columns[0].RegexPattern);
+        Assert.Equal("date", rule.Columns[0].RegexGroup);
         draft.Columns[0].InputColumnIndexText = "-1"; Assert.NotEmpty(draft.NumericValidationMessage);
     }
     [Fact]

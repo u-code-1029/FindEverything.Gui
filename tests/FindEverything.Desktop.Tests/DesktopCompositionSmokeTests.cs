@@ -189,6 +189,7 @@ public sealed class DesktopCompositionSmokeTests
             VerifyProjectionQueries(provider, window);
             LiveFileUiChecks.Verify();
             SelectionImportUiChecks.Verify();
+            ProfilesValidationUiChecks.Verify((visual, name) => SaveQaImage(visual, name));
             ReadOnlyCellTemplateChecks.Verify();
             WorkspacePerformanceChecks.Verify(provider);
             CatalogColumnFilterUiChecks.Verify(provider);
@@ -2103,13 +2104,14 @@ public sealed class DesktopCompositionSmokeTests
             var folderColumn = grid.Columns[1];
             var folderHeader = Assert.IsType<Wpf.Ui.Controls.SymbolIcon>(folderColumn.Header);
             Assert.Equal("Live folder contents", folderHeader.ToolTip);
+            Assert.Equal(Wpf.Ui.Controls.SymbolRegular.MoreHorizontal20, folderHeader.Symbol);
             Assert.Equal(1, folderColumn.DisplayIndex);
             Assert.False(folderColumn.CanUserReorder);
             Assert.False(folderColumn.CanUserSort);
             Assert.Contains(grid.Columns, column => Equals(DynamicProfileGrid.GetColumnHeaderContent(column), "Folder path"));
             var clientColumn = Assert.Single(grid.Columns, column => Equals(DynamicProfileGrid.GetColumnHeaderContent(column), "고객"));
-            // The saved data-relative index 1 follows both fixed UI columns.
-            Assert.Equal(3, clientColumn.DisplayIndex);
+            // Old saved display positions never override the profile's field order.
+            Assert.Equal(2, clientColumn.DisplayIndex);
             Assert.Equal(180, clientColumn.Width.Value);
             Assert.Single(grid.Columns, column => Equals(DynamicProfileGrid.GetColumnHeaderContent(column), "검토 메모"));
             var row = Assert.IsType<System.Windows.Controls.DataGridRow>(
@@ -2184,6 +2186,15 @@ public sealed class DesktopCompositionSmokeTests
             Assert.Equal("Ap", mappedText.TextBox.SelectedText);
             mappedText.DataContext = null;
             Assert.Empty(mappedText.TextBox.SelectedText);
+            // Changing profile order with the same ID keeps width preferences,
+            // but not a stale saved position. Source kinds share one global order.
+            DynamicProfileGrid.SetFields(grid, new[] { field with { Order = 20 }, userInputField with { Order = 10 } });
+            host.Dispatcher.Invoke(static () => { }, DispatcherPriority.DataBind);
+            var reorderedClient = Assert.Single(grid.Columns, column => Equals(DynamicProfileGrid.GetColumnHeaderContent(column), "고객"));
+            var reorderedMemo = Assert.Single(grid.Columns, column => Equals(DynamicProfileGrid.GetColumnHeaderContent(column), "검토 메모"));
+            Assert.Equal(2, reorderedMemo.DisplayIndex);
+            Assert.Equal(3, reorderedClient.DisplayIndex);
+            Assert.Equal(180, reorderedClient.Width.Value);
         }
         finally
         {

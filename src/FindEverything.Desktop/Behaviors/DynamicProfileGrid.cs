@@ -255,7 +255,6 @@ public static partial class DynamicProfileGrid
                     State = saved.TryGetValue(value.FieldId!, out var state) ? state : null,
                 })
                 .Where(static value => value.State is not null)
-                .OrderBy(static value => value.State!.DisplayIndex)
                 .ToArray();
 
             foreach (var value in columns)
@@ -267,16 +266,12 @@ public static partial class DynamicProfileGrid
                     value.Column.Width = new DataGridLength(state.Width, DataGridLengthUnitType.Pixel);
                 }
 
-                value.Column.DisplayIndex = Math.Clamp(
-                    state.DisplayIndex + SelectionColumnOffset,
-                    0,
-                    dataGrid.Columns.Count - 1);
             }
 
-            // The selector is UI chrome rather than profile data. Keep it at
-            // the leading edge even when an older saved layout is restored.
-            dataGrid.Columns[0].DisplayIndex = 0;
-            dataGrid.Columns[1].DisplayIndex = 1;
+            // Profile order is authoritative. Persisted widths remain useful, but
+            // an old UI display index must not override a newly edited field order.
+            for (var index = 0; index < dataGrid.Columns.Count; index++)
+                dataGrid.Columns[index].DisplayIndex = index;
         }
         finally
         {
@@ -502,7 +497,7 @@ public static partial class DynamicProfileGrid
         public FolderBrowserColumn(IAppLocalizer? localizer)
         {
             _label = L(localizer, "Loc.LiveBrowser.Title", "현재 폴더 내용 보기");
-            Header = new Wpf.Ui.Controls.SymbolIcon(Wpf.Ui.Controls.SymbolRegular.Folder20) { ToolTip = _label, Width = 18, Height = 18 };
+            Header = new Wpf.Ui.Controls.SymbolIcon(Wpf.Ui.Controls.SymbolRegular.MoreHorizontal20) { ToolTip = _label, Width = 18, Height = 18 };
             Width = new DataGridLength(48); MinWidth = MaxWidth = 48;
             CanUserReorder = CanUserResize = CanUserSort = false; IsReadOnly = true;
             var style = new Style(typeof(DataGridCell), System.Windows.Application.Current?.TryFindResource("DefaultDataGridCellStyle") as Style);
@@ -514,7 +509,7 @@ public static partial class DynamicProfileGrid
         private FrameworkElement Create()
         {
             var button = new Wpf.Ui.Controls.Button { Width = 32, Height = 28, Padding = new(0),
-                Icon = new Wpf.Ui.Controls.SymbolIcon(Wpf.Ui.Controls.SymbolRegular.FolderOpen20),
+                Icon = new Wpf.Ui.Controls.SymbolIcon(Wpf.Ui.Controls.SymbolRegular.MoreHorizontal20),
                 Appearance = Wpf.Ui.Controls.ControlAppearance.Transparent, ToolTip = _label };
             System.Windows.Automation.AutomationProperties.SetName(button, _label);
             button.Click += (_, e) =>

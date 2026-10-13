@@ -99,6 +99,85 @@ public sealed class SelectionImportReaderTests
     }
 
     [Fact]
+    public async Task PerColumnRegexConditionsMustAllMatchTheSameLineBeforeCapturesAreMapped()
+    {
+        var rule = RegexAndRule();
+        using var document = await new SelectionImportReader().ReadTextAsync(
+            "ID=12 Name=Alice\nID=13\nName=Bob\nID=14 Name=Carol", rule);
+        var rows = await Collect(document);
+        Assert.Equal(2, rows.Count);
+        Assert.Equal(new[] { "12", "Alice" }, rows[0].Values);
+        Assert.Equal(new[] { "14", "Carol" }, rows[1].Values);
+        await Assert.ThrowsAsync<InvalidDataException>(() => new SelectionImportReader().ReadTextAsync("ID=12\nName=Alice", rule));
+    }
+
+    [Fact]
+    public async Task SharedPatternIsUsedForUnspecifiedColumnsAndMissingCapturesFailTheRow()
+    {
+        var rule = RegexAndRule();
+        rule.RegexPattern = @"Name=(?<name>\w+)";
+        rule.Columns[1].RegexPattern = null;
+        rule.Columns[0].RegexPattern = @"ID=(?<id>\d+)?";
+        using var document = await new SelectionImportReader().ReadTextAsync("ID= Name=Alice\nID=12 Name=Bob", rule);
+        Assert.Equal(new[] { "12", "Bob" }, Assert.Single(await Collect(document)).Values);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task TableRegexConditionsFilterWholeRowsAndExtractMappedCells(bool html)
+    {
+        var rule = TableRule();
+        rule.Columns[0].RegexPattern = @"^Name=(?<name>\w+)$"; rule.Columns[0].RegexGroup = "name";
+        rule.Columns[1].RegexPattern = @"^Note=(?<note>\w+)$"; rule.Columns[1].RegexGroup = "note";
+        var input = html ? "<table><tr><th>Name</th><th>Note</th></tr>"
+            + "<tr><td>Name=Alice</td><td>wrong</td></tr><tr><td>wrong</td><td>Note=Two</td></tr>"
+            + "<tr><td>Name=Bob</td><td>Note=Three</td></tr></table>"
+            : "Name,Note\nName=Alice,wrong\nwrong,Note=Two\nName=Bob,Note=Three";
+        using var document = await new SelectionImportReader().ReadTextAsync(input, rule, html);
+        Assert.Equal(new[] { "Bob", "Three" }, Assert.Single(await Collect(document)).Values);
+    }
+
+    [Fact]
+    public async Task TextGateCanUseWholeMatchAndHonorsIgnoreCase()
+    {
+        var rule = new ProfileSelectionMatchRuleManifest { Id = "line", DisplayName = "Line", IgnoreCase = false,
+            Columns = [new() { FieldId = "id", RegexPattern = @"ID=\d+" }] };
+        using var document = await new SelectionImportReader().ReadTextAsync("id=12\nprefix ID=34 suffix", rule);
+        Assert.Equal(new[] { "ID=34" }, Assert.Single(await Collect(document)).Values);
+    }
+
+    [Fact]
+    public async Task ExcelRegexGatesUseTheSamePipelineAsTextAndHtmlTables()
+    {
+        using var directory = new TemporaryDirectory();
+        var path = Path.Combine(directory.Path, "conditions.xlsx");
+        using (var package = SpreadsheetDocument.Create(path, SpreadsheetDocumentType.Workbook))
+        {
+            var workbook = package.AddWorkbookPart(); workbook.Workbook = new Workbook();
+            var part = workbook.AddNewPart<WorksheetPart>();
+            part.Worksheet = new Worksheet(new SheetData(
+                new Row(Inline("A1", "Name"), Inline("B1", "Note")),
+                new Row(Inline("A2", "Name=Alice"), Inline("B2", "wrong")),
+                new Row(Inline("A3", "Name=Bob"), Inline("B3", "Note=Three"))));
+            workbook.Workbook.AppendChild(new Sheets()).Append(new Sheet { Name = "Data", SheetId = 1, Id = workbook.GetIdOfPart(part) });
+            workbook.Workbook.Save(); part.Worksheet.Save();
+        }
+        var rule = TableRule();
+        rule.Columns[0].RegexPattern = @"^Name=(?<name>\w+)$"; rule.Columns[0].RegexGroup = "name";
+        rule.Columns[1].RegexPattern = @"^Note=(?<note>\w+)$"; rule.Columns[1].RegexGroup = "note";
+        using var document = await new SelectionImportReader().ReadFileAsync(path, rule, "Data");
+        Assert.Equal(new[] { "Bob", "Three" }, Assert.Single(await Collect(document)).Values);
+    }
+
+    private static ProfileSelectionMatchRuleManifest RegexAndRule() => new()
+    {
+        Id = "and", DisplayName = "AND", InputKind = ProfileSelectionInputKind.Regex,
+        Columns = [new() { FieldId = "id", RegexPattern = @"ID=(?<id>\d+)", RegexGroup = "id" },
+            new() { FieldId = "name", RegexPattern = @"Name=(?<name>\w+)", RegexGroup = "name" }],
+    };
+
+    [Fact]
     public async Task PreviewIsBoundedWhileDiskBackedEnumerationKeepsFullInput()
     {
         var rule = new ProfileSelectionMatchRuleManifest { Id = "line", DisplayName = "Line", Columns = [new() { FieldId = "name" }] };

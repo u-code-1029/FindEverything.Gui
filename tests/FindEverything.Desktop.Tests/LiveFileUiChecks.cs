@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Controls.Primitives;
+using System.Windows.Input;
 using System.Windows.Threading;
 using FindEverything.Desktop.Services;
 using FindEverything.Desktop.Views.Controls;
@@ -21,7 +22,8 @@ internal static class LiveFileUiChecks
     public static void Verify()
     {
         var reads = new ControlledDirectories();
-        var browser = new LiveDirectoryBrowser(reads, new TestAppLocalizer());
+        var paths = new RecordingPaths();
+        var browser = new LiveDirectoryBrowser(reads, new TestAppLocalizer(), paths);
         var layout = new Grid();
         layout.SetResourceReference(Panel.BackgroundProperty, "ApplicationBackgroundBrush");
         var trigger = new Ui.Button { Content = "Live folder contents", Margin = new Thickness(24),
@@ -53,6 +55,7 @@ internal static class LiveFileUiChecks
                 && Equals(item.ToolTip, @"C:\second\current.txt"));
             Assert.Single(root.Items); Assert.Equal(@"C:\second\current.txt", ((TreeViewItem)root.Items[0]).ToolTip);
             VerifyPageRetry(browser, tree, reads);
+            VerifyFileActivation(browser, tree, reads, paths);
             SaveQa(popup.Child as FrameworkElement, "live-folder-browser.png");
             flyout.Hide(); PumpUntil(() => !popup.IsOpen && !browser.IsLoaded);
             Assert.NotNull(root.Items[0]);
@@ -202,6 +205,66 @@ internal static class LiveFileUiChecks
         Assert.Equal(new[] { @"C:\paged\first.txt", @"C:\paged\second.txt" }, root.Items.OfType<TreeViewItem>().Select(item => item.ToolTip).Cast<string>().ToArray());
     }
 
+    private static void VerifyFileActivation(LiveDirectoryBrowser browser, TreeView tree,
+        ControlledDirectories reads, RecordingPaths paths)
+    {
+        var directory = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "fe-live-file-click-" + Guid.NewGuid().ToString("N"));
+        System.IO.Directory.CreateDirectory(directory);
+        var file = System.IO.Path.Combine(directory, "open-me.txt");
+        System.IO.File.WriteAllText(file, "The shell opens this only after an explicit file click.");
+        try
+        {
+            var request = reads.Requests.Count;
+            _ = browser.OpenAsync(directory);
+            PumpUntil(() => reads.Requests.Count == request + 1);
+            reads.Requests[request].SetResult(new([
+                new("open-me.txt", file, false, false),
+                new("subfolder", System.IO.Path.Combine(directory, "subfolder"), true, false),
+                new("linked-folder", directory, true, true),
+            ], 3, false));
+            var root = Assert.IsType<Ui.TreeViewItem>(Assert.Single(tree.Items.Cast<object>()));
+            PumpUntil(() => root.Items.Count == 3);
+            browser.UpdateLayout(); Pump();
+            var fileNode = Assert.IsType<Ui.TreeViewItem>(root.Items[0]);
+            var label = Descendants(Assert.IsType<StackPanel>(fileNode.Header)).OfType<Ui.TextBlock>().Single();
+            // Clicking the file header executes the shell launch, without an
+            // extra directory read/index pass. Navigation selection alone does not.
+            fileNode.IsSelected = true; Pump(); Assert.Empty(paths.Opened);
+            label.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, Environment.TickCount, MouseButton.Left)
+                { RoutedEvent = Mouse.MouseUpEvent });
+            PumpUntil(() => paths.Opened.Count == 1);
+            Assert.Equal(file, Assert.Single(paths.Opened)); Assert.Equal(request + 1, reads.Requests.Count);
+
+            var directoryNode = Assert.IsType<Ui.TreeViewItem>(root.Items[1]);
+            var directoryLabel = Descendants(Assert.IsType<StackPanel>(directoryNode.Header)).OfType<Ui.TextBlock>().Single();
+            directoryLabel.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, Environment.TickCount, MouseButton.Left)
+                { RoutedEvent = Mouse.MouseUpEvent });
+            var link = Assert.IsType<Ui.TreeViewItem>(root.Items[2]);
+            var linkLabel = Descendants(Assert.IsType<StackPanel>(link.Header)).OfType<Ui.TextBlock>().Single();
+            linkLabel.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, Environment.TickCount, MouseButton.Left)
+                { RoutedEvent = Mouse.MouseUpEvent });
+            Pump(); Assert.Single(paths.Opened); Assert.Equal(request + 1, reads.Requests.Count);
+
+            Assert.Equal(3, fileNode.ContextMenu!.Items.Count); // Open file, copy path, reveal in Explorer.
+            Assert.Equal(2, directoryNode.ContextMenu!.Items.Count);
+            paths.Failure = new System.IO.IOException("The default application could not open this file.");
+            fileNode.IsSelected = true;
+            tree.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(tree)!,
+                Environment.TickCount, Key.Enter) { RoutedEvent = UIElement.KeyDownEvent });
+            PumpUntil(() => Descendants(browser).OfType<Ui.TextBlock>().Any(text => text.Text.Contains("default application", StringComparison.Ordinal)));
+            Assert.Single(paths.Opened); Assert.Equal(request + 1, reads.Requests.Count);
+
+            // A stale file entry is not allowed to open a newly replaced folder.
+            paths.Failure = null;
+            System.IO.File.Delete(file); System.IO.Directory.CreateDirectory(file);
+            label.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, Environment.TickCount, MouseButton.Left)
+                { RoutedEvent = Mouse.MouseUpEvent });
+            PumpUntil(() => Descendants(browser).OfType<Ui.TextBlock>().Any(text => text.Text.Contains(file, StringComparison.Ordinal)));
+            Assert.Single(paths.Opened); Assert.Equal(request + 1, reads.Requests.Count);
+        }
+        finally { System.IO.Directory.Delete(directory, recursive: true); }
+    }
+
     private static IEnumerable<DependencyObject> Descendants(DependencyObject? root)
     {
         if (root is null) yield break;
@@ -244,5 +307,18 @@ internal static class LiveFileUiChecks
             var result = new TaskCompletionSource<LiveDirectoryPage>(TaskCreationOptions.RunContinuationsAsynchronously);
             Requests.Add(result); Offsets.Add(offset); return result.Task;
         }
+    }
+
+    private sealed class RecordingPaths : IPathLauncher
+    {
+        public System.Collections.Concurrent.ConcurrentQueue<string> Opened { get; } = new();
+        public Exception? Failure { get; set; }
+        public void OpenDirectory(string path) => throw new InvalidOperationException("Folder clicks only navigate the lazy tree.");
+        public void OpenPath(string path)
+        {
+            if (Failure is { } failure) throw failure;
+            Opened.Enqueue(path);
+        }
+        public void ShowInFolder(string path) { }
     }
 }

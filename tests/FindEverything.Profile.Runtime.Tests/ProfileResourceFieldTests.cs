@@ -8,15 +8,30 @@ namespace FindEverything.Profile.Runtime.Tests;
 
 public sealed class ProfileResourceFieldTests
 {
-    [Fact]
-    public void V2_definitions_and_explicit_v2_host_settings_remain_loadable()
+    [Theory]
+    [InlineData(2)]
+    [InlineData(3)]
+    public void Older_definitions_and_explicit_host_settings_remain_loadable(int version)
     {
         var services = new ServiceCollection(); services.AddProfileRuntime();
-        services.Configure<PluginDiscoveryOptions>(options => options.ContractMajor = 2);
+        services.Configure<PluginDiscoveryOptions>(options => options.ContractMajor = version);
         using var provider = services.BuildServiceProvider();
-        Assert.Equal(3, provider.GetRequiredService<IOptions<PluginDiscoveryOptions>>().Value.ContractMajor);
-        var manifest = Definition(); manifest.ContractVersion = 2;
+        Assert.Equal(ProfileContract.CurrentMajor, provider.GetRequiredService<IOptions<PluginDiscoveryOptions>>().Value.ContractMajor);
+        var manifest = Definition(); manifest.ContractVersion = version;
         Assert.True(provider.GetRequiredService<IProfileDefinitionCompiler>().Validate(manifest).IsValid);
+    }
+
+    [Theory]
+    [InlineData(2)]
+    [InlineData(3)]
+    public void Regex_selection_gates_require_v4_instead_of_being_silently_ignored(int version)
+    {
+        var manifest = Definition(); manifest.ContractVersion = version;
+        manifest.SelectionMatchRules = [new() { Id = "select", DisplayName = "Select", Columns =
+            [new() { FieldId = "path", RegexPattern = @"(?<id>\d+)", RegexGroup = "id" }] }];
+        Assert.Contains(Review(manifest).Diagnostics, diagnostic => diagnostic.Code == "selection_regex_requires_v4");
+        manifest.ContractVersion = ProfileContract.CurrentMajor;
+        Assert.True(Review(manifest).IsValid);
     }
 
     [Theory]

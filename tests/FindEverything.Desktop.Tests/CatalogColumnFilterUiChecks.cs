@@ -132,6 +132,7 @@ internal static class CatalogColumnFilterUiChecks
             owner.ClearColumnFiltersCommand.Execute(null);
             Assert.False(owner.HasColumnFilters);
             Assert.Empty(owner.ActiveColumnFilters);
+            VerifyNativePopupInput(window, grid, owner, flyout, Header);
             flyout.Hide();
             RaiseHeaderMouse(documentRefresh, UIElement.PreviewMouseLeftButtonDownEvent);
             Assert.False(RaiseHeaderMouse(documentRefresh, UIElement.PreviewMouseLeftButtonUpEvent).Handled);
@@ -169,6 +170,85 @@ internal static class CatalogColumnFilterUiChecks
         Assert.Same(grid, workspace.Children[0]);
         VerifyLiveFullText(services);
         VerifySupersededNumericRange(services);
+    }
+
+    private static void VerifyNativePopupInput(Window window, Ui.DataGrid grid, CatalogViewModel owner,
+        Ui.Flyout flyout, Func<int, DataGridColumnHeader> header)
+    {
+        using var native = new NativePopupInput(window);
+        var popup = Assert.IsType<Popup>(flyout.Template.FindName("PART_Popup", flyout));
+        StackPanel Open(int index)
+        {
+            flyout.Hide();
+            PumpUntil(() => !popup.IsOpen);
+            // A real ButtonBase MouseDown captures the header. RaiseEvent alone
+            // bypasses that native state and missed the stuck-capture defect.
+            native.Click(header(index));
+            PumpUntil(() => popup.IsOpen && popup.Child is FrameworkElement { ActualWidth: > 0, ActualHeight: > 0 });
+            Assert.False(header(index).IsMouseCaptured, "The header must release its MouseDown capture before opening a filter.");
+            return Assert.IsType<StackPanel>(flyout.Content);
+        }
+        void ChooseCondition(StackPanel panel)
+        {
+            var combo = panel.Children.OfType<ComboBox>().Single();
+            native.Click(combo);
+            PumpUntil(() => combo.IsDropDownOpen);
+            native.Key(0x1B); // Escape only dismisses the nested ComboBox popup.
+            PumpUntil(() => !combo.IsDropDownOpen);
+            Assert.True(popup.IsOpen);
+            native.Click(combo);
+            PumpUntil(() => combo.IsDropDownOpen);
+            native.Key(0x24); native.Key(0x28); native.Key(0x0D); // Home, Down, Enter: first typed condition.
+            PumpUntil(() => combo.SelectedIndex == 1 && !combo.IsDropDownOpen);
+            Assert.True(popup.IsOpen);
+        }
+
+        var body = Open(2); ChooseCondition(body);
+        var text = body.Children.OfType<StackPanel>().SelectMany(panel => panel.Children.OfType<Ui.TextBox>()).Single();
+        native.Click(text, .25); Assert.True(text.IsKeyboardFocusWithin);
+        native.Type("Apollo");
+        Assert.Equal("Apollo", owner.GetColumnFilter(CatalogColumnTarget.Field("name"))!.Text);
+        var sort = body.Children.OfType<StackPanel>().First().Children.OfType<Ui.Button>().First();
+        native.Click(sort);
+        Assert.True(owner.IsColumnSorted(CatalogColumnTarget.Field("name")));
+        native.Click(window.PointToScreen(new Point(window.ActualWidth - 24, window.ActualHeight - 64)));
+        PumpUntil(() => !popup.IsOpen);
+        Assert.False(header(2).IsMouseCaptured);
+
+        body = Open(3); ChooseCondition(body);
+        var slider = body.Children.OfType<StackPanel>().SelectMany(panel => panel.Children.OfType<Slider>()).First();
+        PumpUntil(() => slider.IsEnabled);
+        native.Click(slider, .8);
+        Assert.True(slider.Value > 0, "The number slider must receive real pointer input.");
+        Assert.True(owner.GetColumnFilter(CatalogColumnTarget.Field("amount"))!.Minimum > 0);
+
+        body = Open(4); ChooseCondition(body);
+        var picker = body.Children.OfType<StackPanel>().SelectMany(panel => panel.Children.OfType<Ui.CalendarDatePicker>()).First();
+        native.Click(picker);
+        PumpUntil(() => picker.IsCalendarOpen);
+        native.Key(0x1B);
+        PumpUntil(() => !picker.IsCalendarOpen);
+        Assert.True(popup.IsOpen);
+        native.Click(picker);
+        PumpUntil(() => picker.IsCalendarOpen);
+        var calendarPopup = Assert.IsType<Popup>(typeof(Ui.CalendarDatePicker)
+            .GetField("_popup", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(picker));
+        PumpUntil(() => calendarPopup.IsOpen && calendarPopup.Child is Calendar { ActualHeight: > 0 });
+        var calendar = Assert.IsType<Calendar>(calendarPopup.Child);
+        var day = Descendants<CalendarDayButton>(calendar).First(button => button.IsVisible && button.IsEnabled
+            && !button.IsBlackedOut && button.DataContext is DateTime date && date.Month == calendar.DisplayDate.Month);
+        var chosenDate = Assert.IsType<DateTime>(day.DataContext);
+        native.Click(day);
+        PumpUntil(() => !picker.IsCalendarOpen && picker.Date == chosenDate);
+        Assert.Equal(chosenDate, owner.GetColumnFilter(CatalogColumnTarget.Field("date"))!.StartDate);
+        Assert.True(popup.IsOpen, "Selecting a date must not dismiss the outer filter editor.");
+        native.Click(body.Children.OfType<StackPanel>().First().Children.OfType<Ui.Button>().First());
+        native.Key(0x1B);
+        PumpUntil(() => !popup.IsOpen);
+        Assert.Same(header(4), Keyboard.FocusedElement);
+        owner.ClearColumnFiltersCommand.Execute(null);
+        owner.ApplyColumnSort(CatalogColumnTarget.Field("date"), null);
+        grid.UpdateLayout();
     }
 
     private static MouseButtonEventArgs RaiseHeaderMouse(UIElement source, RoutedEvent routedEvent)

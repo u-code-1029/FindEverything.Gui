@@ -17,6 +17,12 @@ public sealed class ProfileSelectionMatchColumnManifest
     public string? InputHeader { get; set; }
     /// <summary>Zero-based input table column. TextLines uses column zero.</summary>
     public int? InputColumnIndex { get; set; }
+    /// <summary>
+    /// Optional regex gate/extractor. Regex input applies it to each complete line;
+    /// table/text input applies it to the mapped cell. All mapped gates must match
+    /// the same row. Introduced in contract v4.
+    /// </summary>
+    public string? RegexPattern { get; set; }
     public string? RegexGroup { get; set; }
     public ProfileSelectionValueSource ValueSource { get; set; } = ProfileSelectionValueSource.Displayed;
     public ProfileSelectionDateComparison DateComparison { get; set; } = ProfileSelectionDateComparison.DateOnly;
@@ -67,8 +73,9 @@ public static class ProfileSelectionMatchRules
             { errors.Add($"Selection rule '{label}' needs 1–{MaximumColumns} column mappings."); continue; }
             if (rule.InputKind == ProfileSelectionInputKind.TextLines && rule.Columns.Count != 1)
                 errors.Add($"Selection rule '{label}' TextLines input maps exactly one column.");
+            var hasColumnPatterns = rule.Columns.Any(column => !string.IsNullOrWhiteSpace(column?.RegexPattern));
             Regex? regex = null;
-            if (rule.InputKind == ProfileSelectionInputKind.Regex)
+            if (rule.InputKind == ProfileSelectionInputKind.Regex && (!hasColumnPatterns || !string.IsNullOrWhiteSpace(rule.RegexPattern)))
             {
                 if (string.IsNullOrWhiteSpace(rule.RegexPattern) || rule.RegexPattern.Length > 4096)
                     errors.Add($"Selection rule '{label}' needs a regex pattern (1–4096 characters).");
@@ -89,9 +96,24 @@ public static class ProfileSelectionMatchRules
                     && column.InputColumnIndex is null) errors.Add($"Selection rule '{label}' needs an input header or column index.");
                 if (!string.IsNullOrWhiteSpace(column.InputHeader) && !rule.HasHeaderRow)
                     errors.Add($"Selection rule '{label}' requires a header row to use a named input column.");
-                if (rule.InputKind == ProfileSelectionInputKind.Regex && (string.IsNullOrWhiteSpace(column.RegexGroup)
-                    || (regex is not null && !regex.GetGroupNames().Contains(column.RegexGroup, StringComparer.Ordinal))))
+                Regex? columnRegex = regex;
+                if (!string.IsNullOrWhiteSpace(column.RegexPattern))
+                {
+                    if (column.RegexPattern.Length > 4096)
+                        errors.Add($"Selection rule '{label}' field '{column.FieldId}' regex exceeds 4096 characters.");
+                    else try { columnRegex = new Regex(column.RegexPattern, RegexOptions.CultureInvariant,
+                        TimeSpan.FromMilliseconds(Math.Clamp(rule.TimeoutMilliseconds, 10, 2000))); }
+                    catch (ArgumentException exception) { errors.Add($"Selection rule '{label}' field '{column.FieldId}': {exception.Message}"); }
+                }
+                else if (rule.InputKind == ProfileSelectionInputKind.Regex && hasColumnPatterns && string.IsNullOrWhiteSpace(rule.RegexPattern))
+                    errors.Add($"Selection rule '{label}' field '{column.FieldId}' needs a regex pattern or a shared pattern.");
+                if (rule.InputKind == ProfileSelectionInputKind.Regex && string.IsNullOrWhiteSpace(column.RegexGroup)
+                    || (!string.IsNullOrWhiteSpace(column.RegexGroup) && columnRegex is not null
+                        && !columnRegex.GetGroupNames().Contains(column.RegexGroup, StringComparer.Ordinal)))
                     errors.Add($"Selection rule '{label}' regex group '{column.RegexGroup}' is not defined.");
+                if (rule.InputKind != ProfileSelectionInputKind.Regex && !string.IsNullOrWhiteSpace(column.RegexGroup)
+                    && string.IsNullOrWhiteSpace(column.RegexPattern))
+                    errors.Add($"Selection rule '{label}' field '{column.FieldId}' needs a regex pattern to extract a group.");
                 if (column.DateFormat is { Length: > 128 }) errors.Add($"Selection rule '{label}' date format is too long.");
                 else if (!string.IsNullOrWhiteSpace(column.DateFormat))
                     try { _ = DateTime.Now.ToString(column.DateFormat, CultureInfo.InvariantCulture); }

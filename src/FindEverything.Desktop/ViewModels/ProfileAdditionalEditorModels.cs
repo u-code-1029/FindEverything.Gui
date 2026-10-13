@@ -34,6 +34,7 @@ public partial class ProfileSelectionColumnDraftViewModel : ObservableObject
     [ObservableProperty] private string _fieldId = string.Empty;
     [ObservableProperty] private string _inputHeader = string.Empty;
     [ObservableProperty] private string _inputColumnIndexText = string.Empty;
+    [ObservableProperty] private string _regexPattern = string.Empty;
     [ObservableProperty] private string _regexGroup = string.Empty;
     [ObservableProperty] private ProfileSelectionValueSource _valueSource = ProfileSelectionValueSource.Displayed;
     [ObservableProperty] private ProfileSelectionDateComparison _dateComparison = ProfileSelectionDateComparison.DateOnly;
@@ -46,6 +47,7 @@ public partial class ProfileSelectionColumnDraftViewModel : ObservableObject
     {
         FieldId = column.FieldId; InputHeader = column.InputHeader ?? string.Empty;
         InputColumnIndexText = column.InputColumnIndex.HasValue ? (column.InputColumnIndex.Value + 1).ToString(CultureInfo.InvariantCulture) : string.Empty;
+        RegexPattern = column.RegexPattern ?? string.Empty;
         RegexGroup = column.RegexGroup ?? string.Empty; ValueSource = column.ValueSource;
         DateComparison = column.DateComparison; DateFormat = column.DateFormat ?? string.Empty;
     }
@@ -53,6 +55,7 @@ public partial class ProfileSelectionColumnDraftViewModel : ObservableObject
     {
         FieldId = FieldId, InputHeader = Optional(InputHeader),
         InputColumnIndex = InputColumnIndexText.Length == 0 ? null : int.Parse(InputColumnIndexText, CultureInfo.InvariantCulture) - 1,
+        RegexPattern = string.IsNullOrWhiteSpace(RegexPattern) ? null : RegexPattern,
         RegexGroup = Optional(RegexGroup), ValueSource = ValueSource, DateComparison = DateComparison,
         DateFormat = Optional(DateFormat),
     };

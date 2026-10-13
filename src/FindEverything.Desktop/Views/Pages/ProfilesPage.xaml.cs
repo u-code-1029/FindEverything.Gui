@@ -13,6 +13,7 @@ public partial class ProfilesPage
         InitializeComponent();
         viewModel.AssignmentPickerRequested += OnAssignmentPickerRequested;
         viewModel.EditorStepChanged += OnEditorStepChanged;
+        viewModel.ValidationIssuesRequested += OnEditorStepChanged;
     }
 
     private void OnProfileWorkspaceSizeChanged(object sender, System.Windows.SizeChangedEventArgs e) => ApplyWorkspaceLayout();

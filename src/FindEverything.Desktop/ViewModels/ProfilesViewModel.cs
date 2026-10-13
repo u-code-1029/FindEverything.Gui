@@ -440,6 +440,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
 
     private void NewDraftCore()
     {
+        ClearDefinitionValidationIssues();
         _isPopulatingDraft = true;
         try
         {
@@ -1060,9 +1061,11 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
     [RelayCommand(CanExecute = nameof(CanValidateAndSave))]
     private void ValidateDraft()
     {
+        ClearDefinitionValidationIssues();
         if (HasNumericValidationError)
         {
             SetEditorStatus(NumericValidationMessage, InfoBarSeverity.Error);
+            ValidationIssuesRequested?.Invoke(this, EventArgs.Empty);
             return;
         }
         try
@@ -1077,6 +1080,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
         catch (InvalidOperationException exception)
         {
             _logger.LogWarning(exception, "Could not validate the profile draft.");
+            ApplyBuildValidationIssues(exception);
             SetEditorStatus(
                 L(
                     "Loc.Profiles.Error.ValidationFailed",
@@ -1088,9 +1092,11 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
     [RelayCommand(CanExecute = nameof(CanValidateAndSave))]
     private async Task SaveDraftAsync()
     {
+        ClearDefinitionValidationIssues();
         if (HasNumericValidationError)
         {
             SetEditorStatus(NumericValidationMessage, InfoBarSeverity.Error);
+            ValidationIssuesRequested?.Invoke(this, EventArgs.Empty);
             return;
         }
         // A presentation-only edit must not publish a new compiled profile or invalidate cached results.
@@ -1099,6 +1105,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
         catch (InvalidOperationException exception)
         {
             _logger.LogWarning(exception, "Could not build the profile draft.");
+            ApplyBuildValidationIssues(exception);
             SetEditorStatus(exception.Message, InfoBarSeverity.Error);
             return;
         }
@@ -1164,16 +1171,17 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
 
             if (!result.Applied)
             {
-                var reloadMessages = result.Snapshot?.Reports
+                var reloadDiagnostics = result.Snapshot?.Reports
                     .Where(report => string.Equals(
                         report.ProfileId,
                         DraftId.Trim(),
                         StringComparison.OrdinalIgnoreCase))
                     .SelectMany(static report => report.Diagnostics)
-                    .Select(diagnostic =>
-                        ProfileDiagnosticLocalizer.Translate(_localizer, diagnostic))
                     .Distinct()
                     .ToArray() ?? [];
+                ApplyDefinitionValidationIssues(reloadDiagnostics);
+                var reloadMessages = reloadDiagnostics.Select(diagnostic =>
+                    ProfileDiagnosticLocalizer.Translate(_localizer, diagnostic)).ToArray();
                 SetEditorStatus(
                     reloadMessages.Length == 0
                         ? L(
@@ -1198,6 +1206,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
             }
 
             await RefreshEditableProfilesAsync(_originalProfileId).ConfigureAwait(true);
+            ClearDefinitionValidationIssues();
             SetEditorStatus(
                 L(
                     "Loc.Profiles.Status.SavedApplied",
@@ -1380,6 +1389,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
 
     private void PopulateDraft(ProfileManifest manifest)
     {
+        ClearDefinitionValidationIssues();
         _isPopulatingDraft = true;
         try
         {
@@ -1479,6 +1489,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
 
     private void ApplyReview(ProfileDefinitionReview review, string successMessage)
     {
+        ApplyDefinitionValidationIssues(review.Diagnostics);
         var errors = review.Diagnostics
             .Where(static diagnostic => diagnostic.Severity == ProfileDiagnosticSeverity.Error)
             .ToArray();
@@ -1648,6 +1659,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
         if (eventArgs.PropertyName == nameof(ProfileFieldDraftViewModel.WidthPreset))
         {
             // Width is GUI-only; do not rebuild the guided regex preview.
+            ClearDefinitionValidationIssues();
             _hasUserChanges = true;
             IsDraftDirty = true;
             SetEditorStatus(L("Loc.Profiles.ColumnWidth.Dirty", "컬럼 너비를 변경했습니다. 저장하면 기존 결과에 적용됩니다."), InfoBarSeverity.Informational);
@@ -1725,6 +1737,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
 
         _hasUserChanges = true;
         IsDraftDirty = true;
+        ClearDefinitionValidationIssues();
         OnPropertyChanged(nameof(AvailableSelectionFieldIds));
         RefreshNumericValidation();
         SetEditorStatus(
@@ -1741,6 +1754,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
 
     private void RefreshNumericValidation()
     {
+        RefreshValidationIssues();
         OnPropertyChanged(nameof(NumericValidationMessage));
         OnPropertyChanged(nameof(HasNumericValidationError));
         SaveDraftCommand.NotifyCanExecuteChanged();

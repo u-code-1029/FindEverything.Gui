@@ -461,6 +461,10 @@
     <sys:String x:Key="Loc.Profiles.Save.Completed.Message">'{0}' 프로필을 바로 사용할 수 있습니다.</sys:String>
     <sys:String x:Key="Loc.Profiles.Status.OpenedExpert">이 프로필은 고급 정규식 기능을 사용하므로 전문가 모드로 열었습니다.</sys:String>
     <sys:String x:Key="Loc.Profiles.Validation.MoreErrors">• 그 외 {0:N0}개 오류</sys:String>
+    <sys:String x:Key="Loc.Profiles.Validation.IssuesTitle">저장하기 전에 다음 문제를 수정하세요</sys:String>
+    <sys:String x:Key="Loc.Profiles.Validation.GoToStep">{0} 이동</sys:String>
+    <sys:String x:Key="Loc.Profiles.Validation.GoToStepHelp">이 문제를 수정할 수 있는 프로필 설정 단계로 이동합니다.</sys:String>
+    <sys:String x:Key="Loc.ProfileDiagnostic.selection_regex_requires_v4">외부 데이터의 컬럼별 정규식 AND 조건은 계약 버전 4가 필요합니다. GUI에서 다시 저장하거나 contractVersion을 4로 변경하세요.</sys:String>
     <sys:String x:Key="Loc.Profiles.Status.Dirty">변경 사항이 있습니다. 검증 후 저장하세요.</sys:String>
     <sys:String x:Key="Loc.Profiles.Status.TemplateReady">경로 규칙이 준비되었습니다. 아래에서 같은 경로를 시험해 보세요.</sys:String>
     <sys:String x:Key="Loc.Profiles.Status.CompleteRule">경로 규칙을 완성하세요.</sys:String>
@@ -1121,6 +1125,7 @@
     <sys:String x:Key="Loc.LiveBrowser.Link">연결 폴더는 자동 탐색하지 않습니다.</sys:String>
     <sys:String x:Key="Loc.LiveBrowser.More">더 보기</sys:String>
     <sys:String x:Key="Loc.LiveBrowser.Open">탐색기에서 열기</sys:String>
+    <sys:String x:Key="Loc.LiveBrowser.OpenFile">기본 프로그램으로 열기</sys:String>
     <sys:String x:Key="Loc.LiveBrowser.Refresh">새로고침</sys:String>
     <sys:String x:Key="Loc.LiveBrowser.Title">실제 폴더 내용</sys:String>
     <sys:String x:Key="Loc.Profiles.ChildDirectory.New">폴더 확인</sys:String>
@@ -1136,7 +1141,11 @@
     <sys:String x:Key="Loc.Profiles.Features.Selection.DateFormat">입력 날짜 형식</sys:String>
     <sys:String x:Key="Loc.Profiles.Features.Selection.Delimiter">구분자 (비우면 자동)</sys:String>
     <sys:String x:Key="Loc.Profiles.Features.Selection.Header">첫 행을 헤더로 사용</sys:String>
-    <sys:String x:Key="Loc.Profiles.Features.Selection.Help">입력 형태를 선택하고 컬럼 버튼으로 연결하세요. 같은 입력 행의 연결 값은 모두 일치해야 합니다. 여러 입력 행 중 하나와 일치하면 선택하며, 적용 전 미리보기에서 확인합니다.</sys:String>
+    <sys:String x:Key="Loc.Profiles.Features.Selection.Help">입력 형태를 선택하고 컬럼 버튼으로 연결하세요. 입력 한 행의 정규식 조건이 모두 일치해야 값을 추출하며, 연결된 구조화 컬럼 값도 모두 같아야 선택합니다(AND). 여러 입력 행 중 하나가 일치하면 체크합니다. 적용 전 미리보기에서 확인하세요.</sys:String>
+    <sys:String x:Key="Loc.Profiles.Features.Selection.SharedRegex">공통 정규식 (컬럼별 정규식이 비어 있으면 사용)</sys:String>
+    <sys:String x:Key="Loc.Profiles.Features.Selection.ColumnRegex">이 컬럼의 정규식 조건</sys:String>
+    <sys:String x:Key="Loc.Profiles.Features.Selection.ColumnRegexExample">예: ID=(?&lt;id&gt;\d+)</sys:String>
+    <sys:String x:Key="Loc.Profiles.Features.Selection.ColumnRegexHelp">정규식 입력은 한 줄 전체에, 표·텍스트 입력은 이 컬럼의 셀에 적용합니다. 그룹 이름의 값을 구조화 컬럼과 비교합니다. 표·텍스트에서 그룹 이름이 비어 있으면 매치 전체를 사용합니다. 컬럼별 정규식을 하나라도 지정하면 같은 행의 모든 조건을 AND로 확인합니다.</sys:String>
     <sys:String x:Key="Loc.Profiles.Features.Selection.InputKind">입력 형태</sys:String>
     <sys:String x:Key="Loc.Profiles.Features.Selection.Multiline">여러 줄 정규식</sys:String>
     <sys:String x:Key="Loc.Profiles.Features.Selection.RuleName">규칙 이름</sys:String>

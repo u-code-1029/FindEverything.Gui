@@ -461,6 +461,10 @@
     <sys:String x:Key="Loc.Profiles.Save.Completed.Message">The '{0}' profile is ready to use.</sys:String>
     <sys:String x:Key="Loc.Profiles.Status.OpenedExpert">This profile uses advanced regular-expression features, so it was opened in Expert mode.</sys:String>
     <sys:String x:Key="Loc.Profiles.Validation.MoreErrors">• {0:N0} more errors</sys:String>
+    <sys:String x:Key="Loc.Profiles.Validation.IssuesTitle">Fix these issues before saving</sys:String>
+    <sys:String x:Key="Loc.Profiles.Validation.GoToStep">Go to {0}</sys:String>
+    <sys:String x:Key="Loc.Profiles.Validation.GoToStepHelp">Go to the profile setup step where you can fix this issue.</sys:String>
+    <sys:String x:Key="Loc.ProfileDiagnostic.selection_regex_requires_v4">Per-column regex AND conditions require contract version 4. Save again in the editor or change contractVersion to 4.</sys:String>
     <sys:String x:Key="Loc.Profiles.Status.Dirty">You have unsaved changes. Validate, then save the profile.</sys:String>
     <sys:String x:Key="Loc.Profiles.Status.TemplateReady">The path rule is ready. You can use the same path in Playground after saving.</sys:String>
     <sys:String x:Key="Loc.Profiles.Status.CompleteRule">Complete the path rule.</sys:String>
@@ -1559,6 +1563,7 @@
     <sys:String x:Key="Loc.LiveBrowser.Link">Linked folders are not traversed automatically.</sys:String>
     <sys:String x:Key="Loc.LiveBrowser.More">Load more</sys:String>
     <sys:String x:Key="Loc.LiveBrowser.Open">Open in Explorer</sys:String>
+    <sys:String x:Key="Loc.LiveBrowser.OpenFile">Open with default app</sys:String>
     <sys:String x:Key="Loc.LiveBrowser.Refresh">Refresh</sys:String>
     <sys:String x:Key="Loc.LiveBrowser.Title">Live folder contents</sys:String>
     <sys:String x:Key="Loc.Profiles.ChildDirectory.New">Folder check</sys:String>
@@ -1574,7 +1579,11 @@
     <sys:String x:Key="Loc.Profiles.Features.Selection.DateFormat">Input date format</sys:String>
     <sys:String x:Key="Loc.Profiles.Features.Selection.Delimiter">Delimiter (blank: automatic)</sys:String>
     <sys:String x:Key="Loc.Profiles.Features.Selection.Header">First row contains headers</sys:String>
-    <sys:String x:Key="Loc.Profiles.Features.Selection.Help">Choose an input format and map values using the column buttons. All mapped values in an input row must match. Any matching input row selects the item; review the preview before applying.</sys:String>
+    <sys:String x:Key="Loc.Profiles.Features.Selection.Help">Choose an input format and map values using the column buttons. Every regex condition in the same input row must match before values are extracted. Every mapped structured value must also match (AND). Any matching input row selects the item; review the preview before applying.</sys:String>
+    <sys:String x:Key="Loc.Profiles.Features.Selection.SharedRegex">Shared regex (used when a column has no regex of its own)</sys:String>
+    <sys:String x:Key="Loc.Profiles.Features.Selection.ColumnRegex">Regex condition for this column</sys:String>
+    <sys:String x:Key="Loc.Profiles.Features.Selection.ColumnRegexExample">Example: ID=(?&lt;id&gt;\d+)</sys:String>
+    <sys:String x:Key="Loc.Profiles.Features.Selection.ColumnRegexHelp">Regex input applies this to the entire line; table/text input applies it to the mapped cell. The named capture is compared with the structured field. For table/text input, an empty group uses the whole match. With any per-column regex, all conditions must match the same row (AND).</sys:String>
     <sys:String x:Key="Loc.Profiles.Features.Selection.InputKind">Input format</sys:String>
     <sys:String x:Key="Loc.Profiles.Features.Selection.Multiline">Multiline regex</sys:String>
     <sys:String x:Key="Loc.Profiles.Features.Selection.RuleName">Rule name</sys:String>
