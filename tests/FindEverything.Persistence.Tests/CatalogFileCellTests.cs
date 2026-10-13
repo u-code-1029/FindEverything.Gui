@@ -26,6 +26,7 @@ public sealed class CatalogFileCellTests : IDisposable
         Assert.Equal(snapshot.Generation, updated.Generation);
         Assert.Equal(snapshot.Revision + 1, updated.Revision);
         await Assert.ThrowsAsync<ResultQueryChangedException>(() => old.CountAsync());
+        await Assert.ThrowsAsync<ResultQueryChangedException>(() => store.FindMatchingPathsAsync(snapshot, new(), [original.FullPath]));
         await using var current = store.OpenQuery(updated, new("new content"));
         Assert.Equal(1, await current.CountAsync());
         var row = Assert.Single((await current.ReadRangeAsync(0, 500)).Items);
@@ -36,6 +37,35 @@ public sealed class CatalogFileCellTests : IDisposable
         Assert.Equal(0, updated.Summary.FieldIssueRowCount);
         Assert.Equal(updated.Revision, (await store.FindAsync(snapshot.Scope))!.Revision);
         await Assert.ThrowsAsync<ResultQueryChangedException>(() => store.UpdateTextCellAsync(snapshot, row.FullPath, "note", "stale", saved));
+    }
+
+    [Fact]
+    public async Task Publishing_after_a_scan_retry_preserves_the_actual_revision()
+    {
+        using var store = new SqliteCatalogProjectionStore(Database);
+        var seeded = Seed(store);
+        using var writer = store.Begin(seeded.Scope, seeded.Fields);
+        writer.Reset();
+        writer.Append(new(_directory, "", "rule", new object(), new Dictionary<string, object?> { ["id"] = "retried", ["note"] = null }, false));
+        var published = writer.Publish(seeded.Summary);
+        Assert.Equal(writer.Revision, published.Revision);
+        Assert.Equal(1, published.Revision);
+        Assert.Equal(published.Revision, (await store.FindAsync(seeded.Scope))!.Revision);
+        await using var query = store.OpenQuery(published, new());
+        Assert.Equal(1, await query.CountAsync());
+        Assert.Equal("retried", Assert.Single((await query.ReadRangeAsync(0, 10)).Items).Values["id"]);
+    }
+
+    [Fact]
+    public async Task Hidden_completion_labels_do_not_match_but_actual_field_values_do()
+    {
+        using var store = new SqliteCatalogProjectionStore(Database);
+        var snapshot = Seed(store);
+        await using (var hidden = store.OpenQuery(snapshot, new("Complete")))
+            Assert.Equal(0, await hidden.CountAsync());
+        var changed = await store.UpdateTextCellAsync(snapshot, _directory, "note", "Complete", new(ProfileFieldResourceState.Present, "note.txt"));
+        await using var actualValue = store.OpenQuery(changed, new("Complete"));
+        Assert.Equal(1, await actualValue.CountAsync());
     }
 
     [Fact]

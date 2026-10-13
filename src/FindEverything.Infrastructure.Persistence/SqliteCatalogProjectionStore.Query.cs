@@ -357,7 +357,7 @@ public sealed partial class SqliteCatalogProjectionStore
                 command.Parameters.AddWithValue(term, _terms[index]);
                 var column = _query.ShowOriginalValues ? "c.raw_search" : "c.mapped_search";
                 predicates.Add($"""
-                    (instr(r.path_search,{term})>0 OR instr(CASE WHEN r.coverage=1 THEN $pending ELSE $completed END,{term})>0
+                    (instr(r.path_search,{term})>0
                     OR EXISTS(SELECT 1 FROM projection_cells c LEFT JOIN {notesTable} n
                         ON c.is_user_input=1 AND n.profile_key=$profile AND n.path_key=c.path_key AND n.field_id=c.field_id
                         WHERE c.generation=r.generation AND c.path_key=r.path_key

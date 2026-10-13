@@ -190,7 +190,7 @@ public sealed partial class SqliteCatalogProjectionStore
                 transaction.Commit();
                 _published = true;
                 Owner.Prune(connection);
-                return new CatalogProjectionSnapshot(Generation, finalScope, summary, fields);
+                return new CatalogProjectionSnapshot(Generation, finalScope, summary, fields) { Revision = Revision };
             }
             finally { Owner._writeGate.Release(); }
         }

@@ -397,9 +397,7 @@ internal static class CatalogColumnFilterUiChecks
         try
         {
             using var store = new SqliteCatalogProjectionStore(System.IO.Path.Combine(directory, "catalog.db"));
-            // This store implements both optional contracts. Bind both notes and
-            // projections instead of consuming the only argument as notes.
-            using var owner = ActivatorUtilities.CreateInstance<CatalogViewModel>(services, store, store);
+            using var owner = ActivatorUtilities.CreateInstance<CatalogViewModel>(services, store);
             Assert.Same(store, typeof(CatalogViewModel).GetField("_projectionStore",
                 BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(owner));
             var fields = new[] { Field("text", ProfileFieldValueKind.String) with { SourceKind = ProfileFieldSourceKind.TextFileContent } };
@@ -437,7 +435,7 @@ internal static class CatalogColumnFilterUiChecks
                 .Invoke(owner, [false, true, CancellationToken.None, false])!;
             PumpUntil(() => refresh.IsCompleted); refresh.GetAwaiter().GetResult();
             Assert.Equal(0, owner.Items.Count);
-            Assert.True(owner.HasLoadedItems); // Empty filters must not hide the headers/search needed to clear them.
+            Assert.True(owner.HasLoadedItems, owner.StatusMessage); // Empty filters must not hide the headers/search needed to clear them.
         }
         finally
         {

@@ -19,7 +19,7 @@ public sealed partial class SqliteCatalogProjectionStore
         return await Task.Run(async () =>
         {
             await using var session = new ProjectionQuery(this, snapshot.Generation, snapshot.Scope, snapshot.Fields,
-                query, snapshot.IsBuilding, snapshot.IsBuilding ? snapshot.BuildingRevision : null);
+                query, snapshot.IsBuilding, snapshot.IsBuilding ? snapshot.BuildingRevision : snapshot.Revision);
             return await session.FindMatchingPathsAsync(capturedPaths, cancellationToken).ConfigureAwait(false);
         }, cancellationToken).ConfigureAwait(false);
     }
