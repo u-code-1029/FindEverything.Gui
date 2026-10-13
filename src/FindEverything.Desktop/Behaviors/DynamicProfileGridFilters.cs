@@ -6,6 +6,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using FindEverything.Application.Catalog;
 using FindEverything.Desktop.Localization;
 using FindEverything.Desktop.ViewModels;
@@ -33,6 +34,7 @@ public static partial class DynamicProfileGrid
         public Point Start;
         public bool Dragged;
         public CancellationTokenSource? EditorCancellation;
+        public DispatcherOperation? HeaderPreparation;
     }
 
     private static void InitializeColumnFilters(DataGrid grid)
@@ -42,12 +44,15 @@ public static partial class DynamicProfileGrid
         grid.SetValue(ColumnFiltersStateProperty, state);
         void Attach()
         {
+            if (!ReferenceEquals(state.Owner, grid.DataContext as CatalogViewModel))
+            {
+                state.Flyout.Hide(); state.EditorCancellation?.Cancel(); state.PressedHeader = null;
+            }
             if (state.Owner is not null) state.Owner.ColumnQueryChanged -= state.Changed;
             state.Owner = grid.DataContext as CatalogViewModel;
-            state.Changed = (_, _) => UpdateHeaderFilterMarkers(grid, state);
+            state.Changed = (_, _) => ScheduleFilterHeaders(grid, state);
             if (state.Owner is not null) state.Owner.ColumnQueryChanged += state.Changed;
-            foreach (var column in grid.Columns) PrepareFilterHeader(grid, column);
-            UpdateHeaderFilterMarkers(grid, state);
+            ScheduleFilterHeaders(grid, state);
         }
         grid.Loaded += (_, _) => Attach();
         grid.DataContextChanged += (_, _) => { if (grid.IsLoaded) Attach(); };
@@ -57,14 +62,13 @@ public static partial class DynamicProfileGrid
             state.Owner = null;
             state.Flyout.Hide();
             state.EditorCancellation?.Cancel();
+            state.HeaderPreparation?.Abort(); state.HeaderPreparation = null;
         };
-        ((INotifyCollectionChanged)grid.Columns).CollectionChanged += (_, args) =>
+        ((INotifyCollectionChanged)grid.Columns).CollectionChanged += (_, _) =>
         {
             state.Flyout.Hide();
             state.EditorCancellation?.Cancel();
-            if (args.NewItems is not null)
-                foreach (DataGridColumn column in args.NewItems) PrepareFilterHeader(grid, column);
-            UpdateHeaderFilterMarkers(grid, state);
+            ScheduleFilterHeaders(grid, state);
         };
         grid.AddHandler(UIElement.PreviewMouseLeftButtonDownEvent, new MouseButtonEventHandler((_, e) =>
         {
@@ -98,6 +102,24 @@ public static partial class DynamicProfileGrid
             e.Handled = true;
             _ = OpenColumnFlyoutAsync(grid, state, owner, header, target);
         }), true);
+    }
+
+    private static void ScheduleFilterHeaders(DataGrid grid, ColumnFiltersState state)
+    {
+        if (state.HeaderPreparation?.Status is DispatcherOperationStatus.Pending or DispatcherOperationStatus.Executing) return;
+        // DataGridColumnHeadersPresenter receives Columns.CollectionChanged after
+        // our earlier subscriber. Changing Header during Insert reenters its view
+        // before the new index exists. Coalesce all inserts and decorate only
+        // after the complete collection notification/rebuild has unwound.
+        state.HeaderPreparation = grid.Dispatcher.BeginInvoke(DispatcherPriority.DataBind, new Action(() =>
+        {
+            state.HeaderPreparation = null;
+            if (!grid.IsLoaded || !ReferenceEquals(grid.GetValue(ColumnFiltersStateProperty), state)
+                || !ReferenceEquals(state.Owner, grid.DataContext as CatalogViewModel)) return;
+            foreach (var column in grid.Columns.ToArray())
+                if (grid.Columns.Contains(column)) PrepareFilterHeader(grid, column);
+            UpdateHeaderFilterMarkers(grid, state);
+        }));
     }
 
     private static T? Ancestor<T>(DependencyObject? element) where T : DependencyObject

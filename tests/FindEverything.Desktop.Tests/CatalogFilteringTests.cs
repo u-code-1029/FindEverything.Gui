@@ -130,23 +130,6 @@ public sealed class CatalogFilteringTests
     }
 
     [Fact]
-    public async Task Highlighting_is_case_insensitive_literal_and_preserves_the_source_text()
-    {
-        var completion = new TaskCompletionSource<Exception?>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        var thread = new Thread(() => RunHighlightingTest(completion))
-        {
-            IsBackground = true,
-            Name = "FindEverything highlighting test",
-        };
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-
-        var exception = await completion.Task.WaitAsync(TimeSpan.FromSeconds(10));
-        Assert.Null(exception);
-    }
-
-    [Fact]
     public void User_input_fields_participate_in_filter_copy_and_export_values()
     {
         var field = new ProfileFieldDescriptor(
@@ -272,53 +255,50 @@ public sealed class CatalogFilteringTests
             ParseFormat: null,
             displayFormat);
 
-    private static void RunHighlightingTest(TaskCompletionSource<Exception?> completion)
+    // WPF-UI resources belong to the composition test's sole Application/STA.
+    // Running these assertions there avoids competing resource initialization
+    // and shutdown races; assertion failures still fail the smoke test directly.
+    internal static void VerifyHighlightingRendering()
     {
-        try
-        {
-            const string source = "Apollo + apollo [x]";
-            var textBlock = new TextBlock();
-            TextHighlighting.SetDisplayText(textBlock, source);
-            TextHighlighting.SetHighlightText(textBlock, "  APOLLO  ");
+        Assert.NotNull(System.Windows.Application.Current);
+        System.Windows.Application.Current.Dispatcher.VerifyAccess();
+        const string source = "Apollo + apollo [x]";
+        var textBlock = new TextBlock();
+        TextHighlighting.SetDisplayText(textBlock, source);
+        TextHighlighting.SetHighlightText(textBlock, "  APOLLO  ");
 
-            var runs = textBlock.Inlines.OfType<Run>().ToArray();
-            Assert.Equal(source, string.Concat(runs.Select(static run => run.Text)));
-            Assert.Equal(2, runs.Count(static run => run.Background is not null));
+        var runs = textBlock.Inlines.OfType<Run>().ToArray();
+        Assert.Equal(source, string.Concat(runs.Select(static run => run.Text)));
+        Assert.Equal(2, runs.Count(static run => run.Background is not null));
 
-            TextHighlighting.SetHighlightText(textBlock, "APOLLO");
-            Assert.Equal(runs, textBlock.Inlines.OfType<Run>().ToArray());
+        TextHighlighting.SetHighlightText(textBlock, "APOLLO");
+        Assert.Equal(runs, textBlock.Inlines.OfType<Run>().ToArray());
 
-            TextHighlighting.SetHighlightText(textBlock, "Apollo ollo");
-            runs = textBlock.Inlines.OfType<Run>().ToArray();
-            Assert.Equal(source, string.Concat(runs.Select(static run => run.Text)));
-            Assert.Equal(2, runs.Count(static run => run.Background is not null));
+        TextHighlighting.SetHighlightText(textBlock, "Apollo ollo");
+        runs = textBlock.Inlines.OfType<Run>().ToArray();
+        Assert.Equal(source, string.Concat(runs.Select(static run => run.Text)));
+        Assert.Equal(2, runs.Count(static run => run.Background is not null));
 
-            TextHighlighting.SetHighlightText(textBlock, "Apollo [x]");
-            runs = textBlock.Inlines.OfType<Run>().ToArray();
-            Assert.Equal(source, string.Concat(runs.Select(static run => run.Text)));
-            Assert.Equal(3, runs.Count(static run => run.Background is not null));
+        TextHighlighting.SetHighlightText(textBlock, "Apollo [x]");
+        runs = textBlock.Inlines.OfType<Run>().ToArray();
+        Assert.Equal(source, string.Concat(runs.Select(static run => run.Text)));
+        Assert.Equal(3, runs.Count(static run => run.Background is not null));
 
-            TextHighlighting.SetHighlightText(textBlock, "[");
-            runs = textBlock.Inlines.OfType<Run>().ToArray();
-            Assert.Equal(source, string.Concat(runs.Select(static run => run.Text)));
-            Assert.Single(runs, static run => run.Background is not null);
+        TextHighlighting.SetHighlightText(textBlock, "[");
+        runs = textBlock.Inlines.OfType<Run>().ToArray();
+        Assert.Equal(source, string.Concat(runs.Select(static run => run.Text)));
+        Assert.Single(runs, static run => run.Background is not null);
 
-            TextHighlighting.SetHighlightText(textBlock, string.Empty);
-            runs = textBlock.Inlines.OfType<Run>().ToArray();
-            Assert.Single(runs);
-            Assert.Equal(source, runs[0].Text);
-            Assert.Null(runs[0].Background);
+        TextHighlighting.SetHighlightText(textBlock, string.Empty);
+        runs = textBlock.Inlines.OfType<Run>().ToArray();
+        Assert.Single(runs);
+        Assert.Equal(source, runs[0].Text);
+        Assert.Null(runs[0].Background);
 
-            TextHighlighting.SetHighlightText(textBlock, "no-match");
-            runs = textBlock.Inlines.OfType<Run>().ToArray();
-            Assert.Single(runs);
-            Assert.Equal(source, textBlock.Text);
-            Assert.Null(runs[0].Background);
-            completion.TrySetResult(null);
-        }
-        catch (Exception exception)
-        {
-            completion.TrySetResult(exception);
-        }
+        TextHighlighting.SetHighlightText(textBlock, "no-match");
+        runs = textBlock.Inlines.OfType<Run>().ToArray();
+        Assert.Single(runs);
+        Assert.Equal(source, textBlock.Text);
+        Assert.Null(runs[0].Background);
     }
 }

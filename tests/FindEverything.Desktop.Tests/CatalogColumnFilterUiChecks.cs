@@ -6,7 +6,9 @@ using System.Windows.Data;
 using System.Windows.Media;
 using System.Windows.Threading;
 using FindEverything.Application.Catalog;
+using FindEverything.Application.Results;
 using FindEverything.Desktop.Behaviors;
+using FindEverything.Desktop.Results;
 using FindEverything.Desktop.ViewModels;
 using FindEverything.Profile.Runtime;
 using FindEverything.Infrastructure.Persistence;
@@ -39,6 +41,7 @@ internal static class CatalogColumnFilterUiChecks
         try
         {
             window.Show(); grid.UpdateLayout();
+            PumpUntil(() => grid.Columns[2].Header is StackPanel);
             var stateProperty = (DependencyProperty)typeof(DynamicProfileGrid).GetField("ColumnFiltersStateProperty", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;
             var state = grid.GetValue(stateProperty);
             Assert.NotNull(state);
@@ -83,9 +86,62 @@ internal static class CatalogColumnFilterUiChecks
             owner.ClearColumnFiltersCommand.Execute(null);
             Assert.False(owner.HasColumnFilters);
             Assert.Empty(owner.ActiveColumnFilters);
+            VerifyLoadedSchemaReplacementWhilePaging(grid, owner, fields);
         }
         finally { window.Close(); }
         VerifyLiveFullText(services);
+    }
+
+    private static void VerifyLoadedSchemaReplacementWhilePaging(Ui.DataGrid grid, CatalogViewModel owner,
+        ProfileFieldDescriptor[] initialFields)
+    {
+        var replacementFields = Enumerable.Range(0, 12).Select(index =>
+            new ProfileFieldDescriptor($"replacement{index}", $"replacement{index}", $"Replacement {index}", index,
+                false, ProfileFieldValueKind.String, true, null, null)).ToArray();
+        var allFields = initialFields.Concat(replacementFields).ToArray();
+        var rows = Enumerable.Range(0, 1500).Select(index =>
+        {
+            var values = allFields.ToDictionary(field => field.FieldId, field => field.Kind switch
+            {
+                ProfileFieldValueKind.Decimal => (object?)(decimal)index,
+                ProfileFieldValueKind.DateTime => DateTime.Today.AddDays(index % 20),
+                ProfileFieldValueKind.Boolean => index % 2 == 0,
+                _ => $"row-{index}:{field.FieldId}"
+            });
+            return new CatalogItemViewModel(new CatalogItem(@"C:\paging\" + index, index.ToString(), "rule", values, values, false),
+                allFields, owner.Localizer);
+        }).ToArray();
+        var pageLoads = 0;
+        using var virtualRows = new VirtualResultCollection<CatalogItemViewModel>(async (offset, limit, token) =>
+        {
+            await Task.Delay(1, token).ConfigureAwait(false);
+            return new(rows.Skip(offset).Take(limit).ToArray(), offset, offset + limit < rows.Length);
+        }, _ => new CatalogItemViewModel(new CatalogItem("", "", "", new object(), new Dictionary<string, object?>(), false),
+            allFields, owner.Localizer) { IsPlaceholder = true },
+            action => grid.Dispatcher.BeginInvoke(DispatcherPriority.Background, action),
+            exception => throw new InvalidOperationException("Schema-replacement paging failed.", exception));
+        virtualRows.PageLoaded += (_, _) => pageLoads++;
+        virtualRows.Seed(new(rows.Take(500).ToArray(), 0, true), rows.Length);
+        grid.ItemsSource = new ListCollectionView(virtualRows);
+        try
+        {
+            // Each replacement raises Clear/Add while the headers presenter is
+            // already subscribed. Header decoration must wait for the final schema,
+            // including when a worker page arrives during dispatcher draining.
+            for (var attempt = 0; attempt < 24; attempt++)
+            {
+                var current = attempt % 2 == 0 ? initialFields : replacementFields;
+                owner.Fields = current;
+                DynamicProfileGrid.SetFields(grid, current);
+                grid.ScrollIntoView(virtualRows[1100 + attempt]);
+                grid.UpdateLayout();
+            }
+            PumpUntil(() => pageLoads > 0 && grid.Columns.Count == replacementFields.Length + 3
+                && grid.Columns.Skip(1).All(column => column.Header is StackPanel));
+            Assert.Equal(replacementFields[0].Header, DynamicProfileGrid.GetColumnHeaderContent(grid.Columns[2]));
+            Assert.All(grid.Columns.Skip(1), column => Assert.False(column.CanUserSort));
+        }
+        finally { grid.ItemsSource = owner.Items; }
     }
 
     private static void VerifyLiveFullText(IServiceProvider services)

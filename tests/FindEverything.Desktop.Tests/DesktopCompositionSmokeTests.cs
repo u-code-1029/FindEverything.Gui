@@ -79,6 +79,7 @@ public sealed class DesktopCompositionSmokeTests
         try
         {
             application = CreateTestApplication();
+            CatalogFilteringTests.VerifyHighlightingRendering();
             SectionCardRegressionChecks.Verify();
             GridSizingRegressionChecks.Verify();
 
