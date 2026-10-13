@@ -13,7 +13,18 @@ namespace FindEverything.Desktop.Behaviors;
 
 public static partial class DynamicProfileGrid
 {
-    private const int SelectionColumnOffset = 1;
+    private const int SelectionColumnOffset = 2;
+    public static readonly RoutedEvent BrowseFolderRequestedEvent = EventManager.RegisterRoutedEvent(
+        "BrowseFolderRequested", RoutingStrategy.Bubble, typeof(RoutedEventHandler), typeof(DynamicProfileGrid));
+    public static readonly RoutedEvent EditTextFileRequestedEvent = EventManager.RegisterRoutedEvent(
+        "EditTextFileRequested", RoutingStrategy.Bubble, typeof(RoutedEventHandler), typeof(DynamicProfileGrid));
+
+    public sealed class ProfileCellActionEventArgs(RoutedEvent routedEvent, ViewModels.CatalogItemViewModel row, string? fieldId = null)
+        : RoutedEventArgs(routedEvent)
+    {
+        public ViewModels.CatalogItemViewModel Row { get; } = row;
+        public string? FieldId { get; } = fieldId;
+    }
     private static readonly DependencyProperty ActiveEditorOwnerProperty = DependencyProperty.RegisterAttached(
         "ActiveEditorOwner", typeof(ViewModels.CatalogViewModel), typeof(DynamicProfileGrid));
 
@@ -117,18 +128,8 @@ public static partial class DynamicProfileGrid
         dataGrid.PreviewMouseLeftButtonUp -= OnGridMouseLeftButtonUp;
         dataGrid.PreviewMouseLeftButtonUp += OnGridMouseLeftButtonUp;
         dataGrid.Columns.Add(new SelectionCheckBoxColumn(localizer));
+        dataGrid.Columns.Add(new FolderBrowserColumn(localizer));
         dataGrid.FrozenColumnCount = SelectionColumnOffset;
-        var statusColumn = new HighlightingTextColumn
-        {
-            Header = L(localizer, "Loc.Catalog.Column.Status", "상태"),
-            Binding = new Binding(nameof(ViewModels.CatalogItemViewModel.CoverageText)) { Mode = BindingMode.OneWay },
-            IsReadOnly = true,
-            Width = DataGridLength.Auto,
-            MinWidth = 80,
-            MaxWidth = 160,
-        };
-        statusColumn.SetValue(FieldIdProperty, StatusColumnId);
-        dataGrid.Columns.Add(statusColumn);
 
         if (GetFields(dataGrid) is IEnumerable fields)
         {
@@ -150,7 +151,7 @@ public static partial class DynamicProfileGrid
                     continue;
                 }
 
-                var column = new MappedHighlightingTextColumn(field.FieldId)
+                var column = new MappedHighlightingTextColumn(field)
                 {
                     Header = CreateFieldHeader(field, localizer),
                     IsReadOnly = true,
@@ -240,7 +241,7 @@ public static partial class DynamicProfileGrid
         try
         {
             var saved = store.Get(profileId);
-            foreach (var column in dataGrid.Columns.Skip(1)) column.SetValue(IsManualWidthProperty, false);
+            foreach (var column in dataGrid.Columns.Skip(SelectionColumnOffset)) column.SetValue(IsManualWidthProperty, false);
             var columns = dataGrid.Columns
                 .Select(column => new
                 {
@@ -275,6 +276,7 @@ public static partial class DynamicProfileGrid
             // The selector is UI chrome rather than profile data. Keep it at
             // the leading edge even when an older saved layout is restored.
             dataGrid.Columns[0].DisplayIndex = 0;
+            dataGrid.Columns[1].DisplayIndex = 1;
         }
         finally
         {
@@ -494,6 +496,37 @@ public static partial class DynamicProfileGrid
         }
     }
 
+    private sealed class FolderBrowserColumn : DataGridColumn
+    {
+        private readonly string _label;
+        public FolderBrowserColumn(IAppLocalizer? localizer)
+        {
+            _label = L(localizer, "Loc.LiveBrowser.Title", "현재 폴더 내용 보기");
+            Header = new Wpf.Ui.Controls.SymbolIcon(Wpf.Ui.Controls.SymbolRegular.Folder20) { ToolTip = _label, Width = 18, Height = 18 };
+            Width = new DataGridLength(48); MinWidth = MaxWidth = 48;
+            CanUserReorder = CanUserResize = CanUserSort = false; IsReadOnly = true;
+            var style = new Style(typeof(DataGridCell), System.Windows.Application.Current?.TryFindResource("DefaultDataGridCellStyle") as Style);
+            style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(4, 0, 4, 0)));
+            style.Setters.Add(new Setter(Control.HorizontalContentAlignmentProperty, HorizontalAlignment.Center)); CellStyle = style;
+        }
+        protected override FrameworkElement GenerateElement(DataGridCell cell, object dataItem) => Create();
+        protected override FrameworkElement GenerateEditingElement(DataGridCell cell, object dataItem) => Create();
+        private FrameworkElement Create()
+        {
+            var button = new Wpf.Ui.Controls.Button { Width = 32, Height = 28, Padding = new(0),
+                Icon = new Wpf.Ui.Controls.SymbolIcon(Wpf.Ui.Controls.SymbolRegular.FolderOpen20),
+                Appearance = Wpf.Ui.Controls.ControlAppearance.Transparent, ToolTip = _label };
+            System.Windows.Automation.AutomationProperties.SetName(button, _label);
+            button.Click += (_, e) =>
+            {
+                e.Handled = true;
+                if (button.DataContext is ViewModels.CatalogItemViewModel { IsPlaceholder: false } row)
+                    button.RaiseEvent(new ProfileCellActionEventArgs(BrowseFolderRequestedEvent, row));
+            };
+            return button;
+        }
+    }
+
     internal static void FocusSelectionCheckBox(DataGridRow row)
     {
         static CheckBox? Find(DependencyObject current)
@@ -523,8 +556,9 @@ public static partial class DynamicProfileGrid
         protected override FrameworkElement GenerateEditingElement(DataGridCell cell, object dataItem) => GenerateElement(cell, dataItem);
     }
 
-    private sealed class MappedHighlightingTextColumn(string fieldId) : DataGridColumn
+    private sealed class MappedHighlightingTextColumn(ProfileFieldDescriptor field) : DataGridColumn
     {
+        private readonly string fieldId = field.FieldId;
         protected override FrameworkElement GenerateElement(DataGridCell cell, object dataItem) =>
             CreateContent();
 
@@ -544,6 +578,8 @@ public static partial class DynamicProfileGrid
                 Width = GridLength.Auto,
             });
             panel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            if (field.SourceKind == ProfileFieldSourceKind.TextFileContent)
+                panel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             panel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
             var valueText = new Views.Controls.SelectableCatalogText(new Binding($"DisplayValues[{fieldId}]")
@@ -630,8 +666,44 @@ public static partial class DynamicProfileGrid
             });
             Grid.SetColumn(previewBadge, 3);
             panel.Children.Add(previewBadge);
+            if (field.SourceKind == ProfileFieldSourceKind.TextFileContent)
+            {
+                var action = new Wpf.Ui.Controls.Button { Height = 28, Padding = new(8, 0, 8, 0), Margin = new(8, 0, 0, 0),
+                    Appearance = Wpf.Ui.Controls.ControlAppearance.Transparent,
+                    Icon = new Wpf.Ui.Controls.SymbolIcon(Wpf.Ui.Controls.SymbolRegular.Edit20) };
+                var visibility = new MultiBinding { Converter = new FileCellActionConverter(fieldId, visibility: true) };
+                visibility.Bindings.Add(new Binding());
+                visibility.Bindings.Add(new Binding("DataContext") { RelativeSource = new(RelativeSourceMode.FindAncestor, typeof(DataGrid), 1) });
+                visibility.Bindings.Add(new Binding("DataContext.CanEditWorkspace") { RelativeSource = new(RelativeSourceMode.FindAncestor, typeof(DataGrid), 1) });
+                action.SetBinding(UIElement.VisibilityProperty, visibility);
+                var label = new MultiBinding { Converter = new FileCellActionConverter(fieldId, visibility: false) };
+                label.Bindings.Add(new Binding());
+                label.Bindings.Add(new Binding("DataContext") { RelativeSource = new(RelativeSourceMode.FindAncestor, typeof(DataGrid), 1) });
+                action.SetBinding(ContentControl.ContentProperty, label);
+                action.SetBinding(FrameworkElement.ToolTipProperty, new Binding("Content") { Source = action });
+                action.Click += (_, e) =>
+                {
+                    e.Handled = true;
+                    if (action.DataContext is ViewModels.CatalogItemViewModel { IsPlaceholder: false } row)
+                        action.RaiseEvent(new ProfileCellActionEventArgs(EditTextFileRequestedEvent, row, fieldId));
+                };
+                Grid.SetColumn(action, 4); panel.Children.Add(action);
+            }
             return panel;
         }
+    }
+
+    private sealed class FileCellActionConverter(string fieldId, bool visibility) : IMultiValueConverter
+    {
+        public object Convert(object[] values, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+        {
+            var row = values.ElementAtOrDefault(0) as ViewModels.CatalogItemViewModel;
+            var owner = values.ElementAtOrDefault(1) as ViewModels.CatalogViewModel;
+            if (visibility) return row is not null && owner?.CanEditTextFile(row, fieldId) == true ? Visibility.Visible : Visibility.Collapsed;
+            var create = row?.Resources.GetValueOrDefault(fieldId)?.State == ProfileFieldResourceState.Missing;
+            return owner?.Localizer.Get(create ? "Loc.FileEditor.Create" : "Loc.FileEditor.Edit", create ? "생성" : "수정") ?? (create ? "생성" : "수정");
+        }
+        public object[] ConvertBack(object value, Type[] targetTypes, object parameter, System.Globalization.CultureInfo culture) => throw new NotSupportedException();
     }
 
     private sealed class FieldErrorConverter(bool visibility) : IValueConverter

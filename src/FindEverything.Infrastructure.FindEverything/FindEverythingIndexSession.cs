@@ -275,7 +275,7 @@ internal sealed class FindEverythingIndexSession : IIndexSession
             InspectDirectory = inspectDirectory is null
                 ? null
                 : candidate => ToEngineTraversalDecision(
-                    inspectDirectory(ToApplicationCandidate(candidate))),
+                    inspectDirectory(ToApplicationCandidate(candidate, request.RootPath))),
             Options = new Engine.ScanOptions
             {
                 ExcludedDirectoryNames = options.ExcludedDirectoryNames.ToArray(),
@@ -306,7 +306,7 @@ internal sealed class FindEverythingIndexSession : IIndexSession
         };
     }
 
-    private static DiscoveredDirectory ToApplicationCandidate(Engine.DirectoryCandidate candidate) =>
+    private static DiscoveredDirectory ToApplicationCandidate(Engine.DirectoryCandidate candidate, string rootPath) =>
         new(
             candidate.FullPath,
             candidate.Name,
@@ -317,7 +317,17 @@ internal sealed class FindEverythingIndexSession : IIndexSession
             candidate.ModifiedUtc)
         {
             CoveragePending = candidate.CoveragePending,
+            // Engine depth is relative to ScopePath during a partial refresh. Profile
+            // limits remain relative to the selected index root instead.
+            Depth = RelativeDepth(rootPath, candidate.FullPath),
         };
+
+    private static int RelativeDepth(string rootPath, string path)
+    {
+        var relative = Path.GetRelativePath(rootPath, path);
+        return relative == "." ? 0 : relative.Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
+            StringSplitOptions.RemoveEmptyEntries).Length;
+    }
 
     private static Engine.DirectoryTraversalDecision ToEngineTraversalDecision(
         DirectoryTraversalDecision decision) => decision switch

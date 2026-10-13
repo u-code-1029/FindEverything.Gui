@@ -26,7 +26,7 @@ public sealed partial class SqliteCatalogProjectionStore
         public long Revision => Volatile.Read(ref _revision);
 
         public void Append(CatalogItem item) => AppendRow(new CatalogProjectionRow(item.FullPath,
-            item.RelativePath, item.MatchedRuleId, item.Values, item.CoveragePending));
+            item.RelativePath, item.MatchedRuleId, item.Values, item.CoveragePending, item.FieldErrors) { Resources = item.Resources });
 
         public void AppendRow(CatalogProjectionRow row)
         {
@@ -54,15 +54,15 @@ public sealed partial class SqliteCatalogProjectionStore
                 rowCommand.Transaction = transaction;
                 rowCommand.CommandText = """
                     INSERT INTO projection_rows(generation, path_key, full_path, path_search,
-                        relative_path, rule_id, values_json, errors_json, coverage)
-                    VALUES($generation, $path, $full, $search, $relative, $rule, $values, $errors, $coverage)
+                        relative_path, rule_id, values_json, errors_json, coverage, resources_json)
+                    VALUES($generation, $path, $full, $search, $relative, $rule, $values, $errors, $coverage, $resources)
                     ON CONFLICT(generation, path_key) DO UPDATE SET full_path=excluded.full_path,
                         path_search=excluded.path_search, relative_path=excluded.relative_path,
                         rule_id=excluded.rule_id, values_json=excluded.values_json,
-                        errors_json=excluded.errors_json, coverage=excluded.coverage;
+                        errors_json=excluded.errors_json, coverage=excluded.coverage, resources_json=excluded.resources_json;
                     """;
                 rowCommand.Parameters.AddWithValue("$generation", Generation);
-                foreach (var name in new[] { "$path", "$full", "$search", "$relative", "$rule", "$values", "$errors", "$coverage" })
+                foreach (var name in new[] { "$path", "$full", "$search", "$relative", "$rule", "$values", "$errors", "$coverage", "$resources" })
                     rowCommand.Parameters.Add(name, name == "$coverage" ? SqliteType.Integer : SqliteType.Text);
                 rowCommand.Prepare();
                 using var cellCommand = connection.CreateCommand();
@@ -93,6 +93,7 @@ public sealed partial class SqliteCatalogProjectionStore
                     rowCommand.Parameters["$rule"].Value = row.MatchedRuleId;
                     rowCommand.Parameters["$values"].Value = SerializeValues(row.Values);
                     rowCommand.Parameters["$errors"].Value = JsonSerializer.Serialize(row.FieldErrors ?? new Dictionary<string, string>());
+                    rowCommand.Parameters["$resources"].Value = JsonSerializer.Serialize(row.Resources);
                     rowCommand.Parameters["$coverage"].Value = row.CoveragePending ? 1 : 0;
                     rowCommand.ExecuteNonQuery();
                     foreach (var field in fields)

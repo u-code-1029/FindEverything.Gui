@@ -136,7 +136,9 @@
                 <ui:Button Grid.Column="3" Margin="8,0,0,0" Appearance="Primary" Command="{Binding EvaluateCommand}" Content="{DynamicResource Loc.Workspace.Playground.Run}" Icon="{ui:SymbolIcon Symbol=Play20}" ToolTip="{DynamicResource Loc.Workspace.Playground.Run.Help}" ToolTipService.ShowOnDisabled="True" />
             </Grid>
         </controls:CommandStrip>
-        <controls:SplitWorkspace x:Name="PlaygroundWorkspace" Grid.Row="2" PrimaryRatio="0.35" PrimaryTitle="{DynamicResource Loc.Workspace.Playground.Values}" SecondaryTitle="{DynamicResource Loc.Workspace.Playground.Debug}">
+        <TabControl Grid.Row="2" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
+        <TabItem Header="{DynamicResource Loc.Profiles.Features.Playground.PathTab}">
+        <controls:SplitWorkspace x:Name="PlaygroundWorkspace" PrimaryRatio="0.35" PrimaryTitle="{DynamicResource Loc.Workspace.Playground.Values}" SecondaryTitle="{DynamicResource Loc.Workspace.Playground.Debug}">
             <controls:SplitWorkspace.PrimaryContent>
                 <ui:DynamicScrollViewer x:Name="ProfilePlaygroundScrollViewer" Style="{StaticResource FluentGutteredScrollViewerStyle}">
                     <StackPanel>                <controls:SectionCard Margin="0" Style="{StaticResource FluentSectionCardStyle}">
@@ -283,6 +285,27 @@
                 </ui:DynamicScrollViewer>
             </controls:SplitWorkspace.SecondaryContent>
         </controls:SplitWorkspace>
+        </TabItem>
+        <TabItem Header="{DynamicResource Loc.Profiles.Features.Playground.SelectionTab}">
+            <ui:DynamicScrollViewer Style="{StaticResource FluentGutteredScrollViewerStyle}">
+                <controls:SectionCard Style="{StaticResource FluentSectionCardStyle}"><controls:SectionCard.Header><StackPanel>
+                    <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.Profiles.Features.Selection.Title}" />
+                    <ui:TextBlock Margin="0,4,0,12" Style="{StaticResource CaptionTextStyle}" TextWrapping="Wrap" Text="{DynamicResource Loc.Profiles.Features.Playground.Help}" />
+                    <ui:TextBlock Margin="0,0,0,4" Text="{DynamicResource Loc.Profiles.Features.Selection.RuleName}" />
+                    <ComboBox ItemsSource="{Binding SelectionRules}" SelectedItem="{Binding SelectedSelectionRule}" DisplayMemberPath="DisplayName" />
+                    <ui:TextBox Margin="0,12,0,0" MinHeight="160" AcceptsReturn="True" TextWrapping="Wrap"
+                        VerticalScrollBarVisibility="Auto" Text="{Binding SelectionInputText, UpdateSourceTrigger=PropertyChanged}"
+                        PlaceholderText="{DynamicResource Loc.Profiles.Features.Playground.Input}" />
+                    <ui:Button Margin="0,12,0,0" HorizontalAlignment="Left" Appearance="Primary" Command="{Binding PreviewSelectionRuleCommand}"
+                        Content="{DynamicResource Loc.Profiles.Features.Playground.Run}" Icon="{ui:SymbolIcon Symbol=Play20}" />
+                    <ui:TextBlock Margin="0,12,0,12" Text="{Binding SelectionTestSummary}" TextWrapping="Wrap" />
+                    <ItemsControl ItemsSource="{Binding SelectionPreviewRows}"><ItemsControl.ItemTemplate><DataTemplate>
+                        <ui:TextBox Margin="0,0,0,8" IsReadOnly="True" Text="{Binding}" TextWrapping="Wrap" />
+                    </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+                </StackPanel></controls:SectionCard.Header></controls:SectionCard>
+            </ui:DynamicScrollViewer>
+        </TabItem>
+        </TabControl>
         <Grid controls:FloatingNotificationChrome.IsBottomChrome="True" Grid.Row="3" Margin="0,8" Background="Transparent">
             <StackPanel Orientation="Horizontal">
                 <ui:ProgressRing Width="18" Height="18" Margin="0,0,8,0" IsIndeterminate="True" Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}" />

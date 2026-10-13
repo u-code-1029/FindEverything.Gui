@@ -1043,7 +1043,7 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
             ?? SelectionOutputFormatDefaults.CreateFullPathLines(_localizer);
         var scope = _fileQueryScope;
         var request = _fileQueryRequest;
-        var capturedSelection = _selection.Capture();
+        using var capturedSelection = _selection.Capture();
         var legacyItems = _selectedItems.Where(static item => !item.IsPlaceholder).ToArray();
         var selectedCount = SelectedCount;
         var importedSource = WorkspaceTransfer?.CurrentSource;
@@ -1498,7 +1498,7 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
                             page.Offset, page.HasMore);
                     }, cancellationToken);
                     if (version != Volatile.Read(ref _queryVersion)) { await query.DisposeAsync(); return; }
-                    var retainedSelection = preserveSelection
+                    using var retainedSelection = preserveSelection
                         && _fileQueryRequest is { } oldRequest && _fileQueryScope == scope
                         && oldRequest.ExpectedScanId == request.ExpectedScanId
                         && SameResultFilters(oldRequest, request)
@@ -1653,7 +1653,7 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
         {
             if (range && _selectionAnchor >= 0 && index >= 0)
             {
-                var captured = additive ? _selection.Capture() : new QuerySelection();
+                using var captured = additive ? _selection.Capture() : new QuerySelection();
                 var start = Math.Min(index, _selectionAnchor);
                 var end = Math.Max(index, _selectionAnchor);
                 for (var offset = start; offset <= end; offset += 500)

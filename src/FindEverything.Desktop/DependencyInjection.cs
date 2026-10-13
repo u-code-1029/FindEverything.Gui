@@ -97,6 +97,8 @@ public static class DependencyInjection
         services.AddSingleton<IIndexDatabasePathResolver, IndexDatabasePathResolver>();
         services.AddSingleton<IWorkspaceContext, WorkspaceContext>();
         services.AddSingleton<IDesktopPickerService, DesktopPickerService>();
+        services.AddSingleton<ILiveDirectoryService, LiveDirectoryService>();
+        services.AddSingleton<ITextFileEditingService, TextFileEditingService>();
         services.AddSingleton<IScanConsoleLogWriter, ScanConsoleLogWriter>();
         services.AddSingleton<IPathLauncher, ExplorerPathLauncher>();
         services.AddSingleton<IProfileAuthoringService, ProfileAuthoringService>();

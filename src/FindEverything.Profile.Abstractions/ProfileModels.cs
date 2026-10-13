@@ -19,6 +19,7 @@ public enum ProfileFieldSourceKind
     RegexCapture = 0,
     TextFileContent = 1,
     UserInput = 2,
+    ChildDirectoryExists = 3,
 }
 
 public sealed record ProfileFieldDescriptor(
@@ -69,7 +70,13 @@ public sealed record ProfileTextFileFieldDescriptor(
     bool IgnoreCase,
     int TimeoutMilliseconds,
     bool Required,
-    long MaxBytes);
+    long MaxBytes)
+{
+    public ProfileTextFileEditOptions? EditOptions { get; init; }
+}
+
+public sealed record ProfileChildDirectoryFieldDescriptor(
+    int Order, string FieldId, string Header, string DirectoryName, bool IgnoreCase);
 
 public sealed record ProfileUserInputFieldDescriptor(
     int Order,
@@ -117,6 +124,14 @@ public sealed record ProfileDescriptor(
 
     public IReadOnlyList<ProfileUserInputFieldDescriptor> UserInputFields { get; init; } =
         Array.Empty<ProfileUserInputFieldDescriptor>();
+
+    public IReadOnlyList<ProfileChildDirectoryFieldDescriptor> ChildDirectoryFields { get; init; } =
+        Array.Empty<ProfileChildDirectoryFieldDescriptor>();
+
+    public int MaxScanDepth { get; init; } = 256;
+
+    public IReadOnlyList<ProfileSelectionMatchRuleManifest> SelectionMatchRules { get; init; } =
+        Array.Empty<ProfileSelectionMatchRuleManifest>();
 }
 
 public sealed record ProfilePathCandidate
@@ -149,7 +164,19 @@ public sealed record MappedProfileItem(
     /// where a field declares an exact value mapping.
     /// </summary>
     public IReadOnlyDictionary<string, object?> DisplayValues { get; init; } = Values;
+
+    public IReadOnlyDictionary<string, ProfileFieldResourceInfo> Resources { get; init; } =
+        new ReadOnlyDictionary<string, ProfileFieldResourceInfo>(new Dictionary<string, ProfileFieldResourceInfo>());
+
+    public IReadOnlyDictionary<string, string> FieldErrors { get; init; } =
+        new ReadOnlyDictionary<string, string>(new Dictionary<string, string>());
 }
+
+public enum ProfileFieldResourceState { Unknown, Missing, Present, Error }
+
+public sealed record ProfileFieldResourceInfo(ProfileFieldResourceState State,
+    string? FileName = null, string? EncodingName = null, bool? HasBom = null,
+    string? NewLine = null, string? Version = null);
 
 public enum ProfileMapStatus
 {
@@ -262,7 +289,10 @@ public sealed record ProfilePluginReport(
 /// <summary>The outcome of reading one text column without mapping other fields.</summary>
 public sealed record ProfileTextColumnReadResult(
     string? Value,
-    IReadOnlyList<ProfileMappingIssue> Issues);
+    IReadOnlyList<ProfileMappingIssue> Issues)
+{
+    public ProfileFieldResourceInfo? Resource { get; init; }
+}
 
 public interface ILoadedProfile
 {

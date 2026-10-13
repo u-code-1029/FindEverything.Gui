@@ -255,6 +255,7 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
         _outputLifetime.Cancel();
         FlushPendingUserInputValues();
         ReleaseProjectionQuery();
+        _querySelection.Dispose();
         CancelWorkspacePersistenceDebounce();
         _profileCatalog.Changed -= OnProfileCatalogChanged;
         _workspaceContext.Changed -= OnWorkspaceChanged;
@@ -288,6 +289,7 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
 
     partial void OnSelectedProfileChanged(ProfileChoiceViewModel? value)
     {
+        NotifySelectionImportAvailability();
         ResetLiveFilters();
         if (!_applyingSharedSource && WorkspaceTransfer?.CurrentSource is { } shared
             && !string.Equals(shared.ProfileId, value?.Id, StringComparison.OrdinalIgnoreCase))
@@ -357,6 +359,7 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
 
     partial void OnIsBusyChanged(bool value)
     {
+        NotifySelectionImportAvailability();
         RefreshTextColumnCommand.NotifyCanExecuteChanged();
         ScanCommand.NotifyCanExecuteChanged();
         LoadCommand.NotifyCanExecuteChanged();

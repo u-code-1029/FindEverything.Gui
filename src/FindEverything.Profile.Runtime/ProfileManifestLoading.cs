@@ -41,7 +41,11 @@ internal sealed record ValidatedTextFileField(
     ProfileRegexMatchMode MatchMode,
     bool IgnoreCase,
     int TimeoutMilliseconds,
-    long MaxBytes);
+    long MaxBytes,
+    ProfileTextFileEditOptions? EditOptions);
+
+internal sealed record ValidatedChildDirectoryField(
+    string FieldId, string Header, int Order, string DirectoryName, bool IgnoreCase);
 
 internal sealed record ValidatedUserInputField(
     string FieldId,
@@ -63,7 +67,10 @@ internal sealed record ValidatedProfileManifest(
     IReadOnlyList<ValidatedTextFileField> TextFileFields,
     IReadOnlyList<ValidatedUserInputField> UserInputFields,
     IReadOnlyList<ValidatedDirectoryNameExclusionRule> ExcludedDirectoryNameRules,
-    IReadOnlyList<ValidatedRegexRule> Rules);
+    IReadOnlyList<ValidatedRegexRule> Rules,
+    IReadOnlyList<ValidatedChildDirectoryField> ChildDirectoryFields,
+    int MaxScanDepth,
+    IReadOnlyList<ProfileSelectionMatchRuleManifest> SelectionMatchRules);
 
 internal sealed record ManifestReadResult(
     ValidatedProfileManifest? Manifest,
@@ -196,7 +203,8 @@ internal sealed class ProfileManifestValidator
         var entryAssembly = NormalizeRequired(manifest.EntryAssembly);
         var modelType = NormalizeRequired(manifest.ModelType);
 
-        if (manifest.ContractVersion != supportedContractMajor)
+        if (manifest.ContractVersion != supportedContractMajor
+            && !(supportedContractMajor >= 3 && manifest.ContractVersion == 2))
         {
             diagnostics.Add(Error(
                 "contract_unsupported",
@@ -209,6 +217,11 @@ internal sealed class ProfileManifestValidator
                 "path_input_removed",
                 "pathInput은 계약 버전 2에서 제거되었습니다. 경로 규칙은 항상 절대 경로를 입력받으므로 pathInput 항목을 삭제하고 규칙을 절대 경로 기준으로 확인하세요."));
         }
+
+        if (manifest.ContractVersion == 2 && (manifest.ChildDirectoryFields is { Count: > 0 }
+            || manifest.SelectionMatchRules is { Count: > 0 } || manifest.MaxScanDepth != 256
+            || manifest.TextFileFields?.Any(column => column?.EditOptions is not null) == true))
+            diagnostics.Add(Error("profile_feature_requires_v3", "폴더 존재 여부, 외부 데이터 선택, 최대 탐색 깊이 및 파일 생성·수정 옵션은 계약 버전 3이 필요합니다. contractVersion을 3으로 변경하세요."));
 
         if (id is null || !StableIdPattern.IsMatch(id))
         {
@@ -241,6 +254,9 @@ internal sealed class ProfileManifestValidator
         var validatedFields = new List<ValidatedProfileField>();
         var validatedTextFileFields = new List<ValidatedTextFileField>();
         var validatedUserInputFields = new List<ValidatedUserInputField>();
+        var validatedChildDirectoryFields = new List<ValidatedChildDirectoryField>();
+        if (manifest.MaxScanDepth is < 0 or > 1024)
+            diagnostics.Add(Error("scan_depth_invalid", "최대 탐색 깊이는 루트 0을 기준으로 0–1024인 정수여야 합니다."));
         if (manifest.Kind == ProfileKind.Assembly)
         {
             if (modelType is null)
@@ -266,6 +282,9 @@ internal sealed class ProfileManifestValidator
                     "assembly_text_file_fields_not_allowed",
                     "textFileFields는 Declarative 프로필에서만 사용할 수 있습니다."));
             }
+
+            if (manifest.ChildDirectoryFields is { Count: > 0 })
+                diagnostics.Add(Error("assembly_child_directory_fields_not_allowed", "폴더 존재 여부 필드는 Declarative 프로필에서만 사용할 수 있습니다."));
 
             validatedUserInputFields = ValidateUserInputFields(
                 manifest.UserInputFields,
@@ -301,9 +320,11 @@ internal sealed class ProfileManifestValidator
                 manifest.UserInputFields,
                 fieldIds,
                 diagnostics);
+            validatedChildDirectoryFields = ValidateChildDirectoryFields(manifest.ChildDirectoryFields, fieldIds, diagnostics);
             if (manifest.Fields is not { Count: > 0 }
                 && manifest.TextFileFields is not { Count: > 0 }
-                && manifest.UserInputFields is not { Count: > 0 })
+                && manifest.UserInputFields is not { Count: > 0 }
+                && manifest.ChildDirectoryFields is not { Count: > 0 })
             {
                 diagnostics.Add(Error(
                     "capture_fields_missing",
@@ -345,7 +366,10 @@ internal sealed class ProfileManifestValidator
                 Array.AsReadOnly(validatedTextFileFields.ToArray()),
                 Array.AsReadOnly(validatedUserInputFields.ToArray()),
                 Array.AsReadOnly(validatedExcludedDirectoryNameRules.ToArray()),
-                Array.AsReadOnly(validatedRules.ToArray())),
+                Array.AsReadOnly(validatedRules.ToArray()),
+                Array.AsReadOnly(validatedChildDirectoryFields.ToArray()),
+                manifest.MaxScanDepth,
+                Array.AsReadOnly((manifest.SelectionMatchRules ?? []).ToArray())),
             id,
             displayName,
             Array.AsReadOnly(diagnostics.ToArray()));
@@ -697,6 +721,13 @@ internal sealed class ProfileManifestValidator
                 valid = false;
             }
 
+            if (source.EditOptions?.CreationFileNameTemplate is { } template
+                && !IsSafeCreationTemplate(template))
+            {
+                diagnostics.Add(Error("text_file_creation_template_invalid", "생성할 파일 이름 템플릿은 파일 이름 하나여야 하며 경로 구분자·와일드카드는 사용할 수 없습니다."));
+                valid = false;
+            }
+
             if (!valid)
             {
                 continue;
@@ -711,7 +742,12 @@ internal sealed class ProfileManifestValidator
                 source.MatchMode,
                 source.IgnoreCase,
                 source.TimeoutMilliseconds,
-                source.MaxBytes));
+                source.MaxBytes,
+                source.EditOptions is null ? null : new ProfileTextFileEditOptions
+                {
+                    Enabled = source.EditOptions.Enabled,
+                    CreationFileNameTemplate = NormalizeRequired(source.EditOptions.CreationFileNameTemplate),
+                }));
         }
 
         validated.Sort(static (left, right) =>
@@ -722,6 +758,54 @@ internal sealed class ProfileManifestValidator
                 : StringComparer.Ordinal.Compare(left.FieldId, right.FieldId);
         });
         return validated;
+    }
+
+    private static bool IsSafeCreationTemplate(string template)
+    {
+        if (template.Length > 255) return false;
+        var insideToken = false;
+        foreach (var character in template)
+        {
+            if (character < 32 || "<>\"/\\|?*".Contains(character)) return false;
+            if (character == '{') { if (insideToken) return false; insideToken = true; }
+            else if (character == '}') { if (!insideToken) return false; insideToken = false; }
+            else if (character == ':' && !insideToken) return false;
+        }
+        return !insideToken;
+    }
+
+    private static List<ValidatedChildDirectoryField> ValidateChildDirectoryFields(
+        IReadOnlyList<ProfileChildDirectoryFieldManifest>? fields, ISet<string> fieldIds,
+        ICollection<ProfileDiagnostic> diagnostics)
+    {
+        var result = new List<ValidatedChildDirectoryField>();
+        if (fields is null) return result;
+        if (fields.Count > ProfileManifestLimits.MaximumChildDirectoryFieldCount)
+        {
+            diagnostics.Add(Error("child_directory_field_count_exceeded", "폴더 존재 여부 필드는 최대 16개까지 정의할 수 있습니다."));
+            return result;
+        }
+        foreach (var source in fields)
+        {
+            if (source is null) { diagnostics.Add(Error("child_directory_field_invalid", "폴더 존재 여부 필드 정의가 비어 있습니다.")); continue; }
+            var id = NormalizeRequired(source.FieldId);
+            var name = NormalizeRequired(source.DirectoryName);
+            if (id is null || !FieldIdPattern.IsMatch(id) || !fieldIds.Add(id))
+            {
+                diagnostics.Add(Error("child_directory_field_id_invalid", "폴더 존재 여부 fieldId는 유효하고 다른 컬럼과 중복되지 않아야 합니다."));
+                continue;
+            }
+            if (name is null || name.Length > 255 || name is "." or ".."
+                || name.Any(character => character < 32 || "<>:\"/\\|?*".Contains(character))
+                || name.EndsWith('.') || !string.Equals(name, source.DirectoryName, StringComparison.Ordinal)
+                || Regex.IsMatch(name.Split('.')[0], "^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100)))
+            {
+                diagnostics.Add(Error("child_directory_name_invalid", "폴더 이름은 경로·정규식이 아닌 바로 아래 폴더의 이름 하나여야 합니다. 경로 구분자, 와일드카드, 앞뒤 공백은 사용할 수 없습니다."));
+                continue;
+            }
+            result.Add(new(id, NormalizeRequired(source.Header) ?? id, source.Order, name, source.IgnoreCase));
+        }
+        return result;
     }
 
     private static List<ValidatedUserInputField> ValidateUserInputFields(

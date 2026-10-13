@@ -42,6 +42,7 @@ public static partial class DynamicProfileGrid
         public bool Dragged;
         public CancellationTokenSource? EditorCancellation;
         public DispatcherOperation? HeaderPreparation;
+        public DispatcherOperation? HostUpdate;
         public Panel? HostPanel;
         public AdornerLayer? HostAdornerLayer;
         public ColumnFlyoutAdorner? HostAdorner;
@@ -52,26 +53,39 @@ public static partial class DynamicProfileGrid
         if (grid.GetValue(ColumnFiltersStateProperty) is ColumnFiltersState) return;
         var state = new ColumnFiltersState();
         grid.SetValue(ColumnFiltersStateProperty, state);
-        void Attach()
+        void ReconcileHost()
         {
-            if (!ReferenceEquals(state.Owner, grid.DataContext as CatalogViewModel))
+            var next = grid.IsLoaded ? grid.DataContext as CatalogViewModel : null;
+            if (!ReferenceEquals(state.Owner, next))
             {
+                if (state.Owner is not null) state.Owner.ColumnQueryChanged -= state.Changed;
                 DetachFlyoutHost(state);
+                state.Owner = next;
+                state.Changed = (_, _) => ScheduleFilterHeaders(grid, state);
+                if (next is not null) next.ColumnQueryChanged += state.Changed;
             }
-            if (state.Owner is not null) state.Owner.ColumnQueryChanged -= state.Changed;
-            state.Owner = grid.DataContext as CatalogViewModel;
             if (state.Owner is not null) EnsureFlyoutHost(grid, state);
-            state.Changed = (_, _) => ScheduleFilterHeaders(grid, state);
-            if (state.Owner is not null) state.Owner.ColumnQueryChanged += state.Changed;
-            ScheduleFilterHeaders(grid, state);
+            if (grid.IsLoaded) ScheduleFilterHeaders(grid, state);
         }
-        grid.Loaded += (_, _) => Attach();
-        grid.DataContextChanged += (_, _) => { if (grid.IsLoaded) Attach(); };
+        void ScheduleHost()
+        {
+            // DataContext inheritance and Loaded/Unloaded walk logical children.
+            // Changing an ancestor's Children inside that walk throws. Perform
+            // both insertion and removal after the event has completely unwound.
+            if (state.HostUpdate?.Status == DispatcherOperationStatus.Pending) return;
+            state.HostUpdate = grid.Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
+            {
+                state.HostUpdate = null;
+                ReconcileHost();
+            }));
+        }
+        grid.Loaded += (_, _) => ScheduleHost();
+        grid.DataContextChanged += (_, _) => ScheduleHost();
         grid.Unloaded += (_, _) =>
         {
-            if (state.Owner is not null) state.Owner.ColumnQueryChanged -= state.Changed;
-            state.Owner = null;
-            DetachFlyoutHost(state);
+            state.EditorCancellation?.Cancel();
+            state.PressedHeader = null;
+            ScheduleHost();
             state.HeaderPreparation?.Abort(); state.HeaderPreparation = null;
         };
         ((INotifyCollectionChanged)grid.Columns).CollectionChanged += (_, _) =>
@@ -113,6 +127,7 @@ public static partial class DynamicProfileGrid
             e.Handled = true;
             _ = OpenColumnFlyoutAsync(grid, state, owner, header, target);
         }), true);
+        if (grid.IsLoaded) ScheduleHost();
     }
 
     private static bool EnsureFlyoutHost(DataGrid grid, ColumnFiltersState state)

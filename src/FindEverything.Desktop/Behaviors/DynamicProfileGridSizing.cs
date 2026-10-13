@@ -180,7 +180,7 @@ public static partial class DynamicProfileGrid
                     FlowDirection.LeftToRight, typeface, grid.FontSize, Brushes.Black, dpi).WidthIncludingTrailingWhitespace;
                 return width;
             }
-            foreach (var column in grid.Columns.Skip(1))
+            foreach (var column in grid.Columns.Skip(SelectionColumnOffset))
             {
                 if (column.GetValue(FieldIdProperty) is not string id) continue;
                 var header = fields.TryGetValue(id, out var field) ? field.Header : GetColumnHeaderContent(column)?.ToString() ?? "";
@@ -194,21 +194,22 @@ public static partial class DynamicProfileGrid
                     desired = Math.Max(desired, Measure(text) + 28
                         + (item.MappedValueIndicators.GetValueOrDefault(id) ? 30 : 0)
                         + (item.FieldErrors.ContainsKey(id) ? 22 : 0)
-                        + (item.PreviewTooltips.ContainsKey(id) ? 22 : 0));
+                        + (item.PreviewTooltips.ContainsKey(id) ? 22 : 0)
+                        + (field?.SourceKind == ProfileFieldSourceKind.TextFileContent ? 76 : 0));
                 }
                 state.MeasuredWidths[id] = desired;
             }
             state.HasMeasured = true;
         }
-        var auto = grid.Columns.Skip(1).Where(c => !(bool)c.GetValue(IsManualWidthProperty)).ToArray();
-        foreach (var column in grid.Columns.Skip(1))
+        var auto = grid.Columns.Skip(SelectionColumnOffset).Where(c => !(bool)c.GetValue(IsManualWidthProperty)).ToArray();
+        foreach (var column in grid.Columns.Skip(SelectionColumnOffset))
         {
             var (min, max) = Bounds((string)column.GetValue(FieldIdProperty), fields, state);
             column.MinWidth = min;
             column.MaxWidth = max;
         }
-        var available = Math.Max(0, grid.ActualWidth - 64 - SystemParameters.VerticalScrollBarWidth
-            - grid.Columns.Skip(1).Where(c => (bool)c.GetValue(IsManualWidthProperty)).Sum(static c => c.ActualWidth));
+        var available = Math.Max(0, grid.ActualWidth - 112 - SystemParameters.VerticalScrollBarWidth
+            - grid.Columns.Skip(SelectionColumnOffset).Where(c => (bool)c.GetValue(IsManualWidthProperty)).Sum(static c => c.ActualWidth));
         var weights = auto.Sum(c => Weight((string)c.GetValue(FieldIdProperty), state));
         foreach (var column in auto)
         {

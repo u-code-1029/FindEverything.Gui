@@ -14,6 +14,33 @@ namespace FindEverything.Infrastructure.FindEverything.Tests;
 public sealed class DirectDirectoryDiscoveryIntegrationTests
 {
     [Fact]
+    public async Task Required_missing_text_keeps_the_matched_row_and_reports_a_separate_field_issue_count()
+    {
+        using var workspace = new TestWorkspace();
+        var services = new ServiceCollection();
+        services.AddSingleton(typeof(ILogger<>), typeof(NoOpLogger<>));
+        services.AddFindEverythingApplication(new ConfigurationBuilder().Build())
+            .AddFindEverythingInfrastructure().AddProfileRuntime();
+        await using var provider = services.BuildServiceProvider();
+        var review = provider.GetRequiredService<IProfileDefinitionCompiler>().Validate(new()
+        {
+            ContractVersion = ProfileContract.CurrentMajor, Kind = ProfileKind.Declarative,
+            Id = "missing-text", Version = "1", DisplayName = "Missing text", MaxScanDepth = 0,
+            TextFileFields = [new() { FieldId = "notes", Header = "Notes", Required = true, FileNamePattern = "notes\\.txt" }],
+            Rules = [new() { Id = "root", Pattern = Regex.Escape(workspace.SourcePath) }],
+        });
+        Assert.True(review.IsValid);
+        provider.GetRequiredService<IProfileCatalogPublisher>().Publish(new([review.Profile!], [], DateTimeOffset.UtcNow));
+        var result = await provider.GetRequiredService<ICatalogService>().ScanAndLoadAsync(
+            new("missing-text", workspace.SourcePath, workspace.DatabasePath));
+        Assert.Equal(1, result.MatchedCount); Assert.Equal(1, result.FieldIssueRowCount);
+        Assert.Equal(0, result.InvalidCount); Assert.Empty(result.InvalidItems);
+        var row = Assert.Single(result.Items);
+        Assert.Equal(ProfileFieldResourceState.Missing, row.Resources["notes"].State);
+        Assert.NotEmpty(row.FieldErrors["notes"]);
+    }
+
+    [Fact]
     public async Task ScanAndLoad_writes_the_selected_database_and_the_same_root_loads_again()
     {
         using var workspace = new TestWorkspace();

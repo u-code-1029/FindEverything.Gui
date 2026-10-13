@@ -113,7 +113,7 @@ public sealed class IndexedDatasetTransferService(AppPaths paths, ProfileTransfe
                 var file = Path.Combine(stage, name);
                 files.Add(new(name, new FileInfo(file).Length, await HashFileAsync(file, cancellationToken).ConfigureAwait(false)));
             }
-            var manifest = new PackageManifest(1, "FindEverything.PortableWorkspace", canonicalRoot, canonicalRoot,
+            var manifest = new PackageManifest(2, "FindEverything.PortableWorkspace", canonicalRoot, canonicalRoot,
                 metadata.ScanId, request.IncludeUserInputs && projection is not null, metadata.EntryCount,
                 projection?.Summary.MatchedCount ?? 0, metadata.HasPendingScopes, files);
             await File.WriteAllTextAsync(Path.Combine(stage, "manifest.json"), JsonSerializer.Serialize(manifest, ProfileTransferService.WriteOptions), cancellationToken).ConfigureAwait(false);
@@ -307,7 +307,7 @@ public sealed class IndexedDatasetTransferService(AppPaths paths, ProfileTransfe
     {
         var manifest = JsonSerializer.Deserialize<PackageManifest>(await File.ReadAllTextAsync(path, ct).ConfigureAwait(false), ProfileTransferService.ReadOptions)
             ?? throw new InvalidDataException("The workspace manifest is empty.");
-        if (manifest.FormatVersion != 1 || manifest.Format != "FindEverything.PortableWorkspace" || manifest.Files is null
+        if (manifest.FormatVersion is not (1 or 2) || manifest.Format != "FindEverything.PortableWorkspace" || manifest.Files is null
             || manifest.EntryCount < 0 || manifest.CatalogRowCount < 0)
             throw new InvalidDataException("The workspace format or version is not supported.");
         return manifest with { OriginalRoot = WorkspacePathMapping.NormalizeRoot(manifest.OriginalRoot), StoredRoot = WorkspacePathMapping.NormalizeRoot(manifest.StoredRoot) };

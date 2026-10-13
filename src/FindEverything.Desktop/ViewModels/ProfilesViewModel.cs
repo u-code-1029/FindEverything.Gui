@@ -22,8 +22,10 @@ public enum ProfileEditorStep
 {
     Profile = 0,
     PathAndFields = 1,
-    ScanOptions = 2,
-    Review = 3,
+    DataSources = 2,
+    SelectionRules = 3,
+    ScanOptions = 4,
+    Review = 5,
 }
 
 public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
@@ -232,6 +234,9 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
             .Concat(DraftExcludedDirectoryNameRules.Select(static row => row.NumericValidationMessage))
             .Concat(DraftTextFileFields.Select(static row => row.NumericValidationMessage))
             .Concat(DraftUserInputFields.Select(static row => row.NumericValidationMessage))
+            .Concat(DraftChildDirectoryFields.Select(static row => row.NumericValidationMessage))
+            .Concat(DraftSelectionRules.Select(static row => row.NumericValidationMessage))
+            .Append(ScanDepthValidationMessage)
             .Where(static message => message.Length > 0)
             .Distinct(StringComparer.Ordinal));
 
@@ -264,6 +269,10 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
 
     public bool IsScanOptionsStep => CurrentEditorStep == ProfileEditorStep.ScanOptions;
 
+    public bool IsDataSourcesStep => CurrentEditorStep == ProfileEditorStep.DataSources;
+
+    public bool IsSelectionRulesStep => CurrentEditorStep == ProfileEditorStep.SelectionRules;
+
     public bool IsReviewStep => CurrentEditorStep == ProfileEditorStep.Review;
 
     public bool CanGoToPreviousStep =>
@@ -274,7 +283,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
 
     public string EditorStepStatus => F(
         "Loc.Profiles.Step.Status",
-        "{0}/4 단계",
+        "{0}/6 단계",
         (int)CurrentEditorStep + 1);
 
     public bool CanOpenSavedProfileInPlayground =>
@@ -353,6 +362,8 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
         OnPropertyChanged(nameof(IsProfileStep));
         OnPropertyChanged(nameof(IsPathAndFieldsStep));
         OnPropertyChanged(nameof(IsScanOptionsStep));
+        OnPropertyChanged(nameof(IsDataSourcesStep));
+        OnPropertyChanged(nameof(IsSelectionRulesStep));
         OnPropertyChanged(nameof(IsReviewStep));
         OnPropertyChanged(nameof(CanGoToPreviousStep));
         OnPropertyChanged(nameof(CanGoToNextStep));
@@ -449,6 +460,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
             DraftExcludedDirectoryNameRules.Clear();
             DraftTextFileFields.Clear();
             DraftUserInputFields.Clear();
+            ResetAdditionalDraft();
             AddFieldRow(new ProfileFieldDraftViewModel
             {
                 Header = L("Loc.Profiles.New.DefaultField", "이름"),
@@ -947,7 +959,9 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
                || DraftTextFileFields.Any(field =>
                    string.Equals(field.FieldId, fieldId, StringComparison.OrdinalIgnoreCase))
                || DraftUserInputFields.Any(field =>
-                   string.Equals(field.FieldId, fieldId, StringComparison.OrdinalIgnoreCase)));
+                   string.Equals(field.FieldId, fieldId, StringComparison.OrdinalIgnoreCase))
+               || DraftChildDirectoryFields.Any(column =>
+                   string.Equals(column.FieldId, fieldId, StringComparison.OrdinalIgnoreCase)));
 
         var nextOrder = DraftFields
             .Select(static (_, index) => (index + 1) * 10)
@@ -994,7 +1008,9 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
                || DraftTextFileFields.Any(field =>
                    string.Equals(field.FieldId, fieldId, StringComparison.OrdinalIgnoreCase))
                || DraftUserInputFields.Any(field =>
-                   string.Equals(field.FieldId, fieldId, StringComparison.OrdinalIgnoreCase)));
+                   string.Equals(field.FieldId, fieldId, StringComparison.OrdinalIgnoreCase))
+               || DraftChildDirectoryFields.Any(column =>
+                   string.Equals(column.FieldId, fieldId, StringComparison.OrdinalIgnoreCase)));
 
         var nextOrder = DraftFields
             .Select(static (_, index) => (index + 1) * 10)
@@ -1317,6 +1333,9 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
             DisplayName = DraftDisplayName.Trim(),
             CandidateKind = ProfileCandidateKind.Directory,
             Fields = fields,
+            ChildDirectoryFields = DraftChildDirectoryFields.Count == 0 ? null : DraftChildDirectoryFields.Select(field => field.ToManifest()).ToList(),
+            SelectionMatchRules = DraftSelectionRules.Count == 0 ? null : DraftSelectionRules.Select(rule => rule.ToManifest()).ToList(),
+            MaxScanDepth = int.Parse(DraftMaxScanDepthText, System.Globalization.CultureInfo.InvariantCulture),
             TextFileFields = DraftTextFileFields.Count == 0
                 ? null
                 : DraftTextFileFields.Select(field => new ProfileTextFileFieldManifest
@@ -1330,6 +1349,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
                     IgnoreCase = field.IgnoreCase,
                     TimeoutMilliseconds = field.TimeoutMilliseconds,
                     MaxBytes = field.MaxBytes,
+                    EditOptions = new ProfileTextFileEditOptions { Enabled = field.EditEnabled, CreationFileNameTemplate = NormalizeOptional(field.CreationFileNameTemplate) },
                 }).ToList(),
             UserInputFields = DraftUserInputFields.Count == 0
                 ? null
@@ -1377,6 +1397,10 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
             DraftExcludedDirectoryNameRules.Clear();
             DraftTextFileFields.Clear();
             DraftUserInputFields.Clear();
+            ResetAdditionalDraft();
+            DraftMaxScanDepthText = manifest.MaxScanDepth.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            foreach (var field in manifest.ChildDirectoryFields ?? []) AddChildDirectoryFieldRow(new(field));
+            foreach (var rule in manifest.SelectionMatchRules ?? []) AddSelectionRuleRow(new(rule));
             GuidedPathSegments = [];
             HasAnalyzedPath = false;
             IsAssignmentPickerOpen = false;
@@ -1586,6 +1610,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
 
     private void DetachRows()
     {
+        DetachAdditionalRows();
         foreach (var field in DraftFields)
         {
             field.PropertyChanged -= OnDraftRowChanged;
@@ -1700,6 +1725,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
 
         _hasUserChanges = true;
         IsDraftDirty = true;
+        OnPropertyChanged(nameof(AvailableSelectionFieldIds));
         RefreshNumericValidation();
         SetEditorStatus(
             L(
@@ -2106,7 +2132,9 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
                || DraftTextFileFields.Any(field =>
                    string.Equals(field.FieldId, $"field-{number}", StringComparison.OrdinalIgnoreCase))
                || DraftUserInputFields.Any(field =>
-                   string.Equals(field.FieldId, $"field-{number}", StringComparison.OrdinalIgnoreCase)))
+                   string.Equals(field.FieldId, $"field-{number}", StringComparison.OrdinalIgnoreCase))
+               || DraftChildDirectoryFields.Any(column =>
+                   string.Equals(column.FieldId, $"field-{number}", StringComparison.OrdinalIgnoreCase)))
         {
             number++;
         }
@@ -2186,6 +2214,10 @@ public sealed class ProfileSummaryViewModel(
 
     public int UserInputFieldCount => Descriptor.UserInputFields.Count;
 
+    public int ChildDirectoryFieldCount => Descriptor.ChildDirectoryFields.Count;
+
+    public int MaxScanDepth => Descriptor.MaxScanDepth;
+
     private string Get(string key, string koreanFallback) =>
         localizer?.Get(key, koreanFallback) ?? koreanFallback;
 }
@@ -2206,6 +2238,8 @@ public sealed class ProfileFieldInspectionViewModel(
             Get("Loc.Profiles.Field.TextFileContent", "텍스트 파일 내용"),
         ProfileFieldSourceKind.UserInput =>
             Get("Loc.Profiles.Field.UserInput", "행별 사용자 입력"),
+        ProfileFieldSourceKind.ChildDirectoryExists =>
+            Get("Loc.Profile.Source.ChildDirectory", "바로 아래 폴더 존재 여부"),
         _ => string.Join(" → ", descriptor.EffectiveGroupNames),
     };
 
@@ -2215,6 +2249,8 @@ public sealed class ProfileFieldInspectionViewModel(
             Get("Loc.Profile.Source.TextFile", "텍스트 파일"),
         ProfileFieldSourceKind.UserInput =>
             Get("Loc.Profile.Source.UserInput", "사용자 입력"),
+        ProfileFieldSourceKind.ChildDirectoryExists =>
+            Get("Loc.Profile.Source.ChildDirectory", "바로 아래 폴더 존재 여부"),
         _ => Get("Loc.Profiles.Field.PathRegex", "경로 정규식"),
     };
 

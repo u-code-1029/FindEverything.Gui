@@ -18,6 +18,8 @@ public sealed record DirectoryDiscoveryRequest(string RootPath)
     public int MaxEntriesPerSecond { get; init; } = 2000;
 
     public TimeSpan DirectoryDelay { get; init; } = TimeSpan.FromMilliseconds(5);
+
+    public int MaxDepth { get; init; } = 256;
 }
 
 public sealed record DiscoveredDirectory(
@@ -28,6 +30,9 @@ public sealed record DiscoveredDirectory(
     DateTimeOffset ModifiedUtc)
 {
     public bool CoveragePending { get; init; }
+
+    /// <summary>Distance from the selected root, where the root itself is zero.</summary>
+    public int Depth { get; init; }
 }
 
 public enum DirectoryTraversalDecision

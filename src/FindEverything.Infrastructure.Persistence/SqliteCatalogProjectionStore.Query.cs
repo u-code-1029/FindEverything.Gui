@@ -15,6 +15,7 @@ public sealed partial class SqliteCatalogProjectionStore
         private readonly string _generation;
         private readonly CatalogProjectionScope _scope;
         private readonly IReadOnlyList<ProfileFieldDescriptor> _inputFields;
+        private readonly IReadOnlyList<ProfileFieldDescriptor> _fields;
         private readonly IReadOnlyList<string> _textFieldIds;
         private readonly CatalogProjectionQuery _query;
         private readonly ProfileFieldDescriptor? _sortField;
@@ -37,6 +38,7 @@ public sealed partial class SqliteCatalogProjectionStore
             _owner = owner;
             _generation = generation;
             _scope = scope;
+            _fields = fields.ToArray();
             _inputFields = fields.Where(field => field.SourceKind == ProfileFieldSourceKind.UserInput).ToArray();
             _textFieldIds = fields.Where(field => field.SourceKind == ProfileFieldSourceKind.TextFileContent)
                 .Select(field => field.FieldId.ToLowerInvariant()).ToArray();
@@ -62,7 +64,6 @@ public sealed partial class SqliteCatalogProjectionStore
                 using var connection = _owner.OpenConnection(readOperation: true);
                 using var transaction = connection.BeginTransaction(deferred: true);
                 _notesRevision = NotesRevision(connection, transaction, _scope.ProfileId);
-                if (_building)
                 {
                     using var revision = connection.CreateCommand();
                     revision.Transaction = transaction;
@@ -81,7 +82,7 @@ public sealed partial class SqliteCatalogProjectionStore
             }
         }
 
-        public string Identity => _building ? _generation + ":" + _buildingRevision : _generation;
+        public string Identity => _building || _buildingRevision != 0 ? _generation + ":" + _buildingRevision : _generation;
 
         public Task<long> CountAsync(CancellationToken cancellationToken = default) => ExecuteReadAsync(CountCoreAsync, cancellationToken);
 
@@ -131,13 +132,20 @@ public sealed partial class SqliteCatalogProjectionStore
             ArgumentNullException.ThrowIfNull(selection);
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
             cancellationToken = linked.Token;
-            var captured = selection.Capture();
+            using var captured = selection.Capture();
             // Retain the immutable projection independently of the UI query lifetime.
             _owner._leases.AddOrUpdate(_generation, 1, static (_, value) => value + 1);
             try
             {
                 using var connection = _owner.OpenConnection(readOperation: true);
                 using var interrupt = new SqliteReadCancellation(connection, cancellationToken);
+                if (captured.Baseline is { } baseline)
+                {
+                    using var attach = connection.CreateCommand();
+                    attach.CommandText = "ATTACH DATABASE $path AS selection_source;";
+                    attach.Parameters.AddWithValue("$path", baseline.DatabasePath);
+                    await attach.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+                }
                 using (var transaction = connection.BeginTransaction(deferred: true))
                 {
                     EnsureGeneration(connection, transaction);
@@ -147,6 +155,7 @@ public sealed partial class SqliteCatalogProjectionStore
                         CREATE TEMP TABLE captured_notes AS SELECT * FROM user_inputs WHERE profile_key=$profile;
                         CREATE INDEX captured_notes_key ON captured_notes(profile_key, path_key, field_id);
                         CREATE TEMP TABLE selection_keys(path_key TEXT PRIMARY KEY COLLATE BINARY) WITHOUT ROWID;
+                        CREATE TEMP TABLE selection_unavailable(path_key TEXT PRIMARY KEY COLLATE BINARY) WITHOUT ROWID;
                         """;
                     capture.Parameters.AddWithValue("$profile", ProfileKey(_scope.ProfileId));
                     await SqliteReadCancellation.RunAsync(token => capture.ExecuteNonQueryAsync(token), cancellationToken).ConfigureAwait(false);
@@ -158,6 +167,14 @@ public sealed partial class SqliteCatalogProjectionStore
                     {
                         cancellationToken.ThrowIfCancellationRequested();
                         key.Value = PathKey(selectedKey);
+                        await capture.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+                    }
+                    capture.CommandText = "INSERT OR IGNORE INTO selection_unavailable(path_key) VALUES($path);";
+                    capture.Prepare();
+                    foreach (var unavailable in captured.UnavailableKeys)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        key.Value = PathKey(unavailable);
                         await capture.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
                     }
                     transaction.Commit();
@@ -193,7 +210,8 @@ public sealed partial class SqliteCatalogProjectionStore
                 using var command = BuildCommand(connection, transaction, notesTable, selection, offset, limit);
                 var (valuesJson, previewFields) = PreviewSql(command, previewCharacters);
                 var rowBytes = previewCharacters == 0 ? FullRowBytesSql(valuesJson, previewFields, notesTable) : "0";
-                command.CommandText = $"SELECT r.full_path, r.relative_path, r.rule_id, {valuesJson}, r.coverage, r.errors_json, r.path_key, {previewFields}, {rowBytes} " + command.CommandText;
+                var resources = _owner.HasResourceColumn ? "r.resources_json" : "'{}'";
+                command.CommandText = $"SELECT r.full_path, r.relative_path, r.rule_id, {valuesJson}, r.coverage, r.errors_json, r.path_key, {previewFields}, {rowBytes}, {resources} " + command.CommandText;
                 using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
                 while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
                 {
@@ -211,7 +229,8 @@ public sealed partial class SqliteCatalogProjectionStore
                     rows.Add(new CatalogProjectionRow(reader.GetString(0), reader.GetString(1), reader.GetString(2),
                         DeserializeValues(serializedValues), reader.GetBoolean(4),
                         Deserialize<Dictionary<string, string>>(reader.GetString(5)))
-                    { PreviewFields = Deserialize<string[]>(reader.GetString(7)) });
+                    { PreviewFields = Deserialize<string[]>(reader.GetString(7)),
+                      Resources = Deserialize<Dictionary<string, ProfileFieldResourceInfo>>(reader.GetString(9)) });
                     bufferedBytes += estimatedBytes;
                     if (previewCharacters == 0 && bufferedBytes >= 8L * 1024 * 1024)
                     {
@@ -276,10 +295,11 @@ public sealed partial class SqliteCatalogProjectionStore
                     ON bn.profile_key=$profile AND bn.path_key=bc.path_key AND bn.field_id=bc.field_id
                     WHERE bc.generation=r.generation AND bc.path_key=r.path_key AND bc.is_user_input=1),0)
                 """;
+            var resources = _owner.HasResourceColumn ? "length(CAST(r.resources_json AS BLOB))" : "0";
             return $"""
                 512 + 2 * (length(CAST({valuesJson} AS BLOB)) + length(CAST(r.full_path AS BLOB))
                     + length(CAST(r.relative_path AS BLOB)) + length(CAST(r.rule_id AS BLOB))
-                    + length(CAST(r.errors_json AS BLOB)) + length(CAST({previewFields} AS BLOB)) + {notes})
+                    + length(CAST(r.errors_json AS BLOB)) + length(CAST({previewFields} AS BLOB)) + {notes} + {resources})
                 """;
         }
 
@@ -351,7 +371,14 @@ public sealed partial class SqliteCatalogProjectionStore
                 command.Parameters.AddWithValue("$completed", korean ? "완료" : "completed");
             }
             if (selection is not null)
-                predicates.Add($"{(selection.AllMatching ? "NOT " : string.Empty)}EXISTS(SELECT 1 FROM selection_keys k WHERE k.path_key=r.path_key)");
+            {
+                var exceptions = "EXISTS(SELECT 1 FROM selection_keys k WHERE k.path_key=r.path_key)";
+                var selected = selection.Baseline is null ? exceptions
+                    : $"(EXISTS(SELECT 1 FROM selection_source.selection_baseline b WHERE b.query_key=r.path_key) <> {exceptions})";
+                predicates.Add((selection.AllMatching ? "NOT " : string.Empty) + selected);
+                if (selection.UnavailableKeys.Count > 0)
+                    predicates.Add("NOT EXISTS(SELECT 1 FROM selection_unavailable u WHERE u.path_key=r.path_key)");
+            }
             command.CommandText = $"FROM projection_rows r {joins} WHERE " + string.Join(" AND ", predicates);
             if (offset is not null && limit is not null)
             {
@@ -377,7 +404,7 @@ public sealed partial class SqliteCatalogProjectionStore
                 state = reader.GetInt64(0);
                 revision = reader.GetInt64(1);
             }
-            if (_building && revision != _buildingRevision)
+            if (revision != _buildingRevision)
                 throw new ResultQueryChangedException(Identity, _generation + ":" + revision);
             if (checkPublication && _building && state == 1)
             {

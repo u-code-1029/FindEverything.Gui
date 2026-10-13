@@ -90,7 +90,7 @@ public sealed partial class SqliteCatalogProjectionStore
         if (Convert.ToInt64(command.ExecuteScalar(), CultureInfo.InvariantCulture) != ApplicationId)
             throw new InvalidDataException("The package catalog database has an invalid application ID.");
         command.CommandText = "PRAGMA user_version;";
-        if (Convert.ToInt32(command.ExecuteScalar(), CultureInfo.InvariantCulture) != 2)
+        if (Convert.ToInt32(command.ExecuteScalar(), CultureInfo.InvariantCulture) is not (2 or 3))
             throw new InvalidDataException("The package catalog schema is not supported.");
         command.CommandText = "PRAGMA quick_check;";
         if (!string.Equals(command.ExecuteScalar() as string, "ok", StringComparison.Ordinal))
@@ -104,6 +104,7 @@ public sealed partial class SqliteCatalogProjectionStore
         command.CommandText = """
             SELECT g.generation,g.scope_json,g.summary_json,g.fields_json,g.row_count,
                 (SELECT COUNT(*) FROM projection_rows r WHERE r.generation=g.generation)
+                ,g.revision
             FROM projection_publications p JOIN projection_generations g ON p.generation=g.generation
             WHERE g.state=1;
             """;
@@ -111,7 +112,8 @@ public sealed partial class SqliteCatalogProjectionStore
         if (!reader.Read() || reader.GetInt64(4) != reader.GetInt64(5))
             throw new InvalidDataException("The published catalog row count is invalid.");
         var snapshot = new CatalogProjectionSnapshot(reader.GetString(0), Deserialize<CatalogProjectionScope>(reader.GetString(1)),
-            Deserialize<CatalogProjectionSummary>(reader.GetString(2)), Deserialize<ProfileFieldDescriptor[]>(reader.GetString(3)));
+            Deserialize<CatalogProjectionSummary>(reader.GetString(2)), Deserialize<ProfileFieldDescriptor[]>(reader.GetString(3)))
+            { Revision = reader.GetInt64(6) };
         if (snapshot.Summary.MatchedCount != reader.GetInt64(5)) throw new InvalidDataException("The structured summary does not match its rows.");
         if (reader.Read()) throw new InvalidDataException("A package contains multiple catalog publications.");
         return snapshot;
@@ -170,7 +172,7 @@ public sealed class ImportedCatalogProjectionStore : IImportedCatalogProjectionS
     private static InvalidOperationException ReadOnly() => new("Imported workspace data is read-only. Start an explicit local scan to create a new result.");
 
     private sealed class ImportedQuery(IResultQuerySession<CatalogProjectionRow> inner, ImportedWorkspaceSource source)
-        : IResultQuerySession<CatalogProjectionRow>
+        : IResultQuerySession<CatalogProjectionRow>, ICatalogSelectionMatchQuery
     {
         public string Identity => source.Id + ":" + source.LinkRevision + ":" + inner.Identity;
         public Task<long> CountAsync(CancellationToken cancellationToken = default) => inner.CountAsync(cancellationToken);
@@ -182,9 +184,19 @@ public sealed class ImportedCatalogProjectionStore : IImportedCatalogProjectionS
         public async IAsyncEnumerable<CatalogProjectionRow> EnumerateSelectionAsync(QuerySelection selection,
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
-            var mapped = new QuerySelection(selection.AllMatching,
-                selection.Keys.Select(key => WorkspacePathMapping.ToEffective(source, key)));
+            using var mapped = selection.MapKeys(key => WorkspacePathMapping.ToEffective(source, key));
             await foreach (var row in inner.EnumerateSelectionAsync(mapped, cancellationToken).ConfigureAwait(false)) yield return Map(row);
+        }
+        public Task<CatalogSelectionMatchResult> CreateSelectionMatchAsync(CatalogSelectionMatchInput input,
+            Func<string, string>? selectionKeyMapper = null, CancellationToken cancellationToken = default)
+        {
+            if (inner is not ICatalogSelectionMatchQuery matching)
+                throw new NotSupportedException("This catalog provider does not support data-based selection.");
+            return matching.CreateSelectionMatchAsync(input, path =>
+            {
+                var original = WorkspacePathMapping.ToOriginal(source, path);
+                return selectionKeyMapper?.Invoke(original) ?? original;
+            }, cancellationToken);
         }
         private CatalogProjectionRow Map(CatalogProjectionRow row)
         {

@@ -126,7 +126,7 @@
                         IsEnabled="{Binding IsEditorReady}"
                         Style="{StaticResource FluentToolbarCardStyle}">
                         <controls:SectionCard.Header>
-                        <UniformGrid x:Name="ProfileStepButtons" Columns="4">
+                        <UniformGrid x:Name="ProfileStepButtons" Columns="3">
                             <RadioButton
                                 Margin="0,0,8,0"
                                 Padding="10,8"
@@ -147,6 +147,16 @@
                                 Content="{DynamicResource Loc.View.Profiles.Content.2PathAndColumns}"
                                 GroupName="ProfileEditorSteps"
                                 IsChecked="{Binding IsPathAndFieldsStep, Mode=OneWay}" />
+                            <RadioButton Padding="10,8" Margin="0,0,8,0"
+                                Command="{Binding GoToEditorStepCommand}"
+                                CommandParameter="{x:Static viewModels:ProfileEditorStep.DataSources}"
+                                Content="{DynamicResource Loc.Profiles.Features.Step.DataSources}"
+                                GroupName="ProfileEditorSteps" IsChecked="{Binding IsDataSourcesStep, Mode=OneWay}" />
+                            <RadioButton Padding="10,8" Margin="0,0,8,0"
+                                Command="{Binding GoToEditorStepCommand}"
+                                CommandParameter="{x:Static viewModels:ProfileEditorStep.SelectionRules}"
+                                Content="{DynamicResource Loc.Profiles.Features.Step.SelectionRules}"
+                                GroupName="ProfileEditorSteps" IsChecked="{Binding IsSelectionRulesStep, Mode=OneWay}" />
                             <RadioButton
                                 Margin="0,0,8,0"
                                 Padding="10,8"
@@ -238,7 +248,7 @@
                             <controls:SectionCard
                                 IsEnabled="{Binding IsEditorReady}"
                                 Style="{StaticResource EditorSectionStyle}"
-                                Visibility="{Binding IsScanOptionsStep, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                Visibility="{Binding IsDataSourcesStep, Converter={StaticResource BooleanToVisibilityConverter}}">
                                 <controls:SectionCard.Header>
                                 <StackPanel>
                                     <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.DisplayValueMappings}" />
@@ -564,7 +574,7 @@
                             <controls:SectionCard
                                 IsEnabled="{Binding IsEditorReady}"
                                 Style="{StaticResource EditorSectionStyle}"
-                                Visibility="{Binding IsScanOptionsStep, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                Visibility="{Binding IsDataSourcesStep, Converter={StaticResource BooleanToVisibilityConverter}}">
                                 <controls:SectionCard.Header>
                                 <StackPanel>
                                     <Grid>
@@ -695,6 +705,11 @@
                                                                 Content="{DynamicResource Loc.View.Profiles.Content.IgnoreCase}"
                                                                 IsChecked="{Binding IgnoreCase, UpdateSourceTrigger=PropertyChanged}" />
                                                         </WrapPanel>
+                                                        <CheckBox Margin="0,12,0,0" Content="{DynamicResource Loc.Profiles.Features.TextEdit.Enabled}"
+                                                            IsChecked="{Binding EditEnabled}" />
+                                                        <ui:TextBlock Margin="0,12,0,4" Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.Profiles.Features.TextEdit.CreationName}" />
+                                                        <ui:TextBox Text="{Binding CreationFileNameTemplate, UpdateSourceTrigger=PropertyChanged}"
+                                                            PlaceholderText="notes.txt" ToolTip="{DynamicResource Loc.Profiles.Features.TextEdit.CreationHelp}" />
                                                     </StackPanel>
                                                     </controls:SectionCard.Header>
                                                 </controls:SectionCard>
@@ -709,11 +724,109 @@
                                 </controls:SectionCard.Header>
                             </controls:SectionCard>
 
+                            <controls:SectionCard Style="{StaticResource EditorSectionStyle}" IsEnabled="{Binding IsEditorReady}"
+                                Visibility="{Binding IsDataSourcesStep, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <controls:SectionCard.Header><StackPanel>
+                                    <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.Profiles.Features.Child.Title}" />
+                                    <ui:TextBlock Margin="0,4,0,12" Style="{StaticResource CaptionTextStyle}" TextWrapping="Wrap" Text="{DynamicResource Loc.Profiles.Features.Child.Help}" />
+                                    <ui:Button HorizontalAlignment="Left" Command="{Binding AddChildDirectoryFieldCommand}" Content="{DynamicResource Loc.Profiles.Features.Child.Add}" Icon="{ui:SymbolIcon Symbol=Add20}" />
+                                    <ItemsControl Margin="0,12,0,0" ItemsSource="{Binding DraftChildDirectoryFields}">
+                                        <ItemsControl.ItemTemplate><DataTemplate>
+                                            <controls:SectionCard Style="{StaticResource FieldCardStyle}"><controls:SectionCard.Header><StackPanel>
+                                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="16" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                                    <StackPanel><ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.ColumnName}" /><ui:TextBox Text="{Binding Header, UpdateSourceTrigger=PropertyChanged}" /></StackPanel>
+                                                    <StackPanel Grid.Column="2"><ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="Field ID" /><ui:TextBox Text="{Binding FieldId, UpdateSourceTrigger=PropertyChanged}" /></StackPanel>
+                                                    <ui:Button Grid.Column="3" Margin="12,20,0,0" VerticalAlignment="Top" Icon="{ui:SymbolIcon Symbol=Delete20}" Style="{StaticResource IconOnlyButtonStyle}"
+                                                        Command="{Binding DataContext.RemoveChildDirectoryFieldCommand, RelativeSource={RelativeSource AncestorType=Page}}" CommandParameter="{Binding}" ToolTip="{DynamicResource Loc.Profiles.Features.Remove}" />
+                                                </Grid>
+                                                <ui:TextBlock Margin="0,12,0,4" Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.Profiles.Features.Child.Name}" />
+                                                <ui:TextBox Text="{Binding DirectoryName, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="Complete" />
+                                                <CheckBox Margin="0,12,0,0" Content="{DynamicResource Loc.View.Profiles.Content.IgnoreCase}" IsChecked="{Binding IgnoreCase}" />
+                                                <ui:TextBlock Margin="0,12,0,4" Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.ColumnOrder}" />
+                                                <ui:TextBox Text="{Binding OrderText, UpdateSourceTrigger=PropertyChanged}" />
+                                            </StackPanel></controls:SectionCard.Header></controls:SectionCard>
+                                        </DataTemplate></ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel></controls:SectionCard.Header>
+                            </controls:SectionCard>
+
+                            <controls:SectionCard Style="{StaticResource EditorSectionStyle}" IsEnabled="{Binding IsEditorReady}"
+                                Visibility="{Binding IsScanOptionsStep, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <controls:SectionCard.Header><StackPanel>
+                                    <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.Profiles.Features.Depth.Title}" />
+                                    <ui:TextBlock Margin="0,4,0,12" Style="{StaticResource CaptionTextStyle}" TextWrapping="Wrap" Text="{DynamicResource Loc.Profiles.Features.Depth.Help}" />
+                                    <ui:TextBox Text="{Binding DraftMaxScanDepthText, UpdateSourceTrigger=PropertyChanged}" ToolTip="{DynamicResource Loc.Profiles.Features.Depth.Help}" />
+                                    <ui:TextBlock Margin="0,8,0,0" Text="{Binding ScanDepthValidationMessage}" Foreground="{DynamicResource SystemFillColorCriticalBrush}" TextWrapping="Wrap" />
+                                </StackPanel></controls:SectionCard.Header>
+                            </controls:SectionCard>
+
+                            <controls:SectionCard Style="{StaticResource EditorSectionStyle}" IsEnabled="{Binding IsEditorReady}"
+                                Visibility="{Binding IsSelectionRulesStep, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <controls:SectionCard.Header><StackPanel>
+                                    <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.Profiles.Features.Selection.Title}" />
+                                    <ui:TextBlock Margin="0,4,0,12" Style="{StaticResource CaptionTextStyle}" TextWrapping="Wrap" Text="{DynamicResource Loc.Profiles.Features.Selection.Help}" />
+                                    <ui:Button HorizontalAlignment="Left" Command="{Binding AddSelectionRuleCommand}" Content="{DynamicResource Loc.Profiles.Features.Selection.Add}" Icon="{ui:SymbolIcon Symbol=Add20}" />
+                                    <ItemsControl Margin="0,12,0,0" ItemsSource="{Binding DraftSelectionRules}">
+                                        <ItemsControl.ItemTemplate><DataTemplate>
+                                            <controls:SectionCard Style="{StaticResource FieldCardStyle}"><controls:SectionCard.Header><StackPanel>
+                                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="16" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                                    <StackPanel><ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.Profiles.Features.Selection.RuleName}" /><ui:TextBox Text="{Binding DisplayName, UpdateSourceTrigger=PropertyChanged}" /></StackPanel>
+                                                    <StackPanel Grid.Column="2"><ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="Rule ID" /><ui:TextBox Text="{Binding Id, UpdateSourceTrigger=PropertyChanged}" /></StackPanel>
+                                                    <ui:Button Grid.Column="3" Margin="12,20,0,0" VerticalAlignment="Top" Icon="{ui:SymbolIcon Symbol=Delete20}" Style="{StaticResource IconOnlyButtonStyle}"
+                                                        Command="{Binding DataContext.RemoveSelectionRuleCommand, RelativeSource={RelativeSource AncestorType=Page}}" CommandParameter="{Binding}" ToolTip="{DynamicResource Loc.Profiles.Features.Remove}" />
+                                                </Grid>
+                                                <ui:TextBlock Margin="0,12,0,4" Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.Profiles.Features.Selection.InputKind}" />
+                                                <ComboBox ItemsSource="{Binding DataContext.SelectionInputChoices, RelativeSource={RelativeSource AncestorType=Page}}" DisplayMemberPath="DisplayName" SelectedValuePath="Value" SelectedValue="{Binding InputKind}" />
+                                                <StackPanel Visibility="{Binding IsTable, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                    <CheckBox Margin="0,12,0,0" Content="{DynamicResource Loc.Profiles.Features.Selection.Header}" IsChecked="{Binding HasHeaderRow}" />
+                                                    <ui:TextBlock Margin="0,12,0,4" Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.Profiles.Features.Selection.Delimiter}" />
+                                                    <ui:TextBox Text="{Binding Delimiter, UpdateSourceTrigger=PropertyChanged}" />
+                                                </StackPanel>
+                                                <StackPanel Visibility="{Binding IsRegex, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                    <ui:TextBlock Margin="0,12,0,4" Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.FileNameRegularExpression}" />
+                                                    <ui:TextBox Text="{Binding RegexPattern, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" MinHeight="72" />
+                                                    <CheckBox Margin="0,8,0,0" Content="{DynamicResource Loc.Profiles.Features.Selection.Multiline}" IsChecked="{Binding Multiline}" />
+                                                </StackPanel>
+                                                <CheckBox Margin="0,12,0,0" Content="{DynamicResource Loc.View.Profiles.Content.IgnoreCase}" IsChecked="{Binding IgnoreCase}" />
+                                                <ui:TextBlock Margin="0,12,0,4" Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.Profiles.Features.Selection.Target}" />
+                                                <ItemsControl ItemsSource="{Binding DataContext.AvailableSelectionFieldIds, RelativeSource={RelativeSource AncestorType=Page}}">
+                                                    <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                                    <ItemsControl.ItemTemplate><DataTemplate>
+                                                        <ui:Button Margin="0,0,8,8" Content="{Binding}" Command="{Binding DataContext.AddFieldCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding}" />
+                                                    </DataTemplate></ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                                <ItemsControl Margin="0,12,0,0" ItemsSource="{Binding Columns}"><ItemsControl.ItemTemplate><DataTemplate>
+                                                    <controls:SectionCard Style="{StaticResource FieldCardStyle}"><controls:SectionCard.Header><StackPanel>
+                                                        <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.Profiles.Features.Selection.Target}" />
+                                                        <ComboBox ItemsSource="{Binding DataContext.AvailableSelectionFieldIds, RelativeSource={RelativeSource AncestorType=Page}}" SelectedItem="{Binding FieldId}" />
+                                                        <ui:TextBlock Margin="0,12,0,4" Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.Profiles.Features.Selection.Source}" />
+                                                        <Grid Visibility="{Binding DataContext.IsTable, RelativeSource={RelativeSource AncestorType=ItemsControl}, Converter={StaticResource BooleanToVisibilityConverter}}"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="12" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                                            <ui:TextBox Text="{Binding InputHeader, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="{DynamicResource Loc.Profiles.Features.Selection.SourceHeader}" />
+                                                            <ui:TextBox Grid.Column="2" Text="{Binding InputColumnIndexText, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="{DynamicResource Loc.Profiles.Features.Selection.SourceIndex}" />
+                                                        </Grid>
+                                                        <ui:TextBox Margin="0,8,0,0" Text="{Binding RegexGroup, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="{DynamicResource Loc.Profiles.Features.Selection.SourceGroup}"
+                                                            Visibility="{Binding DataContext.IsRegex, RelativeSource={RelativeSource AncestorType=ItemsControl}, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                                        <ui:TextBlock Margin="0,12,0,4" Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.Profiles.Features.Selection.ValueBasis}" />
+                                                        <ComboBox ItemsSource="{Binding DataContext.SelectionValueSourceChoices, RelativeSource={RelativeSource AncestorType=Page}}" DisplayMemberPath="DisplayName" SelectedValuePath="Value" SelectedValue="{Binding ValueSource}" />
+                                                        <ComboBox Margin="0,8,0,0" ItemsSource="{Binding DataContext.SelectionDateComparisonChoices, RelativeSource={RelativeSource AncestorType=Page}}" DisplayMemberPath="DisplayName" SelectedValuePath="Value" SelectedValue="{Binding DateComparison}" />
+                                                        <ui:TextBox Margin="0,8,0,0" Text="{Binding DateFormat, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="{DynamicResource Loc.Profiles.Features.Selection.DateFormat}" />
+                                                        <ui:Button Margin="0,12,0,0" HorizontalAlignment="Right" Content="{DynamicResource Loc.Profiles.Features.Remove}" Command="{Binding DataContext.RemoveSelectionColumnCommand, RelativeSource={RelativeSource AncestorType=Page}}" CommandParameter="{Binding}" />
+                                                    </StackPanel></controls:SectionCard.Header></controls:SectionCard>
+                                                </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
+                                                <ui:Button Margin="0,8,0,0" HorizontalAlignment="Left" Content="{DynamicResource Loc.Profiles.Features.Selection.AddColumn}" Command="{Binding DataContext.AddSelectionColumnCommand, RelativeSource={RelativeSource AncestorType=Page}}" CommandParameter="{Binding}" />
+                                                <ui:TextBlock Margin="0,12,0,4" Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.TimeoutMs}" />
+                                                <ui:TextBox Text="{Binding TimeoutMillisecondsText, UpdateSourceTrigger=PropertyChanged}" />
+                                            </StackPanel></controls:SectionCard.Header></controls:SectionCard>
+                                        </DataTemplate></ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel></controls:SectionCard.Header>
+                            </controls:SectionCard>
+
                             <controls:SectionCard
                                 x:Name="UserInputFieldsEditor"
                                 IsEnabled="{Binding IsEditorReady}"
                                 Style="{StaticResource EditorSectionStyle}"
-                                Visibility="{Binding IsScanOptionsStep, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                Visibility="{Binding IsDataSourcesStep, Converter={StaticResource BooleanToVisibilityConverter}}">
                                 <controls:SectionCard.Header>
                                 <StackPanel>
                                     <Grid>

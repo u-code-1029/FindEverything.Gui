@@ -155,6 +155,7 @@ internal static class CatalogColumnFilterUiChecks
             Assert.Equal(0, nativeSorts);
             var hostCount = workspace.Children.Count;
             grid.DataContext = null;
+            PumpUntil(() => !workspace.Children.Contains(flyout));
             Assert.DoesNotContain(flyout, workspace.Children.Cast<UIElement>());
             grid.DataContext = owner;
             PumpUntil(() => flyout.IsLoaded);

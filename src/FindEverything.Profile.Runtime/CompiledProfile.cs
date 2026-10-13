@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -53,12 +54,13 @@ internal sealed class CompiledProfile : ILoadedProfile
         {
             return new(null, [new ProfileMappingIssue(
                 "text_file_enumeration_failed", fieldId,
-                $"'{field.Descriptor.Header}' 값을 찾기 위해 폴더의 파일을 확인할 수 없습니다: {error}")]);
+                $"'{field.Descriptor.Header}' 값을 찾기 위해 폴더의 파일을 확인할 수 없습니다: {error}")])
+                { Resource = new(ProfileFieldResourceState.Error) };
         }
 
         var issues = new List<ProfileMappingIssue>();
-        var value = ReadTextFileValue(filePaths, field, issues);
-        return new(value, issues.AsReadOnly());
+        var value = ReadTextFileValue(filePaths, field, issues, out var resource);
+        return new(value, issues.AsReadOnly()) { Resource = resource };
     }
 
     public ProfileDirectoryNameExclusionResult EvaluateDirectoryName(string directoryName)
@@ -216,6 +218,8 @@ internal sealed class CompiledProfile : ILoadedProfile
             var values = new Dictionary<string, object?>(
                 _fields.Length + _textFileFields.Length,
                 StringComparer.OrdinalIgnoreCase);
+            var resources = new Dictionary<string, ProfileFieldResourceInfo>(StringComparer.OrdinalIgnoreCase);
+            var fieldErrors = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
             for (var index = 0; index < _fields.Length; index++)
             {
@@ -244,21 +248,65 @@ internal sealed class CompiledProfile : ILoadedProfile
 
             foreach (var textFileField in _textFileFields)
             {
+                var fieldIssues = new List<ProfileMappingIssue>();
+                ProfileFieldResourceInfo resource = new(ProfileFieldResourceState.Error);
                 var value = canReadTextFiles
                     ? ReadTextFileValue(
                         immediateFilePaths,
                         textFileField,
-                        issues)
+                        fieldIssues, out resource)
                     : null;
+                if (!canReadTextFiles)
+                {
+                    resource = new(ProfileFieldResourceState.Error);
+                    fieldIssues.AddRange(issues.Where(issue => issue.FieldId == textFileField.Descriptor.FieldId));
+                }
                 values.Add(textFileField.Descriptor.FieldId, value);
+                resources[textFileField.Descriptor.FieldId] = resource;
+                if (fieldIssues.Count > 0)
+                    fieldErrors[textFileField.Descriptor.FieldId] = string.Join(Environment.NewLine, fieldIssues.Select(issue => issue.Message));
             }
 
-            if (issues.Count > 0)
+            if (Descriptor.ChildDirectoryFields.Count > 0)
             {
-                return ProfileMapResult.Invalid(
-                    issues,
-                    rule.Id,
-                    shouldPruneDescendants);
+                // Retain only configured matches (at most 16), not every sibling
+                // name in a wide folder. No descendant is opened by this probe.
+                var foundChildren = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                string? childError = null;
+                try
+                {
+                    foreach (var childPath in Directory.EnumerateDirectories(candidate.AbsolutePath, "*", SearchOption.TopDirectoryOnly))
+                    {
+                        var childName = Path.GetFileName(Path.TrimEndingDirectorySeparator(childPath));
+                        foreach (var definition in Descriptor.ChildDirectoryFields)
+                        {
+                            if (!foundChildren.ContainsKey(definition.FieldId) && string.Equals(childName, definition.DirectoryName,
+                                definition.IgnoreCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                                foundChildren.Add(definition.FieldId, childName);
+                        }
+                        if (foundChildren.Count == Descriptor.ChildDirectoryFields.Count) break;
+                    }
+                }
+                catch (Exception exception) when (IsResourceError(exception)) { childError = exception.GetBaseException().Message; }
+                foreach (var field in Descriptor.ChildDirectoryFields)
+                {
+                    if (foundChildren.TryGetValue(field.FieldId, out var actualName))
+                    {
+                        values[field.FieldId] = true;
+                        resources[field.FieldId] = new(ProfileFieldResourceState.Present, actualName);
+                    }
+                    else if (childError is not null)
+                    {
+                        values[field.FieldId] = null;
+                        resources[field.FieldId] = new(ProfileFieldResourceState.Error, field.DirectoryName);
+                        fieldErrors[field.FieldId] = childError ?? "하위 폴더를 확인할 수 없습니다.";
+                    }
+                    else
+                    {
+                        values[field.FieldId] = false;
+                        resources[field.FieldId] = new(ProfileFieldResourceState.Missing, field.DirectoryName);
+                    }
+                }
             }
 
             var readOnlyValues = new ReadOnlyDictionary<string, object?>(values);
@@ -293,6 +341,8 @@ internal sealed class CompiledProfile : ILoadedProfile
                     readOnlyValues)
                 {
                     DisplayValues = displayValues,
+                    Resources = new ReadOnlyDictionary<string, ProfileFieldResourceInfo>(resources),
+                    FieldErrors = new ReadOnlyDictionary<string, string>(fieldErrors),
                 },
                 shouldPruneDescendants);
         }
@@ -314,8 +364,10 @@ internal sealed class CompiledProfile : ILoadedProfile
     private static string? ReadTextFileValue(
         IReadOnlyList<string> immediateFilePaths,
         CompiledTextFileField field,
-        ICollection<ProfileMappingIssue> issues)
+        ICollection<ProfileMappingIssue> issues,
+        out ProfileFieldResourceInfo resource)
     {
+        resource = new(ProfileFieldResourceState.Error);
         string? selectedPath;
         try
         {
@@ -333,6 +385,7 @@ internal sealed class CompiledProfile : ILoadedProfile
         }
         if (selectedPath is null)
         {
+            resource = new(ProfileFieldResourceState.Missing);
             if (field.Descriptor.Required)
             {
                 issues.Add(new ProfileMappingIssue(
@@ -343,6 +396,8 @@ internal sealed class CompiledProfile : ILoadedProfile
 
             return null;
         }
+
+        resource = new(ProfileFieldResourceState.Error, Path.GetFileName(selectedPath));
 
         try
         {
@@ -383,6 +438,8 @@ internal sealed class CompiledProfile : ILoadedProfile
                 return null;
             }
 
+            var bytes = content.ToArray();
+            var version = Convert.ToHexString(SHA256.HashData(bytes));
             content.Position = 0;
             using var reader = new StreamReader(
                 content,
@@ -390,7 +447,14 @@ internal sealed class CompiledProfile : ILoadedProfile
                 detectEncodingFromByteOrderMarks: true,
                 bufferSize: 4096,
                 leaveOpen: false);
-            return reader.ReadToEnd();
+            var text = reader.ReadToEnd();
+            var preamble = reader.CurrentEncoding.GetPreamble();
+            var hasBom = preamble.Length > 0 && bytes.AsSpan().StartsWith(preamble);
+            var newLine = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n"
+                : text.Contains('\n') ? "\n" : text.Contains('\r') ? "\r" : Environment.NewLine;
+            resource = new(ProfileFieldResourceState.Present, Path.GetFileName(selectedPath),
+                reader.CurrentEncoding.WebName, hasBom, newLine, version);
+            return text;
         }
         catch (DecoderFallbackException exception)
         {
@@ -414,6 +478,9 @@ internal sealed class CompiledProfile : ILoadedProfile
             return null;
         }
     }
+
+    private static bool IsResourceError(Exception exception) => exception is IOException
+        or UnauthorizedAccessException or ArgumentException or NotSupportedException or System.Security.SecurityException;
 
     private static bool TryEnumerateImmediateFiles(
         string directoryPath,

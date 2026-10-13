@@ -16,7 +16,10 @@ public sealed record ProfilePlaygroundEvaluation(
     IReadOnlyList<ProfileTestResultViewModel> Rows,
     IReadOnlyList<ProfileRegexDebugRuleViewModel> RegexDebugRules,
     ProfileDirectoryExclusionTestResultViewModel DirectoryExclusionResult,
-    IReadOnlyList<ProfileRegexDebugRuleViewModel> DirectoryExclusionRegexDebugRules);
+    IReadOnlyList<ProfileRegexDebugRuleViewModel> DirectoryExclusionRegexDebugRules)
+{
+    public MappedProfileItem? SampleItem { get; init; }
+}
 
 public interface IProfilePlaygroundEvaluator
 {
@@ -132,6 +135,8 @@ public sealed class ProfilePlaygroundEvaluator(
                                 L("Loc.Profile.Source.TextFile", "텍스트 파일"),
                             ProfileFieldSourceKind.UserInput =>
                                 L("Loc.Profile.Source.UserInput", "사용자 입력"),
+                            ProfileFieldSourceKind.ChildDirectoryExists =>
+                                L("Loc.Profile.Source.ChildDirectory", "바로 아래 폴더 존재 여부"),
                             _ when field.Required =>
                                 L("Loc.Profile.Source.RequiredPath", "필수 경로 값"),
                             _ => L("Loc.Profile.Source.OptionalPath", "선택 경로 값"),
@@ -139,7 +144,9 @@ public sealed class ProfilePlaygroundEvaluator(
                         return new ProfileTestResultViewModel(
                             field.Header,
                             displayText,
-                            hasMappedValue
+                            mapping.Item.FieldErrors.TryGetValue(field.FieldId, out var fieldError)
+                                ? fieldError
+                                : hasMappedValue
                                 ? F("Loc.Profile.Source.Mapped", "{0} · 표시 값 매핑", source)
                                 : source,
                             rawText,
@@ -151,7 +158,7 @@ public sealed class ProfilePlaygroundEvaluator(
                     "규칙 '{0}'에 일치했고 {1:N0}개 값을 불러왔습니다.",
                     mapping.Item.MatchedRuleId,
                     rows.Count);
-                severity = InfoBarSeverity.Success;
+                severity = mapping.Item.FieldErrors.Count > 0 ? InfoBarSeverity.Warning : InfoBarSeverity.Success;
                 break;
 
             default:
@@ -170,7 +177,7 @@ public sealed class ProfilePlaygroundEvaluator(
             rows,
             regexDebugRules,
             exclusionResult,
-            exclusionDebugRules);
+            exclusionDebugRules) { SampleItem = mapping.Item };
     }
 
     internal static string GetDirectoryLeafName(string canonicalPath)
@@ -441,6 +448,9 @@ public partial class ProfilePlaygroundViewModel : ObservableObject
     partial void OnSelectedProfileChanged(ProfilePlaygroundProfileViewModel? value)
     {
         _preferredProfileId = value?.Id ?? _preferredProfileId;
+        SelectedSelectionRule = SelectionRules.FirstOrDefault();
+        OnPropertyChanged(nameof(SelectionRules));
+        PreviewSelectionRuleCommand.NotifyCanExecuteChanged();
         InvalidateEvaluation(L(
             "Loc.Playground.Status.ProfileChanged",
             "프로필이 변경되었습니다. 같은 경로를 다시 확인하세요."));
@@ -499,6 +509,9 @@ public partial class ProfilePlaygroundViewModel : ObservableObject
 
         var inputPath = InputPath;
         var evaluationGeneration = Interlocked.Increment(ref _evaluationGeneration);
+        // Re-checking the same path can change its file/folder values. A previous
+        // input-rule preview belongs to the old sample even when InputPath is unchanged.
+        ClearSelectionTest();
         IsBusy = true;
         Summary = L(
             "Loc.Playground.Status.Evaluating",
@@ -520,6 +533,7 @@ public partial class ProfilePlaygroundViewModel : ObservableObject
             DirectoryExclusionRegexDebugRules =
                 evaluation.DirectoryExclusionRegexDebugRules;
             Rows = evaluation.Rows;
+            _selectionSampleItem = evaluation.SampleItem;
             Summary = evaluation.Summary;
             SummarySeverity = evaluation.Severity;
         }
@@ -603,6 +617,8 @@ public partial class ProfilePlaygroundViewModel : ObservableObject
         InfoBarSeverity severity = InfoBarSeverity.Informational)
     {
         Rows = [];
+        _selectionSampleItem = null;
+        ClearSelectionTest();
         RegexDebugRules = [];
         RegexDebugInputPath = string.Empty;
         DirectoryExclusionRegexDebugRules = [];

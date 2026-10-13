@@ -9,6 +9,7 @@
          those styles so the UI namespace does not fall back to OS chrome. -->
     <Style TargetType="ui:TabView" BasedOn="{StaticResource {x:Type TabControl}}" />
     <Style TargetType="ui:TabViewItem" BasedOn="{StaticResource {x:Type TabItem}}" />
+    <Style TargetType="ui:TreeViewItem" BasedOn="{StaticResource {x:Type TreeViewItem}}" />
 
     <!-- Read-only grid cells retain the real TextBox text editor/automation but
          do not need an editor card, icons, placeholder, buttons or scrollbars.

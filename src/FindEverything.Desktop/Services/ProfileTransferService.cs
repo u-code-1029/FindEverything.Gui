@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text;
 using System.Security.Cryptography;
 using FindEverything.Application.Sharing;
+using FindEverything.Application.Catalog;
 using FindEverything.Profile.Runtime;
 
 namespace FindEverything.Desktop.Services;
@@ -220,8 +221,7 @@ public sealed class ProfileTransferService(IProfileAuthoringService authoring, I
     {
         Validate(manifest);
         var profile = authoring.Validate(manifest).Profile!;
-        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
-            JsonSerializer.Serialize(profile.Descriptor) + "|" + profile.CacheIdentity)));
+        return CatalogDataFingerprint.Create(profile.Descriptor, profile.CacheIdentity);
     }
 
     internal void ValidateSnapshotFields(ProfileManifest manifest, IReadOnlyList<ProfileFieldDescriptor> fields)

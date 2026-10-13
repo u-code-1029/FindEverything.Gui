@@ -141,6 +141,7 @@ internal sealed class CatalogService(
             var report = await directoryDiscovery.DiscoverAsync(
                 new DirectoryDiscoveryRequest(request.RootPath)
                 {
+                    MaxDepth = profile.Descriptor.MaxScanDepth,
                     MaxEntriesPerSecond = operationSettings.MaxEntriesPerSecond,
                     DirectoryDelay = TimeSpan.FromMilliseconds(
                         operationSettings.DirectoryDelayMilliseconds),
@@ -264,6 +265,7 @@ internal sealed class CatalogService(
                 {
                     Options = new IndexScanOptions
                     {
+                        MaxDepth = profile.Descriptor.MaxScanDepth,
                         MaxEntriesPerSecond = operationSettings.MaxEntriesPerSecond,
                         DirectoryDelay = TimeSpan.FromMilliseconds(
                             operationSettings.DirectoryDelayMilliseconds),
@@ -507,6 +509,7 @@ internal sealed class CatalogService(
         private int _excludedDirectoryCount;
         private int _matchedCount;
         private int _invalidCount;
+        private int _fieldIssueRowCount;
         private int _directoryExclusionIssueCount;
         private bool _hasPendingCoverage;
 
@@ -518,6 +521,8 @@ internal sealed class CatalogService(
             bool coveragePending)
         {
             var relativePath = Path.GetRelativePath(rootPath, directory.FullPath);
+            if (applyDirectoryNameExclusions && directory.Depth > profile.Descriptor.MaxScanDepth)
+                return DirectoryTraversalDecision.ExcludeSubtree;
             // The selected root is an explicit boundary, not one of its own
             // descendants. Skipping it would also require passing a drive/UNC root
             // in place of a leaf name on some file systems.
@@ -564,9 +569,11 @@ internal sealed class CatalogService(
                         mapping.Item.MatchedRuleId,
                         mapping.Item.Model,
                         mapping.Item.Values,
-                        coveragePending);
+                        coveragePending)
+                    { Resources = mapping.Item.Resources, FieldErrors = mapping.Item.FieldErrors };
                     resultWriter?.Append(item);
                     _matchedCount++;
+                    if (item.FieldErrors.Count > 0) _fieldIssueRowCount++;
                     if (retainItems) _items.Add(item);
                     progress?.Report(new CatalogOperationProgress(
                         CatalogOperationPhase.Mapping,
@@ -600,6 +607,7 @@ internal sealed class CatalogService(
             }
 
             var traversalDecision = mapping.ShouldPruneDescendants
+                || (applyDirectoryNameExclusions && directory.Depth >= profile.Descriptor.MaxScanDepth)
                 ? DirectoryTraversalDecision.SkipDescendants
                 : DirectoryTraversalDecision.Continue;
             trace?.ReportDirectoryVisited(
@@ -646,6 +654,7 @@ internal sealed class CatalogService(
                 ExcludedDirectoryCount = _excludedDirectoryCount,
                 MatchedCount = _matchedCount,
                 InvalidCount = _invalidCount,
+                FieldIssueRowCount = _fieldIssueRowCount,
                 DirectoryExclusionIssueCount = _directoryExclusionIssueCount,
                 DirectoryExclusionIssues = _directoryExclusionIssues.AsReadOnly(),
             };

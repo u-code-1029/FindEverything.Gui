@@ -59,8 +59,7 @@ public partial class CatalogViewModel
 
     private CatalogProjectionScope CreateProjectionScope(WorkspaceSelection workspace, Guid? scanId, ILoadedProfile profile)
     {
-        var fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
-            JsonSerializer.Serialize(profile.Descriptor) + "|" + profile.CacheIdentity)));
+        var fingerprint = CatalogDataFingerprint.Create(profile.Descriptor, profile.CacheIdentity);
         var identity = string.Join("|", workspace.ProfileId, workspace.RootPath.ToUpperInvariant(),
             workspace.DatabasePath.ToUpperInvariant(), fingerprint, _localizer.Culture.Name);
         return new(Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(identity))),
@@ -195,7 +194,7 @@ public partial class CatalogViewModel
                     result.InvalidCount, result.NoMatchCount, result.ExcludedDirectoryCount,
                     result.HasPendingScopes || result.ScanReport?.Errors.Count > 0 ||
                     result.DirectoryExclusionIssueCount > 0,
-                    result.ScanReport?.Progress.Elapsed, DateTimeOffset.UtcNow), finalScope);
+                    result.ScanReport?.Progress.Elapsed, DateTimeOffset.UtcNow) { FieldIssueRowCount = result.FieldIssueRowCount }, finalScope);
             }
             try
             {
@@ -214,15 +213,18 @@ public partial class CatalogViewModel
             HasValueMappings = Fields.Any(field => field.HasValueMappings);
             await RefreshProjectionQueryAsync(force: true, cancellationToken: cancellation.Token);
             cancellation.Token.ThrowIfCancellationRequested();
-            if (_projectionQuery?.Identity != _projectionSnapshot.Generation)
+            if (_projectionQuery?.Identity != (_projectionSnapshot.Revision == 0 ? _projectionSnapshot.Generation
+                : _projectionSnapshot.Generation + ":" + _projectionSnapshot.Revision))
                 throw new InvalidOperationException(L("Loc.Catalog.Query.DisplayFailed", "저장 결과를 화면에 불러오지 못했습니다. 다시 불러오세요."));
             OnPropertyChanged(nameof(ResultSourceDescription));
             var summary = _projectionSnapshot.Summary;
-            var incomplete = summary.HasPendingScopes || summary.InvalidCount > 0;
+            var incomplete = summary.HasPendingScopes || summary.InvalidCount > 0 || summary.FieldIssueRowCount > 0;
             var message = F("Loc.Catalog.Query.Summary",
                 "후보 {0:N0} · 일치 {1:N0} · 규칙 외 {2:N0} · 변환 오류 {3:N0} · 제외 {4:N0}",
                 summary.CandidateCount, summary.MatchedCount, summary.NoMatchCount,
                 summary.InvalidCount, summary.ExcludedCount);
+            if (summary.FieldIssueRowCount > 0)
+                message += F("Loc.Catalog.Query.FieldIssues", " · 컬럼 확인 필요 {0:N0}개 항목", summary.FieldIssueRowCount);
             if (summary.ScanElapsed is { } elapsed)
                 message += mode == CatalogOperationMode.Scan
                     ? F("Loc.Catalog.Result.ElapsedSuffix", " · 소요 {0}", FormatElapsed(elapsed))
@@ -329,7 +331,7 @@ public partial class CatalogViewModel
     }
 
     private async Task RefreshProjectionQueryAsync(bool preserveSelection = false, bool force = false,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default, bool allowRevisionChange = false)
     {
         if (ActiveProjectionStore is null || _projectionSnapshot is not { } snapshot) return;
         if (_activeNoteEdits > 0 && !force)
@@ -367,6 +369,7 @@ public partial class CatalogViewModel
             source.Token.ThrowIfCancellationRequested();
             if (version != Volatile.Read(ref _queryVersion) || _disposed) return;
             preserveSelection = preserveSelection && _displayedProjectionSnapshot?.Generation == snapshot.Generation &&
+                (allowRevisionChange || _displayedProjectionSnapshot.Revision == snapshot.Revision) &&
                 _displayedQueryDefinition.HasSamePredicates(definition);
             ReleaseProjectionQuery(cancelPending: false);
             _projectionQuery = query;
@@ -401,6 +404,7 @@ public partial class CatalogViewModel
             FilterSummary = F("Loc.Catalog.Query.FilterSummary", "{0:N0} / {1:N0}개 항목",
                 total, snapshot.Summary.MatchedCount);
             OnPropertyChanged(nameof(UsesQuerySelection));
+            NotifySelectionImportAvailability();
             RefreshTextColumnCommand.NotifyCanExecuteChanged();
             OnPropertyChanged(nameof(ResultSourceDescription));
             UpdateProjectionSelection();
@@ -469,6 +473,7 @@ public partial class CatalogViewModel
         if (_projectionQuery is { } query) _ = DisposeProjectionQueryAsync(query);
         _projectionQuery = null;
         OnPropertyChanged(nameof(UsesQuerySelection));
+        NotifySelectionImportAvailability();
         RefreshTextColumnCommand.NotifyCanExecuteChanged();
     }
 
@@ -634,7 +639,7 @@ public partial class CatalogViewModel
                         read.Issues.Select(issue => issue with
                         {
                             Message = ProfileDiagnosticLocalizer.Translate(_localizer, issue),
-                        }).ToArray()));
+                        }).ToArray()) { Resource = read.Resource });
                 }, new Progress<TextColumnRefreshProgress>(progress => _dispatcher.BeginInvoke(new Action(() =>
                     ProgressMessage = F("Loc.Catalog.TextRefresh.Progress", "{0:N0} / {1:N0} · 오류 {2:N0}",
                         progress.Completed, progress.Total, progress.Errors)))), token).ConfigureAwait(false);
@@ -659,7 +664,7 @@ public partial class CatalogViewModel
         try
         {
             var snapshot = _displayedProjectionSnapshot!;
-            var selection = _querySelection.Capture();
+            using var selection = _querySelection.Capture();
             var definition = _displayedQueryDefinition with { TextPreviewCharacters = 0 };
             var copiedCount = SelectedCount;
             var format = SelectedOutputFormat ?? SelectionOutputFormatDefaults.CreateFullPathLines(_localizer);
@@ -695,7 +700,7 @@ public partial class CatalogViewModel
         var token = _outputLifetime.Token;
         var snapshot = _displayedProjectionSnapshot!;
         var definition = _displayedQueryDefinition with { TextPreviewCharacters = 0 };
-        var selection = _querySelection.Capture();
+        using var selection = _querySelection.Capture();
         var count = SelectedCount;
         var importedSource = WorkspaceTransfer?.CurrentSource;
         var liveStore = _projectionStore;

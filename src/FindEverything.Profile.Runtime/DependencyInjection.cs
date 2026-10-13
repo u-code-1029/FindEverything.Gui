@@ -12,6 +12,12 @@ public static class DependencyInjection
 
         services
             .AddOptions<PluginDiscoveryOptions>()
+            .PostConfigure(static options =>
+            {
+                // Existing installations configured v2 explicitly. The v3 host
+                // still reads v2 profiles; migrate this host setting in memory.
+                if (options.ContractMajor == 2) options.ContractMajor = ProfileContract.CurrentMajor;
+            })
             .ValidateDataAnnotations()
             .Validate(
                 static options => !string.IsNullOrWhiteSpace(options.ProfilesDirectory),

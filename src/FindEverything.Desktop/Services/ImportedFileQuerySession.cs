@@ -19,8 +19,7 @@ internal sealed class ImportedFileQuerySession(IResultQuerySession<IndexedPathEn
     public async IAsyncEnumerable<IndexedPathEntry> EnumerateSelectionAsync(QuerySelection selection,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        var translated = new QuerySelection(selection.AllMatching,
-            selection.Keys.Select(key => WorkspacePathMapping.ToEffective(source, key)));
+        using var translated = selection.MapKeys(key => WorkspacePathMapping.ToEffective(source, key));
         await foreach (var row in inner.EnumerateSelectionAsync(translated, cancellationToken).ConfigureAwait(false))
             yield return AttachSource(row);
     }

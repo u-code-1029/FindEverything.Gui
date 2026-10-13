@@ -1067,6 +1067,12 @@ public partial class ProfileTextFileFieldDraftViewModel : ObservableObject
     private long _maxBytes = ProfileManifestLimits.DefaultTextFileMaximumBytes;
 
     [ObservableProperty]
+    private bool _editEnabled = true;
+
+    [ObservableProperty]
+    private string _creationFileNameTemplate = string.Empty;
+
+    [ObservableProperty]
     private string _timeoutMillisecondsText = "100";
 
     [ObservableProperty]
@@ -1136,6 +1142,8 @@ public partial class ProfileTextFileFieldDraftViewModel : ObservableObject
         IgnoreCase = field.IgnoreCase;
         TimeoutMilliseconds = field.TimeoutMilliseconds;
         MaxBytes = field.MaxBytes;
+        EditEnabled = field.EditOptions?.Enabled ?? false;
+        CreationFileNameTemplate = field.EditOptions?.CreationFileNameTemplate ?? string.Empty;
     }
 
     partial void OnMatchModeChanged(ProfileRegexMatchMode value) =>

@@ -45,6 +45,7 @@
                         <ui:Button MinWidth="92" Margin="0,0,8,0" Appearance="Primary" Command="{Binding ScanCommand}" Content="{DynamicResource Loc.Workspace.Scan}" Icon="{ui:SymbolIcon Symbol=Search20}" ToolTip="{DynamicResource Loc.Workspace.Scan.Catalog.Help}" ToolTipService.ShowOnDisabled="True" />
                         <ui:Button Command="{Binding ToggleDetailsCommand}" Content="{Binding DetailsButtonText}" ToolTip="{DynamicResource Loc.Workspace.Details.Help}" />
                         <ui:Button Margin="8,0,0,0" Command="{Binding CancelCommand}" Content="{DynamicResource Loc.Workspace.Cancel}" Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}" ToolTip="{DynamicResource Loc.Workspace.Cancel.Help}" />
+                        <ui:Button Margin="8,0,0,0" Command="{Binding OpenSelectionImportCommand}" Content="{DynamicResource Loc.SelectionImport.Open}" Icon="{ui:SymbolIcon Symbol=ClipboardTaskListLtr20}" ToolTip="{DynamicResource Loc.SelectionImport.Open.Help}" ToolTipService.ShowOnDisabled="True" />
                     </WrapPanel>
                 <Grid Grid.Row="1" Grid.ColumnSpan="3" Margin="0,8,0,0"
                     Visibility="{Binding HasLoadedItems, Converter={StaticResource BooleanToVisibilityConverter}}">
@@ -105,6 +106,7 @@
             </controls:CommandStrip>
         <Grid x:Name="CatalogResultsWorkspace" Grid.Row="2">
             <Grid.RowDefinitions><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+            <ui:Flyout x:Name="LiveFolderFlyout" Width="0" Height="0" MinWidth="0" MinHeight="0" />
 
             <ui:DataGrid
                 x:Name="ResultsGrid"

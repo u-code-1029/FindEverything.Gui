@@ -3,6 +3,9 @@ using System.Windows.Controls.Primitives;
 using FindEverything.Desktop.Behaviors;
 using FindEverything.Desktop.Configuration;
 using FindEverything.Desktop.ViewModels;
+using FindEverything.Desktop.Services;
+using FindEverything.Desktop.Views.Controls;
+using Wpf.Ui;
 
 namespace FindEverything.Desktop.Views.Pages;
 
@@ -12,6 +15,11 @@ public partial class CatalogPage
     private CatalogItemViewModel? _pointerContextItem;
     private PendingRowClick? _pendingRowClick;
     private bool? _selectionCompactMode;
+    private readonly IContentDialogService? _dialogs;
+    private readonly ITextFileEditingService _textFiles;
+    private readonly LiveDirectoryBrowser _directoryBrowser;
+    private CancellationTokenSource? _fileEditCancellation;
+    private bool _fileEditorOpen;
 
     private sealed record PendingRowClick(CatalogItemViewModel Item, System.Windows.Point Start,
         bool Range, int ClickCount);
@@ -20,11 +28,21 @@ public partial class CatalogPage
         CatalogViewModel viewModel,
         ScanConsoleViewModel scanConsoleViewModel,
         IGridLayoutStore gridLayoutStore,
-        IProfilePresentationStore? presentationStore = null)
+        IProfilePresentationStore? presentationStore = null,
+        IContentDialogService? dialogs = null,
+        ITextFileEditingService? textFiles = null,
+        ILiveDirectoryService? liveDirectories = null)
     {
         _viewModel = viewModel;
         DataContext = viewModel;
         InitializeComponent();
+        _dialogs = dialogs;
+        _textFiles = textFiles ?? new TextFileEditingService();
+        _directoryBrowser = new LiveDirectoryBrowser(liveDirectories ?? new LiveDirectoryService(), viewModel.Localizer);
+        LiveFolderFlyout.Content = _directoryBrowser;
+        LiveFolderFlyout.Closed += (_, _) => _directoryBrowser.Stop();
+        ResultsGrid.AddHandler(DynamicProfileGrid.BrowseFolderRequestedEvent, new System.Windows.RoutedEventHandler(OnBrowseFolderRequested));
+        ResultsGrid.AddHandler(DynamicProfileGrid.EditTextFileRequestedEvent, new System.Windows.RoutedEventHandler(OnEditTextFileRequested));
         ResultsGrid.AddHandler(System.Windows.UIElement.PreviewMouseLeftButtonUpEvent,
             new MouseButtonEventHandler(OnResultsGridPreviewMouseLeftButtonUp), handledEventsToo: true);
         ResultsGrid.AddHandler(System.Windows.UIElement.PreviewMouseMoveEvent,
@@ -35,7 +53,52 @@ public partial class CatalogPage
         viewModel.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(CatalogViewModel.IsDetailsOpen)) ApplyWorkspaceLayout();
+            if (e.PropertyName is nameof(CatalogViewModel.SelectedProfile) or nameof(CatalogViewModel.RootPath) or nameof(CatalogViewModel.IsReadOnlyDataSource))
+            { LiveFolderFlyout.Hide(); _directoryBrowser.Stop(); _fileEditCancellation?.Cancel(); }
         };
+    }
+
+    private async void OnBrowseFolderRequested(object sender, System.Windows.RoutedEventArgs e)
+    {
+        if (e is not DynamicProfileGrid.ProfileCellActionEventArgs action || action.Row.IsPlaceholder
+            || e.OriginalSource is not System.Windows.FrameworkElement target || !IsLoaded) return;
+        e.Handled = true;
+        LiveFolderFlyout.Hide(); _directoryBrowser.Stop();
+        LiveFolderFlyout.ApplyTemplate();
+        if (LiveFolderFlyout.Template?.FindName("PART_Popup", LiveFolderFlyout) is not System.Windows.Controls.Primitives.Popup popup) return;
+        popup.PlacementTarget = target; popup.StaysOpen = false;
+        _directoryBrowser.Width = Math.Min(420, Math.Max(280, ActualWidth - 48));
+        LiveFolderFlyout.Show();
+        try { await _directoryBrowser.OpenAsync(action.Row.FullPath); }
+        catch (OperationCanceledException) { }
+        catch (Exception exception) { _viewModel.ShowTextFileEditError(exception); }
+    }
+
+    private async void OnEditTextFileRequested(object sender, System.Windows.RoutedEventArgs e)
+    {
+        if (e is not DynamicProfileGrid.ProfileCellActionEventArgs { FieldId: { } fieldId } action
+            || _fileEditorOpen || _dialogs is null || !IsLoaded) return;
+        e.Handled = true; _fileEditorOpen = true;
+        using var cancellation = new CancellationTokenSource(); _fileEditCancellation = cancellation;
+        try
+        {
+            var context = _viewModel.CaptureTextFileEditContext(action.Row, fieldId);
+            var document = await _textFiles.OpenAsync(action.Row.FullPath, context.Field, context.Resource,
+                action.Row.CaptureFileNameValues(), cancellation.Token);
+            _viewModel.ValidateTextFileEditContext(context); cancellation.Token.ThrowIfCancellationRequested();
+            var dialog = new TextFileEditorDialog(document, _viewModel.Localizer, async content =>
+            {
+                _viewModel.ValidateTextFileEditContext(context); cancellation.Token.ThrowIfCancellationRequested();
+                var cacheUpdated = await _viewModel.SaveTextFileEditAsync(context,
+                    token => _textFiles.SaveAsync(document, content, token), cancellation.Token);
+                _viewModel.ShowTextFileEditResult(document.FilePath, cacheUpdated);
+                return true;
+            });
+            await _dialogs.ShowAsync(dialog, cancellation.Token);
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+        catch (Exception exception) { _viewModel.ShowTextFileEditError(exception); }
+        finally { if (ReferenceEquals(_fileEditCancellation, cancellation)) _fileEditCancellation = null; _fileEditorOpen = false; }
     }
 
     private void OnWorkspaceSizeChanged(object sender, System.Windows.SizeChangedEventArgs e) => ApplyWorkspaceLayout();
@@ -83,6 +146,12 @@ public partial class CatalogPage
 
     private async void OnPagePreviewKeyDown(object sender, KeyEventArgs e)
     {
+        if (e.Key == Key.V && Keyboard.Modifiers.HasFlag(ModifierKeys.Control)
+            && Keyboard.FocusedElement is not TextBoxBase && Keyboard.FocusedElement is not System.Windows.Controls.PasswordBox
+            && _viewModel.CanOpenSelectionImport)
+        {
+            e.Handled = true; await _viewModel.OpenSelectionImportFromClipboardAsync(); return;
+        }
         // Ordinary row clicks now focus the selector. Retain Enter-to-open
         // without intercepting the checkbox's own Space/range selection input.
         if (e.Key == Key.Enter && Keyboard.FocusedElement is System.Windows.Controls.CheckBox selector
@@ -139,8 +208,11 @@ public partial class CatalogPage
     private void OnPageLoaded(object sender, System.Windows.RoutedEventArgs e) =>
         _viewModel.Activate();
 
-    private void OnPageUnloaded(object sender, System.Windows.RoutedEventArgs e) =>
+    private void OnPageUnloaded(object sender, System.Windows.RoutedEventArgs e)
+    {
+        LiveFolderFlyout.Hide(); _directoryBrowser.Stop(); _fileEditCancellation?.Cancel();
         _viewModel.Deactivate();
+    }
 
     private async void OnWorkspacePathLostKeyboardFocus(
         object sender,

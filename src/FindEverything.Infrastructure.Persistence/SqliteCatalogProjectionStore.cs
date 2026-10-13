@@ -18,6 +18,7 @@ public sealed partial class SqliteCatalogProjectionStore : ICatalogProjectionSto
     private static readonly ConcurrentDictionary<string, ConcurrentDictionary<string, int>> DatabaseLeases = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, int> _leases;
     private readonly string _connectionString;
+    internal bool HasResourceColumn { get; }
     private bool _disposed;
 
     public SqliteCatalogProjectionStore(string databasePath) : this(databasePath, false) { }
@@ -44,17 +45,21 @@ public sealed partial class SqliteCatalogProjectionStore : ICatalogProjectionSto
             throw new InvalidDataException("The catalog path contains a different database.");
         ownership.CommandText = "PRAGMA user_version;";
         var version = Convert.ToInt32(ownership.ExecuteScalar(), CultureInfo.InvariantCulture);
-        if (version is < 0 or > 2)
+        if (version is < 0 or > 3)
             throw new InvalidDataException($"Unsupported catalog schema version {version}.");
         if (readOnly)
         {
-            if (!exists || version != 2) throw new InvalidDataException("A read-only catalog requires the current published schema.");
+            if (!exists || version is not (2 or 3)) throw new InvalidDataException("A read-only catalog requires a supported published schema.");
+            HasResourceColumn = HasColumn(connection, "projection_rows", "resources_json");
+            if (version == 3 && !HasResourceColumn) throw new InvalidDataException("The catalog resource schema is incomplete.");
             return;
         }
         if (version == 1) UpgradeVersionOne(connection);
+        if (version is 1 or 2) UpgradeResources(connection);
         using var schema = connection.CreateCommand();
         schema.CommandText = Schema;
         schema.ExecuteNonQuery();
+        HasResourceColumn = true;
         // Another app instance can be building a generation. Its staging data is
         // never deleted simply because a second instance opens this database.
     }
@@ -73,7 +78,7 @@ public sealed partial class SqliteCatalogProjectionStore : ICatalogProjectionSto
         using var interrupt = new SqliteReadCancellation(connection, cancellationToken);
         using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT g.generation, g.scope_json, g.summary_json, g.fields_json
+            SELECT g.generation, g.scope_json, g.summary_json, g.fields_json, g.revision
             FROM projection_publications p JOIN projection_generations g ON g.generation=p.generation
             WHERE p.scope_key=$scope;
             """;
@@ -84,7 +89,7 @@ public sealed partial class SqliteCatalogProjectionStore : ICatalogProjectionSto
         if (!Equals(savedScope, scope)) return null;
         return new CatalogProjectionSnapshot(reader.GetString(0), savedScope,
             Deserialize<CatalogProjectionSummary>(reader.GetString(2)),
-            Deserialize<ProfileFieldDescriptor[]>(reader.GetString(3)));
+            Deserialize<ProfileFieldDescriptor[]>(reader.GetString(3))) { Revision = reader.GetInt64(4) };
     }
 
     public ICatalogProjectionWriter Begin(CatalogProjectionScope scope,
@@ -120,7 +125,7 @@ public sealed partial class SqliteCatalogProjectionStore : ICatalogProjectionSto
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         return new ProjectionQuery(this, snapshot.Generation, snapshot.Scope, snapshot.Fields, query,
-            snapshot.IsBuilding, snapshot.IsBuilding ? snapshot.BuildingRevision : null);
+            snapshot.IsBuilding, snapshot.IsBuilding ? snapshot.BuildingRevision : snapshot.Revision);
     }
 
     public IResultQuerySession<CatalogProjectionRow> OpenBuildingQuery(ICatalogProjectionWriter writer,
@@ -207,12 +212,15 @@ public sealed partial class SqliteCatalogProjectionStore : ICatalogProjectionSto
         var total = checked((int)await source.CountAsync(cancellationToken).ConfigureAwait(false));
         var completed = 0;
         var errors = 0;
+        var fieldIssueRows = 0;
         await foreach (var row in source.EnumerateSelectionAsync(new QuerySelection(true), cancellationToken).ConfigureAwait(false))
         {
             cancellationToken.ThrowIfCancellationRequested();
             var result = await readValue(row.FullPath, cancellationToken).ConfigureAwait(false);
             var values = row.Values.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
             var fieldErrors = new Dictionary<string, string>(row.FieldErrors ?? new Dictionary<string, string>(), StringComparer.OrdinalIgnoreCase);
+            var resources = row.Resources.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
+            if (result.Resource is not null) resources[field.FieldId] = result.Resource;
             if (result.Issues.Count == 0)
             {
                 values[field.FieldId] = result.Value;
@@ -223,11 +231,16 @@ public sealed partial class SqliteCatalogProjectionStore : ICatalogProjectionSto
                 errors++;
                 fieldErrors[field.FieldId] = string.Join(Environment.NewLine, result.Issues.Select(issue => issue.Message));
             }
-            writer.AppendRow(row with { Values = values, FieldErrors = fieldErrors });
+            if (fieldErrors.Count > 0) fieldIssueRows++;
+            writer.AppendRow(row with { Values = values, FieldErrors = fieldErrors, Resources = resources });
             progress?.Report(new TextColumnRefreshProgress(++completed, total, errors));
         }
         cancellationToken.ThrowIfCancellationRequested();
-        return writer.Publish(snapshot.Summary with { UpdatedUtc = DateTimeOffset.UtcNow });
+        return writer.Publish(snapshot.Summary with
+        {
+            UpdatedUtc = DateTimeOffset.UtcNow,
+            FieldIssueRowCount = fieldIssueRows,
+        });
     }
 
     public void Dispose()
@@ -324,6 +337,31 @@ public sealed partial class SqliteCatalogProjectionStore : ICatalogProjectionSto
         transaction.Commit();
     }
 
+    private static bool HasColumn(SqliteConnection connection, string table, string column)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = "PRAGMA table_info(" + table + ");";
+        using var reader = command.ExecuteReader();
+        while (reader.Read()) if (reader.GetString(1) == column) return true;
+        return false;
+    }
+
+    private static void UpgradeResources(SqliteConnection connection)
+    {
+        var exists = HasColumn(connection, "projection_rows", "resources_json");
+        using var transaction = connection.BeginTransaction();
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        if (!exists)
+        {
+            command.CommandText = "ALTER TABLE projection_rows ADD COLUMN resources_json TEXT NOT NULL DEFAULT '{}';";
+            command.ExecuteNonQuery();
+        }
+        command.CommandText = "PRAGMA user_version=3;";
+        command.ExecuteNonQuery();
+        transaction.Commit();
+    }
+
     private static T Deserialize<T>(string json) => JsonSerializer.Deserialize<T>(json)
         ?? throw new InvalidDataException("The catalog contains invalid serialized data.");
     private static string LogicalScopeKey(CatalogProjectionScope scope) => Convert.ToHexString(SHA256.HashData(
@@ -350,7 +388,7 @@ public sealed partial class SqliteCatalogProjectionStore : ICatalogProjectionSto
 
     private const string Schema = """
         PRAGMA application_id=1178945360;
-        PRAGMA user_version=2;
+        PRAGMA user_version=3;
         PRAGMA journal_mode=WAL;
         CREATE TABLE IF NOT EXISTS projection_generations(
             generation TEXT PRIMARY KEY, scope_key TEXT NOT NULL, logical_key TEXT NOT NULL,
@@ -364,6 +402,7 @@ public sealed partial class SqliteCatalogProjectionStore : ICatalogProjectionSto
             path_key TEXT NOT NULL COLLATE BINARY, full_path TEXT NOT NULL,
             path_search TEXT NOT NULL, relative_path TEXT NOT NULL, rule_id TEXT NOT NULL,
             values_json TEXT NOT NULL, errors_json TEXT NOT NULL, coverage INTEGER NOT NULL,
+            resources_json TEXT NOT NULL DEFAULT '{}',
             PRIMARY KEY(generation, path_key)) WITHOUT ROWID;
         CREATE TABLE IF NOT EXISTS projection_cells(
             generation TEXT NOT NULL, path_key TEXT NOT NULL, field_id TEXT NOT NULL,

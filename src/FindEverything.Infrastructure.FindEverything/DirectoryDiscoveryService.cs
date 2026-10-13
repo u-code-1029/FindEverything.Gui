@@ -26,6 +26,7 @@ internal sealed class DirectoryDiscoveryService : IDirectoryDiscoveryService
                 {
                     MaxEntriesPerSecond = request.MaxEntriesPerSecond,
                     DirectoryDelay = request.DirectoryDelay,
+                    MaxDepth = request.MaxDepth,
                 },
             },
             candidate => visitDirectory(new DiscoveredDirectory(
@@ -35,7 +36,7 @@ internal sealed class DirectoryDiscoveryService : IDirectoryDiscoveryService
                         ?? Path.GetDirectoryName(candidate.FullPath)
                         ?? candidate.FullPath,
                     candidate.CreatedUtc,
-                    candidate.ModifiedUtc)) switch
+                    candidate.ModifiedUtc) { Depth = candidate.Depth }) switch
             {
                 DirectoryTraversalDecision.Continue =>
                     Engine.DirectoryTraversalDecision.Continue,

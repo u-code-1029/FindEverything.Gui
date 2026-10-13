@@ -14,14 +14,18 @@ public sealed record CatalogProjectionRow(string FullPath, string RelativePath,
     /// <summary>Immutable source path used for imported row selection; null for ordinary local rows.</summary>
     public string? StableKey { get; init; }
     public string? OriginalFullPath { get; init; }
+    public IReadOnlyDictionary<string, ProfileFieldResourceInfo> Resources { get; init; } = new Dictionary<string, ProfileFieldResourceInfo>();
 
     public CatalogItem ToItem() => new(FullPath, RelativePath, MatchedRuleId,
-        Values, Values, CoveragePending);
+        Values, Values, CoveragePending) { Resources = Resources, FieldErrors = FieldErrors ?? new Dictionary<string, string>() };
 }
 
 public sealed record CatalogProjectionSummary(int CandidateCount, int MatchedCount,
     int InvalidCount, int NoMatchCount, int ExcludedCount, bool HasPendingScopes,
-    TimeSpan? ScanElapsed, DateTimeOffset UpdatedUtc);
+    TimeSpan? ScanElapsed, DateTimeOffset UpdatedUtc)
+{
+    public int FieldIssueRowCount { get; init; }
+}
 
 public sealed record CatalogProjectionSnapshot(string Generation,
     CatalogProjectionScope Scope, CatalogProjectionSummary Summary,
@@ -29,6 +33,7 @@ public sealed record CatalogProjectionSnapshot(string Generation,
 {
     public bool IsBuilding { get; init; }
     public long BuildingRevision { get; init; }
+    public long Revision { get; init; }
 }
 
 public sealed record CatalogProjectionQuery(string? Keyword = null,
@@ -78,10 +83,16 @@ public interface ICatalogProjectionStore
         string fieldId, Func<string, CancellationToken, Task<TextColumnReadResult>> readValue,
         IProgress<TextColumnRefreshProgress>? progress = null,
         CancellationToken cancellationToken = default);
+    Task<CatalogProjectionSnapshot> UpdateTextCellAsync(CatalogProjectionSnapshot snapshot,
+        string fullPath, string fieldId, string value, ProfileFieldResourceInfo resource,
+        CancellationToken cancellationToken = default) => throw new NotSupportedException("This data source does not support file edits.");
 }
 
 public sealed record TextColumnReadResult(string? Value,
-    IReadOnlyList<ProfileMappingIssue> Issues);
+    IReadOnlyList<ProfileMappingIssue> Issues)
+{
+    public ProfileFieldResourceInfo? Resource { get; init; }
+}
 public sealed record TextColumnRefreshProgress(int Completed, int Total, int Errors);
 
 public interface IUserInputStore

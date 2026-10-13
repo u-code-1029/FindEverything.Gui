@@ -250,11 +250,11 @@ public sealed class ProfilePluginLoaderTests
             var profile = Assert.Single((await LoadAsync(host)).Profiles);
             var result = profile.Map(new ProfilePathCandidate(candidateDirectory));
 
-            Assert.Equal(ProfileMapStatus.Invalid, result.Status);
-            Assert.Contains(result.Issues, static issue =>
-                issue.Code == "required_text_file_missing" && issue.FieldId == "required");
-            Assert.Contains(result.Issues, static issue =>
-                issue.Code == "text_file_too_large" && issue.FieldId == "large");
+            Assert.Equal(ProfileMapStatus.Success, result.Status);
+            Assert.Contains("required", result.Item!.FieldErrors.Keys);
+            Assert.Contains("large", result.Item.FieldErrors.Keys);
+            Assert.Equal(ProfileFieldResourceState.Missing, result.Item.Resources["required"].State);
+            Assert.Equal(ProfileFieldResourceState.Error, result.Item.Resources["large"].State);
         }
         finally
         {
@@ -460,7 +460,7 @@ public sealed class ProfilePluginLoaderTests
             "legacy",
             "legacy-profile",
             ValidPattern,
-            contractVersion: ProfileContract.CurrentMajor - 1);
+            contractVersion: 1);
         using var host = BuildHost(packages.RootPath);
 
         var snapshot = await LoadAsync(host);

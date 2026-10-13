@@ -30,6 +30,7 @@ public sealed class CatalogItemViewModel : ObservableObject
     public string OriginalFullPath => SourceFullPath ?? FullPath;
     public string SelectionKey => SourceRowKey ?? FullPath;
     public IReadOnlyDictionary<string, string> FieldErrors { get; init; } = new Dictionary<string, string>();
+    public IReadOnlyDictionary<string, ProfileFieldResourceInfo> Resources { get; init; } = new Dictionary<string, ProfileFieldResourceInfo>();
     private readonly string _previewTooltip;
     private IReadOnlyList<string> _previewFields = [];
     private IReadOnlyDictionary<string, string> _previewTooltips = new Dictionary<string, string>();
@@ -79,6 +80,8 @@ public sealed class CatalogItemViewModel : ObservableObject
         MatchedRuleId = item.MatchedRuleId;
         CoveragePending = item.CoveragePending;
         Values = item.Values;
+        Resources = item.Resources;
+        FieldErrors = item.FieldErrors;
         _coverageText = CoveragePending
             ? localizer.Get("Loc.Common.PendingScope", "대기 범위")
             : localizer.Get("Loc.Common.Completed", "완료");
@@ -97,14 +100,8 @@ public sealed class CatalogItemViewModel : ObservableObject
             StringComparer.OrdinalIgnoreCase);
         var mappedValueIndicators = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
         var mappedValueTooltips = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        var rawSearchableValues = new List<string>(fields.Count + 2)
-        {
-            CoverageText,
-        };
-        var mappedSearchableValues = new List<string>(fields.Count + 2)
-        {
-            CoverageText,
-        };
+        var rawSearchableValues = new List<string>(fields.Count + 1);
+        var mappedSearchableValues = new List<string>(fields.Count + 1);
         foreach (var field in fields)
         {
             if (field.SourceKind == ProfileFieldSourceKind.UserInput)
@@ -223,6 +220,17 @@ public sealed class CatalogItemViewModel : ObservableObject
     /// presentation rules to the file writer.
     /// </summary>
     public IReadOnlyDictionary<string, string> ExportDisplayValues => DisplayValues;
+
+    /// <summary>
+    /// Captures raw typed fields and the current, possibly not-yet-persisted user
+    /// input. File-name expressions must not use aliases or stale row-page notes.
+    /// </summary>
+    public IReadOnlyDictionary<string, object?> CaptureFileNameValues()
+    {
+        var values = Values.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
+        foreach (var pair in UserInputValues) values[pair.Key] = pair.Value.Value;
+        return new System.Collections.ObjectModel.ReadOnlyDictionary<string, object?>(values);
+    }
 
     public bool Matches(string? filterText)
     {

@@ -28,6 +28,8 @@ public static class ProfileManifestLimits
 
     public const int MaximumTextFileFieldCount = 16;
 
+    public const int MaximumChildDirectoryFieldCount = 16;
+
     public const int MaximumUserInputFieldCount = 16;
 
     public const int MaximumUserInputPlaceholderLength = 256;
@@ -82,6 +84,13 @@ public sealed class ProfileManifest
     /// </summary>
     public List<ProfileTextFileFieldManifest>? TextFileFields { get; set; }
 
+    public List<ProfileChildDirectoryFieldManifest>? ChildDirectoryFields { get; set; }
+
+    /// <summary>Root is depth zero. Applies to new scans, not stored result loads.</summary>
+    public int MaxScanDepth { get; set; } = 256;
+
+    public List<ProfileSelectionMatchRuleManifest>? SelectionMatchRules { get; set; }
+
     /// <summary>
     /// Optional editable string columns shown for every matched catalog row.
     /// Values are user-owned metadata and are not produced by path parsing.
@@ -133,6 +142,24 @@ public sealed class ProfileTextFileFieldManifest
     public int TimeoutMilliseconds { get; set; } = 100;
 
     public long MaxBytes { get; set; } = ProfileManifestLimits.DefaultTextFileMaximumBytes;
+
+    public ProfileTextFileEditOptions? EditOptions { get; set; }
+}
+
+public sealed class ProfileTextFileEditOptions
+{
+    public bool Enabled { get; set; }
+
+    public string? CreationFileNameTemplate { get; set; }
+}
+
+public sealed class ProfileChildDirectoryFieldManifest
+{
+    public string? FieldId { get; set; }
+    public string? Header { get; set; }
+    public int Order { get; set; }
+    public string? DirectoryName { get; set; }
+    public bool IgnoreCase { get; set; } = true;
 }
 
 public sealed class ProfileDirectoryNameExclusionRuleManifest

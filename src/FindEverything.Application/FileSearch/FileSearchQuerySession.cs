@@ -83,8 +83,8 @@ internal sealed class FileSearchQuerySession : IResultQuerySession<IndexedPathEn
     public async IAsyncEnumerable<IndexedPathEntry> EnumerateSelectionAsync(
         QuerySelection selection, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        var captured = selection.Capture();
-        if (!captured.AllMatching)
+        using var captured = selection.Capture();
+        if (!captured.AllMatching && captured.Baseline is null)
         {
             await foreach (var item in EnumerateExplicitAsync(captured.Keys, cancellationToken).ConfigureAwait(false))
                 yield return item;

@@ -187,6 +187,8 @@ public sealed class DesktopCompositionSmokeTests
             VerifyOperationInfoBar(provider, window);
             VerifyScanConsole(provider, window, catalogPage);
             VerifyProjectionQueries(provider, window);
+            LiveFileUiChecks.Verify();
+            SelectionImportUiChecks.Verify();
             ReadOnlyCellTemplateChecks.Verify();
             WorkspacePerformanceChecks.Verify(provider);
             CatalogColumnFilterUiChecks.Verify(provider);
@@ -1354,7 +1356,7 @@ public sealed class DesktopCompositionSmokeTests
         Assert.True(viewModel.IsPathAndFieldsStep);
         Assert.Equal(0, editorScrollViewer.VerticalOffset);
 
-        viewModel.GoToEditorStepCommand.Execute(ProfileEditorStep.ScanOptions);
+        viewModel.GoToEditorStepCommand.Execute(ProfileEditorStep.DataSources);
         PumpDispatcherFor(window.Dispatcher, TimeSpan.FromMilliseconds(20));
         Assert.Equal(Visibility.Visible, userInputEditor.Visibility);
         Assert.Contains(
@@ -2097,7 +2099,7 @@ public sealed class DesktopCompositionSmokeTests
             Assert.Equal(64, selectionColumn.Width.Value);
             Assert.Equal(64, selectionColumn.MinWidth);
             Assert.Equal(64, selectionColumn.MaxWidth);
-            Assert.Equal(1, grid.FrozenColumnCount);
+            Assert.Equal(2, grid.FrozenColumnCount);
             Assert.Contains(grid.Columns, column => Equals(DynamicProfileGrid.GetColumnHeaderContent(column), "Status"));
             Assert.Contains(grid.Columns, column => Equals(DynamicProfileGrid.GetColumnHeaderContent(column), "Folder path"));
             var clientColumn = Assert.Single(grid.Columns, column => Equals(DynamicProfileGrid.GetColumnHeaderContent(column), "고객"));

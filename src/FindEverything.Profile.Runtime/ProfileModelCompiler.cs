@@ -186,6 +186,10 @@ internal sealed class ProfileModelCompiler
             .Select(static field => field.Descriptor)
             .Concat(textFileFields.Select(static field => field.Descriptor))
             .Concat(userInputFields)
+            .Concat(manifest.ChildDirectoryFields.Select(static field => new ProfileFieldDescriptor(
+                field.FieldId, string.Empty, field.Header, field.Order, Required: false,
+                ProfileFieldValueKind.Boolean, IsNullable: true, ParseFormat: null, DisplayFormat: null)
+            { SourceKind = ProfileFieldSourceKind.ChildDirectoryExists }))
             .OrderBy(static field => field.Order)
             .ThenBy(static field => field.FieldId, StringComparer.Ordinal)
             .ToArray();
@@ -210,6 +214,11 @@ internal sealed class ProfileModelCompiler
                 .ToArray()))
         {
             Kind = manifest.Kind,
+            MaxScanDepth = manifest.MaxScanDepth,
+            SelectionMatchRules = manifest.SelectionMatchRules,
+            ChildDirectoryFields = Array.AsReadOnly(manifest.ChildDirectoryFields.Select(static field =>
+                new ProfileChildDirectoryFieldDescriptor(field.Order, field.FieldId, field.Header,
+                    field.DirectoryName, field.IgnoreCase)).ToArray()),
             TextFileFields = Array.AsReadOnly(manifest.TextFileFields
                 .Select(static field => new ProfileTextFileFieldDescriptor(
                     field.Order,
@@ -220,7 +229,7 @@ internal sealed class ProfileModelCompiler
                     field.IgnoreCase,
                     field.TimeoutMilliseconds,
                     field.Required,
-                    field.MaxBytes))
+                    field.MaxBytes) { EditOptions = field.EditOptions })
                 .ToArray()),
             UserInputFields = Array.AsReadOnly(manifest.UserInputFields
                 .Select(static field => new ProfileUserInputFieldDescriptor(
@@ -241,6 +250,12 @@ internal sealed class ProfileModelCompiler
                         rule.TimeoutMilliseconds))
                 .ToArray()),
         };
+
+        foreach (var message in ProfileSelectionMatchRules.Validate(manifest.SelectionMatchRules,
+                     descriptor.Fields.Select(field => field.FieldId)))
+            diagnostics.Add(Error("selection_match_rule_invalid", message));
+        if (diagnostics.Any(diagnostic => diagnostic.Severity == ProfileDiagnosticSeverity.Error))
+            return new ProfileCompilationResult(null, Array.AsReadOnly(diagnostics.ToArray()));
 
         var profile = new CompiledProfile(
             descriptor,

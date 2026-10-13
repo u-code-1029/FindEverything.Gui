@@ -60,7 +60,11 @@ public sealed record CatalogItem(
     string MatchedRuleId,
     object Model,
     IReadOnlyDictionary<string, object?> Values,
-    bool CoveragePending);
+    bool CoveragePending)
+{
+    public IReadOnlyDictionary<string, ProfileFieldResourceInfo> Resources { get; init; } = new Dictionary<string, ProfileFieldResourceInfo>();
+    public IReadOnlyDictionary<string, string> FieldErrors { get; init; } = new Dictionary<string, string>();
+}
 
 public sealed record CatalogResult(
     ProfileDescriptor Profile,
@@ -74,6 +78,9 @@ public sealed record CatalogResult(
     public int MatchedCount { get; init; } = Items.Count;
 
     public int InvalidCount { get; init; } = InvalidItems.Count;
+
+    /// <summary>Matched rows retained with one or more auxiliary field read errors.</summary>
+    public int FieldIssueRowCount { get; init; }
 
     public int DirectoryExclusionIssueCount { get; init; }
 

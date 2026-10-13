@@ -150,6 +150,32 @@ public sealed class ProfilePlaygroundEvaluatorTests
         Assert.Contains("변경", viewModel.Summary, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task Re_evaluating_the_same_path_clears_external_input_results_for_the_old_sample()
+    {
+        var canonicalPath = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "FindEverything.Playground.Tests", "A"));
+        var profile = new RecordingLoadedProfile(canonicalPath);
+        var localizer = new TestAppLocalizer();
+        var viewModel = new ProfilePlaygroundViewModel(
+            new StubProfileCatalog(new([profile], [], DateTimeOffset.UtcNow)),
+            new ProfilePlaygroundEvaluator(new RecordingCanonicalizer(canonicalPath), localizer),
+            new StubDesktopPickerService(), localizer, NullLogger<ProfilePlaygroundViewModel>.Instance)
+        { InputPath = canonicalPath };
+        await viewModel.EvaluateCommand.ExecuteAsync(null);
+        Assert.NotEmpty(viewModel.Rows);
+        // Arrange a completed input preview against the first evaluated sample.
+        viewModel.SelectionPreviewRows = ["1: owner = 홍길동"];
+        viewModel.SelectionTestSummary = "sample matched";
+        profile.Result = ProfileMapResult.NoMatch();
+
+        await viewModel.EvaluateCommand.ExecuteAsync(null);
+
+        Assert.Equal(canonicalPath, viewModel.InputPath);
+        Assert.Empty(viewModel.Rows);
+        Assert.Empty(viewModel.SelectionPreviewRows);
+        Assert.Empty(viewModel.SelectionTestSummary);
+    }
+
     private sealed class RecordingCanonicalizer(string canonicalPath)
         : IProfilePathCanonicalizer
     {
