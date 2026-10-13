@@ -1,14 +1,19 @@
 using System.Collections;
+using System.ComponentModel;
+using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Media;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.Input;
+using FindEverything.Application.Catalog;
+using FindEverything.Desktop.Behaviors;
 using FindEverything.Desktop.Localization;
 using FindEverything.Desktop.ViewModels;
 using FindEverything.Desktop.Views.Controls;
 using FindEverything.Desktop.Views.Pages;
+using FindEverything.Profile.Runtime;
 using Xunit;
 
 namespace FindEverything.Desktop.Tests;
@@ -23,6 +28,118 @@ internal static class UiRenderingLifetimeChecks
         VerifyEntryPresenterChangesTemplateAtomically();
         VerifyOnlyTheActiveProfileStepIsConstructed();
         VerifyProfileCardsRecycleWithoutLosingDraftEdits();
+        VerifyReadOnlyColumnsUseTheNarrowestBinding();
+        VerifySizingCommitsAfterTheWholeSample();
+    }
+
+    private static void VerifySizingCommitsAfterTheWholeSample()
+    {
+        var fields = Enumerable.Range(0, 8).Select(i => new ProfileFieldDescriptor($"f{i}", $"f{i}",
+            $"Column {i}", i, false, ProfileFieldValueKind.String, true, null, null)).ToArray();
+        CatalogItemViewModel[] Rows(bool longValues) => Enumerable.Range(0, 200).Select(i =>
+            new CatalogItemViewModel(new CatalogItem($@"C:\Archive\{i}", i.ToString(), "sample", new object(),
+                fields.ToDictionary(field => field.FieldId, field => (object?)(longValues
+                    ? $"{field.FieldId}-{i}-" + new string('W', 400) : "Short")), false),
+                fields, new TestAppLocalizer())).ToArray();
+        var grid = new DataGrid
+        {
+            AutoGenerateColumns = false, CanUserAddRows = false, ItemsSource = Rows(false),
+            DataContext = new { AppliedHighlightQuery = string.Empty },
+        };
+        DynamicProfileGrid.SetFields(grid, fields);
+        var sizingProperty = (DependencyProperty)typeof(DynamicProfileGrid)
+            .GetField("SizingProperty", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null)!;
+        var manualProperty = (DependencyProperty)typeof(DynamicProfileGrid)
+            .GetField("IsManualWidthProperty", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null)!;
+        var state = grid.GetValue(sizingProperty);
+        var measurementField = state.GetType().GetField("Measurement")!;
+        var descriptor = DependencyPropertyDescriptor.FromProperty(DataGridColumn.WidthProperty, typeof(DataGridColumn))!;
+        var handlers = new List<(DataGridColumn Column, EventHandler Handler)>();
+        var changedDuringMeasurement = false;
+        var changes = new Dictionary<DataGridColumn, int>();
+        var window = new Window { Content = grid, Width = 1000, Height = 300, ShowInTaskbar = false };
+        try
+        {
+            window.Show(); Pump(); window.UpdateLayout(); Pump();
+            var manual = grid.Columns[2];
+            manual.SetValue(manualProperty, true);
+            manual.Width = new DataGridLength(257);
+            foreach (var column in grid.Columns.Skip(3))
+            {
+                column.Width = new DataGridLength(Math.Max(column.MinWidth, 128));
+                var lastWidth = column.Width.Value;
+                EventHandler handler = (_, _) =>
+                {
+                    var width = column.Width.Value;
+                    if (Math.Abs(width - lastWidth) < 0.5) return;
+                    lastWidth = width;
+                    changes[column] = changes.GetValueOrDefault(column) + 1;
+                    changedDuringMeasurement |= measurementField.GetValue(state) is not null;
+                };
+                descriptor.AddValueChanged(column, handler);
+                handlers.Add((column, handler));
+            }
+            grid.ItemsSource = Rows(true);
+            Pump(); window.UpdateLayout(); Pump();
+            Assert.Null(measurementField.GetValue(state));
+            Assert.False(changedDuringMeasurement);
+            Assert.NotEmpty(changes);
+            Assert.All(changes.Values, count => Assert.Equal(1, count));
+            Assert.Equal(257, manual.Width.Value);
+            foreach (var (column, handler) in handlers) descriptor.RemoveValueChanged(column, handler);
+            handlers.Clear();
+            window.Width = 760; Pump(); window.UpdateLayout(); Pump();
+            Assert.Equal(257, manual.Width.Value);
+        }
+        finally
+        {
+            foreach (var (column, handler) in handlers) descriptor.RemoveValueChanged(column, handler);
+            window.Close(); Pump();
+        }
+    }
+
+    private static void VerifyReadOnlyColumnsUseTheNarrowestBinding()
+    {
+        ProfileFieldDescriptor Field(string id) => new(id, id, id, 0, false,
+            ProfileFieldValueKind.String, true, null, null);
+        var fields = new[]
+        {
+            Field("plain"),
+            Field("alias") with { ValueMappings = new Dictionary<string, string> { ["A"] = "Mapped alias" } },
+        };
+        var row = new CatalogItemViewModel(new CatalogItem(@"C:\Archive", "Archive", "sample", new object(),
+            new Dictionary<string, object?> { ["plain"] = "Unmapped value", ["alias"] = "A" }, false),
+            fields, new TestAppLocalizer());
+        var grid = new DataGrid
+        {
+            AutoGenerateColumns = false, CanUserAddRows = false, ItemsSource = new[] { row },
+            DataContext = new { AppliedHighlightQuery = string.Empty },
+        };
+        DynamicProfileGrid.SetFields(grid, fields);
+        var window = new Window { Content = grid, Width = 1000, Height = 300, ShowInTaskbar = false };
+        try
+        {
+            window.Show(); Pump(); window.UpdateLayout(); Pump();
+            var cells = Descendants<SelectableCatalogText>(grid).ToArray();
+            var plain = Assert.Single(cells, cell => TextHighlighting.GetDisplayText(cell.Highlight) == "Unmapped value");
+            var mapped = Assert.Single(cells, cell => TextHighlighting.GetDisplayText(cell.Highlight) == "Mapped alias");
+            AssertPath(plain, "DisplayValues[plain]");
+            AssertPath(mapped, "DisplayCells[alias].Value");
+            row.SetShowOriginalValues(true); Pump();
+            Assert.Equal("Unmapped value", plain.TextBox.Text);
+            Assert.Equal("A", mapped.TextBox.Text);
+            Assert.Equal("A", mapped.ToolTip);
+            row.SetShowOriginalValues(false); Pump();
+            Assert.Equal("Mapped alias", mapped.TextBox.Text);
+            Assert.Equal("Mapped alias", mapped.ToolTip);
+        }
+        finally { window.Close(); Pump(); }
+
+        static void AssertPath(SelectableCatalogText cell, string expected)
+        {
+            Assert.Equal(expected, cell.Highlight.GetBindingExpression(TextHighlighting.DisplayTextProperty)!.ParentBinding.Path.Path);
+            Assert.Equal(expected, cell.GetBindingExpression(FrameworkElement.ToolTipProperty)!.ParentBinding.Path.Path);
+        }
     }
 
     private static void VerifyEntryPresenterChangesTemplateAtomically()

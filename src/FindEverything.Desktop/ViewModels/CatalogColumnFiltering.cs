@@ -19,7 +19,7 @@ public partial class CatalogViewModel
     public bool IsColumnSorted(CatalogColumnTarget target) => _queryDefinition.SortTarget == target;
     public bool IsColumnSortDescending => _queryDefinition.Descending;
 
-    public void ApplyColumnFilter(CatalogColumnFilter filter)
+    public void ApplyColumnFilter(CatalogColumnFilter filter, bool debounce = false)
     {
         CatalogColumnFilters.Validate(filter, Fields);
         var next = _queryDefinition.Filters.Where(existing => existing.Target != filter.Target).Append(filter)
@@ -28,7 +28,10 @@ public partial class CatalogViewModel
         _queryDefinition = _queryDefinition with { Filters = next };
         RebuildActiveColumnFilters();
         ClearSelectionCommand.Execute(null);
-        ApplyFilter();
+        // Continuous popup input shares the keyword debounce. Explicit API
+        // calls remain immediate, as do sorting and removing a condition.
+        if (debounce) ScheduleTextFilter();
+        else ApplyFilter();
     }
 
     public void ClearColumnFilter(CatalogColumnTarget target)

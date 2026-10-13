@@ -207,6 +207,56 @@ public sealed class CatalogFilteringTests
     }
 
     [Fact]
+    public void Offscreen_rows_do_not_allocate_observable_cells_until_a_binding_requests_them()
+    {
+        var fields = Enumerable.Range(0, 20).Select(index => Field($"field-{index}", $"Column {index}", index, ProfileFieldValueKind.String)).ToArray();
+        var item = new CatalogItemViewModel(new CatalogItem(Path.GetTempPath(), "", "rule", new object(),
+            fields.ToDictionary(field => field.FieldId, field => (object?)field.Header), false), fields, new TestAppLocalizer());
+        var cells = Assert.IsType<CatalogDisplayCellDictionary>(item.DisplayCells);
+        Assert.Equal(20, cells.Count);
+        Assert.Equal(20, cells.Keys.Count());
+        Assert.True(cells.ContainsKey("FIELD-0"));
+        Assert.Equal(0, cells.MaterializedCount);
+        item.SetShowOriginalValues(true);
+        Assert.Equal(0, cells.MaterializedCount);
+        var first = cells["field-0"];
+        Assert.Same(first, cells["FIELD-0"]);
+        Assert.True(cells.TryGetValue("field-0", out var same));
+        Assert.Same(first, same);
+        Assert.False(cells.TryGetValue("missing", out _));
+        Assert.Equal(1, cells.MaterializedCount);
+        Assert.Throws<KeyNotFoundException>(() => cells["missing"]);
+    }
+
+    [Fact]
+    public void Lazily_requested_cells_use_latest_notes_and_mapping_mode_and_keep_stable_identity()
+    {
+        var fields = new[]
+        {
+            Field("note", "Note", 0, ProfileFieldValueKind.String) with { SourceKind = ProfileFieldSourceKind.UserInput },
+            Field("alias", "Alias", 1, ProfileFieldValueKind.String) with
+            { ValueMappings = new Dictionary<string, string> { ["A"] = "Alice" } },
+            Field("later", "Later", 2, ProfileFieldValueKind.String) with
+            { ValueMappings = new Dictionary<string, string> { ["B"] = "Bob" } },
+        };
+        var item = new CatalogItemViewModel(new CatalogItem(Path.GetTempPath(), "", "rule", new object(),
+            new Dictionary<string, object?> { ["alias"] = "A", ["later"] = "B" }, false), fields, new TestAppLocalizer());
+        var cells = Assert.IsType<CatalogDisplayCellDictionary>(item.DisplayCells);
+        item.UserInputValues["note"].Value = "Latest note";
+        item.SetShowOriginalValues(true);
+        Assert.Equal(0, cells.MaterializedCount);
+        var alias = cells["alias"];
+        Assert.Equal("A", alias.Value);
+        item.SetShowOriginalValues(false);
+        Assert.Same(alias, cells["alias"]);
+        Assert.Equal("Alice", alias.Value);
+        Assert.Equal(1, cells.MaterializedCount);
+        Assert.Equal("Latest note", cells["note"].Value);
+        Assert.Equal("Bob", cells["later"].Value);
+        Assert.Equal(3, cells.MaterializedCount);
+    }
+
+    [Fact]
     public async Task User_input_commit_flushes_the_latest_debounced_value()
     {
         var writes = new List<(string FieldId, string Value)>();

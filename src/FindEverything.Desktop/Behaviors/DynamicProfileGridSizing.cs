@@ -204,7 +204,14 @@ public static partial class DynamicProfileGrid
         if (state.Measurement is { } measurement)
         {
             if (AdvanceMeasurement(state, measurement)) { state.HasMeasured = true; state.Measurement = null; }
-            else ScheduleSizing(grid);
+            else
+            {
+                // Keep the existing/default widths while measuring. Committing
+                // each partial sample would repeatedly invalidate every column
+                // and recycle its cells between the input-friendly time slices.
+                ScheduleSizing(grid);
+                return;
+            }
         }
         var auto = grid.Columns.Skip(SelectionColumnOffset).Where(c => !(bool)c.GetValue(IsManualWidthProperty)).ToArray();
         foreach (var column in grid.Columns.Skip(SelectionColumnOffset))

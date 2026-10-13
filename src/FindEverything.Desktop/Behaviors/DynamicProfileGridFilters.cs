@@ -378,7 +378,7 @@ public static partial class DynamicProfileGrid
             if (token.IsCancellationRequested) return;
             try
             {
-                if (value is null) owner.ClearColumnFilter(target); else owner.ApplyColumnFilter(value);
+                if (value is null) owner.ClearColumnFilter(target); else owner.ApplyColumnFilter(value, debounce: true);
                 error.Visibility = Visibility.Collapsed;
             }
             catch (ArgumentException) { Invalid(); }

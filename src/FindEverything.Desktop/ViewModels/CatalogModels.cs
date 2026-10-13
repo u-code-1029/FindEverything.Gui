@@ -27,6 +27,59 @@ public sealed class CatalogDisplayCell(string value) : ObservableObject
     public string Value { get => _value; internal set => SetProperty(ref _value, value); }
 }
 
+/// <summary>Only cells actually requested by a binding need observable wrappers.</summary>
+internal sealed class CatalogDisplayCellDictionary(IReadOnlyDictionary<string, string> values)
+    : IReadOnlyDictionary<string, CatalogDisplayCell>
+{
+    private IReadOnlyDictionary<string, string> _values = values;
+    private Dictionary<string, CatalogDisplayCell>? _materialized;
+
+    public int Count => _values.Count;
+    internal int MaterializedCount => _materialized?.Count ?? 0;
+    public IEnumerable<string> Keys => _values.Keys;
+    public IEnumerable<CatalogDisplayCell> Values => Keys.Select(key => this[key]);
+
+    public CatalogDisplayCell this[string key]
+    {
+        get
+        {
+            if (_materialized?.TryGetValue(key, out var cell) == true) return cell;
+            var value = _values[key]; // Preserve dictionary missing-key semantics.
+            cell = new CatalogDisplayCell(value);
+            (_materialized ??= new(StringComparer.OrdinalIgnoreCase)).Add(key, cell);
+            return cell;
+        }
+    }
+
+    public bool ContainsKey(string key) => _values.ContainsKey(key);
+    public bool TryGetValue(string key, out CatalogDisplayCell value)
+    {
+        if (!_values.ContainsKey(key)) { value = null!; return false; }
+        value = this[key];
+        return true;
+    }
+
+    public void RefreshValue(string key)
+    {
+        if (_materialized?.TryGetValue(key, out var cell) == true) cell.Value = _values[key];
+    }
+
+    public void SetValues(IReadOnlyDictionary<string, string> currentValues)
+    {
+        _values = currentValues;
+        if (_materialized is null) return;
+        // A PropertyChanged subscriber can request another cell while the
+        // already-realized bindings refresh. That new cell reads current values.
+        foreach (var pair in _materialized.ToArray()) pair.Value.Value = _values[pair.Key];
+    }
+
+    public IEnumerator<KeyValuePair<string, CatalogDisplayCell>> GetEnumerator()
+    {
+        foreach (var key in Keys) yield return new(key, this[key]);
+    }
+    System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+}
+
 public sealed class CatalogItemViewModel : ObservableObject
 {
     private bool _isSelected;
@@ -53,6 +106,7 @@ public sealed class CatalogItemViewModel : ObservableObject
     public IReadOnlyDictionary<string, string> PreviewTooltips => _previewTooltips;
     private readonly Dictionary<string, string> _rawDisplayValues;
     private readonly Dictionary<string, string> _mappedDisplayValues;
+    private readonly CatalogDisplayCellDictionary _displayCells;
     private readonly Dictionary<string, object?> _rawOutputValues;
     private readonly Dictionary<string, object?> _mappedOutputValues;
     private readonly string[] _rawSearchableValues;
@@ -95,7 +149,7 @@ public sealed class CatalogItemViewModel : ObservableObject
 
         var rawDisplayValues = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var mappedDisplayValues = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        var displayCells = new Dictionary<string, CatalogDisplayCell>(StringComparer.OrdinalIgnoreCase);
+        var displayCells = new CatalogDisplayCellDictionary(mappedDisplayValues);
         var mappedOutputValues = Values.ToDictionary(
             static pair => pair.Key,
             static pair => pair.Value,
@@ -131,7 +185,7 @@ public sealed class CatalogItemViewModel : ObservableObject
                         mappedDisplayValues[field.FieldId] = current.Value;
                         rawOutputValues[field.FieldId] = current.Value;
                         mappedOutputValues[field.FieldId] = current.Value;
-                        displayCells[field.FieldId].Value = current.Value;
+                        displayCells.RefreshValue(field.FieldId);
                         // In-memory consumers have no asynchronous persistence
                         // or focused editor to protect; update them immediately.
                         if (persistUserInput is null) userInputChanged?.Invoke();
@@ -140,7 +194,6 @@ public sealed class CatalogItemViewModel : ObservableObject
                 userInputValues[field.FieldId] = input;
                 rawDisplayValues[field.FieldId] = initialValue;
                 mappedDisplayValues[field.FieldId] = initialValue;
-                displayCells[field.FieldId] = new(initialValue);
                 rawOutputValues[field.FieldId] = initialValue;
                 mappedOutputValues[field.FieldId] = initialValue;
                 mappedValueIndicators[field.FieldId] = false;
@@ -164,7 +217,6 @@ public sealed class CatalogItemViewModel : ObservableObject
 
             rawDisplayValues[field.FieldId] = rawDisplayValue;
             mappedDisplayValues[field.FieldId] = mappedDisplayValue;
-            displayCells[field.FieldId] = new(mappedDisplayValue);
             mappedValueIndicators[field.FieldId] = isMapped;
             mappedValueTooltips[field.FieldId] = isMapped
                 ? localizer.Format(
@@ -186,7 +238,7 @@ public sealed class CatalogItemViewModel : ObservableObject
         mappedSearchableValues.Add(FullPath);
         _rawDisplayValues = rawDisplayValues;
         _mappedDisplayValues = mappedDisplayValues;
-        DisplayCells = displayCells;
+        _displayCells = displayCells;
         _rawOutputValues = rawOutputValues;
         _mappedOutputValues = mappedOutputValues;
         UserInputValues = userInputValues;
@@ -214,7 +266,7 @@ public sealed class CatalogItemViewModel : ObservableObject
     public IReadOnlyDictionary<string, string> DisplayValues =>
         _showOriginalValues ? _rawDisplayValues : _mappedDisplayValues;
 
-    public IReadOnlyDictionary<string, CatalogDisplayCell> DisplayCells { get; }
+    public IReadOnlyDictionary<string, CatalogDisplayCell> DisplayCells => _displayCells;
 
     public IReadOnlyDictionary<string, object?> OutputValues =>
         _showOriginalValues ? _rawOutputValues : _mappedOutputValues;
@@ -265,7 +317,7 @@ public sealed class CatalogItemViewModel : ObservableObject
         }
 
         _showOriginalValues = showOriginalValues;
-        foreach (var pair in DisplayValues) DisplayCells[pair.Key].Value = pair.Value;
+        _displayCells.SetValues(DisplayValues);
         OnPropertyChanged(nameof(DisplayValues));
         OnPropertyChanged(nameof(OutputValues));
         OnPropertyChanged(nameof(ExportDisplayValues));

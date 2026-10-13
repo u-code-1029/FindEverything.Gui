@@ -586,12 +586,16 @@ public static partial class DynamicProfileGrid
                 panel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             panel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-            var valueText = new Views.Controls.SelectableCatalogText(new Binding($"DisplayCells[{fieldId}].Value")
+            // Ordinary projected values are immutable until their row is
+            // replaced. Only mapped fields need an observable display cell for
+            // the original/alias toggle; editable fields use UserInputValues.
+            var displayPath = field.ValueMappings.Count > 0
+                ? $"DisplayCells[{fieldId}].Value" : $"DisplayValues[{fieldId}]";
+            var valueText = new Views.Controls.SelectableCatalogText(new Binding(displayPath)
             {
                 Mode = BindingMode.OneWay,
             });
             panel.Children.Add(valueText);
-            valueText.SetBinding(FrameworkElement.ToolTipProperty, new Binding($"DisplayCells[{fieldId}].Value") { Mode = BindingMode.OneWay });
 
             if (field.ValueMappings.Count > 0)
             {

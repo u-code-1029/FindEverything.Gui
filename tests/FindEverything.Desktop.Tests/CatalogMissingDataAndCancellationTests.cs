@@ -144,6 +144,27 @@ public sealed class CatalogMissingDataAndCancellationTests
     });
 
     [Fact]
+    public Task Continuous_column_filter_input_opens_only_the_latest_query() => OnStaAsync(async () =>
+    {
+        using var fixture = new Fixture(cacheExists: true);
+        await fixture.ViewModel.LoadCommand.ExecuteAsync(null);
+        Assert.Equal(1, fixture.Store.OpenQueryCalls);
+        fixture.Store.ReplacementQuery = new Query(ignoreCountCancellation: false, cacheCount: 1);
+
+        for (var index = 0; index < 40; index++)
+            fixture.ViewModel.ApplyColumnFilter(new(CatalogColumnTarget.Field("client"), CatalogFilterOperator.Contains)
+                { Text = $"Example-{index}" }, debounce: true);
+
+        // Assert batching deterministically before the dispatcher can run a
+        // delayed callback; do not turn a shared-runner timing into a threshold.
+        Assert.Equal(1, fixture.Store.OpenQueryCalls);
+        await WaitForAsync(() => fixture.Store.OpenQueryCalls > 1 && !fixture.ViewModel.IsResultCountPending);
+        Assert.Equal(2, fixture.Store.OpenQueryCalls);
+        Assert.Equal("Example-39", Assert.Single(fixture.Store.LastQuery!.Filters).Text);
+        Assert.Equal(0, fixture.Service.ScanCalls);
+    });
+
+    [Fact]
     public Task Live_filter_eligibility_starts_without_a_second_debounce() => OnStaAsync(() =>
     {
         using var fixture = new Fixture(cacheExists: false);
@@ -429,6 +450,7 @@ public sealed class CatalogMissingDataAndCancellationTests
         public int OpenQueryCalls { get; private set; }
         public int BeginCalls { get; private set; }
         public int LiveFilterCalls { get; private set; }
+        public CatalogProjectionQuery? LastQuery { get; private set; }
         public Query? ReplacementQuery { get; set; }
         public Func<CatalogProjectionScope, IReadOnlyList<ProfileFieldDescriptor>, ICatalogProjectionWriter>? WriterFactory { get; set; }
         public Task<CatalogProjectionSnapshot?> FindAsync(CatalogProjectionScope scope, CancellationToken cancellationToken = default)
@@ -443,6 +465,7 @@ public sealed class CatalogMissingDataAndCancellationTests
         public IResultQuerySession<CatalogProjectionRow> OpenQuery(CatalogProjectionSnapshot snapshot, CatalogProjectionQuery definition)
         {
             OpenQueryCalls++;
+            LastQuery = definition;
             var result = ReplacementQuery ?? query;
             result.Identity = snapshot.Generation;
             return result;
