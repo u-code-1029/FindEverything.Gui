@@ -6,12 +6,23 @@ using Xunit;
 
 namespace FindEverything.Desktop.Tests;
 
+[CollectionDefinition("Profile regex preview isolation", DisableParallelization = true)]
+public sealed class ProfileRegexPreviewIsolationCollection { }
+
+[Collection("Profile regex preview isolation")]
 public sealed class ProfileRegexDebugBuilderTests
 {
+    // Highlighting/anchor assertions must not depend on cold WPF/Regex JIT or
+    // scheduler time consumed by the composition/performance test collections.
+    // This changes only the injected wall budget of semantic tests, not the
+    // production 2-second default or each rule's Regex match timeout. The budget
+    // exhaustion test below exercises the same implementation with one tick.
+    private static readonly TimeSpan SemanticPreviewDuration = TimeSpan.FromSeconds(30);
+
     [Fact]
     public void Full_rule_still_highlights_a_raw_partial_match()
     {
-        var rows = ProfileRegexDebugBuilder.Build(
+        var rows = BuildSemanticPreview(
             @"C:\Archive\ABC-123\Tail",
             [Rule("project", @"(?<code>ABC-\d+)", ProfileRegexMatchMode.Full)]);
 
@@ -27,7 +38,7 @@ public sealed class ProfileRegexDebugBuilderTests
     [Fact]
     public void Named_groups_have_separate_lanes_and_colors_even_when_nested()
     {
-        var row = Assert.Single(ProfileRegexDebugBuilder.Build(
+        var row = Assert.Single(BuildSemanticPreview(
             @"C:\Archive\2026-0521",
             [Rule(
                 "date",
@@ -49,7 +60,7 @@ public sealed class ProfileRegexDebugBuilderTests
     [Fact]
     public void Multiple_matches_are_all_highlighted()
     {
-        var row = Assert.Single(ProfileRegexDebugBuilder.Build(
+        var row = Assert.Single(BuildSemanticPreview(
             @"C:\2024\Archive\2026",
             [Rule("years", @"(?<year>20\d{2})", ProfileRegexMatchMode.Partial)]));
 
@@ -61,7 +72,7 @@ public sealed class ProfileRegexDebugBuilderTests
     [Fact]
     public void Full_rule_is_evaluated_with_runtime_anchors_not_the_first_raw_alternative()
     {
-        var row = Assert.Single(ProfileRegexDebugBuilder.Build(
+        var row = Assert.Single(BuildSemanticPreview(
             "ABC",
             [Rule("alternative", "A|ABC", ProfileRegexMatchMode.Full)]));
 
@@ -72,7 +83,7 @@ public sealed class ProfileRegexDebugBuilderTests
     [Fact]
     public void Preview_caps_high_volume_matches_before_building_segments()
     {
-        var row = Assert.Single(ProfileRegexDebugBuilder.Build(
+        var row = Assert.Single(BuildSemanticPreview(
             new string('a', 400),
             [Rule("many", "(?<letter>a)", ProfileRegexMatchMode.Partial)]));
 
@@ -83,7 +94,7 @@ public sealed class ProfileRegexDebugBuilderTests
     [Fact]
     public void Preview_does_not_search_for_another_match_after_the_truncation_sentinel()
     {
-        var row = Assert.Single(ProfileRegexDebugBuilder.Build(
+        var row = Assert.Single(BuildSemanticPreview(
             new string('a', 257) + new string('b', 100_000) + "!",
             [Rule(
                 "sentinel",
@@ -107,7 +118,7 @@ public sealed class ProfileRegexDebugBuilderTests
                     "ABC",
                     ProfileRegexMatchMode.Partial))
                 .ToArray(),
-            TimeSpan.FromSeconds(1),
+            SemanticPreviewDuration,
             maximumDisplayedRuleCount: 2);
 
         Assert.Equal(3, rows.Count);
@@ -142,7 +153,7 @@ public sealed class ProfileRegexDebugBuilderTests
     [Fact]
     public void Preview_rejects_an_overlong_pattern_before_regex_compilation()
     {
-        var row = Assert.Single(ProfileRegexDebugBuilder.Build(
+        var row = Assert.Single(BuildSemanticPreview(
             "ABC",
             [Rule(
                 "too-long",
@@ -156,7 +167,7 @@ public sealed class ProfileRegexDebugBuilderTests
     [Fact]
     public void Preview_respects_ignore_case_and_explains_zero_length_matches()
     {
-        var rows = ProfileRegexDebugBuilder.Build(
+        var rows = BuildSemanticPreview(
             @"C:\ARCHIVE",
             [
                 Rule("ignore-case", "archive", ProfileRegexMatchMode.Partial),
@@ -179,7 +190,7 @@ public sealed class ProfileRegexDebugBuilderTests
     [Fact]
     public void Full_check_timeout_keeps_raw_partial_highlights()
     {
-        var row = Assert.Single(ProfileRegexDebugBuilder.Build(
+        var row = Assert.Single(BuildSemanticPreview(
             new string('a', 100_000) + "!",
             [Rule(
                 "slow-full",
@@ -194,7 +205,7 @@ public sealed class ProfileRegexDebugBuilderTests
     [Fact]
     public void Rule_accents_are_distinct_and_invalid_pattern_is_reported_without_throwing()
     {
-        var rows = ProfileRegexDebugBuilder.Build(
+        var rows = BuildSemanticPreview(
             @"C:\Archive\Example",
             [
                 Rule("valid", "Archive", ProfileRegexMatchMode.Partial),
@@ -212,10 +223,10 @@ public sealed class ProfileRegexDebugBuilderTests
     [Fact]
     public void Directory_exclusion_full_rule_uses_leaf_semantics_and_keeps_named_group_highlights()
     {
-        var partial = Assert.Single(ProfileRegexDebugBuilder.BuildDirectoryName(
+        var partial = Assert.Single(BuildDirectoryNameSemanticPreview(
             "project-name-backup",
             [ExclusionRule("skip-name", "(?<folder>name)", ProfileRegexMatchMode.Full)]));
-        var full = Assert.Single(ProfileRegexDebugBuilder.BuildDirectoryName(
+        var full = Assert.Single(BuildDirectoryNameSemanticPreview(
             "name",
             [ExclusionRule("skip-name", "(?<folder>name)", ProfileRegexMatchMode.Full)]));
 
@@ -261,6 +272,14 @@ public sealed class ProfileRegexDebugBuilderTests
             string.Empty,
             ProfilePlaygroundEvaluator.GetDirectoryLeafName(@"\\server\share\"));
     }
+
+    private static IReadOnlyList<ProfileRegexDebugRuleViewModel> BuildSemanticPreview(
+        string input, IReadOnlyList<ProfileRegexRuleManifest> rules) =>
+        ProfileRegexDebugBuilder.Build(input, rules, SemanticPreviewDuration, maximumDisplayedRuleCount: 32);
+
+    private static IReadOnlyList<ProfileRegexDebugRuleViewModel> BuildDirectoryNameSemanticPreview(
+        string input, IReadOnlyList<ProfileDirectoryNameExclusionRuleManifest> rules) =>
+        ProfileRegexDebugBuilder.BuildDirectoryName(input, rules, SemanticPreviewDuration, maximumDisplayedRuleCount: 32);
 
     private static ProfileRegexRuleManifest Rule(
         string id,

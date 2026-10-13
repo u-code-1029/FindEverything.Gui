@@ -129,7 +129,13 @@ internal static class ReadOnlyCellTemplateChecks
             Assert.True(host.HorizontalOffset > 0, "A minimal text host must retain native horizontal selection scrolling.");
             MovePointer(window, other.PointToScreen(new Point(8, other.ActualHeight / 2)));
             other.Focus();
-            PumpInput(window);
+            // Mouse hover/template triggers settle asynchronously after native
+            // SetCursorPos and a focus/layout change. A single 25ms frame is not
+            // a completion signal on a loaded Windows CI runner.
+            PumpUntil(window, () => !editor.IsKeyboardFocusWithin && !editor.IsMouseOver
+                && !editor.IsMouseCaptured && host.Visibility == Visibility.Collapsed,
+                () => $"Idle text host did not collapse (hover={editor.IsMouseOver}, capture={editor.IsMouseCaptured}, "
+                    + $"stylus={editor.IsStylusOver}, touches={editor.AreAnyTouchesOver}, host={host.Visibility}); {InputDiagnostics(window)}");
             Assert.Equal(0, editor.Opacity);
             Assert.Equal(Visibility.Visible, cell.Highlight.Visibility);
             Assert.Equal(value.Value, editor.Text);
@@ -190,6 +196,17 @@ internal static class ReadOnlyCellTemplateChecks
         Dispatcher.PushFrame(frame);
         timer.Stop();
         window.UpdateLayout();
+    }
+
+    private static void PumpUntil(Window window, Func<bool> condition, Func<string> diagnostics)
+    {
+        var timer = System.Diagnostics.Stopwatch.StartNew();
+        while (!condition() && timer.Elapsed < TimeSpan.FromSeconds(5))
+        {
+            Mouse.Synchronize();
+            PumpInput(window);
+        }
+        Assert.True(condition(), diagnostics());
     }
 
     private const uint MouseLeftDown = 0x0002;
