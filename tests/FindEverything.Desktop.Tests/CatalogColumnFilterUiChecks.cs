@@ -191,6 +191,7 @@ internal static class CatalogColumnFilterUiChecks
         void ChooseCondition(StackPanel panel)
         {
             var combo = panel.Children.OfType<ComboBox>().Single();
+            native.ObserveCombo(combo, panel);
             combo.AddHandler(Mouse.PreviewMouseDownEvent, new MouseButtonEventHandler((_, e) =>
                 Console.WriteLine($"[Native popup ComboDown] source={e.OriginalSource?.GetType().Name},handled={e.Handled}; {native.Describe(combo, popup)}")), true);
             panel.AddHandler(Mouse.PreviewMouseDownEvent, new MouseButtonEventHandler((_, e) =>

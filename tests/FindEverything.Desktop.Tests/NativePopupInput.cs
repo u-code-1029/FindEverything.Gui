@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Controls.Primitives;
+using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
@@ -15,6 +16,7 @@ internal sealed class NativePopupInput : IDisposable
     private readonly Window _window;
     private readonly NativePoint _original;
     private readonly bool _restore;
+    private readonly Dictionary<FrameworkElement, ComboProbe> _probes = [];
 
     public NativePopupInput(Window window)
     {
@@ -27,9 +29,38 @@ internal sealed class NativePopupInput : IDisposable
 
     public void Click(FrameworkElement element, double xFraction = .5)
     {
-        element.UpdateLayout();
-        Assert.True(element.IsVisible && element.ActualWidth > 0 && element.ActualHeight > 0);
-        Click(element.PointToScreen(new Point(element.ActualWidth * xFraction, element.ActualHeight / 2)));
+        var timer = System.Diagnostics.Stopwatch.StartNew();
+        var stable = 0;
+        var previous = new Point(double.NaN, double.NaN);
+        while (timer.Elapsed < TimeSpan.FromSeconds(3))
+        {
+            element.UpdateLayout();
+            Assert.True(element.IsVisible && element.ActualWidth > 0 && element.ActualHeight > 0);
+            var center = element.PointToScreen(new Point(element.ActualWidth * xFraction, element.ActualHeight / 2));
+            Assert.True(SetCursorPos((int)Math.Round(center.X), (int)Math.Round(center.Y)));
+            Pump();
+            Mouse.Synchronize();
+            var current = element.PointToScreen(new Point(element.ActualWidth * xFraction, element.ActualHeight / 2));
+            var atPoint = WindowFromPoint(new NativePoint { X = (int)Math.Round(current.X), Y = (int)Math.Round(current.Y) });
+            var source = PresentationSource.FromVisual(element) as HwndSource;
+            if ((current - center).Length < .5 && (current - previous).Length < .5
+                && source is not null && atPoint == source.Handle && IsWithin(element, Mouse.DirectlyOver as DependencyObject)) stable++;
+            else stable = 0;
+            previous = current;
+            if (stable < 2) continue;
+            var probe = _probes.GetValueOrDefault(element);
+            probe?.Record("ready-before-down");
+            PressAndRelease(probe);
+            return;
+        }
+        Assert.Fail("The real pointer target did not become stable/hit-testable before clicking: " + Describe(element));
+    }
+
+    public void ObserveCombo(ComboBox combo, FrameworkElement body)
+    {
+        if (_probes.ContainsKey(combo)) return;
+        var probe = new ComboProbe(combo, body);
+        _probes.Add(combo, probe);
     }
 
     public string Describe(FrameworkElement element, Popup? popup = null)
@@ -42,7 +73,8 @@ internal sealed class NativePopupInput : IDisposable
         var hit = root?.InputHitTest(root.PointFromScreen(center));
         var child = popup?.Child as UIElement;
         var childHit = child?.InputHitTest(child.PointFromScreen(center));
-        var toggle = element is System.Windows.Controls.ComboBox combo ? combo.Template?.FindName("ToggleButton", combo) : null;
+        var combo = element as ComboBox;
+        var toggle = combo?.Template?.FindName("ToggleButton", combo) as ToggleButton;
         var atCenter = WindowFromPoint(new NativePoint { X = (int)Math.Round(center.X), Y = (int)Math.Round(center.Y) });
         string Name(object? candidate) => candidate is FrameworkElement view
             ? $"{view.GetType().Name}#{view.Name}({view.ActualWidth:F1}x{view.ActualHeight:F1}, visible={view.IsVisible},hit={view.IsHitTestVisible},enabled={view.IsEnabled})"
@@ -52,17 +84,25 @@ internal sealed class NativePopupInput : IDisposable
             $"hwndAtCenter=0x{atCenter:X},captureHwnd=0x{GetCapture():X},WpfCaptured={Name(captured)},mouseOver={Name(Mouse.DirectlyOver)}," +
             $"keyboardFocus={Name(Keyboard.FocusedElement)},root={Name(root)},rootHit={Name(hit)},childHit={Name(childHit)}," +
             $"popupOpen={popup?.IsOpen},popupLoaded={popup?.IsLoaded},popupChild={Name(popup?.Child)}," +
-            $"toggle={Name(toggle)}";
+            $"toggle={Name(toggle)},togglePressed={toggle?.IsPressed},toggleChecked={toggle?.IsChecked},toggleCaptured={toggle?.IsMouseCaptured}," +
+            $"leftButton={Mouse.LeftButton},asyncLeft={(GetAsyncKeyState(1) & 0x8000) != 0},dropDown={combo?.IsDropDownOpen},editable={combo?.IsEditable}," +
+            $"probe={_probes.GetValueOrDefault(element)?.Describe() ?? "none"}";
     }
 
     public void Click(Point screenPoint)
     {
         Assert.True(SetCursorPos((int)Math.Round(screenPoint.X), (int)Math.Round(screenPoint.Y)));
         Pump();
+        PressAndRelease();
+    }
+
+    private void PressAndRelease(ComboProbe? probe = null)
+    {
         Send(MouseInput(0x0002));
-        try { Pump(); }
+        try { Pump(); probe?.Record("after-down-before-up"); }
         finally { Send(MouseInput(0x0004)); }
         Pump();
+        probe?.Record("after-up");
     }
 
     public void Key(ushort key)
@@ -108,6 +148,56 @@ internal sealed class NativePopupInput : IDisposable
         if (_restore) _ = SetCursorPos(_original.X, _original.Y);
     }
 
+    private static bool IsWithin(DependencyObject ancestor, DependencyObject? candidate)
+    {
+        while (candidate is not null)
+        {
+            if (ReferenceEquals(ancestor, candidate)) return true;
+            candidate = candidate is Visual or System.Windows.Media.Media3D.Visual3D
+                ? VisualTreeHelper.GetParent(candidate) : LogicalTreeHelper.GetParent(candidate);
+        }
+        return false;
+    }
+
+    private sealed class ComboProbe
+    {
+        private readonly ComboBox _combo;
+        private readonly ToggleButton _toggle;
+        private readonly List<string> _timeline = [];
+        private readonly System.Diagnostics.Stopwatch _clock = System.Diagnostics.Stopwatch.StartNew();
+        private int _bodyDown, _comboDown, _toggleDown, _clicks, _opened, _closed;
+
+        public ComboProbe(ComboBox combo, FrameworkElement body)
+        {
+            _combo = combo;
+            combo.ApplyTemplate();
+            _toggle = Assert.IsType<ToggleButton>(combo.Template.FindName("ToggleButton", combo));
+            body.AddHandler(Mouse.PreviewMouseDownEvent, new MouseButtonEventHandler((_, e) =>
+            { _bodyDown++; Record("body-preview-down", e); }), true);
+            combo.AddHandler(Mouse.PreviewMouseDownEvent, new MouseButtonEventHandler((_, e) =>
+            { _comboDown++; Record("combo-preview-down", e); }), true);
+            _toggle.AddHandler(Mouse.PreviewMouseDownEvent, new MouseButtonEventHandler((_, e) =>
+            { _toggleDown++; Record("toggle-preview-down", e); }), true);
+            _toggle.AddHandler(Mouse.MouseDownEvent, new MouseButtonEventHandler((_, e) => Record("toggle-bubble-down", e)), true);
+            _toggle.AddHandler(Mouse.MouseUpEvent, new MouseButtonEventHandler((_, e) => Record("toggle-bubble-up", e)), true);
+            _toggle.Click += (_, _) => { _clicks++; Record("toggle-click"); };
+            _toggle.Checked += (_, _) => Record("toggle-checked");
+            _toggle.Unchecked += (_, _) => Record("toggle-unchecked");
+            combo.DropDownOpened += (_, _) => { _opened++; Record("dropdown-opened"); };
+            combo.DropDownClosed += (_, _) => { _closed++; Record("dropdown-closed"); };
+        }
+
+        public void Record(string stage, MouseButtonEventArgs? args = null)
+        {
+            if (_timeline.Count == 32) _timeline.RemoveAt(0);
+            _timeline.Add($"{_clock.ElapsedMilliseconds}ms:{stage}(source={args?.OriginalSource?.GetType().Name},handled={args?.Handled}," +
+                $"clickCount={args?.ClickCount},eventLeft={args?.LeftButton},deviceLeft={Mouse.LeftButton},asyncLeft={(GetAsyncKeyState(1) & 0x8000) != 0}," +
+                $"pressed={_toggle.IsPressed},checked={_toggle.IsChecked},open={_combo.IsDropDownOpen},capture={Mouse.Captured?.GetType().Name},over={Mouse.DirectlyOver?.GetType().Name})");
+        }
+        public string Describe() => $"bodyDown={_bodyDown},comboDown={_comboDown},toggleDown={_toggleDown},click={_clicks},opened={_opened},closed={_closed};" +
+            string.Join(" -> ", _timeline);
+    }
+
     [StructLayout(LayoutKind.Sequential)] private struct NativePoint { public int X; public int Y; }
     [StructLayout(LayoutKind.Sequential)] private struct NativeMouse
     {
@@ -132,4 +222,5 @@ internal sealed class NativePopupInput : IDisposable
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] private static extern IntPtr GetCapture();
     [DllImport("user32.dll")] private static extern IntPtr WindowFromPoint(NativePoint point);
+    [DllImport("user32.dll")] private static extern short GetAsyncKeyState(int key);
 }
