@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FindEverything.Desktop.Services;
+using FindEverything.Desktop.Localization;
 using FindEverything.Profile.Runtime;
 
 namespace FindEverything.Desktop.ViewModels;
@@ -39,9 +40,11 @@ public partial class ProfilePlaygroundViewModel
                     summary.InputRows, summary.ValidRows, summary.MatchingItems, summary.InvalidRows)
                     + (summary.Issues.Count > 0 ? Environment.NewLine + string.Join(Environment.NewLine, summary.Issues.Take(10).Select(issue => issue.Message)) : string.Empty)
                 : _localizer.Format("Loc.Profiles.Features.Playground.Parsed", "입력 {0:N0}행을 해석했습니다. 실제 경로를 먼저 테스트하면 그 한 행과의 일치 여부도 확인합니다.", result.ParsedRows);
+            if (rule.Columns.Any(column => !string.IsNullOrWhiteSpace(column.RegexPattern)))
+                SelectionTestSummary = _localizer.Get("Loc.SelectionImport.Regex.PassedRows", "정규식 조건을 모두 통과한 행 기준 · ") + SelectionTestSummary;
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
-        catch (Exception exception) { SelectionTestSummary = exception.Message; }
+        catch (Exception exception) { SelectionTestSummary = UserFacingExceptionLocalizer.TranslateOperationFailure(_localizer, exception); }
         finally { if (ReferenceEquals(_selectionTestCancellation, cancellation)) _selectionTestCancellation = null; IsBusy = false; }
     }
 }

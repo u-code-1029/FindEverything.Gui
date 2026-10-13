@@ -1639,6 +1639,8 @@
     <sys:String x:Key="Loc.SelectionImport.Rule">Profile selection rule</sys:String>
     <sys:String x:Key="Loc.SelectionImport.Sheet">Excel worksheet</sys:String>
     <sys:String x:Key="Loc.SelectionImport.Summary">Input: {0:N0} rows · matching items: {1:N0} · unmatched rows: {2:N0} · invalid: {3:N0} · duplicate input: {4:N0} · rows matching multiple items: {5:N0}</sys:String>
+    <sys:String x:Key="Loc.SelectionImport.Regex.PassedRows" xml:space="preserve">Rows passing all regex conditions · </sys:String>
+    <sys:String x:Key="Loc.SelectionImport.Regex.NoRows">No input row satisfies all regex conditions. Check the patterns, capture groups, and input format.</sys:String>
     <sys:String x:Key="Loc.SelectionImport.Table">HTML table number</sys:String>
     <sys:String x:Key="Loc.SelectionImport.Table.Invalid">HTML table number must be between 1 and 1000.</sys:String>
     <sys:String x:Key="Loc.Catalog.Query.FieldIssues"> · {0:N0} items need column attention</sys:String>

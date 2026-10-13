@@ -226,7 +226,7 @@ internal static class LiveFileUiChecks
             PumpUntil(() => root.Items.Count == 3);
             browser.UpdateLayout(); Pump();
             var fileNode = Assert.IsType<Ui.TreeViewItem>(root.Items[0]);
-            var label = Descendants(Assert.IsType<StackPanel>(fileNode.Header)).OfType<Ui.TextBlock>().Single();
+            var label = HeaderLabel(fileNode, "open-me.txt");
             // Clicking the file header executes the shell launch, without an
             // extra directory read/index pass. Navigation selection alone does not.
             fileNode.IsSelected = true; Pump(); Assert.Empty(paths.Opened);
@@ -236,11 +236,11 @@ internal static class LiveFileUiChecks
             Assert.Equal(file, Assert.Single(paths.Opened)); Assert.Equal(request + 1, reads.Requests.Count);
 
             var directoryNode = Assert.IsType<Ui.TreeViewItem>(root.Items[1]);
-            var directoryLabel = Descendants(Assert.IsType<StackPanel>(directoryNode.Header)).OfType<Ui.TextBlock>().Single();
+            var directoryLabel = HeaderLabel(directoryNode, "subfolder");
             directoryLabel.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, Environment.TickCount, MouseButton.Left)
                 { RoutedEvent = Mouse.MouseUpEvent });
             var link = Assert.IsType<Ui.TreeViewItem>(root.Items[2]);
-            var linkLabel = Descendants(Assert.IsType<StackPanel>(link.Header)).OfType<Ui.TextBlock>().Single();
+            var linkLabel = HeaderLabel(link, "linked-folder");
             linkLabel.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, Environment.TickCount, MouseButton.Left)
                 { RoutedEvent = Mouse.MouseUpEvent });
             Pump(); Assert.Single(paths.Opened); Assert.Equal(request + 1, reads.Requests.Count);
@@ -264,6 +264,11 @@ internal static class LiveFileUiChecks
         }
         finally { System.IO.Directory.Delete(directory, recursive: true); }
     }
+
+    private static Ui.TextBlock HeaderLabel(TreeViewItem node, string name) => Assert.Single(
+        // SymbolIcon's realized template has its own TextBlock. The explicit
+        // name label is a direct header child, not an arbitrary descendant.
+        Assert.IsType<StackPanel>(node.Header).Children.OfType<Ui.TextBlock>(), text => text.Text == name);
 
     private static IEnumerable<DependencyObject> Descendants(DependencyObject? root)
     {

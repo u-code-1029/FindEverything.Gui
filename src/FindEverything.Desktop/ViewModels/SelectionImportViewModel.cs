@@ -159,12 +159,14 @@ public sealed partial class SelectionImportViewModel : ObservableObject, IDispos
             var stats = _result.Summary;
             Summary = _localizer.Format("Loc.SelectionImport.Summary", "입력 {0:N0}행 · 일치 {1:N0}개 · 미일치 {2:N0}행 · 잘못된 입력 {3:N0}행 · 중복 입력 {4:N0}행 · 여러 항목에 일치 {5:N0}행",
                 stats.InputRows, stats.MatchingItems, stats.UnmatchedInputRows, stats.InvalidRows, stats.DuplicateInputRows, stats.AmbiguousInputRows);
+            if (rule.Columns.Any(column => !string.IsNullOrWhiteSpace(column.RegexPattern)))
+                Summary = L("Loc.SelectionImport.Regex.PassedRows", "정규식 조건을 모두 통과한 행 기준 · ") + Summary;
             Error = string.Join(Environment.NewLine, stats.Issues.Select(issue => $"{issue.RowNumber:N0}: {issue.Message}"));
         }
         catch (OperationCanceledException)
         { if (!_disposed) Summary = L("Loc.SelectionImport.Cancelled", "취소했습니다. 기존 체크는 유지됩니다."); }
         catch (Exception exception)
-        { if (!_disposed) { Summary = ""; Error = exception.Message; } }
+        { if (!_disposed) { Summary = ""; Error = UserFacingExceptionLocalizer.TranslateOperationFailure(_localizer, exception); } }
         finally
         {
             document?.Dispose(); result?.Dispose();

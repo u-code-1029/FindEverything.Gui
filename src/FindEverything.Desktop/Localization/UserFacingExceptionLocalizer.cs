@@ -25,6 +25,9 @@ internal static class UserFacingExceptionLocalizer
         var root = exception.GetBaseException();
         return root switch
         {
+            InvalidDataException { Message: "No input rows match all regex conditions." } => localizer.Get(
+                "Loc.SelectionImport.Regex.NoRows",
+                "같은 입력 행에서 모든 정규식 조건을 만족하는 데이터가 없습니다. 패턴·그룹 이름과 입력 형태를 확인하세요."),
             ApplicationOperationBusyException => localizer.Get(
                 "Loc.Common.TryAfterOperation",
                 "현재 작업이 끝난 뒤 다시 시도하세요."),
