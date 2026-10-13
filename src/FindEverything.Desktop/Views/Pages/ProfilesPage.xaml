@@ -75,11 +75,7 @@
             <Setter Property="ItemsPanel"><Setter.Value><ItemsPanelTemplate><VirtualizingStackPanel /></ItemsPanelTemplate></Setter.Value></Setter>
             <Setter Property="ItemTemplate">
                 <Setter.Value><DataTemplate>
-                    <!-- ContentPresenter adopts Content as its own DataContext;
-                         keep the entry-level template binding on a control. -->
-                    <ContentControl Content="{Binding Value}" ContentTemplate="{Binding Template}"
-                        HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"
-                        Focusable="False" IsTabStop="False" />
+                    <controls:ProfileEditorEntryPresenter Entry="{Binding}" Focusable="False" />
                 </DataTemplate></Setter.Value>
             </Setter>
             <Setter Property="ItemContainerStyle">

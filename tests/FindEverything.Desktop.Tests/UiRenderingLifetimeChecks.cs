@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Media;
 using System.Windows.Threading;
+using CommunityToolkit.Mvvm.Input;
 using FindEverything.Desktop.Localization;
 using FindEverything.Desktop.ViewModels;
 using FindEverything.Desktop.Views.Controls;
@@ -19,8 +20,57 @@ internal static class UiRenderingLifetimeChecks
     {
         VerifyLocalizationDoesNotReadVirtualRows();
         VerifyEditorEntryTemplateKeepsMetadataContext();
+        VerifyEntryPresenterChangesTemplateAtomically();
         VerifyOnlyTheActiveProfileStepIsConstructed();
         VerifyProfileCardsRecycleWithoutLosingDraftEdits();
+    }
+
+    private static void VerifyEntryPresenterChangesTemplateAtomically()
+    {
+        var fieldCommand = new RelayCommand<ProfileFieldDraftViewModel>(_ => { });
+        var ruleCommand = new RelayCommand<ProfileRuleDraftViewModel>(_ => { });
+        DataTemplate Template(System.Windows.Input.ICommand command)
+        {
+            var button = new FrameworkElementFactory(typeof(Button));
+            button.SetValue(Button.CommandProperty, command);
+            button.SetBinding(Button.CommandParameterProperty, new Binding());
+            return new DataTemplate { VisualTree = button };
+        }
+        var fields = new ProfileEditorSection { Template = Template(fieldCommand) };
+        var rules = new ProfileEditorSection { Template = Template(ruleCommand) };
+        var first = new ProfileFieldDraftViewModel { Header = "First" };
+        var second = new ProfileFieldDraftViewModel { Header = "Second" };
+        var rule = new ProfileRuleDraftViewModel();
+        var presenter = new ProfileEditorEntryPresenter();
+        presenter.SetBinding(ProfileEditorEntryPresenter.EntryProperty, new Binding());
+        presenter.DataContext = new ProfileEditorEntry(fields, first);
+        var window = new Window { Content = presenter, Width = 500, Height = 250, ShowInTaskbar = false };
+        try
+        {
+            window.Show(); Pump(); window.UpdateLayout(); Pump();
+            var firstRoot = Assert.IsType<Button>(presenter.Child);
+            Assert.Same(first, firstRoot.CommandParameter);
+            presenter.DataContext = new ProfileEditorEntry(fields, second);
+            Pump();
+            Assert.Same(firstRoot, presenter.Child);
+            Assert.Same(second, firstRoot.CommandParameter);
+
+            // Match WPF recycling: inherited row context changes before the
+            // entry binding is adopted. An old field command must never see a rule.
+            presenter.DataContext = new ProfileEditorEntry(rules, rule);
+            Pump(); window.UpdateLayout(); Pump();
+            var ruleRoot = Assert.IsType<Button>(presenter.Child);
+            Assert.NotSame(firstRoot, ruleRoot);
+            Assert.Same(second, firstRoot.DataContext);
+            Assert.Same(second, firstRoot.CommandParameter);
+            Assert.Same(rule, ruleRoot.CommandParameter);
+
+            presenter.DataContext = new ProfileEditorEntry(fields, first);
+            Pump();
+            Assert.Same(first, Assert.IsType<Button>(presenter.Child).CommandParameter);
+            Assert.Same(rule, ruleRoot.DataContext);
+        }
+        finally { window.Close(); Pump(); }
     }
 
     private static void VerifyEditorEntryTemplateKeepsMetadataContext()
