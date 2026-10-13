@@ -65,7 +65,7 @@ public sealed class DesktopCompositionSmokeTests
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
 
-        var exception = await completion.Task.WaitAsync(TimeSpan.FromSeconds(60));
+        var exception = await completion.Task.WaitAsync(TimeSpan.FromSeconds(180));
         Assert.Null(exception);
     }
 
@@ -540,7 +540,10 @@ public sealed class DesktopCompositionSmokeTests
                 // page. Repeated size/theme captures do not change navigation.
                 if ((shell.SelectedItem as NavigationViewItem)?.TargetPageType != page.GetType())
                     Assert.True(navigation.Navigate(page.GetType()));
-                PumpDispatcherFor(window.Dispatcher, TimeSpan.FromMilliseconds(80));
+                // WPF-UI's native Expander takes 333 ms to finish revealing its
+                // content. A screenshot at 80 ms captures an intentionally
+                // translated/clipped caption, not the settled page layout.
+                PumpDispatcherFor(window.Dispatcher, TimeSpan.FromMilliseconds(page is ProfilePlaygroundPage ? 400 : 80));
                 PumpLayout(window, page);
                 if (fixture is WorkspaceLayoutFixture
                     && page.FindName("ResultsGrid") is System.Windows.Controls.DataGrid sampleGrid)
@@ -1564,6 +1567,43 @@ public sealed class DesktopCompositionSmokeTests
         Assert.NotNull(page.FindName("PlaygroundRegexDebugExpander"));
         Assert.NotNull(page.FindName("PlaygroundDirectoryExclusionResultPanel"));
         Assert.IsType<ProfilePlaygroundViewModel>(page.DataContext);
+        var originalContext = page.DataContext;
+        var originalWidth = window.Width;
+        try
+        {
+            var input = @"C:\Archive\Clients\Apollo\2026\0521_Project";
+            var rules = new[] { new ProfileRegexRuleManifest
+            {
+                Id = "project-folders", Pattern = @".*[\\/](?<client>Apollo)[\\/](?<year>\d{4})[\\/](?<monthDay>\d{4})_(?<project>[^\\/]+)$",
+                MatchMode = ProfileRegexMatchMode.Full, TimeoutMilliseconds = 100,
+            } };
+            page.DataContext = new PlaygroundLayoutFixture(input, ProfileRegexDebugBuilder.Build(input, rules));
+            window.Width = 1360;
+            PumpLayout(window, page);
+            var debugScroll = Assert.IsType<ScrollViewer>(page.FindName("PlaygroundDebugScrollViewer"));
+            debugScroll.ScrollToTop();
+            PumpDispatcherFor(window.Dispatcher, TimeSpan.FromMilliseconds(400));
+            PumpLayout(window, page);
+            var card = Assert.IsType<SectionCard>(page.FindName("PlaygroundRegexDebugCard"));
+            var caption = Assert.IsType<System.Windows.Controls.TextBlock>(page.FindName("PlaygroundRegexDebugCaption"));
+            var expander = Assert.IsType<Expander>(page.FindName("PlaygroundRegexDebugExpander"));
+            var toggle = Assert.IsType<System.Windows.Controls.Primitives.ToggleButton>(
+                expander.Template.FindName("ExpanderToggleButton", expander));
+            Assert.True(caption.ActualHeight > 0);
+            Assert.InRange(caption.TranslatePoint(new Point(), card).Y, 16, 18);
+            var headerBottom = toggle.TranslatePoint(new Point(0, toggle.ActualHeight), debugScroll).Y;
+            var captionTop = caption.TranslatePoint(new Point(), debugScroll).Y;
+            Assert.True(captionTop >= headerBottom,
+                "The settled regex-debug caption must appear below the expander header, without top clipping.");
+            Assert.True(captionTop >= 0 && captionTop + caption.ActualHeight <= debugScroll.ActualHeight,
+                "The complete introductory caption must be visible at the top of the debug workspace.");
+        }
+        finally
+        {
+            page.DataContext = originalContext;
+            window.Width = originalWidth;
+            PumpLayout(window, page);
+        }
     }
 
     private static void VerifySettingsLayout(Window window, SettingsPage page)
@@ -1764,6 +1804,7 @@ public sealed class DesktopCompositionSmokeTests
 
     private static void VerifyOutputFormatEditor(IServiceProvider provider, Window window, OutputFormatsPage page)
     {
+        VerifyOutputPreviewLayout(window, page);
         var scroll = Assert.IsType<ScrollViewer>(page.FindName("OutputFormatsScrollViewer"));
         Assert.Equal(new Thickness(0, 0, 16, 0), scroll.Padding);
         provider.GetRequiredService<IProfileCatalogPublisher>().Publish(
@@ -1814,6 +1855,46 @@ public sealed class DesktopCompositionSmokeTests
         Assert.StartsWith("[before", viewModel.PreviewText, StringComparison.Ordinal);
         Assert.EndsWith("after]", viewModel.PreviewText, StringComparison.Ordinal);
         viewModel.DiscardChanges();
+    }
+
+    private static void VerifyOutputPreviewLayout(Window window, OutputFormatsPage page)
+    {
+        var originalWidth = window.Width;
+        var originalHeight = window.Height;
+        try
+        {
+            foreach (var width in new[] { 1360d, 760d })
+            {
+                window.Width = width;
+                window.Height = 860;
+                PumpLayout(window, page);
+                var workspace = Assert.IsType<SplitWorkspace>(page.FindName("OutputWorkspace"));
+                if (workspace.ActualWidth < 900)
+                {
+                    var tabs = Assert.Single(FindVisualChildren<TabControl>(workspace));
+                    tabs.SelectedIndex = 1;
+                    PumpLayout(window, page);
+                }
+                var card = Assert.IsType<SectionCard>(page.FindName("OutputPreviewCard"));
+                var content = Assert.IsType<Grid>(page.FindName("OutputPreviewContent"));
+                var title = Assert.IsType<System.Windows.Controls.TextBlock>(page.FindName("OutputPreviewTitle"));
+                var preview = Assert.IsType<Wpf.Ui.Controls.TextBox>(page.FindName("OutputPreviewTextBox"));
+                Assert.True(card.ActualHeight > 180);
+                Assert.InRange(title.TranslatePoint(new Point(), card).Y, 16, 18);
+                Assert.True(content.ActualHeight >= card.ActualHeight - 36,
+                    "The preview grid must stretch through its native card rather than remain vertically centered.");
+                Assert.True(preview.ActualHeight / card.ActualHeight >= 0.60,
+                    "Preview text must occupy the majority of the available preview surface.");
+                Assert.True(card.TranslatePoint(new Point(0, card.ActualHeight), page).Y <= page.ActualHeight + 1,
+                    "The full-height preview must remain inside the page and above its action footer.");
+            }
+        }
+        finally
+        {
+            window.Width = originalWidth;
+            window.Height = originalHeight;
+            PumpLayout(window, page);
+        }
     }
 
     private static void VerifyPageScrollContracts(FilesPage filesPage, CatalogPage catalogPage)

@@ -143,7 +143,9 @@ internal static class WorkspacePerformanceChecks
                     }
                     await Task.Delay(25);
                 }
-                Pump(ExerciseGrid(), TimeSpan.FromSeconds(25));
+                // A watchdog detects a stuck dispatcher, not a performance
+                // acceptance threshold. The unoptimized baseline needs more time.
+                Pump(ExerciseGrid(), TimeSpan.FromSeconds(120));
                 gridMeasurement = heartbeat.Capture(started.Elapsed,
                     GC.GetTotalAllocatedBytes(false) - allocated,
                     GC.GetAllocatedBytesForCurrentThread() - uiAllocated);
@@ -194,7 +196,7 @@ internal static class WorkspacePerformanceChecks
                     Drain();
                     await Task.Delay(25);
                 }
-                Pump(ExerciseConsole(), TimeSpan.FromSeconds(20));
+                Pump(ExerciseConsole(), TimeSpan.FromSeconds(60));
                 consoleMeasurement = heartbeat.Capture(started.Elapsed,
                     GC.GetTotalAllocatedBytes(false) - allocated,
                     GC.GetAllocatedBytesForCurrentThread() - uiAllocated);

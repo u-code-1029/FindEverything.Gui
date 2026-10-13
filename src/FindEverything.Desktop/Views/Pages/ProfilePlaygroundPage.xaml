@@ -231,14 +231,16 @@
                     <StackPanel>                <Expander
                     x:Name="PlaygroundRegexDebugExpander"
                     Margin="0"
+                    VerticalAlignment="Top"
+                    VerticalContentAlignment="Stretch"
                     AutomationProperties.Name="{DynamicResource Loc.View.ProfilePlayground.AutomationName.PathRegexColorDebugger}"
                     Header="{DynamicResource Loc.View.ProfilePlayground.AutomationName.PathRegexColorDebugger}"
                     IsExpanded="True"
                     Visibility="{Binding HasRegexDebugRules, Converter={StaticResource BooleanToVisibilityConverter}}">
-                    <controls:SectionCard Margin="0,8,0,0" Style="{StaticResource FluentSectionCardStyle}">
+                    <controls:SectionCard x:Name="PlaygroundRegexDebugCard" Margin="0,8,0,0" Style="{StaticResource FluentSectionCardStyle}">
                       <controls:SectionCard.Header>
                         <StackPanel>
-                            <TextBlock
+                            <TextBlock x:Name="PlaygroundRegexDebugCaption"
                                 Style="{StaticResource CaptionTextStyle}"
                                 Text="{DynamicResource Loc.View.ProfilePlayground.Text.ShowsPartialCandidatesAndNamedGroupsFrom}"
                                 TextWrapping="Wrap" />
@@ -258,6 +260,8 @@
                 </Expander>                <Expander
                     x:Name="PlaygroundDirectoryExclusionRegexDebugExpander"
                     Margin="0,12,0,0"
+                    VerticalAlignment="Top"
+                    VerticalContentAlignment="Stretch"
                     AutomationProperties.Name="{DynamicResource Loc.View.ProfilePlayground.AutomationName.FolderExclusionRegexColorDebugger}"
                     Header="{DynamicResource Loc.View.ProfilePlayground.AutomationName.FolderExclusionRegexColorDebugger}"
                     Visibility="{Binding HasDirectoryExclusionRegexDebugRules, Converter={StaticResource BooleanToVisibilityConverter}}">

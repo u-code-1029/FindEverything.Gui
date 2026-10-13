@@ -19,6 +19,39 @@ internal static class SectionCardRegressionChecks
     {
         VerifyCollapsedHeaderInheritance();
         VerifyHeaderReplacementAndRemoval();
+        VerifyFullHeightHeaderAlignment();
+    }
+
+    private static void VerifyFullHeightHeaderAlignment()
+    {
+        var title = new TextBlock { Text = "Preview", Height = 28 };
+        var editor = new Wpf.Ui.Controls.TextBox { Text = "Example", IsReadOnly = true };
+        var header = new Grid();
+        header.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        header.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        header.Children.Add(title);
+        Grid.SetRow(editor, 1);
+        header.Children.Add(editor);
+        var card = new SectionCard
+        {
+            Header = header,
+            Style = (Style)System.Windows.Application.Current.FindResource("FluentCardStyle"),
+        };
+        card.Measure(new Size(480, 400));
+        card.Arrange(new Rect(0, 0, 480, 400));
+        card.UpdateLayout();
+        FlushBindings();
+        card.UpdateLayout();
+        var presenter = Assert.IsType<ContentPresenter>(card.Template.FindName("HeaderContentPresenter", card));
+        Assert.Equal(VerticalAlignment.Stretch, presenter.VerticalAlignment);
+        Assert.InRange(title.TranslatePoint(new Point(), card).Y, 16, 18);
+        Assert.True(header.ActualHeight >= card.ActualHeight - 36,
+            "A full-height native card must stretch its Header to the content area.");
+        Assert.True(editor.ActualHeight >= 330, "The preview editor must use the available vertical space.");
+        card.VerticalContentAlignment = VerticalAlignment.Top;
+        FlushBindings();
+        Assert.Equal(VerticalAlignment.Top, presenter.VerticalAlignment);
+        Assert.Same(card, LogicalTreeHelper.GetParent(header));
     }
 
     private static void VerifyCollapsedHeaderInheritance()

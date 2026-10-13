@@ -685,7 +685,8 @@ public static partial class DynamicProfileGrid
             var textBox = new Wpf.Ui.Controls.TextBox
             {
                 Margin = new Thickness(4, 2, 4, 2),
-                MinWidth = 96,
+                // 120 DIP column - 24 DIP cell padding - 8 DIP editor margin.
+                MinWidth = 80,
                 MaxLength = ProfileManifestLimits.MaximumUserInputValueLength,
                 ClearButtonEnabled = true,
                 PlaceholderText = field.Placeholder ?? string.Empty,

@@ -1,5 +1,7 @@
 using System.Collections;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Data;
 using Wpf.Ui.Controls;
 
 namespace FindEverything.Desktop.Views.Controls;
@@ -20,6 +22,19 @@ public sealed class SectionCard : CardControl
     }
 
     protected override IEnumerator LogicalChildren => EnumerateLogicalChildren().GetEnumerator();
+
+    public override void OnApplyTemplate()
+    {
+        base.OnApplyTemplate();
+        // WPF-UI 4.3.0 centers HeaderContentPresenter regardless of the card's
+        // VerticalContentAlignment. Keep its native template and theme states,
+        // but honor our Stretch/Top setting for full-height editor surfaces.
+        if (GetTemplateChild("HeaderContentPresenter") is ContentPresenter headerPresenter)
+        {
+            headerPresenter.SetBinding(VerticalAlignmentProperty,
+                new Binding(nameof(VerticalContentAlignment)) { Source = this });
+        }
+    }
 
     private static void OnHeaderChanged(DependencyObject source, DependencyPropertyChangedEventArgs args)
     {

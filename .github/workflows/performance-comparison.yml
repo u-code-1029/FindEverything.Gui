@@ -33,6 +33,7 @@ jobs:
           $smoke = 'performance-baseline/tests/FindEverything.Desktop.Tests/DesktopCompositionSmokeTests.cs'
           $source = Get-Content $smoke -Raw
           $source = $source.Replace('VerifyProjectionQueries(provider, window);', "VerifyProjectionQueries(provider, window);`n            WorkspacePerformanceChecks.Verify(provider);")
+          $source = $source.Replace('completion.Task.WaitAsync(TimeSpan.FromSeconds(60))', 'completion.Task.WaitAsync(TimeSpan.FromSeconds(180))')
           [IO.File]::WriteAllText((Join-Path $PWD $smoke), $source)
       - name: Measure baseline UI on the same Windows runner
         working-directory: performance-baseline

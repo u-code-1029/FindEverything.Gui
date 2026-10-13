@@ -67,12 +67,12 @@
                 </ScrollViewer>
             </controls:SplitWorkspace.PrimaryContent>
             <controls:SplitWorkspace.SecondaryContent>
-                <controls:SectionCard Style="{StaticResource FluentCardStyle}">
+                <controls:SectionCard x:Name="OutputPreviewCard" Style="{StaticResource FluentCardStyle}" VerticalContentAlignment="Stretch">
                     <controls:SectionCard.Header>
-                    <Grid><Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
-                        <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.Workspace.Output.Preview}" />
+                    <Grid x:Name="OutputPreviewContent"><Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                        <TextBlock x:Name="OutputPreviewTitle" Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.Workspace.Output.Preview}" />
                         <TextBlock Grid.Row="1" Margin="0,4,0,12" Text="{Binding PreviewValidationMessage}" Style="{StaticResource CaptionTextStyle}" AutomationProperties.LiveSetting="Polite" />
-                        <ui:TextBox Grid.Row="2" Text="{Binding PreviewText, Mode=OneWay}" IsReadOnly="True" AcceptsReturn="True" FontFamily="Consolas" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" AutomationProperties.Name="{DynamicResource Loc.Workspace.Output.Preview}" ToolTip="{DynamicResource Loc.Workspace.Output.Preview.Help}" />
+                        <ui:TextBox x:Name="OutputPreviewTextBox" Grid.Row="2" Text="{Binding PreviewText, Mode=OneWay}" IsReadOnly="True" AcceptsReturn="True" FontFamily="Consolas" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" AutomationProperties.Name="{DynamicResource Loc.Workspace.Output.Preview}" ToolTip="{DynamicResource Loc.Workspace.Output.Preview.Help}" />
                     </Grid>
                     </controls:SectionCard.Header>
                 </controls:SectionCard>
