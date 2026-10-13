@@ -2088,6 +2088,9 @@ public sealed class DesktopCompositionSmokeTests
             {
                 Assert.True(content.TextBox.IsReadOnly);
                 Assert.True(content.TextBox.IsTextSelectionEnabled);
+                var textBinding = Assert.IsType<Binding>(BindingOperations.GetBindingBase(
+                    content.TextBox, System.Windows.Controls.TextBox.TextProperty));
+                Assert.Equal(BindingMode.OneWay, textBinding.Mode);
                 Assert.False(content.TextBox.ClearButtonEnabled);
                 Assert.Equal(0, content.TextBox.MinHeight);
                 Assert.False(content.Highlight.IsHitTestVisible);

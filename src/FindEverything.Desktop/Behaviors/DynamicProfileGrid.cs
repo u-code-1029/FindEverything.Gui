@@ -168,7 +168,7 @@ public static partial class DynamicProfileGrid
         {
             Header = L(localizer, "Loc.Catalog.Column.FolderPath", "폴더 경로"),
             Binding = new Binding(nameof(ViewModels.CatalogItemViewModel.FullPath)) { Mode = BindingMode.OneWay },
-            ToolTipBinding = new Binding(nameof(ViewModels.CatalogItemViewModel.OriginalFullPath)),
+            ToolTipBinding = new Binding(nameof(ViewModels.CatalogItemViewModel.OriginalFullPath)) { Mode = BindingMode.OneWay },
             IsReadOnly = true,
             Width = new DataGridLength(240),
             MinWidth = 180,
