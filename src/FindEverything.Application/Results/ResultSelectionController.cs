@@ -51,12 +51,12 @@ public sealed class ResultSelectionController(QuerySelection selection) : IDispo
                         var page = await query.ReadRangeAsync(start, Math.Min(500, end - start + 1), cancellation.Token)
                             .ConfigureAwait(false);
                         var keys = page.Items.Select(keySelector).ToArray();
-                        var baseline = captured.Baseline is { } source
+                        var members = captured.Baseline is { } source
                             ? await source.ReadMembershipAsync(keys, cancellation.Token).ConfigureAwait(false) : null;
                         foreach (var itemKey in keys)
                         {
                             cancellation.Token.ThrowIfCancellationRequested();
-                            captured.SetResolvedMembership(itemKey, true, baseline?.Contains(itemKey) ?? false);
+                            captured.SetResolvedMembership(itemKey, true, members?.Contains(itemKey) ?? false);
                         }
                     }
                 }
