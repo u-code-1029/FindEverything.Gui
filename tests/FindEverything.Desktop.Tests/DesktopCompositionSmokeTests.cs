@@ -1665,7 +1665,7 @@ public sealed class DesktopCompositionSmokeTests
         }
         Assert.Equal(4, FindVisualChildren<SettingRowCard>(indexingCard).Count());
         Assert.Single(FindVisualChildren<SettingRowCard>(notificationsCard));
-        Assert.Equal(3, FindVisualChildren<SettingRowCard>(appearanceCard).Count());
+        Assert.Equal(4, FindVisualChildren<SettingRowCard>(appearanceCard).Count());
 
         var inputs = FindVisualChildren<FrameworkElement>(scrollViewer)
             .Where(static element => element is System.Windows.Controls.TextBox or ComboBox)
@@ -1689,6 +1689,13 @@ public sealed class DesktopCompositionSmokeTests
         Assert.NotNull(batchInput.ToolTip);
         Assert.NotNull(durationInput.ToolTip);
         var viewModel = Assert.IsType<SettingsViewModel>(page.DataContext);
+        var densityInput = Assert.Single(inputs.OfType<ComboBox>(), input =>
+            BindingOperations.GetBinding(input, System.Windows.Controls.Primitives.Selector.SelectedItemProperty)?.Path?.Path
+                == nameof(SettingsViewModel.SelectedCatalogRowDensity));
+        Assert.Same(viewModel.CatalogRowDensityChoices, densityInput.ItemsSource);
+        Assert.Equal(3, densityInput.Items.Count);
+        Assert.NotNull(densityInput.ToolTip);
+        Assert.False(string.IsNullOrWhiteSpace(System.Windows.Automation.AutomationProperties.GetName(densityInput)));
         var batch = viewModel.UiUpdateBatchSizeText;
         var duration = viewModel.NotificationAutoDismissSecondsText;
         try
