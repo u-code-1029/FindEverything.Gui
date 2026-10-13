@@ -186,6 +186,7 @@ public sealed class DesktopCompositionSmokeTests
             VerifyScanConsole(provider, window, catalogPage);
             VerifyProjectionQueries(provider, window);
             WorkspacePerformanceChecks.Verify(provider);
+            CaptureOptionalEnglishQaScreenshots(provider, window, filesPage, catalogPage);
             VerifyDynamicGridHighlighting();
             window.Close();
             window = null;
@@ -519,21 +520,9 @@ public sealed class DesktopCompositionSmokeTests
             Capture(playground, new PlaygroundLayoutFixture(input, ProfileRegexDebugBuilder.Build(input, rules)), "playground-light.png");
             Capture(outputFormats, null, "output-formats-light.png");
             Capture(settings, null, "settings-light.png");
-            // Exercise longer English action words on the same App dispatcher.
-            // Production language changes restart; this resource swap is QA-only.
-            LocalizationBootstrapper.Apply(System.Windows.Application.Current,
-                new LocalizationOptions { CultureName = LocalizationOptions.EnglishCultureName });
-            Capture(files, new WorkspaceLayoutFixture(isCatalog: false), "files-en-wide.png");
-            Capture(catalog, new WorkspaceLayoutFixture(isCatalog: true), "catalog-en-wide.png");
-            window.Width = 760; window.Height = 640;
-            Capture(files, new WorkspaceLayoutFixture(isCatalog: false), "files-en-small.png");
-            Capture(catalog, new WorkspaceLayoutFixture(isCatalog: true), "catalog-en-small.png");
-            SaveQaImage(Assert.IsAssignableFrom<FrameworkElement>(window.Content), "catalog-en-small-200percent-render.png", 2);
         }
         finally
         {
-            LocalizationBootstrapper.Apply(System.Windows.Application.Current,
-                new LocalizationOptions { CultureName = LocalizationOptions.KoreanCultureName });
             appearance.Apply(window, new AppearanceOptions { Theme = ThemePreference.Light, Backdrop = BackdropPreference.None });
             window.Width = width;
             window.Height = height;
@@ -564,6 +553,45 @@ public sealed class DesktopCompositionSmokeTests
                 SaveQaImage(Assert.IsAssignableFrom<FrameworkElement>(window.Content), fileName);
             }
             finally { page.DataContext = original; page.InvalidateMeasure(); }
+        }
+    }
+
+    private static void CaptureOptionalEnglishQaScreenshots(IServiceProvider provider, MainWindow window, FilesPage files, CatalogPage catalog)
+    {
+        if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("FINDEVERYTHING_QA_DIR"))) return;
+        var navigation = provider.GetRequiredService<INavigationService>();
+        var width = window.Width; var height = window.Height;
+        // Run last: LocalizationScope can replace legacy literal captions. Production
+        // language changes deliberately restart instead of mutating existing views.
+        LocalizationBootstrapper.Apply(System.Windows.Application.Current,
+            new LocalizationOptions { CultureName = LocalizationOptions.EnglishCultureName });
+        try
+        {
+            foreach (var size in new[] { new Size(1360, 860), new Size(760, 640) })
+            {
+                window.Width = size.Width; window.Height = size.Height;
+                foreach (var page in new Page[] { files, catalog })
+                {
+                    var original = page.DataContext;
+                    try
+                    {
+                        page.DataContext = new WorkspaceLayoutFixture(page is CatalogPage);
+                        navigation.Navigate(page.GetType());
+                        PumpDispatcherFor(window.Dispatcher, TimeSpan.FromMilliseconds(120));
+                        PumpLayout(window, page);
+                        var name = $"{(page is CatalogPage ? "catalog" : "files")}-en-{(size.Width > 900 ? "wide" : "small")}";
+                        SaveQaImage(Assert.IsAssignableFrom<FrameworkElement>(window.Content), name + ".png");
+                        if (size.Width < 900) SaveQaImage(Assert.IsAssignableFrom<FrameworkElement>(window.Content), name + "-200percent-render.png", 2);
+                    }
+                    finally { page.DataContext = original; }
+                }
+            }
+        }
+        finally
+        {
+            LocalizationBootstrapper.Apply(System.Windows.Application.Current,
+                new LocalizationOptions { CultureName = LocalizationOptions.KoreanCultureName });
+            window.Width = width; window.Height = height;
         }
     }
 
