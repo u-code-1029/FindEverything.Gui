@@ -2108,7 +2108,8 @@ public sealed class DesktopCompositionSmokeTests
             Assert.False(folderColumn.CanUserSort);
             Assert.Contains(grid.Columns, column => Equals(DynamicProfileGrid.GetColumnHeaderContent(column), "Folder path"));
             var clientColumn = Assert.Single(grid.Columns, column => Equals(DynamicProfileGrid.GetColumnHeaderContent(column), "고객"));
-            Assert.Equal(2, clientColumn.DisplayIndex);
+            // The saved data-relative index 1 follows both fixed UI columns.
+            Assert.Equal(3, clientColumn.DisplayIndex);
             Assert.Equal(180, clientColumn.Width.Value);
             Assert.Single(grid.Columns, column => Equals(DynamicProfileGrid.GetColumnHeaderContent(column), "검토 메모"));
             var row = Assert.IsType<System.Windows.Controls.DataGridRow>(
