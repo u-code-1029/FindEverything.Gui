@@ -131,14 +131,15 @@
                     ToolTip="{DynamicResource Loc.Shell.Nav.Settings}" />
             </ui:NavigationView.FooterMenuItems>
             <ui:NavigationView.ContentOverlay>
-                <!-- WPF-UI hosts ContentOverlay in the page column, outside the
-                     navigation pane. The page presenter reserves this bar's
-                     measured height so it never obscures results or the log. -->
+                <!-- The page-only overlay never reserves layout space. Its null
+                     background lets pointer events pass outside the notice. -->
                 <Grid x:Name="PageNotificationOverlay">
                     <ui:SnackbarPresenter x:Name="SnackbarPresenter" Visibility="Collapsed" />
                     <ui:InfoBar
                         x:Name="OperationInfoBar"
-                        Margin="16,0,16,12"
+                        Margin="16,0,16,16"
+                        MaxWidth="480"
+                        HorizontalAlignment="Right"
                         AutomationProperties.LiveSetting="Polite"
                         AutomationProperties.Name="{Binding Title}"
                         IsClosable="True"
@@ -164,12 +165,12 @@
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Margin="0,0,12,0" VerticalAlignment="Center">
-                                            <TextBlock
+                                            <ui:TextBlock
                                                 Foreground="{DynamicResource TextFillColorPrimaryBrush}"
                                                 FontWeight="SemiBold"
                                                 Text="{TemplateBinding Title}"
                                                 TextWrapping="Wrap" />
-                                            <TextBlock
+                                            <ui:TextBlock
                                                 Margin="0,2,0,0"
                                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                                 Text="{TemplateBinding Message}"

@@ -19,9 +19,11 @@ public sealed partial class SqliteCatalogProjectionStore
         private bool _published;
         private bool _disposed;
         private int _count;
+        private long _revision;
         public SqliteCatalogProjectionStore Owner { get; } = owner;
         public string Generation { get; } = generation;
         public int Count => Volatile.Read(ref _count);
+        public long Revision => Volatile.Read(ref _revision);
 
         public void Append(CatalogItem item) => AppendRow(new CatalogProjectionRow(item.FullPath,
             item.RelativePath, item.MatchedRuleId, item.Values, item.CoveragePending));
@@ -148,6 +150,7 @@ public sealed partial class SqliteCatalogProjectionStore
                 _pending.Clear();
                 _pendingBytes = 0;
                 Volatile.Write(ref _count, 0);
+                Interlocked.Increment(ref _revision);
             }
             finally { Owner._writeGate.Release(); }
         }

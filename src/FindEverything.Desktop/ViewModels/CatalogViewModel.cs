@@ -130,7 +130,7 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private InfoBarSeverity _statusSeverity = InfoBarSeverity.Informational;
 
-    public bool CanEditWorkspace => !IsBusy;
+    public bool CanEditWorkspace => !IsBusy && !IsReadOnlyDataSource && WorkspaceTransfer?.IsBusy != true && WorkspaceTransfer?.IsInitialized != false;
 
     public string DetailsButtonText => IsDetailsOpen
         ? L("Loc.Common.Compact", "간단히")
@@ -248,6 +248,8 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
         }
 
         _disposed = true;
+        ResetLiveFilters();
+        DetachWorkspaceTransfer();
         _pendingScanCancellation?.Cancel();
         _projectionCancellation?.Cancel();
         _outputLifetime.Cancel();
@@ -286,6 +288,10 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
 
     partial void OnSelectedProfileChanged(ProfileChoiceViewModel? value)
     {
+        ResetLiveFilters();
+        if (!_applyingSharedSource && WorkspaceTransfer?.CurrentSource is { } shared
+            && !string.Equals(shared.ProfileId, value?.Id, StringComparison.OrdinalIgnoreCase))
+            WorkspaceTransfer.UseLocalCommand.Execute(null);
         _automaticLoadSuppressed = false;
         ReleaseProjectionQuery();
         _projectionSnapshot = null;
@@ -294,6 +300,7 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
         // profile's sort into this scope can make its first query invalid.
         _queryDefinition = new() { TextPreviewCharacters = 2048 };
         _displayedQueryDefinition = new();
+        RebuildActiveColumnFilters();
         _lastAutomaticLoadKey = null;
         EndResultSession(_activeResultSession);
         Fields = value?.Profile.Descriptor.Fields
@@ -408,6 +415,7 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
 
     private void OnWorkspaceChanged(object? sender, WorkspaceChangedEventArgs eventArgs)
     {
+        if (IsReadOnlyDataSource) return;
         var dispatcher = System.Windows.Application.Current?.Dispatcher;
         void Apply()
         {
@@ -444,6 +452,16 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
 
     private void ApplyChangedProfileSnapshot(ProfileCatalogSnapshot snapshot)
     {
+        if (IsReadOnlyDataSource)
+        {
+            // Frozen snapshot columns/data do not change when a local definition is edited.
+            var selected = SelectedProfile;
+            var choices = snapshot.Profiles.Select(profile => selected is not null && selected.Id.Equals(profile.Descriptor.Id, StringComparison.OrdinalIgnoreCase)
+                ? selected : new ProfileChoiceViewModel(profile)).ToList();
+            if (selected is not null && !choices.Any(choice => choice.Id.Equals(selected.Id, StringComparison.OrdinalIgnoreCase))) choices.Add(selected);
+            Profiles = choices.OrderBy(profile => profile.DisplayName, StringComparer.CurrentCultureIgnoreCase).ToArray();
+            return;
+        }
         var hadProfiles = Profiles.Count > 0;
         ApplyProfileSnapshot(snapshot, SelectedProfile?.Id);
         if (!hadProfiles
@@ -618,6 +636,7 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
     [RelayCommand(CanExecute = nameof(CanCancel))]
     private void Cancel()
     {
+        _sharedLoadCancellation?.Cancel();
         _automaticLoadSuppressed = true;
         _pendingScanCancellation?.Cancel();
         _projectionCancellation?.Cancel();
@@ -837,10 +856,10 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
     }
 
     private bool CanStart() => !_disposed && _pendingScanCancellation is null
-        && !IsBusy && SelectedProfile is not null;
+        && !IsBusy && !IsReadOnlyDataSource && WorkspaceTransfer?.IsBusy != true && WorkspaceTransfer?.IsInitialized != false && SelectedProfile is not null;
 
     private bool CanScan() => !_disposed && _pendingScanCancellation is null
-        && SelectedProfile is not null && (!IsBusy || IsLoadingExistingIndex);
+        && !IsReadOnlyDataSource && WorkspaceTransfer?.IsBusy != true && WorkspaceTransfer?.IsInitialized != false && SelectedProfile is not null && (!IsBusy || IsLoadingExistingIndex);
 
     private bool CanCancel() => IsBusy || _pendingScanCancellation is not null;
 
@@ -911,6 +930,11 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (_disposed) return;
+        if (IsReadOnlyDataSource)
+        {
+            if (mode == CatalogOperationMode.ExistingIndex) await ApplySharedSourceAsync();
+            return;
+        }
         if (_projectionStore is not null)
         {
             await RunProjectionOperationAsync(operationName, mode, isAutomatic, cancellationToken);
@@ -1170,6 +1194,7 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
     private void ScheduleAutomaticLoad()
     {
         if (!_isActive
+            || IsReadOnlyDataSource || WorkspaceTransfer?.IsBusy == true || WorkspaceTransfer?.IsInitialized == false
             || _automaticLoadSuppressed
             || IsBusy
             || _pendingScanCancellation is not null
@@ -1212,6 +1237,7 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
     {
         await Dispatcher.Yield(DispatcherPriority.ContextIdle);
         if (!_isActive
+            || IsReadOnlyDataSource || WorkspaceTransfer?.IsBusy == true || WorkspaceTransfer?.IsInitialized == false
             || !string.Equals(_lastAutomaticLoadKey, key, StringComparison.OrdinalIgnoreCase))
         {
             if (string.Equals(_lastAutomaticLoadKey, key, StringComparison.OrdinalIgnoreCase))
@@ -1585,18 +1611,19 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
 
     private void ApplyFilter(string? preferredSelectedPath = null)
     {
-        if (_projectionSnapshot is not null && _projectionStore is not null)
+        if (_projectionSnapshot is not null && ActiveProjectionStore is not null)
         {
             _ = RefreshProjectionQueryAsync();
             return;
         }
         var selectedPath = preferredSelectedPath ?? SelectedItem?.FullPath;
+        ScheduleLiveFilterRefresh(criteriaChanged: true);
         Items.Refresh();
         SelectedItem = selectedPath is null
             ? null
             : Items.Cast<CatalogItemViewModel>().FirstOrDefault(item =>
                 string.Equals(item.FullPath, selectedPath, StringComparison.OrdinalIgnoreCase));
-        FilterSummary = TextFilter.Normalize(FilterText).Length == 0
+        FilterSummary = TextFilter.Normalize(FilterText).Length == 0 && !HasColumnFilters
             ? F("Loc.Catalog.Filter.Empty", "{0:N0}개 항목", _loadedItems.Count)
             : F(
                 "Loc.Catalog.Filter.Active",
@@ -1609,7 +1636,7 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
     {
         var view = new ListCollectionView(items)
         {
-            Filter = value => value is CatalogItemViewModel item && item.Matches(FilterText),
+            Filter = value => value is CatalogItemViewModel item && MatchesLiveItem(item),
         };
         return view;
     }
@@ -1752,6 +1779,7 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
         WorkspaceSnapshot snapshot,
         WorkspaceDraftFields preservedFields = WorkspaceDraftFields.None)
     {
+        if (IsReadOnlyDataSource && !_applyingSharedSource) return;
         _isApplyingWorkspaceSnapshot = true;
         try
         {
@@ -1777,6 +1805,7 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
 
     private void RefreshEffectiveDatabasePath(WorkspaceSnapshot snapshot)
     {
+        if (IsReadOnlyDataSource) return;
         var wasApplyingSnapshot = _isApplyingWorkspaceSnapshot;
         _isApplyingWorkspaceSnapshot = true;
         try
@@ -1795,7 +1824,7 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
 
     private void ScheduleWorkspacePersistence(WorkspaceDraftFields changedField)
     {
-        if (_disposed || _isApplyingWorkspaceSnapshot)
+        if (_disposed || _isApplyingWorkspaceSnapshot || IsReadOnlyDataSource || WorkspaceTransfer?.IsBusy == true)
         {
             return;
         }

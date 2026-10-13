@@ -26,7 +26,7 @@
         </DataTemplate>
         <DataTemplate x:Key="ColumnWidthEditorTemplate">
             <StackPanel Margin="0,12,0,0">
-                <TextBlock Margin="0,0,0,4" FontSize="14" FontWeight="SemiBold" Text="{DynamicResource Loc.Profiles.ColumnWidth.Label}" />
+                <ui:TextBlock Margin="0,0,0,4" FontSize="14" FontWeight="SemiBold" Text="{DynamicResource Loc.Profiles.ColumnWidth.Label}" />
                 <ContentControl Content="{Binding}" ContentTemplate="{StaticResource ColumnWidthChoiceTemplate}" HorizontalContentAlignment="Stretch" />
             </StackPanel>
         </DataTemplate>
@@ -94,14 +94,19 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <controls:PageHeader Title="{DynamicResource Loc.Shell.Nav.Profiles}" Description="{DynamicResource Loc.Workspace.Profiles.Description}" />
+        <StackPanel>
+            <controls:PageHeader Title="{DynamicResource Loc.Shell.Nav.Profiles}" Description="{DynamicResource Loc.Workspace.Profiles.Description}">
+            <controls:WorkspaceTransferPanel x:Name="ProfilesWorkspaceTransferPanel" DataContext="{Binding WorkspaceTransfer}" ShowProfileExport="True" ShowPackageExport="False" ShowSourceSelector="False"
+                Profile="{Binding DataContext.ExportProfileCandidate, RelativeSource={RelativeSource AncestorType=Page}}"/>
+            </controls:PageHeader>
+        </StackPanel>
 
-        <TabControl
+        <ui:TabView
             x:Name="ProfilesTabControl"
             Grid.Row="1"
             HorizontalContentAlignment="Stretch"
             VerticalContentAlignment="Stretch">
-            <TabItem Header="{DynamicResource Loc.View.Profiles.Header.EditProfile}">
+            <ui:TabViewItem Header="{DynamicResource Loc.View.Profiles.Header.EditProfile}">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -165,11 +170,11 @@
                         </controls:SectionCard.Header>
                     </controls:SectionCard>
 
-                    <ScrollViewer
+                    <ui:DynamicScrollViewer
                         x:Name="ProfileEditorScrollViewer"
                         Grid.Row="1"
                         Style="{StaticResource FluentGutteredScrollViewerStyle}">
-                        <StackPanel Margin="0,8,0,0"><TextBlock Margin="0,0,0,8" Text="{Binding NumericValidationMessage}" TextWrapping="Wrap" Foreground="{DynamicResource SystemFillColorCriticalBrush}" Visibility="{Binding HasNumericValidationError, Converter={StaticResource BooleanToVisibilityConverter}}" AutomationProperties.LiveSetting="Polite" />
+                        <StackPanel Margin="0,8,0,0"><ui:TextBlock Margin="0,0,0,8" Text="{Binding NumericValidationMessage}" TextWrapping="Wrap" Foreground="{DynamicResource SystemFillColorCriticalBrush}" Visibility="{Binding HasNumericValidationError, Converter={StaticResource BooleanToVisibilityConverter}}" AutomationProperties.LiveSetting="Polite" />
                             <controls:SectionCard
                                 Style="{StaticResource EditorSectionStyle}"
                                 Visibility="{Binding IsProfileStep, Converter={StaticResource BooleanToVisibilityConverter}}">
@@ -181,8 +186,8 @@
                                         <RowDefinition Height="Auto" />
                                     </Grid.RowDefinitions>
 
-                                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.MyProfiles}" />
-                                    <TextBlock
+                                    <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.MyProfiles}" />
+                                    <ui:TextBlock
                                         Grid.Row="1"
                                         Margin="0,4,0,12"
                                         Style="{StaticResource CaptionTextStyle}"
@@ -194,7 +199,7 @@
                                             <RowDefinition Height="Auto" />
                                             <RowDefinition Height="Auto" />
                                         </Grid.RowDefinitions>
-                                        <TextBlock
+                                        <ui:TextBlock
                                             x:Name="EditableProfileLabel"
                                             Style="{StaticResource FieldLabelStyle}"
                                             Text="{DynamicResource Loc.View.Profiles.AutomationName.ProfileToEdit}" />
@@ -236,8 +241,8 @@
                                 Visibility="{Binding IsScanOptionsStep, Converter={StaticResource BooleanToVisibilityConverter}}">
                                 <controls:SectionCard.Header>
                                 <StackPanel>
-                                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.DisplayValueMappings}" />
-                                    <TextBlock
+                                    <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.DisplayValueMappings}" />
+                                    <ui:TextBlock
                                         Margin="0,4,0,12"
                                         Style="{StaticResource CaptionTextStyle}"
                                         Text="{DynamicResource Loc.View.Profiles.Text.ShowShortCodesFromThePathAs}"
@@ -256,9 +261,9 @@
                                                                 <ColumnDefinition Width="Auto" />
                                                             </Grid.ColumnDefinitions>
                                                             <StackPanel>
-                                                                <TextBlock FontSize="15" FontWeight="SemiBold" Text="{Binding Header}" />
-                                                                <TextBlock
-                                                                    Margin="0,3,0,0"
+                                                                <ui:TextBlock FontSize="15" FontWeight="SemiBold" Text="{Binding Header}" />
+                                                                <ui:TextBlock
+                                                                    Margin="0,4,0,0"
                                                                     Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                                                     Text="{Binding ValueMappingDescription}"
                                                                     TextWrapping="Wrap" />
@@ -266,10 +271,10 @@
                                                             <controls:DisplayBadge
                                                                 Grid.Column="1"
                                                                 Margin="12,0,0,0"
-                                                                Padding="8,3"
+                                                                Padding="8,4"
                                                                 VerticalAlignment="Top"
                                                                 Visibility="{Binding HasAliasGroup, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                                <TextBlock FontFamily="Consolas" FontSize="12" FontWeight="SemiBold" Text="alias" />
+                                                                <ui:TextBlock FontFamily="Consolas" FontSize="12" FontWeight="SemiBold" Text="alias" />
                                                             </controls:DisplayBadge>
                                                         </Grid>
 
@@ -325,7 +330,7 @@
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
-                                    <TextBlock
+                                    <ui:TextBlock
                                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                         Text="{DynamicResource Loc.View.Profiles.Text.OnlyTextFieldsCanBeMappedOriginal}"
                                         TextWrapping="Wrap" />
@@ -339,8 +344,8 @@
                                 Visibility="{Binding IsProfileStep, Converter={StaticResource BooleanToVisibilityConverter}}">
                                 <controls:SectionCard.Header>
                                 <StackPanel>
-                                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.EditingMode}" />
-                                    <TextBlock
+                                    <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.EditingMode}" />
+                                    <ui:TextBlock
                                         Margin="0,4,0,12"
                                         Style="{StaticResource CaptionTextStyle}"
                                         Text="{DynamicResource Loc.View.Profiles.Text.IfYouAreNewToRegularExpressions}"
@@ -362,7 +367,7 @@
                                             IsChecked="{Binding IsExpertMode, Mode=OneWay}"
                                             Style="{StaticResource GuidedModeChoiceStyle}" />
                                     </WrapPanel>
-                                    <TextBlock
+                                    <ui:TextBlock
                                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                         Text="{DynamicResource Loc.View.Profiles.Text.IfTheReturnToBeginnerButtonIs}"
                                         TextWrapping="Wrap" />
@@ -376,14 +381,14 @@
                                 Visibility="{Binding IsProfileStep, Converter={StaticResource BooleanToVisibilityConverter}}">
                                 <controls:SectionCard.Header>
                                 <StackPanel>
-                                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.1BasicInformation}" />
-                                    <TextBlock
+                                    <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.1BasicInformation}" />
+                                    <ui:TextBlock
                                         Margin="0,4,0,16"
                                         Style="{StaticResource CaptionTextStyle}"
                                         Text="{DynamicResource Loc.View.Profiles.Text.ChooseAListDisplayNameAndA}" />
 
-                                    <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.DisplayName}" />
-                                    <TextBlock Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.TheNameUsersSeeInTheProfile}" />
+                                    <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.DisplayName}" />
+                                    <ui:TextBlock Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.TheNameUsersSeeInTheProfile}" />
                                     <ui:TextBox
                                         Margin="0,4,0,12"
                                         AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.ProfileDisplayName}"
@@ -391,8 +396,8 @@
                                         PlaceholderText="{DynamicResource Loc.View.Profiles.PlaceholderText.ExampleProjectFolders}"
                                         Text="{Binding DraftDisplayName, UpdateSourceTrigger=PropertyChanged}" />
 
-                                    <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.ProfileID}" />
-                                    <TextBlock Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.StartWithALowercaseLetterOrNumber}" />
+                                    <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.ProfileID}" />
+                                    <ui:TextBlock Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.StartWithALowercaseLetterOrNumber}" />
                                     <ui:TextBox
                                         Margin="0,4,0,12"
                                         AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.ProfileID}"
@@ -425,8 +430,8 @@
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Margin="0,0,16,0">
-                                            <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.ScanOptimizationFinalFolderNamesToExclude}" />
-                                            <TextBlock
+                                            <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.ScanOptimizationFinalFolderNamesToExclude}" />
+                                            <ui:TextBlock
                                                 x:Name="DirectoryExclusionScopeDescription"
                                                 Margin="0,4,0,0"
                                                 Style="{StaticResource CaptionTextStyle}"
@@ -449,19 +454,19 @@
                                         CornerRadius="6" Style="{StaticResource FluentCardStyle}">
                                         <controls:SectionCard.Header>
                                         <StackPanel AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.FolderNameExclusionRuleScope}">
-                                            <TextBlock TextWrapping="Wrap">
+                                            <ui:TextBlock TextWrapping="Wrap">
                                                 <Run FontWeight="SemiBold" Text="{DynamicResource Loc.View.Profiles.Text.InputExample}" />
                                                 <Run FontFamily="Consolas" Text="C:\abc\def\name" />
                                                 <Run Text="{DynamicResource Loc.View.Profiles.Text.ValuePassedToTheRegularExpression}" />
                                                 <Run FontFamily="Consolas" FontWeight="SemiBold" Text="name" />
                                                 <Run Text="{DynamicResource Loc.View.Profiles.Text.Label}" />
-                                            </TextBlock>
-                                            <TextBlock Margin="0,6,0,0" TextWrapping="Wrap">
+                                            </ui:TextBlock>
+                                            <ui:TextBlock Margin="0,6,0,0" TextWrapping="Wrap">
                                                 <Run FontFamily="Consolas" Text="Full + name" />
                                                 <Run Text="{DynamicResource Loc.View.Profiles.Text.MatchesOnlyWhenTheEntireFinalFolder}" />
                                                 <Run FontFamily="Consolas" Text="name" />
                                                 <Run Text="{DynamicResource Loc.View.Profiles.Text.AMatchRemovesThatFolderFromResult}" />
-                                            </TextBlock>
+                                            </ui:TextBlock>
                                         </StackPanel>
                                         </controls:SectionCard.Header>
                                     </controls:SectionCard>
@@ -480,14 +485,14 @@
                                                                 <ColumnDefinition Width="Auto" />
                                                             </Grid.ColumnDefinitions>
                                                             <StackPanel>
-                                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.RuleID}" />
+                                                                <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.RuleID}" />
                                                                 <ui:TextBox
                                                                     AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.FolderExclusionRuleID}"
                                                                     PlaceholderText="{DynamicResource Loc.View.Profiles.PlaceholderText.ExampleSkipCache}"
                                                                     Text="{Binding Id, UpdateSourceTrigger=PropertyChanged}" />
                                                             </StackPanel>
                                                             <StackPanel Grid.Column="2">
-                                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.FolderNameRegularExpression}" />
+                                                                <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.FolderNameRegularExpression}" />
                                                                 <ui:TextBox
                                                                     AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.ExcludedFolderNameRegularExpression}"
                                                                     PlaceholderText="{DynamicResource Loc.View.Profiles.PlaceholderText.ExampleNameOrTempCache}"
@@ -497,7 +502,7 @@
                                                                 Grid.Column="3"
                                                                 Width="34"
                                                                 Height="32"
-                                                                Margin="10,22,0,0"
+                                                                Margin="10,24,0,0"
                                                                 VerticalAlignment="Top"
                                                                 Appearance="Caution"
                                                                 AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.DeleteFolderNameExclusionRule}"
@@ -516,7 +521,7 @@
                                                                 <ColumnDefinition Width="Auto" />
                                                             </Grid.ColumnDefinitions>
                                                             <StackPanel>
-                                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.MatchMode}" />
+                                                                <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.MatchMode}" />
                                                                 <ComboBox
                                                                     AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.FolderNameExclusionMatchMode}"
                                                                     DisplayMemberPath="DisplayName"
@@ -525,19 +530,19 @@
                                                                     SelectedValuePath="Value" />
                                                             </StackPanel>
                                                             <StackPanel Grid.Column="2">
-                                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.TimeoutMs}" />
+                                                                <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.TimeoutMs}" />
                                                                 <ui:TextBox
                                                                     AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.FolderExclusionRegularExpressionTimeout}"
                                                                     Text="{Binding TimeoutMillisecondsText, UpdateSourceTrigger=PropertyChanged}" />
                                                             </StackPanel>
                                                             <CheckBox
                                                                 Grid.Column="3"
-                                                                Margin="16,25,0,0"
+                                                                Margin="16,24,0,0"
                                                                 VerticalAlignment="Top"
                                                                 Content="{DynamicResource Loc.View.Profiles.Content.IgnoreCase}"
                                                                 IsChecked="{Binding IgnoreCase, UpdateSourceTrigger=PropertyChanged}" />
                                                         </Grid>
-                                                        <TextBlock
+                                                        <ui:TextBlock
                                                             Margin="0,10,0,0"
                                                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                                             Text="{Binding MatchModeDisplayName}"
@@ -548,7 +553,7 @@
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
-                                    <TextBlock
+                                    <ui:TextBlock
                                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                         Text="{DynamicResource Loc.View.Profiles.Text.WithoutExclusionRulesEveryFolderIsVisited}"
                                         TextWrapping="Wrap" />
@@ -568,8 +573,8 @@
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Margin="0,0,16,0">
-                                            <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.ReadValuesFromTextFilesInThe}" />
-                                            <TextBlock
+                                            <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.ReadValuesFromTextFilesInThe}" />
+                                            <ui:TextBlock
                                                 Margin="0,4,0,0"
                                                 Style="{StaticResource CaptionTextStyle}"
                                                 Text="{DynamicResource Loc.View.Profiles.Text.ForEachFolderThatMatchesThePath}"
@@ -607,14 +612,14 @@
                                                                 <ColumnDefinition Width="Auto" />
                                                             </Grid.ColumnDefinitions>
                                                             <StackPanel>
-                                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.DisplayName}" />
+                                                                <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.DisplayName}" />
                                                                 <ui:TextBox
                                                                     AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.TextFileFieldDisplayName}"
                                                                     PlaceholderText="{DynamicResource Loc.View.Profiles.PlaceholderText.ExampleDescription}"
                                                                     Text="{Binding Header, UpdateSourceTrigger=PropertyChanged}" />
                                                             </StackPanel>
                                                             <StackPanel Grid.Column="2">
-                                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="Field ID *" />
+                                                                <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="Field ID *" />
                                                                 <ui:TextBox
                                                                     AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.TextFileFieldID}"
                                                                     PlaceholderText="{DynamicResource Loc.View.Profiles.PlaceholderText.ExampleDescription122}"
@@ -624,7 +629,7 @@
                                                                 Grid.Column="3"
                                                                 Width="34"
                                                                 Height="32"
-                                                                Margin="10,22,0,0"
+                                                                Margin="10,24,0,0"
                                                                 VerticalAlignment="Top"
                                                                 Appearance="Caution"
                                                                 AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.DeleteTextFileField}"
@@ -635,7 +640,7 @@
                                                                 ToolTip="{DynamicResource Loc.View.Profiles.ToolTip.DeleteFileValue}" />
                                                         </Grid>
 
-                                                        <TextBlock Margin="0,12,0,0" Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.FileNameRegularExpression}" />
+                                                        <ui:TextBlock Margin="0,12,0,0" Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.FileNameRegularExpression}" />
                                                         <ui:TextBox
                                                             AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.TextFileNameRegularExpression}"
                                                             PlaceholderText="{DynamicResource Loc.View.Profiles.PlaceholderText.ExampleMetadataTxtOrInfoDTxt}"
@@ -653,7 +658,7 @@
                                                                 <ColumnDefinition Width="*" />
                                                             </Grid.ColumnDefinitions>
                                                             <StackPanel>
-                                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.FileNameMatchMode}" />
+                                                                <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.FileNameMatchMode}" />
                                                                 <ComboBox
                                                                     AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.TextFileNameMatchMode}"
                                                                     DisplayMemberPath="DisplayName"
@@ -662,19 +667,19 @@
                                                                     SelectedValuePath="Value" />
                                                             </StackPanel>
                                                             <StackPanel Grid.Column="2">
-                                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.ReadLimitBytes}" />
+                                                                <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.ReadLimitBytes}" />
                                                                 <ui:TextBox
                                                                     AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.TextFileReadByteLimit}"
                                                                     Text="{Binding MaxBytesText, UpdateSourceTrigger=PropertyChanged}" />
                                                             </StackPanel>
                                                             <StackPanel Grid.Column="4">
-                                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.TimeoutMs}" />
+                                                                <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.TimeoutMs}" />
                                                                 <ui:TextBox
                                                                     AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.TextFileRegularExpressionTimeout}"
                                                                     Text="{Binding TimeoutMillisecondsText, UpdateSourceTrigger=PropertyChanged}" />
                                                             </StackPanel>
                                                             <StackPanel Grid.Column="6">
-                                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.ColumnOrder}" />
+                                                                <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.ColumnOrder}" />
                                                                 <ui:TextBox
                                                                     AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.TextFileColumnOrder}"
                                                                     Text="{Binding OrderText, UpdateSourceTrigger=PropertyChanged}" />
@@ -696,7 +701,7 @@
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
-                                    <TextBlock
+                                    <ui:TextBlock
                                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                         Text="{DynamicResource Loc.View.Profiles.Text.UpTo16FieldsAreAllowedThe}"
                                         TextWrapping="Wrap" />
@@ -717,8 +722,8 @@
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Margin="0,0,16,0">
-                                            <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.Profiles.Field.UserInput}" />
-                                            <TextBlock
+                                            <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.Profiles.Field.UserInput}" />
+                                            <ui:TextBlock
                                                 Margin="0,4,0,0"
                                                 Style="{StaticResource CaptionTextStyle}"
                                                 Text="{DynamicResource Loc.View.Profiles.Text.EditableNoteColumnsForEachStructuredResult}"
@@ -753,28 +758,28 @@
                                                             <ColumnDefinition Width="Auto" />
                                                         </Grid.ColumnDefinitions>
                                                         <StackPanel>
-                                                            <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.DisplayName}" />
+                                                            <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.DisplayName}" />
                                                             <ui:TextBox
                                                                 AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.UserInputDisplayName}"
                                                                 PlaceholderText="{DynamicResource Loc.View.Profiles.PlaceholderText.ExampleReviewNote}"
                                                                 Text="{Binding Header, UpdateSourceTrigger=PropertyChanged}" />
                                                         </StackPanel>
                                                         <StackPanel Grid.Column="2">
-                                                            <TextBlock Style="{StaticResource FieldLabelStyle}" Text="Field ID *" />
+                                                            <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="Field ID *" />
                                                             <ui:TextBox
                                                                 AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.UserInputFieldID}"
                                                                 PlaceholderText="{DynamicResource Loc.View.Profiles.PlaceholderText.ExampleReviewNote144}"
                                                                 Text="{Binding FieldId, UpdateSourceTrigger=PropertyChanged}" />
                                                         </StackPanel>
                                                         <StackPanel Grid.Column="4">
-                                                            <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.ColumnOrder}" />
+                                                            <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.ColumnOrder}" />
                                                             <ui:TextBox Text="{Binding OrderText, UpdateSourceTrigger=PropertyChanged}" />
                                                         </StackPanel>
                                                         <ui:Button
                                                             Grid.Column="5"
                                                             Width="34"
                                                             Height="32"
-                                                            Margin="10,22,0,0"
+                                                            Margin="10,24,0,0"
                                                             VerticalAlignment="Top"
                                                             Appearance="Caution"
                                                             AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.DeleteUserInputField}"
@@ -784,14 +789,14 @@
                                                             Style="{StaticResource IconOnlyButtonStyle}"
                                                             ToolTip="{DynamicResource Loc.View.Profiles.ToolTip.DeleteInputColumn}" />
                                                         <StackPanel Grid.Row="1" Grid.ColumnSpan="3" Margin="0,12,0,0">
-                                                            <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.InputHint}" />
+                                                            <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.InputHint}" />
                                                             <ui:TextBox
                                                                 MaxLength="256"
                                                                 PlaceholderText="{DynamicResource Loc.View.Profiles.PlaceholderText.ExampleEnterANoteForThisItem}"
                                                                 Text="{Binding Placeholder, UpdateSourceTrigger=PropertyChanged}" />
                                                         </StackPanel>
                                                         <StackPanel Grid.Row="1" Grid.Column="4" Grid.ColumnSpan="2" Margin="0,12,0,0">
-                                                            <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.OptionalDefault}" />
+                                                            <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.OptionalDefault}" />
                                                             <ui:TextBox
                                                                 MaxLength="4096"
                                                                 PlaceholderText="{DynamicResource Loc.View.Profiles.PlaceholderText.LeaveBlankForAnEmptyInput}"
@@ -804,7 +809,7 @@
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
-                                    <TextBlock
+                                    <ui:TextBlock
                                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                         Text="{DynamicResource Loc.View.Profiles.Text.UpTo16ColumnsFieldIDsCannot}"
                                         TextWrapping="Wrap" />
@@ -818,15 +823,15 @@
                                     <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                                     <Grid.ColumnDefinitions><ColumnDefinition x:Name="GuidedEditorColumn" Width="*" /><ColumnDefinition x:Name="GuidedGapColumn" Width="0" /><ColumnDefinition x:Name="GuidedChoicesColumn" Width="0" /></Grid.ColumnDefinitions>
                                     <StackPanel>
-                                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.2PickResultValuesFromAReal}" />
-                                    <TextBlock
+                                    <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.2PickResultValuesFromAReal}" />
+                                    <ui:TextBlock
                                         Margin="0,4,0,16"
                                         Style="{StaticResource CaptionTextStyle}"
                                         Text="{DynamicResource Loc.View.Profiles.Text.YouDoNotNeedToKnowRegular}"
                                         TextWrapping="Wrap" />
 
-                                    <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.PasteARealPath}" />
-                                    <TextBlock
+                                    <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.PasteARealPath}" />
+                                    <ui:TextBlock
                                         Style="{StaticResource CaptionTextStyle}"
                                         Text="{DynamicResource Loc.View.Profiles.Text.UseACompleteRealFolderPathIncluding}"
                                         TextWrapping="Wrap" />
@@ -843,15 +848,15 @@
                                         Content="{DynamicResource Loc.View.Profiles.Content.AnalyzePath}"
                                         Icon="{ui:SymbolIcon Symbol=ArrowDown20}" />
 
-                                    <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.ConnectResultValuesToPathSegments}" />
-                                    <TextBlock
+                                    <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.ConnectResultValuesToPathSegments}" />
+                                    <ui:TextBlock
                                         Style="{StaticResource CaptionTextStyle}"
                                         Text="{DynamicResource Loc.View.Profiles.Text.FirstSelectAResultValueCardBelow}"
                                         TextWrapping="Wrap" />
 
 
 
-                                    <TextBlock
+                                    <ui:TextBlock
                                         Margin="0,4,0,4"
                                         Style="{StaticResource CaptionTextStyle}"
                                         Text="{DynamicResource Loc.View.Profiles.Text.GeneratedPathRuleReadOnly}" />
@@ -872,8 +877,8 @@
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
                                         <StackPanel>
-                                            <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.CreateResultValuesToDisplay}" />
-                                            <TextBlock
+                                            <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.CreateResultValuesToDisplay}" />
+                                            <ui:TextBlock
                                                 Style="{StaticResource CaptionTextStyle}"
                                                 Text="{DynamicResource Loc.View.Profiles.Text.EachCardBecomesOneResultColumnTurn}"
                                                 TextWrapping="Wrap" />
@@ -899,7 +904,7 @@
                                                                 <ColumnDefinition Width="*" />
                                                                 <ColumnDefinition Width="Auto" />
                                                             </Grid.ColumnDefinitions>
-                                                            <TextBlock
+                                                            <ui:TextBlock
                                                                 VerticalAlignment="Center"
                                                                 FontSize="15"
                                                                 FontWeight="SemiBold"
@@ -933,14 +938,14 @@
                                                             </StackPanel>
                                                         </Grid>
 
-                                                        <TextBlock Margin="0,12,0,4" Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.NameShownInTheList}" />
+                                                        <ui:TextBlock Margin="0,12,0,4" Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.NameShownInTheList}" />
                                                         <ui:TextBox
                                                             AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.ResultValueName}"
                                                             ClearButtonEnabled="True"
                                                             PlaceholderText="{DynamicResource Loc.View.Profiles.PlaceholderText.ExampleClient}"
                                                             Text="{Binding Header, UpdateSourceTrigger=PropertyChanged}" />
 
-                                                        <TextBlock Margin="0,12,0,4" Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.ValueType}" />
+                                                        <ui:TextBlock Margin="0,12,0,4" Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.ValueType}" />
                                                         <ComboBox
                                                             AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.ResultValueType}"
                                                             DisplayMemberPath="DisplayName"
@@ -960,7 +965,7 @@
                                                                     </Style.Triggers>
                                                                 </Style>
                                                             </StackPanel.Style>
-                                                            <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.HowTheDateIsSplit}" />
+                                                            <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.HowTheDateIsSplit}" />
                                                             <ComboBox
                                                                 AutomationProperties.Name="{DynamicResource Loc.View.Profiles.AutomationName.DateSourceArrangement}"
                                                                 DisplayMemberPath="DisplayName"
@@ -968,7 +973,7 @@
                                                                 SelectedValue="{Binding DateSourcePreset, UpdateSourceTrigger=PropertyChanged}"
                                                                 SelectedValuePath="Value" />
 
-                                                            <TextBlock
+                                                            <ui:TextBlock
                                                                 Margin="0,12,0,4"
                                                                 Style="{StaticResource FieldLabelStyle}"
                                                                 Text="{DynamicResource Loc.View.Profiles.Text.DateFormatInThePath}" />
@@ -979,7 +984,7 @@
                                                                 ItemsSource="{Binding DateFormatChoices}"
                                                                 SelectedValue="{Binding ParseFormat, UpdateSourceTrigger=PropertyChanged}"
                                                                 SelectedValuePath="Format" />
-                                                            <TextBlock
+                                                            <ui:TextBlock
                                                                 Margin="0,4,0,0"
                                                                 Style="{StaticResource CaptionTextStyle}"
                                                                 Text="{Binding DateFormatHelpText}"
@@ -1067,7 +1072,7 @@
                                                                     <ColumnDefinition Width="*" />
                                                                     <ColumnDefinition Width="Auto" />
                                                                 </Grid.ColumnDefinitions>
-                                                                <TextBlock VerticalAlignment="Center" Text="{Binding SourceSummary}" TextWrapping="Wrap" />
+                                                                <ui:TextBlock VerticalAlignment="Center" Text="{Binding SourceSummary}" TextWrapping="Wrap" />
                                                                 <ui:Button
                                                                     Grid.Column="1"
                                                                     Margin="8,0,0,0"
@@ -1088,20 +1093,20 @@
                                                             GroupName="GuidedTerminalField"
                                                             IsChecked="{Binding IsTerminalField, Mode=OneWay}" />
 
-                                                        <Expander
+                                                        <ui:CardExpander
                                                             Margin="0,12,0,0"
                                                             HorizontalContentAlignment="Stretch"
                                                             Header="{DynamicResource Loc.View.Profiles.Header.AdvancedDisplaySettings}">
                                                             <StackPanel Margin="0,8,0,0">
-                                                                <TextBlock Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.InternalKeyForThisValue}" />
-                                                                <TextBlock Margin="0,2,0,12" FontFamily="Consolas" Text="{Binding FieldId}" />
-                                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.DisplayFormat}" />
+                                                                <ui:TextBlock Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.InternalKeyForThisValue}" />
+                                                                <ui:TextBlock Margin="0,2,0,12" FontFamily="Consolas" Text="{Binding FieldId}" />
+                                                                <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.DisplayFormat}" />
                                                                 <ui:TextBox
                                                                     Margin="0,4,0,0"
                                                                     PlaceholderText="{DynamicResource Loc.View.Profiles.PlaceholderText.ExampleYyyyMMDdOrN2}"
                                                                     Text="{Binding DisplayFormat, UpdateSourceTrigger=PropertyChanged}" />
                                                             </StackPanel>
-                                                        </Expander>
+                                                        </ui:CardExpander>
                                                     </StackPanel>
                                                     </controls:SectionCard.Header>
                                                 </controls:SectionCard>
@@ -1123,18 +1128,18 @@
                                         Severity="{Binding TemplateStatusSeverity}"
                                         Title="{DynamicResource Loc.View.Profiles.Title.ReviewPathRule}" />
 
-                                    <Expander
+                                    <ui:CardExpander
                                         Margin="0,12,0,0"
                                         HorizontalContentAlignment="Stretch"
                                         Header="{DynamicResource Loc.View.Profiles.Header.ExpertViewGeneratedRegularExpression}">
-                                        <TextBox
+                                        <ui:TextBox
                                             Margin="0,8,0,0"
                                             Padding="8"
                                             FontFamily="Consolas"
                                             IsReadOnly="True"
                                             Text="{Binding GeneratedPatternPreview}"
                                             TextWrapping="Wrap" />
-                                    </Expander>
+                                    </ui:CardExpander>
                                 </StackPanel>
                                     <controls:SectionCard
                                         x:Name="AssignmentPickerPanel" Grid.Column="2" IsVisibleChanged="OnAssignmentPickerVisibilityChanged"
@@ -1145,7 +1150,7 @@
                                         Visibility="{Binding IsAssignmentPickerOpen, Converter={StaticResource BooleanToVisibilityConverter}}" Style="{StaticResource FluentCardStyle}">
                                         <controls:SectionCard.Header>
                                         <StackPanel>
-                                            <TextBlock FontWeight="SemiBold" Text="{Binding AssignmentPickerTitle}" TextWrapping="Wrap" />
+                                            <ui:TextBlock FontWeight="SemiBold" Text="{Binding AssignmentPickerTitle}" TextWrapping="Wrap" />
                                             <ItemsControl Margin="0,10,0,0" ItemsSource="{Binding GuidedPathSegments}">
                                                 <ItemsControl.ItemsPanel>
                                                     <ItemsPanelTemplate>
@@ -1155,7 +1160,7 @@
                                                 <ItemsControl.ItemTemplate>
                                                     <DataTemplate>
                                                         <StackPanel Margin="0,0,8,8" Orientation="Horizontal">
-                                                            <TextBlock
+                                                            <ui:TextBlock
                                                                 Margin="0,0,4,0"
                                                                 VerticalAlignment="Center"
                                                                 FontSize="18"
@@ -1220,15 +1225,15 @@
                             <controls:SectionCard IsEnabled="{Binding IsEditorReady}" Style="{StaticResource ExpertEditorSectionStyle}">
                                 <controls:SectionCard.Header>
                                 <StackPanel>
-                                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.2EditExpertRules}" />
-                                    <TextBlock
+                                    <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.2EditExpertRules}" />
+                                    <ui:TextBlock
                                         Margin="0,4,0,16"
                                         Style="{StaticResource CaptionTextStyle}"
                                         Text="{DynamicResource Loc.View.Profiles.Text.ConnectResultColumnsDirectlyToRegularExpressions}"
                                         TextWrapping="Wrap" />
 
-                                    <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.ResultColumns}" />
-                                    <DataGrid
+                                    <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.ResultColumns}" />
+                                    <ui:DataGrid
                                         Margin="0,4,0,8"
                                         MinHeight="160"
                                         HorizontalAlignment="Stretch"
@@ -1240,7 +1245,7 @@
                                         PreviewMouseWheel="OnNestedDataGridPreviewMouseWheel"
                                         ScrollViewer.HorizontalScrollBarVisibility="Auto"
                                         ScrollViewer.VerticalScrollBarVisibility="Disabled">
-                                        <DataGrid.Columns>
+                                        <ui:DataGrid.Columns>
                                             <DataGridTextColumn Width="1.3*" Binding="{Binding Header, UpdateSourceTrigger=PropertyChanged}" Header="{DynamicResource Loc.View.Profiles.Header.DisplayName}" MinWidth="120" />
                                             <DataGridTextColumn Width="1.2*" Binding="{Binding FieldId, UpdateSourceTrigger=PropertyChanged}" Header="Field ID *" MinWidth="110" />
                                             <DataGridTextColumn Width="1.1*" Binding="{Binding GroupName, UpdateSourceTrigger=PropertyChanged}" Header="{DynamicResource Loc.View.Profiles.Header.SingleGroup}" MinWidth="100" />
@@ -1248,7 +1253,7 @@
                                             <DataGridTemplateColumn Width="120" Header="{DynamicResource Loc.View.Profiles.Header.ValueType}">
                                                 <DataGridTemplateColumn.CellTemplate>
                                                     <DataTemplate>
-                                                        <TextBlock Margin="6,0" VerticalAlignment="Center" Text="{Binding KindDisplayName}" />
+                                                        <ui:TextBlock Margin="6,0" VerticalAlignment="Center" Text="{Binding KindDisplayName}" />
                                                     </DataTemplate>
                                                 </DataGridTemplateColumn.CellTemplate>
                                                 <DataGridTemplateColumn.CellEditingTemplate>
@@ -1301,8 +1306,8 @@
                                                     </DataTemplate>
                                                 </DataGridTemplateColumn.CellTemplate>
                                             </DataGridTemplateColumn>
-                                        </DataGrid.Columns>
-                                    </DataGrid>
+                                        </ui:DataGrid.Columns>
+                                    </ui:DataGrid>
                                     <ui:Button
                                         Margin="0,0,0,20"
                                         HorizontalAlignment="Left"
@@ -1310,8 +1315,8 @@
                                         Content="{DynamicResource Loc.View.Profiles.Content.AddColumn}"
                                         Icon="{ui:SymbolIcon Symbol=AddSquare20}" />
 
-                                    <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.RegularExpressionRules}" />
-                                    <DataGrid
+                                    <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.RegularExpressionRules}" />
+                                    <ui:DataGrid
                                         Margin="0,4,0,8"
                                         MinHeight="160"
                                         HorizontalAlignment="Stretch"
@@ -1323,12 +1328,12 @@
                                         PreviewMouseWheel="OnNestedDataGridPreviewMouseWheel"
                                         ScrollViewer.HorizontalScrollBarVisibility="Auto"
                                         ScrollViewer.VerticalScrollBarVisibility="Disabled">
-                                        <DataGrid.Columns>
+                                        <ui:DataGrid.Columns>
                                             <DataGridTextColumn Width="120" Binding="{Binding Id, UpdateSourceTrigger=PropertyChanged}" Header="{DynamicResource Loc.View.Profiles.Header.RuleID}" />
                                             <DataGridTemplateColumn Width="110" Header="{DynamicResource Loc.View.Profiles.Header.Matching}">
                                                 <DataGridTemplateColumn.CellTemplate>
                                                     <DataTemplate>
-                                                        <TextBlock Margin="6,0" VerticalAlignment="Center" Text="{Binding MatchModeDisplayName}" />
+                                                        <ui:TextBlock Margin="6,0" VerticalAlignment="Center" Text="{Binding MatchModeDisplayName}" />
                                                     </DataTemplate>
                                                 </DataGridTemplateColumn.CellTemplate>
                                                 <DataGridTemplateColumn.CellEditingTemplate>
@@ -1377,8 +1382,8 @@
                                                     </DataTemplate>
                                                 </DataGridTemplateColumn.CellTemplate>
                                             </DataGridTemplateColumn>
-                                        </DataGrid.Columns>
-                                    </DataGrid>
+                                        </ui:DataGrid.Columns>
+                                    </ui:DataGrid>
                                     <ui:Button
                                         HorizontalAlignment="Left"
                                         Command="{Binding AddRuleCommand}"
@@ -1395,8 +1400,8 @@
                                 Visibility="{Binding IsReviewStep, Converter={StaticResource BooleanToVisibilityConverter}}">
                                 <controls:SectionCard.Header>
                                 <StackPanel>
-                                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.4ReviewAndSave}" />
-                                    <TextBlock
+                                    <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.4ReviewAndSave}" />
+                                    <ui:TextBlock
                                         Margin="0,4,0,16"
                                         Style="{StaticResource CaptionTextStyle}"
                                         Text="{DynamicResource Loc.View.Profiles.Text.ReviewYourSettingsThenValidateAndSave}"
@@ -1406,37 +1411,37 @@
                                         <controls:SectionCard Margin="0,0,8,8" Style="{StaticResource FieldCardStyle}">
                                             <controls:SectionCard.Header>
                                             <StackPanel>
-                                                <TextBlock Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.Shell.Nav.Profiles}" />
-                                                <TextBlock Margin="0,4,0,0" FontSize="16" FontWeight="SemiBold" Text="{Binding DraftDisplayName}" />
-                                                <TextBlock Margin="0,2,0,0" FontFamily="Consolas" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding DraftId}" />
+                                                <ui:TextBlock Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.Shell.Nav.Profiles}" />
+                                                <ui:TextBlock Margin="0,4,0,0" FontSize="16" FontWeight="SemiBold" Text="{Binding DraftDisplayName}" />
+                                                <ui:TextBlock Margin="0,2,0,0" FontFamily="Consolas" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding DraftId}" />
                                             </StackPanel>
                                             </controls:SectionCard.Header>
                                         </controls:SectionCard>
                                         <controls:SectionCard Margin="8,0,0,8" Style="{StaticResource FieldCardStyle}">
                                             <controls:SectionCard.Header>
                                             <StackPanel>
-                                                <TextBlock Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.EditingMode225}" />
-                                                <TextBlock Margin="0,4,0,0" FontSize="16" FontWeight="SemiBold" Text="{Binding EditorModeDisplay}" />
-                                                <TextBlock Margin="0,2,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{DynamicResource Loc.View.Profiles.Text.PathRulesAndResultColumns}" />
+                                                <ui:TextBlock Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.EditingMode225}" />
+                                                <ui:TextBlock Margin="0,4,0,0" FontSize="16" FontWeight="SemiBold" Text="{Binding EditorModeDisplay}" />
+                                                <ui:TextBlock Margin="0,2,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{DynamicResource Loc.View.Profiles.Text.PathRulesAndResultColumns}" />
                                             </StackPanel>
                                             </controls:SectionCard.Header>
                                         </controls:SectionCard>
                                         <controls:SectionCard Margin="0,8,8,0" Style="{StaticResource FieldCardStyle}">
                                             <controls:SectionCard.Header>
                                             <StackPanel>
-                                                <TextBlock Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.StructuredResults}" />
-                                                <TextBlock Margin="0,4,0,0" FontSize="16" FontWeight="SemiBold" Text="{Binding DraftFields.Count, StringFormat={StaticResource Loc.Profiles.PathColumnCountFormat}}" />
-                                                <TextBlock Margin="0,2,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding DraftTextFileFields.Count, StringFormat={StaticResource Loc.Profiles.TextFileColumnCountFormat}}" />
-                                                <TextBlock Margin="0,2,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding DraftUserInputFields.Count, StringFormat={StaticResource Loc.Profiles.UserInputColumnCountFormat}}" />
+                                                <ui:TextBlock Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.StructuredResults}" />
+                                                <ui:TextBlock Margin="0,4,0,0" FontSize="16" FontWeight="SemiBold" Text="{Binding DraftFields.Count, StringFormat={StaticResource Loc.Profiles.PathColumnCountFormat}}" />
+                                                <ui:TextBlock Margin="0,2,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding DraftTextFileFields.Count, StringFormat={StaticResource Loc.Profiles.TextFileColumnCountFormat}}" />
+                                                <ui:TextBlock Margin="0,2,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding DraftUserInputFields.Count, StringFormat={StaticResource Loc.Profiles.UserInputColumnCountFormat}}" />
                                             </StackPanel>
                                             </controls:SectionCard.Header>
                                         </controls:SectionCard>
                                         <controls:SectionCard Margin="8,8,0,0" Style="{StaticResource FieldCardStyle}">
                                             <controls:SectionCard.Header>
                                             <StackPanel>
-                                                <TextBlock Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.ScanBehavior}" />
-                                                <TextBlock Margin="0,4,0,0" FontSize="16" FontWeight="SemiBold" Text="{Binding DraftRules.Count, StringFormat={StaticResource Loc.Profiles.PathRuleCountFormat}}" />
-                                                <TextBlock Margin="0,2,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding DraftExcludedDirectoryNameRules.Count, StringFormat={StaticResource Loc.Profiles.ExclusionRuleCountFormat}}" />
+                                                <ui:TextBlock Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.ScanBehavior}" />
+                                                <ui:TextBlock Margin="0,4,0,0" FontSize="16" FontWeight="SemiBold" Text="{Binding DraftRules.Count, StringFormat={StaticResource Loc.Profiles.PathRuleCountFormat}}" />
+                                                <ui:TextBlock Margin="0,2,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding DraftExcludedDirectoryNameRules.Count, StringFormat={StaticResource Loc.Profiles.ExclusionRuleCountFormat}}" />
                                             </StackPanel>
                                             </controls:SectionCard.Header>
                                         </controls:SectionCard>
@@ -1454,10 +1459,11 @@
                                 </controls:SectionCard.Header>
                             </controls:SectionCard>
                         </StackPanel>
-                    </ScrollViewer>
+                    </ui:DynamicScrollViewer>
 
                     <controls:SectionCard
                         x:Name="EditorFooter"
+                        controls:FloatingNotificationChrome.IsBottomChrome="True"
                         Grid.Row="2"
                         Margin="8,12,8,8"
                         Style="{StaticResource FluentToolbarCardStyle}">
@@ -1482,7 +1488,7 @@
                                     Command="{Binding PreviousEditorStepCommand}"
                                     Content="{DynamicResource Loc.View.Profiles.Content.Back}"
                                     Icon="{ui:SymbolIcon Symbol=ArrowLeft20}" />
-                                <TextBlock
+                                <ui:TextBlock
                                     x:Name="EditorFooterStatusText"
                                     Grid.Column="1"
                                     Margin="0,0,16,0"
@@ -1548,12 +1554,12 @@
                         </controls:SectionCard.Header>
                     </controls:SectionCard>
                 </Grid>
-            </TabItem>
+            </ui:TabViewItem>
 
-            <TabItem Header="{DynamicResource Loc.View.Profiles.Header.LoadStatus}">
+            <ui:TabViewItem Header="{DynamicResource Loc.View.Profiles.Header.LoadStatus}">
                 <!-- Inspection booleans are getter-only. Grid IsReadOnly does not
                      override the CheckBox IsChecked default TwoWay binding. -->
-                <ScrollViewer
+                <ui:DynamicScrollViewer
                     x:Name="ProfileLoadStatusScrollViewer"
                     Style="{StaticResource FluentGutteredScrollViewerStyle}">
                     <StackPanel Margin="0,8,0,24">
@@ -1566,13 +1572,13 @@
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
                                     </Grid.RowDefinitions>
-                                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.ProfileLoadStatus}" AutomationProperties.HeadingLevel="Level2" />
-                                    <TextBlock
+                                    <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.ProfileLoadStatus}" AutomationProperties.HeadingLevel="Level2" />
+                                    <ui:TextBlock
                                         Grid.Row="1"
                                         Margin="0,4,0,12"
                                         Style="{StaticResource CaptionTextStyle}"
                                         Text="{DynamicResource Loc.View.Profiles.Text.SelectAProfileAvailableToTheApp}" TextWrapping="Wrap" />
-                                    <DataGrid
+                                    <ui:DataGrid
                                         Grid.Row="2"
                                         MinHeight="280"
                                         AutoGenerateColumns="False"
@@ -1585,11 +1591,11 @@
                                         SelectedItem="{Binding SelectedProfile}"
                                         SelectionMode="Single"
                                         Style="{StaticResource FluentDataGridStyle}">
-                                        <DataGrid.Columns>
+                                        <ui:DataGrid.Columns>
                                             <DataGridTextColumn Width="*" Binding="{Binding DisplayName}" Header="{DynamicResource Loc.View.Profiles.Header.DisplayName}" MinWidth="140" />
                                             <DataGridTextColumn Width="90" Binding="{Binding Kind}" Header="{DynamicResource Loc.View.Profiles.Header.DefinitionType}" />
-                                        </DataGrid.Columns>
-                                    </DataGrid>
+                                        </ui:DataGrid.Columns>
+                                    </ui:DataGrid>
                                 </Grid>
                                 </controls:SectionCard.Header>
                             </controls:SectionCard>
@@ -1598,32 +1604,32 @@
                                 <controls:SectionCard Style="{StaticResource EditorSectionStyle}">
                                     <controls:SectionCard.Header>
                                     <StackPanel>
-                                        <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.SelectedProfile}" />
-                                        <TextBlock
+                                        <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.SelectedProfile}" />
+                                        <ui:TextBlock
                                             Margin="0,4,0,12"
                                             Style="{StaticResource CaptionTextStyle}"
                                             Text="{Binding SelectedProfile.Id, StringFormat={StaticResource Loc.Profiles.ProfileIdFormat}}"
                                             TextTrimming="CharacterEllipsis" />
                                         <WrapPanel>
                                             <StackPanel MinWidth="120" Margin="0,0,16,8">
-                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.Version}" />
-                                                <TextBlock Text="{Binding SelectedProfile.Version}" />
+                                                <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.Version}" />
+                                                <ui:TextBlock Text="{Binding SelectedProfile.Version}" />
                                             </StackPanel>
                                             <StackPanel MinWidth="120" Margin="0,0,16,8">
-                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.SearchTarget}" />
-                                                <TextBlock Text="{Binding SelectedProfile.CandidateKind}" />
+                                                <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.SearchTarget}" />
+                                                <ui:TextBlock Text="{Binding SelectedProfile.CandidateKind}" />
                                             </StackPanel>
                                             <StackPanel MinWidth="100" Margin="0,0,16,8">
-                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.ColumnCount}" />
-                                                <TextBlock Text="{Binding SelectedProfile.FieldCount}" />
+                                                <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.ColumnCount}" />
+                                                <ui:TextBlock Text="{Binding SelectedProfile.FieldCount}" />
                                             </StackPanel>
                                             <StackPanel MinWidth="120" Margin="0,0,0,8">
-                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.FolderExclusionRules}" />
-                                                <TextBlock Text="{Binding SelectedProfile.ExcludedDirectoryRuleCount}" />
+                                                <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.FolderExclusionRules}" />
+                                                <ui:TextBlock Text="{Binding SelectedProfile.ExcludedDirectoryRuleCount}" />
                                             </StackPanel>
                                             <StackPanel MinWidth="120" Margin="16,0,0,8">
-                                                <TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.TextFileValues}" />
-                                                <TextBlock Text="{Binding SelectedProfile.TextFileFieldCount}" />
+                                                <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{DynamicResource Loc.View.Profiles.Text.TextFileValues}" />
+                                                <ui:TextBlock Text="{Binding SelectedProfile.TextFileFieldCount}" />
                                             </StackPanel>
                                         </WrapPanel>
                                     </StackPanel>
@@ -1637,8 +1643,8 @@
                                             <RowDefinition Height="Auto" />
                                             <RowDefinition Height="Auto" />
                                         </Grid.RowDefinitions>
-                                        <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.ResultColumns}" />
-                                        <DataGrid
+                                        <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.ResultColumns}" />
+                                        <ui:DataGrid
                                             Grid.Row="1"
                                             Margin="0,12,0,0"
                                             MinHeight="160"
@@ -1650,7 +1656,7 @@
                                             PreviewMouseWheel="OnNestedDataGridPreviewMouseWheel"
                                             ScrollViewer.VerticalScrollBarVisibility="Disabled"
                                             Style="{StaticResource FluentDataGridStyle}">
-                                            <DataGrid.Columns>
+                                            <ui:DataGrid.Columns>
                                                 <DataGridTextColumn Width="50" Binding="{Binding Order}" Header="#" />
                                                 <DataGridTextColumn Width="1.4*" Binding="{Binding Header}" Header="{DynamicResource Loc.View.Profiles.Header.DisplayName}" MinWidth="110" />
                                                 <DataGridTextColumn Width="1.2*" Binding="{Binding FieldId}" Header="Field ID" MinWidth="100" />
@@ -1662,8 +1668,8 @@
                                                 <DataGridTextColumn Width="100" Binding="{Binding ParseFormat}" Header="{DynamicResource Loc.View.Profiles.Header.InputFormat}" />
                                                 <DataGridTextColumn Width="100" Binding="{Binding DisplayFormat}" Header="{DynamicResource Loc.View.Profiles.Text.DisplayFormat}" />
                                                 <DataGridTextColumn Width="90" Binding="{Binding ValueMappings}" Header="{DynamicResource Loc.View.Profiles.Header.ValueMappings}" />
-                                            </DataGrid.Columns>
-                                        </DataGrid>
+                                            </ui:DataGrid.Columns>
+                                        </ui:DataGrid>
                                     </Grid>
                                     </controls:SectionCard.Header>
                                 </controls:SectionCard>
@@ -1676,14 +1682,14 @@
                                             <RowDefinition Height="Auto" />
                                         </Grid.RowDefinitions>
                                         <StackPanel>
-                                            <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.TextFileValues}" />
-                                            <TextBlock
+                                            <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.TextFileValues}" />
+                                            <ui:TextBlock
                                                 Margin="0,4,0,0"
                                                 Style="{StaticResource CaptionTextStyle}"
                                                 Text="{DynamicResource Loc.View.Profiles.Text.TheseColumnsCompareNamesAndReadFile}"
                                                 TextWrapping="Wrap" />
                                         </StackPanel>
-                                        <DataGrid
+                                        <ui:DataGrid
                                             Grid.Row="1"
                                             Margin="0,12,0,0"
                                             MinHeight="120"
@@ -1695,7 +1701,7 @@
                                             PreviewMouseWheel="OnNestedDataGridPreviewMouseWheel"
                                             ScrollViewer.VerticalScrollBarVisibility="Disabled"
                                             Style="{StaticResource FluentDataGridStyle}">
-                                            <DataGrid.Columns>
+                                            <ui:DataGrid.Columns>
                                                 <DataGridTextColumn Width="50" Binding="{Binding Order}" Header="#" />
                                                 <DataGridTextColumn Width="1.2*" Binding="{Binding Header}" Header="{DynamicResource Loc.View.Profiles.Header.DisplayName}" MinWidth="110" />
                                                 <DataGridTextColumn Width="1.1*" Binding="{Binding FieldId}" Header="Field ID" MinWidth="100" />
@@ -1705,8 +1711,8 @@
                                                 <DataGridCheckBoxColumn Width="100" Binding="{Binding IgnoreCase, Mode=OneWay}" Header="{DynamicResource Loc.View.Profiles.Content.IgnoreCase}" />
                                                 <DataGridTextColumn Width="95" Binding="{Binding MaxBytes}" Header="{DynamicResource Loc.View.Profiles.Header.MaximumBytes}" />
                                                 <DataGridTextColumn Width="85" Binding="{Binding TimeoutMilliseconds}" Header="{DynamicResource Loc.View.Profiles.Header.LimitMs259}" />
-                                            </DataGrid.Columns>
-                                        </DataGrid>
+                                            </ui:DataGrid.Columns>
+                                        </ui:DataGrid>
                                     </Grid>
                                     </controls:SectionCard.Header>
                                 </controls:SectionCard>
@@ -1718,8 +1724,8 @@
                                             <RowDefinition Height="Auto" />
                                             <RowDefinition Height="Auto" />
                                         </Grid.RowDefinitions>
-                                        <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.PathRules}" />
-                                        <DataGrid
+                                        <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.PathRules}" />
+                                        <ui:DataGrid
                                             Grid.Row="1"
                                             Margin="0,12,0,0"
                                             MinHeight="160"
@@ -1731,7 +1737,7 @@
                                             PreviewMouseWheel="OnNestedDataGridPreviewMouseWheel"
                                             ScrollViewer.VerticalScrollBarVisibility="Disabled"
                                             Style="{StaticResource FluentDataGridStyle}">
-                                            <DataGrid.Columns>
+                                            <ui:DataGrid.Columns>
                                                 <DataGridTextColumn Width="50" Binding="{Binding Order}" Header="#" />
                                                 <DataGridTextColumn Width="110" Binding="{Binding Id}" Header="{DynamicResource Loc.View.Profiles.Header.RuleID}" />
                                                 <DataGridTextColumn Width="90" Binding="{Binding MatchMode}" Header="{DynamicResource Loc.View.Profiles.Header.Matching}" />
@@ -1739,8 +1745,8 @@
                                                 <DataGridTextColumn Width="90" Binding="{Binding TimeoutMilliseconds}" Header="{DynamicResource Loc.View.Profiles.Header.LimitMs}" />
                                                 <DataGridTextColumn Width="3*" Binding="{Binding Pattern}" Header="{DynamicResource Loc.View.Profiles.Header.RegularExpressionPattern261}" MinWidth="240" />
                                                 <DataGridTextColumn Width="1.6*" Binding="{Binding StopTraversalGroups}" Header="{DynamicResource Loc.View.Profiles.Header.DescendantTraversalStopGroups}" MinWidth="160" />
-                                            </DataGrid.Columns>
-                                        </DataGrid>
+                                            </ui:DataGrid.Columns>
+                                        </ui:DataGrid>
                                     </Grid>
                                     </controls:SectionCard.Header>
                                 </controls:SectionCard>
@@ -1753,14 +1759,14 @@
                                             <RowDefinition Height="Auto" />
                                         </Grid.RowDefinitions>
                                         <StackPanel>
-                                            <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.ExcludedFolderNameRules}" />
-                                            <TextBlock
+                                            <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.Profiles.Text.ExcludedFolderNameRules}" />
+                                            <ui:TextBlock
                                                 Margin="0,4,0,0"
                                                 Style="{StaticResource CaptionTextStyle}"
                                                 Text="{DynamicResource Loc.View.Profiles.Text.AppliedOnlyToTheCurrentFolderS}"
                                                 TextWrapping="Wrap" />
                                         </StackPanel>
-                                        <DataGrid
+                                        <ui:DataGrid
                                             Grid.Row="1"
                                             Margin="0,12,0,0"
                                             MinHeight="120"
@@ -1772,15 +1778,15 @@
                                             PreviewMouseWheel="OnNestedDataGridPreviewMouseWheel"
                                             ScrollViewer.VerticalScrollBarVisibility="Disabled"
                                             Style="{StaticResource FluentDataGridStyle}">
-                                            <DataGrid.Columns>
+                                            <ui:DataGrid.Columns>
                                                 <DataGridTextColumn Width="50" Binding="{Binding Order}" Header="#" />
                                                 <DataGridTextColumn Width="120" Binding="{Binding Id}" Header="{DynamicResource Loc.View.Profiles.Header.RuleID}" />
                                                 <DataGridTextColumn Width="130" Binding="{Binding MatchMode}" Header="{DynamicResource Loc.View.Profiles.Header.FolderNameMatching}" />
                                                 <DataGridCheckBoxColumn Width="110" Binding="{Binding IgnoreCase, Mode=OneWay}" Header="{DynamicResource Loc.View.Profiles.Content.IgnoreCase}" />
                                                 <DataGridTextColumn Width="90" Binding="{Binding TimeoutMilliseconds}" Header="{DynamicResource Loc.View.Profiles.Header.LimitMs}" />
                                                 <DataGridTextColumn Width="3*" Binding="{Binding Pattern}" Header="{DynamicResource Loc.View.Profiles.Header.RegularExpressionPattern261}" MinWidth="240" />
-                                            </DataGrid.Columns>
-                                        </DataGrid>
+                                            </ui:DataGrid.Columns>
+                                        </ui:DataGrid>
                                     </Grid>
                                     </controls:SectionCard.Header>
                                 </controls:SectionCard>
@@ -1789,8 +1795,8 @@
 
                         <controls:SectionCard x:Name="ProfileDiagnosticsCard" Margin="0,16,0,0" Style="{StaticResource FluentCardStyle}">
                             <controls:SectionCard.Header>
-                            <Expander Header="{DynamicResource Loc.View.Profiles.Header.AdvancedPlugInAndDeclarativeProfileDiagnostics}">
-                                <DataGrid
+                            <ui:CardExpander Header="{DynamicResource Loc.View.Profiles.Header.AdvancedPlugInAndDeclarativeProfileDiagnostics}">
+                                <ui:DataGrid
                                     Margin="0,12,0,0"
                                     MinHeight="160"
                                     AutoGenerateColumns="False"
@@ -1800,20 +1806,20 @@
                                     PreviewMouseWheel="OnNestedDataGridPreviewMouseWheel"
                                     ScrollViewer.VerticalScrollBarVisibility="Disabled"
                                     Style="{StaticResource FluentDataGridStyle}">
-                                    <DataGrid.Columns>
+                                    <ui:DataGrid.Columns>
                                         <DataGridTextColumn Width="100" Binding="{Binding StatusText}" Header="{DynamicResource Loc.View.Profiles.Header.LoadStatus}" />
                                         <DataGridTextColumn Width="1.5*" Binding="{Binding DisplayName}" Header="{DynamicResource Loc.View.Profiles.Header.DisplayName}" />
                                         <DataGridTextColumn Width="1.4*" Binding="{Binding ProfileId}" Header="{DynamicResource Loc.View.Profiles.AutomationName.ProfileID}" />
                                         <DataGridTextColumn Width="3*" Binding="{Binding Diagnostics}" Header="{DynamicResource Loc.View.Profiles.Header.ValidationAndDiagnosticMessages}" />
                                         <DataGridTextColumn Width="2.5*" Binding="{Binding SourceDirectory}" Header="{DynamicResource Loc.View.Profiles.Header.SourceFolder}" />
-                                    </DataGrid.Columns>
-                                </DataGrid>
-                            </Expander>
+                                    </ui:DataGrid.Columns>
+                                </ui:DataGrid>
+                            </ui:CardExpander>
                             </controls:SectionCard.Header>
                         </controls:SectionCard>
                     </StackPanel>
-                </ScrollViewer>
-            </TabItem>
-        </TabControl>
+                </ui:DynamicScrollViewer>
+            </ui:TabViewItem>
+        </ui:TabView>
     </controls:WorkspacePageFrame>
 </Page>

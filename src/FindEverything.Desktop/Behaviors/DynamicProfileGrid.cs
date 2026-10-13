@@ -101,6 +101,7 @@ public static partial class DynamicProfileGrid
     {
         var localizer = GetLocalizer(dataGrid);
         InitializeSizing(dataGrid);
+        InitializeColumnFilters(dataGrid);
         var fieldsSnapshot = (GetFields(dataGrid) as IEnumerable)?.OfType<ProfileFieldDescriptor>()
             .OrderBy(static field => field.Order).ToArray() ?? [];
         var signature = GetSchemaSignature(dataGrid, fieldsSnapshot);
@@ -167,6 +168,7 @@ public static partial class DynamicProfileGrid
         {
             Header = L(localizer, "Loc.Catalog.Column.FolderPath", "폴더 경로"),
             Binding = new Binding(nameof(ViewModels.CatalogItemViewModel.FullPath)),
+            ToolTipBinding = new Binding(nameof(ViewModels.CatalogItemViewModel.OriginalFullPath)),
             IsReadOnly = true,
             Width = new DataGridLength(240),
             MinWidth = 180,
@@ -183,7 +185,7 @@ public static partial class DynamicProfileGrid
     {
         if (field.SourceKind != ProfileFieldSourceKind.TextFileContent) return field.Header;
         var panel = new StackPanel { Orientation = Orientation.Horizontal };
-        panel.Children.Add(new TextBlock { Text = field.Header, VerticalAlignment = VerticalAlignment.Center });
+        panel.Children.Add(new Wpf.Ui.Controls.TextBlock { Text = field.Header, VerticalAlignment = VerticalAlignment.Center });
         var label = L(localizer, "Loc.Catalog.Column.Refresh", "이 컬럼 다시 읽기");
         var button = new Wpf.Ui.Controls.Button
         {
@@ -492,41 +494,33 @@ public static partial class DynamicProfileGrid
         }
     }
 
+    internal static void FocusSelectionCheckBox(DataGridRow row)
+    {
+        static CheckBox? Find(DependencyObject current)
+        {
+            if (current is CheckBox checkBox) return checkBox;
+            for (var index = 0; index < System.Windows.Media.VisualTreeHelper.GetChildrenCount(current); index++)
+            {
+                if (Find(System.Windows.Media.VisualTreeHelper.GetChild(current, index)) is { } found) return found;
+            }
+            return null;
+        }
+        if (Find(row) is { } checkBox) checkBox.Focus();
+        else row.Focus();
+    }
+
     private sealed class HighlightingTextColumn : DataGridTextColumn
     {
+        public BindingBase? ToolTipBinding { get; init; }
+
         protected override FrameworkElement GenerateElement(DataGridCell cell, object dataItem)
         {
-            var element = base.GenerateElement(cell, dataItem);
-            if (element is not TextBlock textBlock)
-            {
-                return element;
-            }
-            textBlock.TextTrimming = TextTrimming.CharacterEllipsis;
-            if (Binding is not null) BindingOperations.SetBinding(textBlock, FrameworkElement.ToolTipProperty, Binding);
-
-            var displayBinding = BindingOperations.GetBindingBase(textBlock, TextBlock.TextProperty);
-            BindingOperations.ClearBinding(textBlock, TextBlock.TextProperty);
-            if (displayBinding is not null)
-            {
-                BindingOperations.SetBinding(
-                    textBlock,
-                    TextHighlighting.DisplayTextProperty,
-                    displayBinding);
-            }
-
-            BindingOperations.SetBinding(
-                textBlock,
-                TextHighlighting.HighlightTextProperty,
-                new Binding("DataContext.FilterText")
-                {
-                    Mode = BindingMode.OneWay,
-                    RelativeSource = new RelativeSource(
-                        RelativeSourceMode.FindAncestor,
-                        typeof(DataGrid),
-                        1),
-                });
-            return textBlock;
+            var content = new Views.Controls.SelectableCatalogText(Binding ?? new Binding { Mode = BindingMode.OneWay });
+            if (ToolTipBinding is not null) content.SetBinding(FrameworkElement.ToolTipProperty, ToolTipBinding);
+            return content;
         }
+
+        protected override FrameworkElement GenerateEditingElement(DataGridCell cell, object dataItem) => GenerateElement(cell, dataItem);
     }
 
     private sealed class MappedHighlightingTextColumn(string fieldId) : DataGridColumn
@@ -552,29 +546,10 @@ public static partial class DynamicProfileGrid
             panel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             panel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-            var valueText = new TextBlock
+            var valueText = new Views.Controls.SelectableCatalogText(new Binding($"DisplayValues[{fieldId}]")
             {
-                VerticalAlignment = VerticalAlignment.Center,
-                TextTrimming = TextTrimming.CharacterEllipsis,
-            };
-            BindingOperations.SetBinding(
-                valueText,
-                TextHighlighting.DisplayTextProperty,
-                new Binding($"DisplayValues[{fieldId}]")
-                {
-                    Mode = BindingMode.OneWay,
-                });
-            BindingOperations.SetBinding(
-                valueText,
-                TextHighlighting.HighlightTextProperty,
-                new Binding("DataContext.FilterText")
-                {
-                    Mode = BindingMode.OneWay,
-                    RelativeSource = new RelativeSource(
-                        RelativeSourceMode.FindAncestor,
-                        typeof(DataGrid),
-                        1),
-                });
+                Mode = BindingMode.OneWay,
+            });
             panel.Children.Add(valueText);
             valueText.SetBinding(FrameworkElement.ToolTipProperty, new Binding($"DisplayValues[{fieldId}]") { Mode = BindingMode.OneWay });
 
@@ -584,7 +559,7 @@ public static partial class DynamicProfileGrid
                 Padding = new Thickness(4, 0, 4, 0),
                 VerticalAlignment = VerticalAlignment.Center,
                 CornerRadius = new CornerRadius(4),
-                Content = new TextBlock
+                Content = new Wpf.Ui.Controls.TextBlock
                 {
                     Text = "↔",
                     FontSize = 10,
@@ -638,7 +613,7 @@ public static partial class DynamicProfileGrid
             {
                 Margin = new Thickness(6, 0, 0, 0), Padding = new Thickness(4, 0, 4, 0), CornerRadius = new CornerRadius(4),
                 VerticalAlignment = VerticalAlignment.Center,
-                Content = new TextBlock { Text = "…", FontWeight = FontWeights.SemiBold },
+                Content = new Wpf.Ui.Controls.TextBlock { Text = "…", FontWeight = FontWeights.SemiBold },
             };
             previewBadge.SetResourceReference(Control.BackgroundProperty, "ControlFillColorSecondaryBrush");
             previewBadge.SetBinding(UIElement.VisibilityProperty, new Binding("PreviewTooltips")
@@ -684,14 +659,20 @@ public static partial class DynamicProfileGrid
         {
             var textBox = new Wpf.Ui.Controls.TextBox
             {
-                Margin = new Thickness(4, 2, 4, 2),
+                MinHeight = 32,
                 // 120 DIP column - 24 DIP cell padding - 8 DIP editor margin.
                 MinWidth = 80,
                 MaxLength = ProfileManifestLimits.MaximumUserInputValueLength,
-                ClearButtonEnabled = true,
                 PlaceholderText = field.Placeholder ?? string.Empty,
                 ToolTip = field.Placeholder,
             };
+            textBox.SetResourceReference(FrameworkElement.StyleProperty, "CatalogUserInputTextBoxStyle");
+            textBox.SetResourceReference(FrameworkElement.MarginProperty, "CatalogEditorMargin");
+            textBox.SetBinding(System.Windows.Controls.TextBox.IsReadOnlyProperty, new Binding("DataContext.IsReadOnlyDataSource")
+            {
+                Mode = BindingMode.OneWay,
+                RelativeSource = new(RelativeSourceMode.FindAncestor, typeof(DataGrid), 1),
+            });
             BindingOperations.SetBinding(
                 textBox,
                 System.Windows.Controls.TextBox.TextProperty,
@@ -708,7 +689,7 @@ public static partial class DynamicProfileGrid
 
         private static void OnGotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs eventArgs)
         {
-            if (sender is not Wpf.Ui.Controls.TextBox textBox
+            if (sender is not Wpf.Ui.Controls.TextBox textBox || textBox.IsReadOnly
                 || textBox.GetValue(ActiveEditorOwnerProperty) is not null
                 || FindAncestor<DataGrid>(textBox)?.DataContext is not ViewModels.CatalogViewModel viewModel) return;
             viewModel.BeginUserInputEdit();
@@ -726,7 +707,7 @@ public static partial class DynamicProfileGrid
             object sender,
             KeyboardFocusChangedEventArgs eventArgs)
         {
-            if (sender is not Wpf.Ui.Controls.TextBox textBox || textBox.IsKeyboardFocusWithin) return;
+            if (sender is not Wpf.Ui.Controls.TextBox textBox || textBox.IsReadOnly || textBox.IsKeyboardFocusWithin) return;
             try
             {
                 if (textBox.DataContext is not ViewModels.CatalogItemViewModel item) return;

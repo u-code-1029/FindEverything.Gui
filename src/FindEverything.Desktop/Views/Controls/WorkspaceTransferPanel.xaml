@@ -1,0 +1,80 @@
+<UserControl x:Class="FindEverything.Desktop.Views.Controls.WorkspaceTransferPanel"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+    x:Name="TransferPanel" AllowDrop="True" PreviewDragOver="OnDragOver" PreviewDrop="OnDrop">
+    <Grid>
+        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+        <ui:Button x:Name="TransferMenuButton" Padding="8,4" MinHeight="28" Appearance="Transparent"
+            Click="OnMenuClick"
+            AutomationProperties.Name="{DynamicResource Loc.Transfer.Menu.Title}">
+            <ui:Button.ToolTip>
+                <StackPanel MaxWidth="360">
+                    <ui:TextBlock Text="{Binding SourceDescription}" TextWrapping="Wrap"/>
+                    <ui:TextBlock Margin="0,4,0,0" Text="{Binding ProgressText}" TextWrapping="Wrap"
+                        Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                    <ui:TextBlock Margin="0,8,0,0" Text="{DynamicResource Loc.Transfer.Menu.Help}" TextWrapping="Wrap"/>
+                </StackPanel>
+            </ui:Button.ToolTip>
+            <StackPanel Orientation="Horizontal">
+                <ui:ProgressRing Width="16" Height="16" Margin="0,0,8,0" IsIndeterminate="True"
+                    Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                <ui:SymbolIcon Symbol="Share20" Width="16" Height="16" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                <ui:TextBlock MaxWidth="120" TextTrimming="CharacterEllipsis" VerticalAlignment="Center">
+                    <ui:TextBlock.Style>
+                        <Style TargetType="ui:TextBlock">
+                            <Setter Property="Text" Value="{Binding SelectedSource.DisplayName, TargetNullValue={StaticResource Loc.Transfer.Menu.Title}}"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding ShowSourceSelector, ElementName=TransferPanel}" Value="False">
+                                    <Setter Property="Text" Value="{DynamicResource Loc.Transfer.Menu.Profiles}"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding IsBusy}" Value="True"><Setter Property="Text" Value="{Binding ProgressText}"/></DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </ui:TextBlock.Style>
+                </ui:TextBlock>
+                <ui:SymbolIcon Symbol="LockClosed16" Width="12" Height="12" Margin="4,0,0,0" VerticalAlignment="Center"
+                    Visibility="{Binding IsImported, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                <ui:SymbolIcon Symbol="ChevronDown12" Width="12" Height="12" Margin="8,0,0,0" VerticalAlignment="Center"/>
+            </StackPanel>
+        </ui:Button>
+        <ui:Button Grid.Column="1" Width="28" Height="28" Margin="4,0,0,0" Padding="0" Appearance="Transparent"
+            Command="{Binding CancelCommand}" Icon="{ui:SymbolIcon Symbol=Dismiss16}"
+            AutomationProperties.Name="{DynamicResource Loc.Common.Cancel}" ToolTip="{DynamicResource Loc.Common.Cancel}"
+            Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+        <ui:Flyout x:Name="TransferFlyout" Width="0" Height="0" MinWidth="0" MinHeight="0" Padding="16" Placement="Bottom">
+            <ui:DynamicScrollViewer MaxHeight="480" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Width="300" PreviewKeyDown="OnMenuKeyDown">
+                    <ui:TextBlock FontSize="16" FontWeight="SemiBold" Margin="0,0,0,12" Text="{DynamicResource Loc.Transfer.Menu.Title}"/>
+                    <StackPanel Margin="0,0,0,12" Visibility="{Binding ShowSourceSelector, ElementName=TransferPanel, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <Label Padding="0" Margin="0,0,0,4" Content="{DynamicResource Loc.Transfer.Source.Label}" Target="{Binding ElementName=SourcePicker}"/>
+                        <ComboBox x:Name="SourcePicker" HorizontalAlignment="Stretch" ItemsSource="{Binding Sources}" SelectedItem="{Binding SelectedSource}"
+                            DisplayMemberPath="DisplayName" ToolTip="{Binding SourceDescription}" IsEnabled="{Binding CanSelectSource}"
+                            AutomationProperties.Name="{DynamicResource Loc.Transfer.Source.Label}"/>
+                        <ui:TextBlock Margin="0,4,0,0" Text="{Binding SourceDescription}" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                    </StackPanel>
+                    <ui:Button x:Name="WorkspaceOpenButton" Click="OnTransferActionClick" Margin="0,0,0,8" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                        Command="{Binding OpenCommand}" Content="{DynamicResource Loc.Transfer.Open.Short}" Icon="{ui:SymbolIcon Symbol=FolderOpen20}"
+                        ToolTip="{DynamicResource Loc.Transfer.Open.Help}"/>
+                    <ui:Button Click="OnTransferActionClick" Margin="0,0,0,8" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                        Command="{Binding ExportPackageCommand}" CommandParameter="{Binding ExportOwner, ElementName=TransferPanel}"
+                        Content="{DynamicResource Loc.Transfer.Export.Package.Short}" Icon="{ui:SymbolIcon Symbol=Share20}"
+                        ToolTip="{DynamicResource Loc.Transfer.Export.Package.Help}" Visibility="{Binding ShowPackageExport, ElementName=TransferPanel, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                    <ui:Button Click="OnTransferActionClick" Margin="0,0,0,8" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                        Command="{Binding ExportProfileCommand}" CommandParameter="{Binding Profile, ElementName=TransferPanel}"
+                        Content="{DynamicResource Loc.Transfer.Export.Profile}" ToolTip="{DynamicResource Loc.Transfer.Export.Profile.Help}"
+                        Visibility="{Binding ShowProfileExport, ElementName=TransferPanel, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                    <ui:Button Click="OnTransferActionClick" Margin="0,0,0,8" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                        Command="{Binding RelinkCommand}" Content="{DynamicResource Loc.Transfer.Root.Reconnect}" ToolTip="{DynamicResource Loc.Transfer.Root.Help}"
+                        Visibility="{Binding IsImported, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                    <ui:Button Click="OnTransferActionClick" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                        Command="{Binding UseLocalCommand}" Content="{DynamicResource Loc.Transfer.Source.Local}" ToolTip="{DynamicResource Loc.Transfer.Source.Local.Help}"
+                        Visibility="{Binding IsImported, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                    <StackPanel Margin="0,12,0,0" Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <ui:TextBlock Text="{Binding ProgressText}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+                    </StackPanel>
+                </StackPanel>
+            </ui:DynamicScrollViewer>
+        </ui:Flyout>
+    </Grid>
+</UserControl>

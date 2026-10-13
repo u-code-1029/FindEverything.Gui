@@ -35,7 +35,7 @@
         </Style>
     </Page.Resources>
 
-    <ScrollViewer
+    <ui:DynamicScrollViewer
         x:Name="HomeScrollViewer"
         HorizontalScrollBarVisibility="Disabled"
         Style="{StaticResource FluentGutteredScrollViewerStyle}"
@@ -52,12 +52,12 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <StackPanel MaxWidth="760" HorizontalAlignment="Left">
-                        <TextBlock
+                        <ui:TextBlock
                             FontSize="12"
                             FontWeight="SemiBold"
                             Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
                             Text="{DynamicResource Loc.Home.Hero.Kicker}" />
-                        <TextBlock
+                        <ui:TextBlock
                             Margin="0,8,0,0"
                             AutomationProperties.HeadingLevel="Level1"
                             FontFamily="Segoe UI Variable Display, Segoe UI"
@@ -66,7 +66,7 @@
                             LineHeight="40"
                             Text="{DynamicResource Loc.Home.Hero.Title}"
                             TextWrapping="Wrap" />
-                        <TextBlock
+                        <ui:TextBlock
                             Margin="0,10,0,0"
                             MaxWidth="720"
                             Style="{StaticResource PageSubtitleTextStyle}"
@@ -99,12 +99,12 @@
                 Severity="Informational"
                 Title="{DynamicResource Loc.Home.Operation.Title}" />
 
-            <TextBlock
+            <ui:TextBlock
                 Margin="0,16,0,0"
                 AutomationProperties.HeadingLevel="Level2"
                 Style="{StaticResource SectionTitleTextStyle}"
                 Text="{DynamicResource Loc.Home.Actions.Title}" />
-            <TextBlock
+            <ui:TextBlock
                 Margin="0,4,0,12"
                 Style="{StaticResource PageSubtitleTextStyle}"
                 Text="{DynamicResource Loc.Home.Actions.Subtitle}" />
@@ -135,17 +135,17 @@
                                 CornerRadius="10">
                                 <ui:SymbolIcon FontSize="24" Symbol="Search24" />
                             </controls:DisplayBadge>
-                            <StackPanel Grid.Column="1" Margin="14,0,0,0">
-                                <TextBlock FontSize="18" FontWeight="SemiBold" Text="{DynamicResource Loc.Home.Files.Title}" />
-                                <TextBlock Margin="0,3,0,0" Style="{StaticResource CaptionTextStyle}" Text="{Binding RootStateText}" />
+                            <StackPanel Grid.Column="1" Margin="16,0,0,0">
+                                <ui:TextBlock FontSize="18" FontWeight="SemiBold" Text="{DynamicResource Loc.Home.Files.Title}" />
+                                <ui:TextBlock Margin="0,4,0,0" Style="{StaticResource CaptionTextStyle}" Text="{Binding RootStateText}" />
                             </StackPanel>
                         </Grid>
-                        <TextBlock
+                        <ui:TextBlock
                             Grid.Row="1"
-                            Margin="0,14,0,18"
+                            Margin="0,16,0,16"
                             Style="{StaticResource BodyTextStyle}"
                             Text="{DynamicResource Loc.Home.Files.Description}" />
-                        <TextBlock Grid.Row="2" FontWeight="SemiBold"
+                        <ui:TextBlock Grid.Row="2" FontWeight="SemiBold"
                             Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
                             Text="{DynamicResource Loc.Home.Files.Action}" />
                     </Grid>
@@ -176,17 +176,17 @@
                                 CornerRadius="10">
                                 <ui:SymbolIcon FontSize="24" Symbol="TableSimple24" />
                             </controls:DisplayBadge>
-                            <StackPanel Grid.Column="1" Margin="14,0,0,0">
-                                <TextBlock FontSize="18" FontWeight="SemiBold" Text="{DynamicResource Loc.Home.Catalog.Title}" />
-                                <TextBlock Margin="0,3,0,0" Style="{StaticResource CaptionTextStyle}" Text="{Binding ProfileStateText}" />
+                            <StackPanel Grid.Column="1" Margin="16,0,0,0">
+                                <ui:TextBlock FontSize="18" FontWeight="SemiBold" Text="{DynamicResource Loc.Home.Catalog.Title}" />
+                                <ui:TextBlock Margin="0,4,0,0" Style="{StaticResource CaptionTextStyle}" Text="{Binding ProfileStateText}" />
                             </StackPanel>
                         </Grid>
-                        <TextBlock
+                        <ui:TextBlock
                             Grid.Row="1"
-                            Margin="0,14,0,18"
+                            Margin="0,16,0,16"
                             Style="{StaticResource BodyTextStyle}"
                             Text="{DynamicResource Loc.Home.Catalog.Description}" />
-                        <TextBlock Grid.Row="2" FontWeight="SemiBold"
+                        <ui:TextBlock Grid.Row="2" FontWeight="SemiBold"
                             Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
                             Text="{DynamicResource Loc.Home.Catalog.Action}" />
                     </Grid>
@@ -201,53 +201,53 @@
                     Style="{StaticResource HomeCardStyle}">
                     <controls:SectionCard.Header>
                     <StackPanel>
-                        <TextBlock
+                        <ui:TextBlock
                             AutomationProperties.HeadingLevel="Level2"
                             Style="{StaticResource SectionTitleTextStyle}"
                             Text="{DynamicResource Loc.Home.Workspace.Title}" />
-                        <TextBlock
+                        <ui:TextBlock
                             Margin="0,4,0,16"
                             Style="{StaticResource CaptionTextStyle}"
                             Text="{DynamicResource Loc.Home.Workspace.Subtitle}" />
 
-                        <Grid Margin="0,0,0,14">
+                        <Grid Margin="0,0,0,16">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <StackPanel>
-                                <TextBlock FontWeight="SemiBold" Text="{DynamicResource Loc.Home.Workspace.Root}" />
-                                <TextBlock
-                                    Margin="0,3,12,0"
+                                <ui:TextBlock FontWeight="SemiBold" Text="{DynamicResource Loc.Home.Workspace.Root}" />
+                                <ui:TextBlock
+                                    Margin="0,4,12,0"
                                     Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                     Text="{Binding RootPathText}"
                                     TextTrimming="CharacterEllipsis"
                                     ToolTip="{Binding RootPathText}" />
                             </StackPanel>
                             <controls:DisplayBadge Grid.Column="1" Style="{StaticResource HomeStateBadgeStyle}">
-                                <TextBlock FontSize="12" FontWeight="SemiBold" Text="{Binding RootStateText}" />
+                                <ui:TextBlock FontSize="12" FontWeight="SemiBold" Text="{Binding RootStateText}" />
                             </controls:DisplayBadge>
                         </Grid>
 
-                        <Grid Margin="0,0,0,14">
+                        <Grid Margin="0,0,0,16">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <StackPanel>
-                                <TextBlock FontWeight="SemiBold" Text="{DynamicResource Loc.Home.Workspace.Profile}" />
-                                <TextBlock Margin="0,3,12,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding ProfileName}" TextTrimming="CharacterEllipsis" />
+                                <ui:TextBlock FontWeight="SemiBold" Text="{DynamicResource Loc.Home.Workspace.Profile}" />
+                                <ui:TextBlock Margin="0,4,12,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding ProfileName}" TextTrimming="CharacterEllipsis" />
                             </StackPanel>
                             <controls:DisplayBadge Grid.Column="1" Style="{StaticResource HomeStateBadgeStyle}">
-                                <TextBlock FontSize="12" FontWeight="SemiBold" Text="{Binding ProfileCountText}" />
+                                <ui:TextBlock FontSize="12" FontWeight="SemiBold" Text="{Binding ProfileCountText}" />
                             </controls:DisplayBadge>
                         </Grid>
 
-                        <StackPanel Margin="0,0,0,14">
-                            <TextBlock FontWeight="SemiBold" Text="{DynamicResource Loc.Home.Workspace.FileDatabase}" />
-                            <TextBlock Margin="0,3,0,0" Style="{StaticResource CaptionTextStyle}" Text="{Binding FileDatabaseStateText}" />
-                            <TextBlock
-                                Margin="0,3,0,0"
+                        <StackPanel Margin="0,0,0,16">
+                            <ui:TextBlock FontWeight="SemiBold" Text="{DynamicResource Loc.Home.Workspace.FileDatabase}" />
+                            <ui:TextBlock Margin="0,4,0,0" Style="{StaticResource CaptionTextStyle}" Text="{Binding FileDatabaseStateText}" />
+                            <ui:TextBlock
+                                Margin="0,4,0,0"
                                 FontFamily="Consolas"
                                 FontSize="12"
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
@@ -257,10 +257,10 @@
                         </StackPanel>
 
                         <StackPanel>
-                            <TextBlock FontWeight="SemiBold" Text="{DynamicResource Loc.Home.Workspace.ProfileDatabase}" />
-                            <TextBlock Margin="0,3,0,0" Style="{StaticResource CaptionTextStyle}" Text="{Binding ProfileDatabaseStateText}" />
-                            <TextBlock
-                                Margin="0,3,0,0"
+                            <ui:TextBlock FontWeight="SemiBold" Text="{DynamicResource Loc.Home.Workspace.ProfileDatabase}" />
+                            <ui:TextBlock Margin="0,4,0,0" Style="{StaticResource CaptionTextStyle}" Text="{Binding ProfileDatabaseStateText}" />
+                            <ui:TextBlock
+                                Margin="0,4,0,0"
                                 FontFamily="Consolas"
                                 FontSize="12"
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
@@ -279,42 +279,42 @@
                     Style="{StaticResource HomeCardStyle}">
                     <controls:SectionCard.Header>
                     <StackPanel>
-                        <TextBlock
+                        <ui:TextBlock
                             AutomationProperties.HeadingLevel="Level2"
                             Style="{StaticResource SectionTitleTextStyle}"
                             Text="{Binding SetupTitle}" />
-                        <TextBlock Margin="0,4,0,16" Style="{StaticResource CaptionTextStyle}" Text="{Binding SetupMessage}" />
+                        <ui:TextBlock Margin="0,4,0,16" Style="{StaticResource CaptionTextStyle}" Text="{Binding SetupMessage}" />
 
-                        <Grid Margin="0,0,0,14">
+                        <Grid Margin="0,0,0,16">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <controls:DisplayBadge Style="{StaticResource HomeStepNumberStyle}">
-                                <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="{DynamicResource TextOnAccentFillColorPrimaryBrush}" Text="1" />
+                                <ui:TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="{DynamicResource TextOnAccentFillColorPrimaryBrush}" Text="1" />
                             </controls:DisplayBadge>
                             <StackPanel Grid.Column="1" Margin="12,0">
-                                <TextBlock FontWeight="SemiBold" Text="{DynamicResource Loc.Home.Setup.Location.Title}" />
-                                <TextBlock Margin="0,2,0,0" Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.Home.Setup.Location.Description}" />
+                                <ui:TextBlock FontWeight="SemiBold" Text="{DynamicResource Loc.Home.Setup.Location.Title}" />
+                                <ui:TextBlock Margin="0,2,0,0" Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.Home.Setup.Location.Description}" />
                             </StackPanel>
-                            <TextBlock Grid.Column="2" VerticalAlignment="Center" FontWeight="SemiBold" Text="{Binding LocationStepState}" />
+                            <ui:TextBlock Grid.Column="2" VerticalAlignment="Center" FontWeight="SemiBold" Text="{Binding LocationStepState}" />
                         </Grid>
 
-                        <Grid Margin="0,0,0,14">
+                        <Grid Margin="0,0,0,16">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <controls:DisplayBadge Style="{StaticResource HomeStepNumberStyle}">
-                                <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="{DynamicResource TextOnAccentFillColorPrimaryBrush}" Text="2" />
+                                <ui:TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="{DynamicResource TextOnAccentFillColorPrimaryBrush}" Text="2" />
                             </controls:DisplayBadge>
                             <StackPanel Grid.Column="1" Margin="12,0">
-                                <TextBlock FontWeight="SemiBold" Text="{DynamicResource Loc.Home.Setup.Profile.Title}" />
-                                <TextBlock Margin="0,2,0,0" Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.Home.Setup.Profile.Description}" />
+                                <ui:TextBlock FontWeight="SemiBold" Text="{DynamicResource Loc.Home.Setup.Profile.Title}" />
+                                <ui:TextBlock Margin="0,2,0,0" Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.Home.Setup.Profile.Description}" />
                             </StackPanel>
-                            <TextBlock Grid.Column="2" VerticalAlignment="Center" FontWeight="SemiBold" Text="{Binding ProfileStepState}" />
+                            <ui:TextBlock Grid.Column="2" VerticalAlignment="Center" FontWeight="SemiBold" Text="{Binding ProfileStepState}" />
                         </Grid>
 
                         <Grid>
@@ -324,13 +324,13 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <controls:DisplayBadge Style="{StaticResource HomeStepNumberStyle}">
-                                <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="{DynamicResource TextOnAccentFillColorPrimaryBrush}" Text="3" />
+                                <ui:TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="{DynamicResource TextOnAccentFillColorPrimaryBrush}" Text="3" />
                             </controls:DisplayBadge>
                             <StackPanel Grid.Column="1" Margin="12,0">
-                                <TextBlock FontWeight="SemiBold" Text="{DynamicResource Loc.Home.Setup.Scan.Title}" />
-                                <TextBlock Margin="0,2,0,0" Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.Home.Setup.Scan.Description}" />
+                                <ui:TextBlock FontWeight="SemiBold" Text="{DynamicResource Loc.Home.Setup.Scan.Title}" />
+                                <ui:TextBlock Margin="0,2,0,0" Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.Home.Setup.Scan.Description}" />
                             </StackPanel>
-                            <TextBlock Grid.Column="2" VerticalAlignment="Center" FontWeight="SemiBold" Text="{Binding ScanStepState}" />
+                            <ui:TextBlock Grid.Column="2" VerticalAlignment="Center" FontWeight="SemiBold" Text="{Binding ScanStepState}" />
                         </Grid>
                     </StackPanel>
                     </controls:SectionCard.Header>
@@ -345,11 +345,11 @@
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
                     <StackPanel>
-                        <TextBlock
+                        <ui:TextBlock
                             AutomationProperties.HeadingLevel="Level2"
                             Style="{StaticResource SectionTitleTextStyle}"
                             Text="{DynamicResource Loc.Home.Tools.Title}" />
-                        <TextBlock Margin="0,4,0,0" Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.Home.Tools.Subtitle}" />
+                        <ui:TextBlock Margin="0,4,0,0" Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.Home.Tools.Subtitle}" />
                     </StackPanel>
                     <WrapPanel Grid.Row="1" Margin="0,16,0,0">
                         <ui:CardAction
@@ -378,5 +378,5 @@
                 </controls:SectionCard.Header>
             </controls:SectionCard>
         </StackPanel>
-    </ScrollViewer>
+    </ui:DynamicScrollViewer>
 </Page>

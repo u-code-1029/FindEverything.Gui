@@ -66,7 +66,21 @@ public sealed class SettingsViewModelTests
         var vm = Create(new RecordingWriter());
         Assert.Equal("10", vm.UiUpdateBatchSizeText);
         Assert.Equal("3", vm.NotificationAutoDismissSecondsText);
+        Assert.Equal(CatalogRowDensity.Normal, vm.SelectedCatalogRowDensity.Value);
         Assert.True(vm.IsSaveAvailable);
+    }
+
+    [Theory]
+    [InlineData(CatalogRowDensity.Narrow)]
+    [InlineData(CatalogRowDensity.Normal)]
+    [InlineData(CatalogRowDensity.Wide)]
+    public async Task Catalog_density_is_saved_with_other_appearance_preferences(CatalogRowDensity density)
+    {
+        var writer = new RecordingWriter();
+        var vm = Create(writer);
+        vm.SelectedCatalogRowDensity = vm.CatalogRowDensityChoices.Single(choice => choice.Value == density);
+        await vm.SaveCommand.ExecuteAsync(null);
+        Assert.Equal(density, writer.LastUpdate!.Appearance!.CatalogRowDensity);
     }
 
     [Theory]

@@ -68,9 +68,11 @@ var fields = new[]
         { SourceKind = ProfileFieldSourceKind.TextFileContent },
     new ProfileFieldDescriptor("memo", "", "Memo", 5, false, ProfileFieldValueKind.String, true, null, null)
         { SourceKind = ProfileFieldSourceKind.UserInput, DefaultValue = "" }
-};
+}.Concat(Enumerable.Range(5, 15).Select(index => new ProfileFieldDescriptor(
+    $"field-{index}", $"field-{index}", $"Field {index}", index + 1, true,
+    ProfileFieldValueKind.String, false, null, null))).ToArray();
 var scope = new CatalogProjectionScope("scale-benchmark", "scale-profile", sourceRoot,
-    metadata.DatabasePath, "scale-v1", "en-US", status.LastScanId);
+    metadata.DatabasePath, "scale-v2-20-fields", "en-US", status.LastScanId);
 CatalogProjectionSnapshot? snapshot = reuse ? await catalog.FindAsync(scope) : null;
 var catalogSetup = Stopwatch.StartNew();
 if (snapshot is null)
@@ -85,6 +87,7 @@ if (snapshot is null)
             ["date"] = new DateTime(2026, 1, 1).AddDays(index % 365),
             ["text"] = $"Department {index % 20} invoice metadata {index:D7}"
         };
+        foreach (var field in fields.Skip(5)) values[field.FieldId] = $"Alpha client-{index % 100:D2} {field.FieldId}";
         writer.Append(new CatalogItem(full, $"item-{index}", "synthetic-rule", values, values, false));
         if ((index + 1) % 20_000 == 0) Console.WriteLine($"Prepared {index + 1:N0} structured rows");
     }
@@ -104,6 +107,25 @@ await using var sorted = catalog.OpenQuery(snapshot, new(SortFieldId: "number", 
 var catalogSorted = await Measure(async () => { _ = await sorted.ReadRangeAsync(0, 500); });
 await using var noteQuery = catalog.OpenQuery(snapshot, new("Alice"));
 var catalogCountTime = await Measure(async () => { _ = await noteQuery.CountAsync(); });
+var columnFilterSamples = new List<object>();
+var columnConditions = new CatalogColumnFilter[]
+{
+    new(CatalogColumnTarget.Field("number"), CatalogFilterOperator.NumberRange) { Minimum = catalogCount / 4, Maximum = catalogCount * 3 / 4 },
+    new(CatalogColumnTarget.Field("text"), CatalogFilterOperator.DoesNotContain) { Text = "Department 19 " },
+    new(CatalogColumnTarget.Field("date"), CatalogFilterOperator.DateRange) { StartDate = new DateTime(2026, 1, 1), EndDate = new DateTime(2026, 6, 30) },
+    new(CatalogColumnTarget.Field("alias"), CatalogFilterOperator.Contains) { Text = "Alice" },
+    new(CatalogColumnTarget.Field("memo"), CatalogFilterOperator.DoesNotContain) { Text = "skip" },
+    new(CatalogColumnTarget.Field("field-5"), CatalogFilterOperator.Contains) { Text = "Alpha" },
+    new(CatalogColumnTarget.Coverage, CatalogFilterOperator.CoverageEquals) { Boolean = false }
+};
+foreach (var conditionCount in new[] { 1, 3, 7 })
+{
+    await using var columnQuery = catalog.OpenQuery(snapshot, new() { Filters = columnConditions.Take(conditionCount).ToArray() });
+    var firstPageMilliseconds = await Measure(async () => { _ = await columnQuery.ReadRangeAsync(0, 500); });
+    long matchCount = 0;
+    var countMilliseconds = await Measure(async () => { matchCount = await columnQuery.CountAsync(); });
+    columnFilterSamples.Add(new { Conditions = conditionCount, MatchCount = matchCount, FirstPageMilliseconds = firstPageMilliseconds, CountMilliseconds = countMilliseconds });
+}
 Console.WriteLine(JsonSerializer.Serialize(new
 {
     Directory = directory, Runtime = Environment.Version.ToString(), OS = Environment.OSVersion.ToString(),
@@ -113,6 +135,7 @@ Console.WriteLine(JsonSerializer.Serialize(new
     File20SequentialPagesMilliseconds = sequential.Elapsed.TotalMilliseconds, Exact3SelectedMilliseconds = exactSelected,
     CatalogFirst500Milliseconds = catalogFirst, CatalogSearchP95Milliseconds = Percentile(catalogSamples),
     CatalogNumericSortFirst500Milliseconds = catalogSorted, CatalogFilteredCountMilliseconds = catalogCountTime,
+    StructuredColumns = fields.Length, TypedColumnFilters = columnFilterSamples,
     ManagedBytes = GC.GetTotalMemory(forceFullCollection: true), WorkingSetBytes = Environment.WorkingSet
 }, new JsonSerializerOptions { WriteIndented = true }));
 

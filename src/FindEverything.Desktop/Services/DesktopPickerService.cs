@@ -12,10 +12,42 @@ public interface IDesktopPickerService
     string? PickScanLogPath(string suggestedFileName);
 
     CatalogSelectionExportDestination? PickCatalogExportPath(string suggestedFileName);
+
+    string? PickWorkspaceImportPath() => null;
+
+    string? PickWorkspaceExportPath(string suggestedFileName, bool package) => null;
 }
 
 public sealed class DesktopPickerService(IAppLocalizer localizer) : IDesktopPickerService
 {
+    public string? PickWorkspaceImportPath()
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = localizer.Get("Loc.Transfer.Open", "프로필 또는 공유 데이터 열기"),
+            Filter = localizer.Get("Loc.Transfer.Open.Filter", "프로필·공유 데이터 (*.json;*.fepkg)|*.json;*.fepkg|프로필 (*.json)|*.json|공유 데이터 (*.fepkg)|*.fepkg"),
+            Multiselect = false,
+            CheckFileExists = true,
+        };
+        return dialog.ShowDialog(System.Windows.Application.Current.MainWindow) == true ? dialog.FileName : null;
+    }
+
+    public string? PickWorkspaceExportPath(string suggestedFileName, bool package)
+    {
+        var extension = package ? ".fepkg" : ".json";
+        var dialog = new SaveFileDialog
+        {
+            Title = localizer.Get(package ? "Loc.Transfer.Export.Package" : "Loc.Transfer.Export.Profile",
+                package ? "프로필·인덱스 묶음 내보내기" : "프로필 JSON 내보내기"),
+            Filter = package ? "FindEverything package (*.fepkg)|*.fepkg" : "JSON (*.json)|*.json",
+            DefaultExt = extension,
+            AddExtension = true,
+            OverwritePrompt = true,
+            FileName = Path.GetFileNameWithoutExtension(suggestedFileName) + extension,
+        };
+        return dialog.ShowDialog(System.Windows.Application.Current.MainWindow) == true ? dialog.FileName : null;
+    }
+
     public string? PickRootDirectory(string? initialDirectory)
     {
         var dialog = new OpenFolderDialog

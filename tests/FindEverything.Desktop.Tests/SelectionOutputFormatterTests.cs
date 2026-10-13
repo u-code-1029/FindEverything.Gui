@@ -8,6 +8,18 @@ namespace FindEverything.Desktop.Tests;
 public sealed class SelectionOutputFormatterTests
 {
     [Fact]
+    public async Task Original_path_token_is_available_in_both_sync_and_streaming_output()
+    {
+        var formatter = new SelectionOutputFormatter();
+        var format = new SelectionOutputFormatDefinition("paths", "Paths", "{FullPath}|{OriginalFullPath}", "\n", null);
+        var item = SelectionOutputItem.FromPath("linked") with { OriginalFullPath = "original" };
+        Assert.True(formatter.ValidateFormat(format).IsValid);
+        Assert.Equal("linked|original", formatter.Format(format, [item]));
+        Assert.Equal("linked|original", await formatter.FormatAsync(format, StreamItems([item])));
+        Assert.Equal("local|local", formatter.Format(format, [SelectionOutputItem.FromPath("local")]));
+    }
+
+    [Fact]
     public async Task Prefix_and_suffix_wrap_the_whole_result_once_in_sync_and_streaming_output()
     {
         var formatter = new SelectionOutputFormatter();

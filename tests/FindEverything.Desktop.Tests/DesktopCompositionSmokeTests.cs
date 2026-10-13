@@ -173,6 +173,7 @@ public sealed class DesktopCompositionSmokeTests
             VerifyPageScrollContracts(filesPage, catalogPage);
             VerifyCompactSelectionPages(filesPage, catalogPage);
             VerifyCoreWorkspaceBounds(provider, window);
+            WorkspaceTransferUiChecks.Verify(provider, window);
             Assert.True(navigation.Navigate(typeof(CatalogPage)));
             Assert.True(navigation.Navigate(typeof(ProfilesPage)));
             VerifyProfilesScrolling(window, profilesPage);
@@ -186,8 +187,11 @@ public sealed class DesktopCompositionSmokeTests
             VerifyScanConsole(provider, window, catalogPage);
             VerifyProjectionQueries(provider, window);
             WorkspacePerformanceChecks.Verify(provider);
+            CatalogColumnFilterUiChecks.Verify(provider);
+            WorkspaceTransferBehaviorChecks.Verify();
             CaptureOptionalEnglishQaScreenshots(provider, window, filesPage, catalogPage);
             VerifyDynamicGridHighlighting();
+            VerifyCatalogDensity(appearance, window, catalogPage);
             window.Close();
             window = null;
         }
@@ -252,9 +256,9 @@ public sealed class DesktopCompositionSmokeTests
         Assert.False(filesViewModel.IsDetailsOpen);
         Assert.False(catalogViewModel.IsDetailsOpen);
 
-        var filesGrid = Assert.IsType<System.Windows.Controls.DataGrid>(
+        var filesGrid = Assert.IsAssignableFrom<System.Windows.Controls.DataGrid>(
             filesPage.FindName("ResultsGrid"));
-        var catalogGrid = Assert.IsType<System.Windows.Controls.DataGrid>(
+        var catalogGrid = Assert.IsAssignableFrom<System.Windows.Controls.DataGrid>(
             catalogPage.FindName("ResultsGrid"));
         Assert.Equal(DataGridSelectionMode.Extended, filesGrid.SelectionMode);
         Assert.Equal(DataGridSelectionMode.Extended, catalogGrid.SelectionMode);
@@ -322,7 +326,7 @@ public sealed class DesktopCompositionSmokeTests
                     SaveQaImage(page, $"{page.GetType().Name}-{(size.Width >= 900 ? "wide" : "small")}-workspace.png");
                     Assert.InRange(page.ActualWidth, size.Width - 0.01, size.Width + 0.01);
                     Assert.InRange(page.ActualHeight, size.Height - 0.01, size.Height + 0.01);
-                    var grid = Assert.IsType<System.Windows.Controls.DataGrid>(page.FindName("ResultsGrid"));
+                    var grid = Assert.IsAssignableFrom<System.Windows.Controls.DataGrid>(page.FindName("ResultsGrid"));
                     var toolbar = Assert.IsAssignableFrom<Wpf.Ui.Controls.CardControl>(page.FindName("SelectionToolbar"));
                     Assert.True(grid.ActualHeight / page.ActualHeight >= minimumRatio,
                         $"{page.GetType().Name}: results occupy {grid.ActualHeight / page.ActualHeight:P1} at {size}.");
@@ -428,7 +432,7 @@ public sealed class DesktopCompositionSmokeTests
                 appearance.Apply(window, new AppearanceOptions { Theme = theme, Backdrop = BackdropPreference.None });
                 PumpLayout(host, page);
                 SaveQaImage(page, $"{page.GetType().Name}-{theme.ToString().ToLowerInvariant()}-contrast.png");
-                var grid = Assert.IsType<System.Windows.Controls.DataGrid>(page.FindName("ResultsGrid"));
+                var grid = Assert.IsAssignableFrom<System.Windows.Controls.DataGrid>(page.FindName("ResultsGrid"));
                 foreach (var index in new[] { 0, 1 })
                 {
                     var row = Assert.IsType<System.Windows.Controls.DataGridRow>(grid.ItemContainerGenerator.ContainerFromIndex(index));
@@ -639,7 +643,7 @@ public sealed class DesktopCompositionSmokeTests
         Assert.Null(mainWindow.FindName("ScanConsolePanel"));
         var pageLayout = Assert.IsType<Grid>(catalogPage.FindName("CatalogPageLayout"));
         var pageContent = Assert.IsAssignableFrom<Grid>(catalogPage.FindName("CatalogPageContent"));
-        var resultsGrid = Assert.IsType<System.Windows.Controls.DataGrid>(
+        var resultsGrid = Assert.IsAssignableFrom<System.Windows.Controls.DataGrid>(
             catalogPage.FindName("ResultsGrid"));
         var toggleButton = Assert.IsType<Wpf.Ui.Controls.Button>(
             mainWindow.FindName("ScanConsoleToggleButton"));
@@ -701,10 +705,10 @@ public sealed class DesktopCompositionSmokeTests
             contextMenu.Items.Cast<object>(),
             item => Assert.Equal(
                 "메시지 전체 복사",
-                Assert.IsType<System.Windows.Controls.MenuItem>(item).Header),
+                Assert.IsAssignableFrom<System.Windows.Controls.MenuItem>(item).Header),
             item => Assert.Equal(
                 "경로만 복사",
-                Assert.IsType<System.Windows.Controls.MenuItem>(item).Header));
+                Assert.IsAssignableFrom<System.Windows.Controls.MenuItem>(item).Header));
         Assert.Single(System.Windows.Application.Current.Windows.OfType<MainWindow>());
 
         var operationId = Guid.NewGuid();
@@ -1188,7 +1192,7 @@ public sealed class DesktopCompositionSmokeTests
         {
             host.Show();
             PumpLayout(host, page);
-            var grid = Assert.IsType<System.Windows.Controls.DataGrid>(page.FindName("ResultsGrid"));
+            var grid = Assert.IsAssignableFrom<System.Windows.Controls.DataGrid>(page.FindName("ResultsGrid"));
             viewModel.ClearSelectionCommand.Execute(null);
             var first = Assert.IsType<CatalogItemViewModel>(grid.Items[0]);
             var second = Assert.IsType<CatalogItemViewModel>(grid.Items[1]);
@@ -1215,13 +1219,29 @@ public sealed class DesktopCompositionSmokeTests
             var checkbox = Assert.Single(FindVisualChildren<System.Windows.Controls.CheckBox>(row));
             Assert.True(checkbox.IsChecked == true);
             Assert.Equal(new Thickness(0, 2, 0, 2), row.Margin);
-            Assert.Equal(new Thickness(0, 2, 0, 2), row.Padding);
+            Assert.Equal(new Thickness(0), row.Padding);
 
             // Interactive descendants must never reach the ordinary row gesture.
             var count = viewModel.SelectedCount;
             InvokePointer("OnResultsGridPreviewMouseLeftButtonDown", checkbox);
             InvokePointer("OnResultsGridPreviewMouseLeftButtonUp", checkbox);
             Assert.Equal(count, viewModel.SelectedCount);
+            var textCell = FindVisualChildren<Wpf.Ui.Controls.TextBox>(row).First(editor => editor.IsReadOnly);
+            textCell.Focus();
+            textCell.SelectAll();
+            var selectedText = textCell.SelectedText;
+            InvokePointer("OnResultsGridPreviewMouseLeftButtonDown", textCell);
+            InvokePointer("OnResultsGridPreviewMouseLeftButtonUp", textCell);
+            var rightClick = new System.Windows.Input.MouseButtonEventArgs(System.Windows.Input.Mouse.PrimaryDevice,
+                Environment.TickCount, System.Windows.Input.MouseButton.Right)
+            {
+                RoutedEvent = System.Windows.Input.Mouse.PreviewMouseDownEvent, Source = textCell,
+            };
+            typeof(CatalogPage).GetMethod("OnResultsGridPreviewMouseRightButtonDown",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.Invoke(page, [grid, rightClick]);
+            Assert.Equal(count, viewModel.SelectedCount);
+            Assert.Equal(selectedText, textCell.SelectedText);
+            Assert.NotNull(textCell.ContextMenu);
             viewModel.ClearSelectionCommand.Execute(null);
 
             void ClickRow(int index)
@@ -1230,11 +1250,10 @@ public sealed class DesktopCompositionSmokeTests
                 PumpLayout(host, page);
                 var container = Assert.IsType<System.Windows.Controls.DataGridRow>(
                     grid.ItemContainerGenerator.ContainerFromIndex(index));
-                var text = FindVisualChildren<System.Windows.Controls.TextBlock>(container)
-                    .First(block => !string.IsNullOrEmpty(block.Text)
-                        && !ResultGridInput.IsInteractiveOrigin(block));
-                InvokePointer("OnResultsGridPreviewMouseLeftButtonDown", text);
-                InvokePointer("OnResultsGridPreviewMouseLeftButtonUp", text);
+                var rowSurface = Assert.Single(FindVisualChildren<DataGridCell>(container),
+                    cell => ReferenceEquals(cell.Column, grid.Columns[0]));
+                InvokePointer("OnResultsGridPreviewMouseLeftButtonDown", rowSurface);
+                InvokePointer("OnResultsGridPreviewMouseLeftButtonUp", rowSurface);
                 PumpLayout(host, page);
             }
 
@@ -1280,7 +1299,7 @@ public sealed class DesktopCompositionSmokeTests
     {
         Assert.False(ScrollViewer.GetCanContentScroll(page));
 
-        var tabControl = Assert.IsType<TabControl>(page.FindName("ProfilesTabControl"));
+        var tabControl = Assert.IsAssignableFrom<TabControl>(page.FindName("ProfilesTabControl"));
         Assert.Equal(HorizontalAlignment.Stretch, tabControl.HorizontalContentAlignment);
         Assert.Equal(VerticalAlignment.Stretch, tabControl.VerticalContentAlignment);
         var viewModel = Assert.IsType<ProfilesViewModel>(page.DataContext);
@@ -1298,7 +1317,7 @@ public sealed class DesktopCompositionSmokeTests
 
         PumpLayout(window, page);
         VerifyProfilesFluentControls(page);
-        var editorScrollViewer = Assert.IsType<ScrollViewer>(
+        var editorScrollViewer = Assert.IsAssignableFrom<ScrollViewer>(
             page.FindName("ProfileEditorScrollViewer"));
         Assert.Equal(new Thickness(0, 0, 16, 0), editorScrollViewer.Padding);
         Assert.IsAssignableFrom<CardControl>(page.FindName("ProfileEditorStepRail"));
@@ -1332,7 +1351,7 @@ public sealed class DesktopCompositionSmokeTests
         tabControl.SelectedIndex = 1;
         PumpLayout(window, page);
         VerifyReadOnlyProfileInspectionBindings(window, page, viewModel);
-        var loadStatusScrollViewer = Assert.IsType<ScrollViewer>(
+        var loadStatusScrollViewer = Assert.IsAssignableFrom<ScrollViewer>(
             page.FindName("ProfileLoadStatusScrollViewer"));
         Assert.Equal(new Thickness(0, 0, 16, 0), loadStatusScrollViewer.Padding);
         VerifyScrollable(window, page, loadStatusScrollViewer);
@@ -1396,7 +1415,7 @@ public sealed class DesktopCompositionSmokeTests
             var checkboxColumnCount = 0;
             foreach (var gridName in gridNames)
             {
-                var grid = Assert.IsType<System.Windows.Controls.DataGrid>(page.FindName(gridName));
+                var grid = Assert.IsAssignableFrom<System.Windows.Controls.DataGrid>(page.FindName(gridName));
                 Assert.True(grid.IsReadOnly);
                 Assert.Equal(2, grid.Items.Count);
                 foreach (var column in grid.Columns.OfType<DataGridCheckBoxColumn>())
@@ -1435,7 +1454,7 @@ public sealed class DesktopCompositionSmokeTests
 
     private static void VerifyProfilesFluentControls(ProfilesPage page)
     {
-        var exclusionScopeDescription = Assert.IsType<System.Windows.Controls.TextBlock>(
+        var exclusionScopeDescription = Assert.IsAssignableFrom<System.Windows.Controls.TextBlock>(
             page.FindName("DirectoryExclusionScopeDescription"));
         Assert.Contains("마지막 폴더 이름(leaf)", exclusionScopeDescription.Text, StringComparison.Ordinal);
         Assert.Contains("절대경로 전체가 아니라", exclusionScopeDescription.Text, StringComparison.Ordinal);
@@ -1452,7 +1471,7 @@ public sealed class DesktopCompositionSmokeTests
         }
 
         var editorFooter = Assert.IsAssignableFrom<CardControl>(page.FindName("EditorFooter"));
-        Assert.IsType<System.Windows.Controls.TextBlock>(page.FindName("EditorFooterStatusText"));
+        Assert.IsAssignableFrom<System.Windows.Controls.TextBlock>(page.FindName("EditorFooterStatusText"));
         Assert.Empty(FindVisualChildren<Wpf.Ui.Controls.InfoBar>(editorFooter));
 
         var modeButtons = FindVisualChildren<RadioButton>(page)
@@ -1555,7 +1574,7 @@ public sealed class DesktopCompositionSmokeTests
         Assert.False(ScrollViewer.GetCanContentScroll(page));
         PumpLayout(window, page);
 
-        var scrollViewer = Assert.IsType<ScrollViewer>(
+        var scrollViewer = Assert.IsAssignableFrom<ScrollViewer>(
             page.FindName("ProfilePlaygroundScrollViewer"));
         Assert.Equal(new Thickness(0, 0, 16, 0), scrollViewer.Padding);
         var inputPanel = Assert.IsType<Grid>(page.FindName("PlaygroundInputPanel"));
@@ -1580,13 +1599,13 @@ public sealed class DesktopCompositionSmokeTests
             page.DataContext = new PlaygroundLayoutFixture(input, ProfileRegexDebugBuilder.Build(input, rules));
             window.Width = 1360;
             PumpLayout(window, page);
-            var debugScroll = Assert.IsType<ScrollViewer>(page.FindName("PlaygroundDebugScrollViewer"));
+            var debugScroll = Assert.IsAssignableFrom<ScrollViewer>(page.FindName("PlaygroundDebugScrollViewer"));
             debugScroll.ScrollToTop();
             PumpDispatcherFor(window.Dispatcher, TimeSpan.FromMilliseconds(400));
             PumpLayout(window, page);
             var card = Assert.IsType<SectionCard>(page.FindName("PlaygroundRegexDebugCard"));
-            var caption = Assert.IsType<System.Windows.Controls.TextBlock>(page.FindName("PlaygroundRegexDebugCaption"));
-            var expander = Assert.IsType<Expander>(page.FindName("PlaygroundRegexDebugExpander"));
+            var caption = Assert.IsAssignableFrom<System.Windows.Controls.TextBlock>(page.FindName("PlaygroundRegexDebugCaption"));
+            var expander = Assert.IsAssignableFrom<Expander>(page.FindName("PlaygroundRegexDebugExpander"));
             var toggle = Assert.IsType<System.Windows.Controls.Primitives.ToggleButton>(
                 expander.Template.FindName("ExpanderToggleButton", expander));
             Assert.True(caption.ActualHeight > 0);
@@ -1611,7 +1630,7 @@ public sealed class DesktopCompositionSmokeTests
         Assert.False(ScrollViewer.GetCanContentScroll(page));
         PumpLayout(window, page);
 
-        var scrollViewer = Assert.IsType<ScrollViewer>(page.FindName("SettingsScrollViewer"));
+        var scrollViewer = Assert.IsAssignableFrom<ScrollViewer>(page.FindName("SettingsScrollViewer"));
         Assert.Equal(HorizontalAlignment.Stretch, scrollViewer.HorizontalContentAlignment);
         Assert.Equal(new Thickness(0, 0, 16, 0), scrollViewer.Padding);
         Assert.True(scrollViewer.ActualWidth > 0);
@@ -1735,8 +1754,10 @@ public sealed class DesktopCompositionSmokeTests
                 Assert.Equal("Operation completed", infoBar.Message);
                 Assert.Equal(InfoBarSeverity.Warning, infoBar.Severity);
                 Assert.True(infoBar.ActualHeight > 0);
-                Assert.True(presenter.Margin.Bottom >= infoBar.ActualHeight,
-                    "The page must reserve notification space instead of overlaying its footer or scan log.");
+                Assert.Equal(0, presenter.Margin.Bottom);
+                Assert.Equal(HorizontalAlignment.Right, infoBar.HorizontalAlignment);
+                Assert.Equal(480, infoBar.MaxWidth);
+                Assert.Null(overlay.Background);
                 AssertBoundsUnchanged(navigationBounds, Bounds(navigation));
                 AssertBoundsUnchanged(paneBounds, Bounds(pane));
                 AssertBoundsUnchanged(footerBounds, Bounds(footer));
@@ -1748,9 +1769,8 @@ public sealed class DesktopCompositionSmokeTests
                     "Notifications must never extend into the navigation pane.");
                 Assert.True(notificationBounds.Left >= remainingPageBounds.Left);
                 Assert.True(notificationBounds.Right <= remainingPageBounds.Right + 1);
-                Assert.True(remainingPageBounds.Bottom <= notificationBounds.Top + 1,
-                    "The page content, selection footer and scan log must finish above the notification.");
-                Assert.True(remainingPageBounds.Height < pageBounds.Height);
+                Assert.True(notificationBounds.Bottom <= remainingPageBounds.Bottom);
+                AssertBoundsUnchanged(pageBounds, remainingPageBounds);
                 SaveQaImage(Assert.IsAssignableFrom<FrameworkElement>(window.Content),
                     $"notifications-{label}-open.png");
 
@@ -1802,10 +1822,32 @@ public sealed class DesktopCompositionSmokeTests
         }
     }
 
+    private static void VerifyCatalogDensity(IAppearanceService appearance, MainWindow window, CatalogPage page)
+    {
+        var grid = Assert.IsAssignableFrom<System.Windows.Controls.DataGrid>(page.FindName("ResultsGrid"));
+        var source = grid.ItemsSource;
+        var columns = grid.Columns.Count;
+        foreach (var density in Enum.GetValues<CatalogRowDensity>())
+        {
+            appearance.Apply(window, new AppearanceOptions
+            {
+                Theme = ThemePreference.Light, Backdrop = BackdropPreference.None, CatalogRowDensity = density,
+            });
+            window.Dispatcher.Invoke(static () => { }, DispatcherPriority.DataBind);
+            var metrics = CatalogDensityMetrics.Resolve(density);
+            Assert.Equal(metrics.RowHeight, grid.RowHeight);
+            Assert.Same(source, grid.ItemsSource);
+            Assert.Equal(columns, grid.Columns.Count);
+            Assert.Equal(metrics.CellPadding, grid.FindResource("CatalogCellPadding"));
+            Assert.Equal(metrics.RowMargin, grid.FindResource("CatalogRowMargin"));
+        }
+        appearance.Apply(window, new AppearanceOptions { Theme = ThemePreference.Light, Backdrop = BackdropPreference.None });
+    }
+
     private static void VerifyOutputFormatEditor(IServiceProvider provider, Window window, OutputFormatsPage page)
     {
         VerifyOutputPreviewLayout(window, page);
-        var scroll = Assert.IsType<ScrollViewer>(page.FindName("OutputFormatsScrollViewer"));
+        var scroll = Assert.IsAssignableFrom<ScrollViewer>(page.FindName("OutputFormatsScrollViewer"));
         Assert.Equal(new Thickness(0, 0, 16, 0), scroll.Padding);
         provider.GetRequiredService<IProfileCatalogPublisher>().Publish(
             new ProfileCatalogSnapshot([new StubLoadedProfile()], [], DateTimeOffset.UtcNow));
@@ -1877,7 +1919,7 @@ public sealed class DesktopCompositionSmokeTests
                 }
                 var card = Assert.IsType<SectionCard>(page.FindName("OutputPreviewCard"));
                 var content = Assert.IsType<Grid>(page.FindName("OutputPreviewContent"));
-                var title = Assert.IsType<System.Windows.Controls.TextBlock>(page.FindName("OutputPreviewTitle"));
+                var title = Assert.IsAssignableFrom<System.Windows.Controls.TextBlock>(page.FindName("OutputPreviewTitle"));
                 var preview = Assert.IsType<Wpf.Ui.Controls.TextBox>(page.FindName("OutputPreviewTextBox"));
                 Assert.True(card.ActualHeight > 180);
                 Assert.InRange(title.TranslatePoint(new Point(), card).Y, 16, 18);
@@ -1901,7 +1943,7 @@ public sealed class DesktopCompositionSmokeTests
     {
         Assert.False(ScrollViewer.GetCanContentScroll(filesPage));
         Assert.False(ScrollViewer.GetCanContentScroll(catalogPage));
-        var filterScrollViewer = Assert.IsType<ScrollViewer>(
+        var filterScrollViewer = Assert.IsAssignableFrom<ScrollViewer>(
             filesPage.FindName("FileFilterScrollViewer"));
         Assert.Equal(new Thickness(0, 0, 16, 0), filterScrollViewer.Padding);
         Assert.Equal(ScrollBarVisibility.Disabled, filterScrollViewer.HorizontalScrollBarVisibility);
@@ -2029,16 +2071,36 @@ public sealed class DesktopCompositionSmokeTests
             Assert.Equal(64, selectionColumn.MinWidth);
             Assert.Equal(64, selectionColumn.MaxWidth);
             Assert.Equal(1, grid.FrozenColumnCount);
-            Assert.Contains(grid.Columns, column => Equals(column.Header, "Status"));
-            Assert.Contains(grid.Columns, column => Equals(column.Header, "Folder path"));
-            var clientColumn = Assert.Single(grid.Columns, column => Equals(column.Header, "고객"));
+            Assert.Contains(grid.Columns, column => Equals(DynamicProfileGrid.GetColumnHeaderContent(column), "Status"));
+            Assert.Contains(grid.Columns, column => Equals(DynamicProfileGrid.GetColumnHeaderContent(column), "Folder path"));
+            var clientColumn = Assert.Single(grid.Columns, column => Equals(DynamicProfileGrid.GetColumnHeaderContent(column), "고객"));
             Assert.Equal(2, clientColumn.DisplayIndex);
             Assert.Equal(180, clientColumn.Width.Value);
-            Assert.Single(grid.Columns, column => Equals(column.Header, "검토 메모"));
+            Assert.Single(grid.Columns, column => Equals(DynamicProfileGrid.GetColumnHeaderContent(column), "검토 메모"));
             var row = Assert.IsType<System.Windows.Controls.DataGridRow>(
                 grid.ItemContainerGenerator.ContainerFromItem(item));
-            var userInput = Assert.Single(FindVisualChildren<Wpf.Ui.Controls.TextBox>(row));
+            var userInput = Assert.Single(FindVisualChildren<Wpf.Ui.Controls.TextBox>(row),
+                editor => editor.PlaceholderText == "메모 입력");
             Assert.Equal("메모 입력", userInput.PlaceholderText);
+            var selectable = FindVisualChildren<SelectableCatalogText>(row).ToArray();
+            Assert.NotEmpty(selectable);
+            Assert.All(selectable, content =>
+            {
+                Assert.True(content.TextBox.IsReadOnly);
+                Assert.True(content.TextBox.IsTextSelectionEnabled);
+                Assert.False(content.TextBox.ClearButtonEnabled);
+                Assert.Equal(0, content.TextBox.MinHeight);
+                Assert.False(content.Highlight.IsHitTestVisible);
+                Assert.NotNull(content.TextBox.ContextMenu);
+                Assert.Empty(content.TextBox.ContextMenu!.Items);
+                content.PrepareContextMenu();
+                Assert.Equal(5, content.TextBox.ContextMenu.Items.Count);
+                Assert.All(content.TextBox.ContextMenu!.Items.OfType<System.Windows.Controls.MenuItem>(),
+                    menu => Assert.IsType<Wpf.Ui.Controls.MenuItem>(menu));
+            });
+            var mappedText = Assert.Single(selectable, content => content.TextBox.Text == "아폴로");
+            mappedText.TextBox.Select(1, 2);
+            Assert.Equal("폴로", mappedText.TextBox.SelectedText);
             var selector = Assert.Single(
                 FindVisualChildren<System.Windows.Controls.CheckBox>(row));
             var selectionCell = Assert.Single(FindVisualChildren<DataGridCell>(row),
@@ -2076,6 +2138,14 @@ public sealed class DesktopCompositionSmokeTests
             Assert.Equal("Apollo", string.Concat(runs.Select(static run => run.Text)));
             Assert.Single(runs, static run => run.Background is not null);
             Assert.Contains(runs, static run => run.Text == "pol" && run.Background is not null);
+            grid.DataContext = new SharedFilterContext("POL", true);
+            host.Dispatcher.Invoke(static () => { }, DispatcherPriority.DataBind);
+            Assert.True(userInput.IsReadOnly);
+            Assert.False(userInput.ClearButtonEnabled);
+            mappedText.TextBox.Select(0, 2);
+            Assert.Equal("Ap", mappedText.TextBox.SelectedText);
+            mappedText.DataContext = null;
+            Assert.Empty(mappedText.TextBox.SelectedText);
         }
         finally
         {
@@ -2276,6 +2346,7 @@ public sealed class DesktopCompositionSmokeTests
     }
 
     private sealed record FilterContext(string FilterText);
+    private sealed record SharedFilterContext(string FilterText, bool IsReadOnlyDataSource);
 
     private sealed class WorkspaceLayoutFixture
     {

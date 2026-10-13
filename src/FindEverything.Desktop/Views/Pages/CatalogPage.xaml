@@ -19,15 +19,19 @@
     mc:Ignorable="d">
     <Grid x:Name="CatalogPageLayout" SizeChanged="OnWorkspaceSizeChanged">
         <Grid.RowDefinitions><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-        <controls:WorkspacePageFrame x:Name="CatalogPageContent" Grid.Row="0" Margin="24,0,24,8">
+        <controls:WorkspacePageFrame x:Name="CatalogPageContent" Grid.Row="0" Margin="{DynamicResource CatalogPagePadding}">
             <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
             <controls:PageHeader Title="{DynamicResource Loc.Shell.Nav.Catalog}" Description="{DynamicResource Loc.Workspace.Catalog.Description}">
+                <StackPanel Orientation="Horizontal">
                 <StackPanel Orientation="Horizontal" Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}">
                     <ui:ProgressRing Width="18" Height="18" Margin="0,0,8,0" IsIndeterminate="True" />
-                    <TextBlock MaxWidth="240" VerticalAlignment="Center" Text="{Binding ProgressMessage}" Style="{StaticResource CaptionTextStyle}" TextTrimming="CharacterEllipsis" ToolTip="{Binding ProgressMessage}" />
+                    <ui:TextBlock x:Name="CatalogHeaderProgressCaption" MaxWidth="240" VerticalAlignment="Center" Text="{Binding ProgressMessage}" Style="{StaticResource CaptionTextStyle}" TextTrimming="CharacterEllipsis" ToolTip="{Binding ProgressMessage}" />
+                </StackPanel>
+                <controls:WorkspaceTransferPanel x:Name="CatalogWorkspaceTransferPanel" Margin="8,0,0,0" DataContext="{Binding WorkspaceTransfer}" ExportOwner="{Binding DataContext, RelativeSource={RelativeSource AncestorType=Page}}" />
                 </StackPanel>
             </controls:PageHeader>
             <controls:CommandStrip Grid.Row="1">
+                <StackPanel>
                 <Grid>
                     <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
@@ -35,7 +39,7 @@
                         <Label x:Name="CatalogProfileLabel" Padding="0" Margin="0,0,8,0" VerticalAlignment="Center" Content="{DynamicResource Loc.Workspace.Profile.Label}" Target="{Binding ElementName=CatalogProfileComboBox}" />
                         <ComboBox x:Name="CatalogProfileComboBox" Width="140" AutomationProperties.Name="{DynamicResource Loc.Workspace.Profile}" ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}" DisplayMemberPath="DisplayName" IsEnabled="{Binding CanEditWorkspace}" ToolTip="{DynamicResource Loc.Workspace.Catalog.Profile.Help}" />
                     </StackPanel>
-                    <TextBlock Grid.Column="1" Margin="12,0" VerticalAlignment="Center" Text="{Binding RootPath, TargetNullValue={StaticResource Loc.Catalog.Root.None}}" TextTrimming="CharacterEllipsis" ToolTip="{Binding RootPath}" />
+                    <ui:TextBlock Grid.Column="1" Margin="12,0" VerticalAlignment="Center" Text="{Binding RootPath, TargetNullValue={StaticResource Loc.Catalog.Root.None}}" TextTrimming="CharacterEllipsis" ToolTip="{Binding RootPath}" />
                     <WrapPanel Grid.Column="2">
                         <ui:Button MinWidth="76" Margin="0,0,8,0" Command="{Binding BrowseRootCommand}" Content="{DynamicResource Loc.Workspace.Location.Change}" Icon="{ui:SymbolIcon Symbol=FolderOpen20}" ToolTip="{DynamicResource Loc.Workspace.Location.Change.Help}" ToolTipService.ShowOnDisabled="True" />
                         <ui:Button MinWidth="92" Margin="0,0,8,0" Appearance="Primary" Command="{Binding ScanCommand}" Content="{DynamicResource Loc.Workspace.Scan}" Icon="{ui:SymbolIcon Symbol=Search20}" ToolTip="{DynamicResource Loc.Workspace.Scan.Catalog.Help}" ToolTipService.ShowOnDisabled="True" />
@@ -44,6 +48,7 @@
                     </WrapPanel>
                 <Grid Grid.Row="1" Grid.ColumnSpan="3" Margin="0,8,0,0"
                     Visibility="{Binding HasLoadedItems, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
@@ -71,7 +76,7 @@
                         OnContent="{DynamicResource Loc.View.Catalog.OnContent.ShowOriginalValues}"
                         ToolTip="{DynamicResource Loc.View.Catalog.ToolTip.IndicatesThatAnOriginalCodeWasReplaced}"
                         Visibility="{Binding HasValueMappings, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                    <TextBlock
+                    <ui:TextBlock
                         Grid.Column="2"
                         MinWidth="72"
                         VerticalAlignment="Center"
@@ -79,13 +84,29 @@
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                         Text="{Binding FilterSummary}"
                         TextAlignment="Right" />
+                    <WrapPanel Grid.Row="1" Grid.ColumnSpan="3" Margin="0,8,0,0"
+                        Visibility="{Binding HasColumnFilters, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <ItemsControl ItemsSource="{Binding ActiveColumnFilters}">
+                            <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <ui:Button Margin="0,0,8,4" Padding="8,4" Appearance="Transparent"
+                                        Command="{Binding RemoveCommand}" Content="{Binding Description}"
+                                        Icon="{ui:SymbolIcon Symbol=Dismiss12}" ToolTip="{Binding Description}" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <ui:Button Margin="0,0,0,4" Padding="8,4" Appearance="Transparent"
+                            Command="{Binding ClearColumnFiltersCommand}" Content="{DynamicResource Loc.Catalog.Filters.ClearAll}" />
+                    </WrapPanel>
                 </Grid>
                 </Grid>
+                </StackPanel>
             </controls:CommandStrip>
         <Grid x:Name="CatalogResultsWorkspace" Grid.Row="2">
             <Grid.RowDefinitions><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
 
-            <DataGrid
+            <ui:DataGrid
                 x:Name="ResultsGrid"
                 Grid.Row="0"
                 behaviors:DynamicProfileGrid.Fields="{Binding Fields}"
@@ -104,23 +125,23 @@
                 SelectedItem="{Binding SelectedItem}"
                 SelectionMode="Extended"
                 SelectionUnit="FullRow"
-                RowHeight="44"
+                RowHeight="{DynamicResource CatalogRowHeight}"
                 ScrollViewer.HorizontalScrollBarVisibility="Visible"
                 ScrollViewer.PanningMode="Both"
                 ScrollViewer.VerticalScrollBarVisibility="Auto"
                 Sorting="OnResultsGridSorting"
                 Style="{StaticResource FluentDataGridStyle}"
                 Visibility="{Binding HasLoadedItems, Converter={StaticResource BooleanToVisibilityConverter}}">
-                <DataGrid.CellStyle>
+                <ui:DataGrid.CellStyle>
                     <Style BasedOn="{StaticResource DefaultDataGridCellStyle}" TargetType="DataGridCell">
-                        <Setter Property="Padding" Value="12,4" />
+                        <Setter Property="Padding" Value="{DynamicResource CatalogCellPadding}" />
                         <Setter Property="VerticalContentAlignment" Value="Center" />
                     </Style>
-                </DataGrid.CellStyle>
-                <DataGrid.RowStyle>
+                </ui:DataGrid.CellStyle>
+                <ui:DataGrid.RowStyle>
                     <Style BasedOn="{StaticResource FluentResultRowStyle}" TargetType="DataGridRow">
-                        <Setter Property="Margin" Value="0,2" />
-                        <Setter Property="Padding" Value="0,2" />
+                        <Setter Property="Margin" Value="{DynamicResource CatalogRowMargin}" />
+                        <Setter Property="Padding" Value="0" />
                         <Style.Triggers>
                             <DataTrigger Binding="{Binding IsPlaceholder}" Value="True"><Setter Property="IsEnabled" Value="False" /><Setter Property="Opacity" Value="0.45" /></DataTrigger>
                             <DataTrigger Binding="{Binding IsSelected}" Value="True"><Setter Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}" /></DataTrigger>
@@ -128,37 +149,37 @@
                             <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}" /></Trigger>
                         </Style.Triggers>
                     </Style>
-                </DataGrid.RowStyle>
-                <DataGrid.ContextMenu>
+                </ui:DataGrid.RowStyle>
+                <ui:DataGrid.ContextMenu>
                     <ContextMenu DataContext="{Binding PlacementTarget, RelativeSource={RelativeSource Self}}">
-                        <MenuItem Command="{Binding DataContext.OpenItemCommand}" CommandParameter="{Binding CurrentItem}" Header="{DynamicResource Loc.View.Files.Header.OpenFolder}" />
-                        <MenuItem Command="{Binding DataContext.CopyItemFolderPathCommand}" CommandParameter="{Binding CurrentItem}" Header="{DynamicResource Loc.View.Files.Header.CopyFolderPath}" />
+                        <ui:MenuItem Command="{Binding DataContext.OpenItemCommand}" CommandParameter="{Binding CurrentItem}" Header="{DynamicResource Loc.View.Files.Header.OpenFolder}" />
+                        <ui:MenuItem Command="{Binding DataContext.CopyItemFolderPathCommand}" CommandParameter="{Binding CurrentItem}" Header="{DynamicResource Loc.View.Files.Header.CopyFolderPath}" />
                         <Separator />
-                        <MenuItem Command="{Binding DataContext.CopySelectionCommand}" Header="{DynamicResource Loc.View.Files.Header.CopySelectionUsingCurrentOutputFormat}" />
+                        <ui:MenuItem Command="{Binding DataContext.CopySelectionCommand}" Header="{DynamicResource Loc.View.Files.Header.CopySelectionUsingCurrentOutputFormat}" />
                     </ContextMenu>
-                </DataGrid.ContextMenu>
-            </DataGrid>
+                </ui:DataGrid.ContextMenu>
+            </ui:DataGrid>
 
-            <controls:SectionCard x:Name="SelectionToolbar" Grid.Row="1" Margin="0,8,0,0" Padding="12,4"
+            <controls:SectionCard x:Name="SelectionToolbar" controls:FloatingNotificationChrome.IsBottomChrome="True" Grid.Row="1" Margin="0,8,0,0" Padding="12,4"
                 Style="{StaticResource FluentToolbarCardStyle}" SizeChanged="OnSelectionToolbarSizeChanged"
                 Visibility="{Binding HasSelection, Converter={StaticResource BooleanToVisibilityConverter}}">
                 <controls:SectionCard.Header>
                     <controls:PurposeFooterPanel>
                         <WrapPanel x:Name="SelectionManagementGroup" VerticalAlignment="Center">
-                            <TextBlock Margin="0,0,12,0" VerticalAlignment="Center" FontWeight="SemiBold"
+                            <ui:TextBlock Margin="0,0,12,0" VerticalAlignment="Center" FontWeight="SemiBold"
                                 Visibility="{Binding Visibility, ElementName=SelectAllResultsButton}"
                                 Text="{Binding SelectedCount, StringFormat={StaticResource Loc.Common.SelectedCountFormat}}" />
                             <ui:Button x:Name="SelectionActionsMenuButton" Margin="0,0,8,0" Padding="8,4" Click="OnFooterMenuClick"
                                 Icon="{ui:SymbolIcon Symbol=ChevronDown20}"
                                 AutomationProperties.Name="{DynamicResource Loc.Workspace.Selection.Manage}" ToolTip="{DynamicResource Loc.Workspace.Selection.Manage.Help}">
                                 <ui:Button.Content>
-                                    <TextBlock Text="{Binding SelectedCount, StringFormat={StaticResource Loc.Common.SelectedCountFormat}}" />
+                                    <ui:TextBlock Text="{Binding SelectedCount, StringFormat={StaticResource Loc.Common.SelectedCountFormat}}" />
                                 </ui:Button.Content>
                                 <ui:Button.ContextMenu>
                                     <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
-                                        <MenuItem Command="{Binding SelectAllCommand}" Header="{DynamicResource Loc.Selection.All}" />
-                                        <MenuItem Command="{Binding ClearSelectionCommand}" Header="{DynamicResource Loc.Workspace.Selection.Clear}" />
-                                        <MenuItem Command="{Binding InvertSelectionCommand}" Header="{DynamicResource Loc.Workspace.Selection.Invert}" />
+                                        <ui:MenuItem Command="{Binding SelectAllCommand}" Header="{DynamicResource Loc.Selection.All}" />
+                                        <ui:MenuItem Command="{Binding ClearSelectionCommand}" Header="{DynamicResource Loc.Workspace.Selection.Clear}" />
+                                        <ui:MenuItem Command="{Binding InvertSelectionCommand}" Header="{DynamicResource Loc.Workspace.Selection.Invert}" />
                                     </ContextMenu>
                                 </ui:Button.ContextMenu>
                             </ui:Button>
@@ -189,8 +210,8 @@
                                 Icon="{ui:SymbolIcon Symbol=MoreHorizontal20}">
                                 <ui:Button.ContextMenu>
                                     <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
-                                        <MenuItem Command="{Binding ExportSelectionCommand}" Header="{DynamicResource Loc.Workspace.Selection.Export}" />
-                                        <MenuItem Command="{Binding OpenSelectedCommand}" Header="{DynamicResource Loc.Workspace.Selection.Open}" />
+                                        <ui:MenuItem Command="{Binding ExportSelectionCommand}" Header="{DynamicResource Loc.Workspace.Selection.Export}" />
+                                        <ui:MenuItem Command="{Binding OpenSelectedCommand}" Header="{DynamicResource Loc.Workspace.Selection.Open}" />
                                     </ContextMenu>
                                 </ui:Button.ContextMenu>
                             </ui:Button>
@@ -215,12 +236,12 @@
                         FontSize="32"
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                         Symbol="TableSearch28" />
-                    <TextBlock
+                    <ui:TextBlock
                         HorizontalAlignment="Center"
                         FontSize="20"
                         FontWeight="SemiBold"
                         Text="{DynamicResource Loc.View.Catalog.Text.NoStructuredResultsLoadedYet}" />
-                    <TextBlock
+                    <ui:TextBlock
                         MaxWidth="520"
                         Margin="0,8,0,0"
                         HorizontalAlignment="Center"
@@ -233,27 +254,27 @@
         </Grid>
             <Grid Grid.Row="3" Margin="0,4" Background="Transparent">
                 <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                    <TextBlock Text="{Binding StatusMessage}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" ToolTip="{Binding StatusMessage}" AutomationProperties.LiveSetting="Polite" />
-                    <TextBlock Grid.Column="1" MaxWidth="260" Margin="12,0,0,0" Text="{Binding ResultSourceDescription}" Style="{StaticResource CaptionTextStyle}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" ToolTip="{Binding ResultSourceDescription}" AutomationProperties.Name="{DynamicResource Loc.Workspace.ResultSource}" />
+                    <ui:TextBlock Text="{Binding StatusMessage}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" ToolTip="{Binding StatusMessage}" AutomationProperties.LiveSetting="Polite" />
+                    <ui:TextBlock Grid.Column="1" MaxWidth="260" Margin="12,0,0,0" Text="{Binding ResultSourceDescription}" Style="{StaticResource CaptionTextStyle}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" ToolTip="{Binding ResultSourceDescription}" AutomationProperties.Name="{DynamicResource Loc.Workspace.ResultSource}" />
                 </Grid>
             </Grid>
             <controls:SectionCard x:Name="CatalogDetailsPanel" Grid.Row="2" Width="340" HorizontalAlignment="Right" Panel.ZIndex="8" Style="{StaticResource FluentSectionCardStyle}" Visibility="{Binding IsDetailsOpen, Converter={StaticResource BooleanToVisibilityConverter}}">
               <controls:SectionCard.Header>
-                <ScrollViewer Style="{StaticResource FluentGutteredScrollViewerStyle}">
+                <ui:DynamicScrollViewer Style="{StaticResource FluentGutteredScrollViewerStyle}">
                     <StackPanel>
-                        <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.Workspace.Details}" />
-                        <TextBlock Margin="0,4,0,12" Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.Workspace.Catalog.Database.Help}" />
+                        <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.Workspace.Details}" />
+                        <ui:TextBlock Margin="0,4,0,12" Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.Workspace.Catalog.Database.Help}" />
                         <ui:TextBox AutomationProperties.Name="{DynamicResource Loc.Workspace.Database.Path}" LostKeyboardFocus="OnWorkspacePathLostKeyboardFocus" PlaceholderText="{DynamicResource Loc.Workspace.Database.Path}" Text="{Binding DatabasePath, UpdateSourceTrigger=PropertyChanged}" />
                         <WrapPanel Margin="0,8,0,0">
                             <ui:Button Margin="0,0,8,8" Command="{Binding BrowseDatabaseCommand}" Content="{DynamicResource Loc.Workspace.Database.Choose}" />
                             <ui:Button Margin="0,0,0,8" Command="{Binding LoadCommand}" Content="{DynamicResource Loc.Workspace.Database.Load}" ToolTip="{DynamicResource Loc.Workspace.Database.Load.Help}" ToolTipService.ShowOnDisabled="True" />
                         </WrapPanel>
-                        <TextBlock Style="{StaticResource CaptionTextStyle}" Text="{Binding DatabasePath}" TextWrapping="Wrap" />
+                        <ui:TextBlock Style="{StaticResource CaptionTextStyle}" Text="{Binding DatabasePath}" TextWrapping="Wrap" />
                     </StackPanel>
-                </ScrollViewer>
+                </ui:DynamicScrollViewer>
               </controls:SectionCard.Header>
             </controls:SectionCard>
         </controls:WorkspacePageFrame>
-        <controls:ScanConsolePanel x:Name="ScanConsolePanel" Grid.Row="1" Height="220" Margin="24,0,24,16" DataContext="{x:Null}" Visibility="{Binding IsPanelOpen, Converter={StaticResource BooleanToVisibilityConverter}}" />
+        <controls:ScanConsolePanel x:Name="ScanConsolePanel" controls:FloatingNotificationChrome.IsBottomChrome="True" Grid.Row="1" Height="220" Margin="24,0,24,16" DataContext="{x:Null}" Visibility="{Binding IsPanelOpen, Converter={StaticResource BooleanToVisibilityConverter}}" />
     </Grid>
 </Page>

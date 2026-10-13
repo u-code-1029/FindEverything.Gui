@@ -492,10 +492,11 @@ public sealed class SettingsReloadDiagnostics :
         ValidateDataAnnotations(host);
         ValidateDataAnnotations(plugins);
 
-        if (!Enum.IsDefined(appearance.Theme) || !Enum.IsDefined(appearance.Backdrop))
+        if (!Enum.IsDefined(appearance.Theme) || !Enum.IsDefined(appearance.Backdrop)
+            || !Enum.IsDefined(appearance.CatalogRowDensity))
         {
             throw new ValidationException(
-                "Appearance theme and backdrop values must be supported enum values.");
+                "Appearance theme, backdrop and density values must be supported enum values.");
         }
 
         if (!LocalizationOptions.IsSupported(localization.CultureName))

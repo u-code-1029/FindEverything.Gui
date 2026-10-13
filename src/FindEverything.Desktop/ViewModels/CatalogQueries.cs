@@ -45,6 +45,7 @@ public partial class CatalogViewModel
     public void EndUserInputEdit()
     {
         _activeNoteEdits = Math.Max(0, _activeNoteEdits - 1);
+        if (_activeNoteEdits == 0 && _liveRefreshQueued) ScheduleLiveFilterRefresh();
         if (_activeNoteEdits != 0 || !_deferredQueryRefresh) return;
         var preserve = _deferredPreserveSelection;
         _deferredQueryRefresh = false;
@@ -97,6 +98,7 @@ public partial class CatalogViewModel
         var operationProfile = SelectedProfile?.Profile;
         var hadPublishedResults = _displayedProjectionSnapshot is not null;
         var liveVersion = Interlocked.Increment(ref _resultSessionVersion);
+        ResetLiveFilters();
         var followUp = CatalogMissingDataDecision.Later;
         WorkspaceSelection? requestedWorkspace = null;
         try
@@ -155,9 +157,11 @@ public partial class CatalogViewModel
                         FilterSummary = F("Loc.Catalog.Filter.Empty", "{0:N0}개 항목", batch.Latest.MatchedCount);
                     }
                     if (!hadPublishedResults && (batch.Latest.AttemptReset || batch.Matches.Count > 0)) Items.Refresh();
+                    if (!hadPublishedResults) ScheduleLiveFilterRefresh();
                 });
                 var progress = new CatalogProgressBatcher(_indexingSettings?.Current.UiUpdateBatchSize ?? 10, batch =>
                 {
+                    if (!hadPublishedResults) CaptureLiveFilterSnapshot(writer, scope, scanFields, liveVersion);
                     var previews = batch.Matches.Select(value =>
                     {
                         var fullItem = value.MatchedItem!;
@@ -292,6 +296,7 @@ public partial class CatalogViewModel
         {
             // Queued callbacks must not touch the disposed staging writer.
             Interlocked.Increment(ref _resultSessionVersion);
+            ResetLiveFilters();
             writer?.Dispose();
             _projectionCancellation = null;
             IsScanning = false;
@@ -326,7 +331,7 @@ public partial class CatalogViewModel
     private async Task RefreshProjectionQueryAsync(bool preserveSelection = false, bool force = false,
         CancellationToken cancellationToken = default)
     {
-        if (_projectionStore is null || _projectionSnapshot is not { } snapshot) return;
+        if (ActiveProjectionStore is null || _projectionSnapshot is not { } snapshot) return;
         if (_activeNoteEdits > 0 && !force)
         {
             _deferredPreserveSelection = _deferredQueryRefresh
@@ -346,7 +351,7 @@ public partial class CatalogViewModel
         {
             // Debounce query construction, not the user's text input. Superseded
             // definitions never allocate a grid or queue a count query.
-            await Task.Delay(150, source.Token);
+            await Task.Delay(300, source.Token);
             query = await OpenProjectionQueryAsync(snapshot, definition, source.Token);
             var localizer = _localizer;
             var queryToken = source.Token;
@@ -362,8 +367,7 @@ public partial class CatalogViewModel
             source.Token.ThrowIfCancellationRequested();
             if (version != Volatile.Read(ref _queryVersion) || _disposed) return;
             preserveSelection = preserveSelection && _displayedProjectionSnapshot?.Generation == snapshot.Generation &&
-                (_displayedQueryDefinition with { SortFieldId = null, Descending = false }) ==
-                (definition with { SortFieldId = null, Descending = false });
+                _displayedQueryDefinition.HasSamePredicates(definition);
             ReleaseProjectionQuery(cancelPending: false);
             _projectionQuery = query;
             _displayedProjectionSnapshot = snapshot;
@@ -393,7 +397,7 @@ public partial class CatalogViewModel
             Items = new ListCollectionView(_virtualItems);
             _loadedItems.Clear();
             SelectedItem = null;
-            HasLoadedItems = total > 0;
+            HasLoadedItems = snapshot.Summary.MatchedCount > 0;
             FilterSummary = F("Loc.Catalog.Query.FilterSummary", "{0:N0} / {1:N0}개 항목",
                 total, snapshot.Summary.MatchedCount);
             OnPropertyChanged(nameof(UsesQuerySelection));
@@ -421,7 +425,8 @@ public partial class CatalogViewModel
     private async Task<IResultQuerySession<CatalogProjectionRow>> OpenProjectionQueryAsync(
         CatalogProjectionSnapshot snapshot, CatalogProjectionQuery definition, CancellationToken token)
     {
-        var opening = Task.Run(() => _projectionStore!.OpenQuery(snapshot, definition), token);
+        var store = ActiveProjectionStore ?? throw new InvalidOperationException("No catalog data source is available.");
+        var opening = Task.Run(() => store.OpenQuery(snapshot, definition), token);
         try { return await opening.WaitAsync(token); }
         catch
         {
@@ -450,7 +455,8 @@ public partial class CatalogViewModel
                 item!.UserInputValues[field]),
             () => _dispatcher.BeginInvoke(DispatcherPriority.Background,
                 new Action(() => { if (!_disposed) _ = RefreshProjectionQueryAsync(); })))
-        { FieldErrors = row.FieldErrors ?? new Dictionary<string, string>(), PreviewFields = row.PreviewFields };
+        { FieldErrors = row.FieldErrors ?? new Dictionary<string, string>(), PreviewFields = row.PreviewFields,
+          SourceFullPath = row.OriginalFullPath, SourceRowKey = row.StableKey };
         item.SetShowOriginalValues(definition.ShowOriginalValues);
         return item;
     }
@@ -489,7 +495,9 @@ public partial class CatalogViewModel
         _isRecoveringProjection = true;
         try
         {
-            var latest = await Task.Run(() => _projectionStore!.FindAsync(snapshot.Scope));
+            var store = ActiveProjectionStore;
+            if (store is null) return;
+            var latest = await Task.Run(() => store.FindAsync(snapshot.Scope));
             if (_disposed || _displayedProjectionSnapshot?.Generation != snapshot.Generation) return;
             if (latest is not null)
             {
@@ -523,8 +531,9 @@ public partial class CatalogViewModel
         if (fieldId.StartsWith("UserInputValues[", StringComparison.Ordinal))
             fieldId = fieldId["UserInputValues[".Length..].Split(']')[0];
         if (fieldId == "CoverageText") fieldId = "CoveragePending";
-        _queryDefinition = _queryDefinition with { SortFieldId = fieldId, Descending = direction == EntrySortDirection.Descending };
-        _ = RefreshProjectionQueryAsync(preserveSelection: true);
+        var target = fieldId == "FullPath" ? CatalogColumnTarget.FullPath : fieldId == "CoveragePending"
+            ? CatalogColumnTarget.Coverage : CatalogColumnTarget.Field(fieldId);
+        ApplyColumnSort(target, direction == EntrySortDirection.Descending);
     }
 
     [RelayCommand] private void SelectAll()
@@ -577,10 +586,10 @@ public partial class CatalogViewModel
                     var page = await Task.Run(() => query.ReadRangeAsync(start,
                         Math.Min(500, Math.Max(index, _selectionAnchor) - start + 1)));
                     if (!ReferenceEquals(query, _projectionQuery)) return;
-                    foreach (var item in page.Items) _querySelection.Set(item.FullPath, true);
+                    foreach (var item in page.Items) _querySelection.Set(item.StableKey ?? item.FullPath, true);
                 }
             }
-            else { _querySelection.Set(row.FullPath, !additive || !_querySelection.Contains(row.FullPath)); _selectionAnchor = index; }
+            else { _querySelection.Set(row.SelectionKey, !additive || !_querySelection.Contains(row.SelectionKey)); _selectionAnchor = index; }
             SelectedItem = row;
             UpdateProjectionSelection(additive && !range ? [row] : null);
         }
@@ -593,19 +602,19 @@ public partial class CatalogViewModel
     private void UpdateProjectionSelection(IReadOnlyList<CatalogItemViewModel>? changedItems = null)
     {
         if (_virtualItems is null) return;
-        foreach (var item in changedItems ?? _virtualItems.LoadedItems) item.IsSelected = _querySelection.Contains(item.FullPath);
+        foreach (var item in changedItems ?? _virtualItems.LoadedItems) item.IsSelected = _querySelection.Contains(item.SelectionKey);
         SelectedCount = checked((int)_querySelection.Count(_matchingCount));
         CopySelectionCommand.NotifyCanExecuteChanged();
         ExportSelectionCommand.NotifyCanExecuteChanged();
     }
 
-    private bool CanRefreshTextColumn(string fieldId) => !IsBusy && _projectionQuery is not null &&
+    private bool CanRefreshTextColumn(string fieldId) => !IsBusy && !IsReadOnlyDataSource && _projectionQuery is not null &&
         Fields.Any(field => field.FieldId == fieldId && field.SourceKind == ProfileFieldSourceKind.TextFileContent);
 
     [RelayCommand(CanExecute = nameof(CanRefreshTextColumn))]
     private async Task RefreshTextColumnAsync(string fieldId)
     {
-        if (IsBusy || _projectionSnapshot is not { } snapshot || _projectionStore is null ||
+        if (IsBusy || IsReadOnlyDataSource || _projectionSnapshot is not { } snapshot || _projectionStore is null ||
             SelectedProfile?.Profile is not { } profile) return;
         if (!snapshot.Fields.Any(field => field.FieldId == fieldId && field.SourceKind == ProfileFieldSourceKind.TextFileContent)) return;
         using var source = new CancellationTokenSource();
@@ -654,15 +663,21 @@ public partial class CatalogViewModel
             var definition = _displayedQueryDefinition with { TextPreviewCharacters = 0 };
             var copiedCount = SelectedCount;
             var format = SelectedOutputFormat ?? SelectionOutputFormatDefaults.CreateFullPathLines(_localizer);
+            var importedSource = WorkspaceTransfer?.CurrentSource;
+            var liveStore = _projectionStore;
             await CommitTrackedNotesAsync();
-            await using var query = await Task.Run(() => _projectionStore!.OpenQuery(snapshot, definition), token);
+            using var ownedStore = importedSource is not null
+                ? await Task.Run(() => _datasetTransfer!.OpenCatalogStore(importedSource) as IDisposable, token) : null;
+            var store = ownedStore as ICatalogProjectionStore ?? liveStore ?? throw new InvalidOperationException("No catalog data source is available.");
+            await using var query = await Task.Run(() => store.OpenQuery(snapshot, definition), token);
             async IAsyncEnumerable<SelectionOutputItem> Outputs([EnumeratorCancellation] CancellationToken token = default)
             {
                 await foreach (var row in query.EnumerateSelectionAsync(selection, token))
                 {
                     var item = CreateProjectionItem(row, snapshot, definition, _localizer);
                     yield return new(row.FullPath, row.FullPath,
-                        Path.GetFileName(Path.TrimEndingDirectorySeparator(row.FullPath)), item.OutputValues);
+                        Path.GetFileName(Path.TrimEndingDirectorySeparator(row.FullPath)), item.OutputValues)
+                    { OriginalFullPath = row.OriginalFullPath };
                 }
             }
             var text = await Task.Run(() => _outputFormatter.FormatAsync(format, Outputs(token), token), token);
@@ -678,17 +693,22 @@ public partial class CatalogViewModel
     private async Task ExportQuerySelectionAsync()
     {
         var token = _outputLifetime.Token;
+        var snapshot = _displayedProjectionSnapshot!;
+        var definition = _displayedQueryDefinition with { TextPreviewCharacters = 0 };
+        var selection = _querySelection.Capture();
+        var count = SelectedCount;
+        var importedSource = WorkspaceTransfer?.CurrentSource;
+        var liveStore = _projectionStore;
         var destination = _pickerService.PickCatalogExportPath($"FindEverything-catalog-{DateTime.Now:yyyyMMdd-HHmmss}.xlsx");
         if (destination is null) return;
         try
         {
-            var snapshot = _displayedProjectionSnapshot!;
             var fields = snapshot.Fields.OrderBy(field => field.Order).ToArray();
-            var definition = _displayedQueryDefinition with { TextPreviewCharacters = 0 };
-            var selection = _querySelection.Capture();
-            var count = SelectedCount;
             await CommitTrackedNotesAsync();
-            await using var query = await Task.Run(() => _projectionStore!.OpenQuery(snapshot, definition), token);
+            using var ownedStore = importedSource is not null
+                ? await Task.Run(() => _datasetTransfer!.OpenCatalogStore(importedSource) as IDisposable, token) : null;
+            var store = ownedStore as ICatalogProjectionStore ?? liveStore ?? throw new InvalidOperationException("No catalog data source is available.");
+            await using var query = await Task.Run(() => store.OpenQuery(snapshot, definition), token);
             var headers = new[] { L("Loc.Catalog.Column.Status", "상태") }
                 .Concat(fields.Select(field => field.Header)).Append(L("Loc.Catalog.Column.FolderPath", "폴더 경로")).ToArray();
             IEnumerable<IReadOnlyList<string>> Rows()

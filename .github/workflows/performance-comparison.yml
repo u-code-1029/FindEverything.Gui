@@ -22,7 +22,7 @@ jobs:
         run: dotnet test tests/FindEverything.Desktop.Tests/FindEverything.Desktop.Tests.csproj -c Release --filter FullyQualifiedName~Shell_pages_and_navigation_resolve_on_an_sta_thread
       - uses: actions/checkout@v7
         with:
-          ref: b78f75f05fa95ec0efd2c4e63bf873864f20d2b0
+          ref: 7875e07677fb141f7f16889d3d8d0b0f3c29345a
           path: performance-baseline
           submodules: recursive
       - name: Apply the identical measurement fixture to the baseline
@@ -32,7 +32,9 @@ jobs:
           Copy-Item $fixture (Join-Path 'performance-baseline' $fixture)
           $smoke = 'performance-baseline/tests/FindEverything.Desktop.Tests/DesktopCompositionSmokeTests.cs'
           $source = Get-Content $smoke -Raw
-          $source = $source.Replace('VerifyProjectionQueries(provider, window);', "VerifyProjectionQueries(provider, window);`n            WorkspacePerformanceChecks.Verify(provider);")
+          if (-not $source.Contains('WorkspacePerformanceChecks.Verify(provider);')) {
+            $source = $source.Replace('VerifyProjectionQueries(provider, window);', "VerifyProjectionQueries(provider, window);`n            WorkspacePerformanceChecks.Verify(provider);")
+          }
           $source = $source.Replace('completion.Task.WaitAsync(TimeSpan.FromSeconds(60))', 'completion.Task.WaitAsync(TimeSpan.FromSeconds(180))')
           [IO.File]::WriteAllText((Join-Path $PWD $smoke), $source)
       - name: Measure baseline UI on the same Windows runner

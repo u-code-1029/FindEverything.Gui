@@ -43,6 +43,8 @@ public partial class CatalogPage
     private void ApplyWorkspaceLayout()
     {
         if (ScanConsolePanel is null || CatalogResultsWorkspace is null) return;
+        CatalogHeaderProgressCaption.Visibility = CatalogPageContent.ActualWidth >= 900
+            ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
         ScanConsolePanel.Height = Math.Max(120, CatalogPageLayout.ActualHeight * 0.3);
         ScanConsolePanel.MaxHeight = Math.Max(120, CatalogPageLayout.ActualHeight * 0.45);
         var reserveDetails = _viewModel.IsDetailsOpen && CatalogPageContent.ActualWidth >= 900;
@@ -81,6 +83,17 @@ public partial class CatalogPage
 
     private async void OnPagePreviewKeyDown(object sender, KeyEventArgs e)
     {
+        // Ordinary row clicks now focus the selector. Retain Enter-to-open
+        // without intercepting the checkbox's own Space/range selection input.
+        if (e.Key == Key.Enter && Keyboard.FocusedElement is System.Windows.Controls.CheckBox selector
+            && System.Windows.Controls.ItemsControl.ContainerFromElement(ResultsGrid, selector)
+                is System.Windows.Controls.DataGridRow { Item: CatalogItemViewModel { IsPlaceholder: false } selected }
+            && _viewModel.OpenItemCommand.CanExecute(selected))
+        {
+            e.Handled = true;
+            _viewModel.OpenItemCommand.Execute(selected);
+            return;
+        }
         if (ResultsGrid.IsKeyboardFocusWithin && Keyboard.FocusedElement is System.Windows.DependencyObject focused
             && !ResultGridInput.IsInteractiveOrigin(focused)
             && ResultsGrid.CurrentItem is CatalogItemViewModel { IsPlaceholder: false } current)
@@ -177,7 +190,7 @@ public partial class CatalogPage
         if (row.Item is not CatalogItemViewModel { IsPlaceholder: false } item) return;
         ResultsGrid.CurrentItem = item;
         _viewModel.SelectedItem = item;
-        row.Focus();
+        DynamicProfileGrid.FocusSelectionCheckBox(row);
         if (e.ClickCount == 1)
             _pendingRowClick = new(item, e.GetPosition(ResultsGrid),
                 Keyboard.Modifiers.HasFlag(ModifierKeys.Shift), e.ClickCount);
@@ -223,6 +236,7 @@ public partial class CatalogPage
         // CurrentItem, while selection-wide actions use the checked models.
         ResultsGrid.CurrentItem = row.Item;
         _viewModel.SelectedItem = _pointerContextItem;
+        if (ResultGridInput.IsInteractiveOrigin(source)) return;
         row.Focus();
         if (!_pointerContextItem.IsSelected)
             await _viewModel.SelectRowAsync(_pointerContextItem, additive: true, range: false);
@@ -232,6 +246,7 @@ public partial class CatalogPage
         object sender,
         System.Windows.Controls.ContextMenuEventArgs e)
     {
+        if (e.OriginalSource is System.Windows.DependencyObject source && ResultGridInput.IsInteractiveOrigin(source)) return;
         if (e.CursorLeft < 0)
         {
             // Keyboard invocation uses the DataGrid's current row.

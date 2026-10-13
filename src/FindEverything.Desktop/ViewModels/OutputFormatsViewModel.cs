@@ -136,11 +136,11 @@ public partial class OutputFormatsViewModel : ObservableObject, IDraftParticipan
 
     public bool IsDeleteAvailable => CanEdit && SelectedFormat is not null;
 
-    public bool HasProfileTokens => TokenChoices.Count > 3;
+    public bool HasProfileTokens => TokenChoices.Count > 4;
 
-    public IReadOnlyList<OutputFormatTokenChoice> CommonTokenChoices => TokenChoices.Take(3).ToArray();
+    public IReadOnlyList<OutputFormatTokenChoice> CommonTokenChoices => TokenChoices.Take(4).ToArray();
 
-    public IReadOnlyList<OutputFormatTokenChoice> ProfileTokenChoices => TokenChoices.Skip(3).ToArray();
+    public IReadOnlyList<OutputFormatTokenChoice> ProfileTokenChoices => TokenChoices.Skip(4).ToArray();
 
     public string ProfileColumnGuidance => HasProfileTokens
         ? F("Loc.Output.Profile.ColumnsReady", "'{0}'의 컬럼을 클릭하면 현재 커서 위치에 삽입됩니다.", SelectedProfileChoice?.DisplayName)
@@ -555,6 +555,10 @@ public partial class OutputFormatsViewModel : ObservableObject, IDraftParticipan
                 L("Loc.Output.Token.FullPath", "전체 경로"),
                 "{FullPath}",
                 L("Loc.Output.Token.FullPath.Detail", "파일 또는 구조화 항목의 전체 경로")),
+            new(
+                L("Loc.Output.Token.OriginalFullPath", "원본 전체 경로"),
+                "{OriginalFullPath}",
+                L("Loc.Output.Token.OriginalFullPath.Help", "공유 데이터를 보낸 PC의 원래 경로입니다. 로컬 항목은 전체 경로와 같습니다.")),
             new(
                 L("Loc.Output.Token.FolderPath", "폴더 경로"),
                 "{FolderPath}",

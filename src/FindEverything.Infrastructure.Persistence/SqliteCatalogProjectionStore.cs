@@ -20,7 +20,9 @@ public sealed partial class SqliteCatalogProjectionStore : ICatalogProjectionSto
     private readonly string _connectionString;
     private bool _disposed;
 
-    public SqliteCatalogProjectionStore(string databasePath)
+    public SqliteCatalogProjectionStore(string databasePath) : this(databasePath, false) { }
+
+    public SqliteCatalogProjectionStore(string databasePath, bool readOnly)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(databasePath);
         DatabasePath = Path.GetFullPath(databasePath);
@@ -29,10 +31,10 @@ public sealed partial class SqliteCatalogProjectionStore : ICatalogProjectionSto
             || new DriveInfo(Path.GetPathRoot(DatabasePath)!).DriveType == DriveType.Network))
             throw new ArgumentException("The catalog database must be on a local disk.", nameof(databasePath));
         var exists = File.Exists(DatabasePath);
-        Directory.CreateDirectory(Path.GetDirectoryName(DatabasePath)!);
+        if (!readOnly) Directory.CreateDirectory(Path.GetDirectoryName(DatabasePath)!);
         _connectionString = new SqliteConnectionStringBuilder
         {
-            DataSource = DatabasePath, Mode = SqliteOpenMode.ReadWriteCreate,
+            DataSource = DatabasePath, Mode = readOnly ? SqliteOpenMode.ReadOnly : SqliteOpenMode.ReadWriteCreate,
             Pooling = false, DefaultTimeout = 30
         }.ToString();
         using var connection = OpenConnection();
@@ -44,6 +46,11 @@ public sealed partial class SqliteCatalogProjectionStore : ICatalogProjectionSto
         var version = Convert.ToInt32(ownership.ExecuteScalar(), CultureInfo.InvariantCulture);
         if (version is < 0 or > 2)
             throw new InvalidDataException($"Unsupported catalog schema version {version}.");
+        if (readOnly)
+        {
+            if (!exists || version != 2) throw new InvalidDataException("A read-only catalog requires the current published schema.");
+            return;
+        }
         if (version == 1) UpgradeVersionOne(connection);
         using var schema = connection.CreateCommand();
         schema.CommandText = Schema;
@@ -54,11 +61,16 @@ public sealed partial class SqliteCatalogProjectionStore : ICatalogProjectionSto
 
     public string DatabasePath { get; }
 
-    public async Task<CatalogProjectionSnapshot?> FindAsync(CatalogProjectionScope scope,
-        CancellationToken cancellationToken = default)
+    public Task<CatalogProjectionSnapshot?> FindAsync(CatalogProjectionScope scope,
+        CancellationToken cancellationToken = default) => Task.Run(() => SqliteReadCancellation.RunAsync(
+            token => FindCoreAsync(scope, token), cancellationToken), cancellationToken);
+
+    private async Task<CatalogProjectionSnapshot?> FindCoreAsync(CatalogProjectionScope scope,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(scope);
-        using var connection = OpenConnection();
+        using var connection = OpenConnection(readOperation: true);
+        using var interrupt = new SqliteReadCancellation(connection, cancellationToken);
         using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT g.generation, g.scope_json, g.summary_json, g.fields_json
@@ -107,7 +119,8 @@ public sealed partial class SqliteCatalogProjectionStore : ICatalogProjectionSto
         CatalogProjectionQuery query)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
-        return new ProjectionQuery(this, snapshot.Generation, snapshot.Scope, snapshot.Fields, query, false);
+        return new ProjectionQuery(this, snapshot.Generation, snapshot.Scope, snapshot.Fields, query,
+            snapshot.IsBuilding, snapshot.IsBuilding ? snapshot.BuildingRevision : null);
     }
 
     public IResultQuerySession<CatalogProjectionRow> OpenBuildingQuery(ICatalogProjectionWriter writer,
@@ -223,10 +236,11 @@ public sealed partial class SqliteCatalogProjectionStore : ICatalogProjectionSto
         _disposed = true;
     }
 
-    private SqliteConnection OpenConnection()
+    private SqliteConnection OpenConnection(bool readOperation = false)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         var connection = new SqliteConnection(_connectionString);
+        if (readOperation) connection.DefaultTimeout = 1;
         try
         {
             connection.Open();

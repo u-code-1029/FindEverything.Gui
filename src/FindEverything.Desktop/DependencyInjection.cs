@@ -1,5 +1,7 @@
 using FindEverything.Application.Catalog;
 using FindEverything.Application.Options;
+using FindEverything.Application.Sharing;
+using FindEverything.Application.Indexing;
 using FindEverything.Infrastructure.Persistence;
 using FindEverything.Desktop.Appearance;
 using FindEverything.Desktop.Configuration;
@@ -30,6 +32,15 @@ public static class DependencyInjection
         ArgumentNullException.ThrowIfNull(paths);
 
         services.AddSingleton(paths);
+        var indexFactory = services.LastOrDefault(descriptor => descriptor.ServiceType == typeof(IIndexSessionFactory));
+        if (indexFactory is not null)
+        {
+            services.Remove(indexFactory);
+            services.AddSingleton(provider => new UnderlyingIndexSessionFactory((IIndexSessionFactory)(indexFactory.ImplementationInstance
+                ?? indexFactory.ImplementationFactory?.Invoke(provider)
+                ?? ActivatorUtilities.CreateInstance(provider, indexFactory.ImplementationType!))));
+            services.AddSingleton<IIndexSessionFactory, ImportedIndexSessionFactory>();
+        }
 
         services.AddOptions<HostLifecycleOptions>()
             .Bind(configuration.GetSection(HostLifecycleOptions.SectionName))
@@ -89,6 +100,12 @@ public static class DependencyInjection
         services.AddSingleton<IScanConsoleLogWriter, ScanConsoleLogWriter>();
         services.AddSingleton<IPathLauncher, ExplorerPathLauncher>();
         services.AddSingleton<IProfileAuthoringService, ProfileAuthoringService>();
+        services.AddSingleton<ProfileTransferService>();
+        services.AddSingleton<IProfileTransferService>(provider => provider.GetRequiredService<ProfileTransferService>());
+        services.AddSingleton<IndexedDatasetTransferService>();
+        services.AddSingleton<IIndexedDatasetTransferService>(provider => provider.GetRequiredService<IndexedDatasetTransferService>());
+        services.AddSingleton<IImportedWorkspaceRegistry>(provider => provider.GetRequiredService<IndexedDatasetTransferService>());
+        services.AddSingleton<WorkspaceTransferViewModel>();
         services.AddSingleton<IProfilePlaygroundEvaluator, ProfilePlaygroundEvaluator>();
         services.AddSingleton<IProfilePlaygroundNavigator, ProfilePlaygroundNavigator>();
         services.AddSingleton<IHomeNavigationService, HomeNavigationService>();
@@ -129,11 +146,27 @@ public static class DependencyInjection
         services.AddSingleton<HomePage>();
         services.AddSingleton<HomeViewModel>();
         services.AddSingleton<FilesPage>();
-        services.AddSingleton<FileSearchViewModel>();
+        services.AddSingleton<FileSearchViewModel>(provider =>
+        {
+            var viewModel = ActivatorUtilities.CreateInstance<FileSearchViewModel>(provider);
+            viewModel.AttachWorkspaceTransfer(provider.GetRequiredService<WorkspaceTransferViewModel>());
+            return viewModel;
+        });
         services.AddSingleton<CatalogPage>();
-        services.AddSingleton<CatalogViewModel>();
+        services.AddSingleton<CatalogViewModel>(provider =>
+        {
+            var viewModel = ActivatorUtilities.CreateInstance<CatalogViewModel>(provider);
+            viewModel.AttachWorkspaceTransfer(provider.GetRequiredService<WorkspaceTransferViewModel>(),
+                provider.GetRequiredService<IIndexedDatasetTransferService>());
+            return viewModel;
+        });
         services.AddSingleton<ProfilesPage>();
-        services.AddSingleton<ProfilesViewModel>();
+        services.AddSingleton<ProfilesViewModel>(provider =>
+        {
+            var viewModel = ActivatorUtilities.CreateInstance<ProfilesViewModel>(provider);
+            viewModel.AttachWorkspaceTransfer(provider.GetRequiredService<WorkspaceTransferViewModel>());
+            return viewModel;
+        });
         services.AddSingleton<ProfilePlaygroundPage>();
         services.AddSingleton<ProfilePlaygroundViewModel>();
         services.AddSingleton<OutputFormatsPage>();

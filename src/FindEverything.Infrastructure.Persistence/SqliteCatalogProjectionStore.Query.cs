@@ -9,7 +9,7 @@ namespace FindEverything.Infrastructure.Persistence;
 
 public sealed partial class SqliteCatalogProjectionStore
 {
-    private sealed class ProjectionQuery : IResultQuerySession<CatalogProjectionRow>
+    private sealed partial class ProjectionQuery : IResultQuerySession<CatalogProjectionRow>
     {
         private readonly SqliteCatalogProjectionStore _owner;
         private readonly string _generation;
@@ -18,6 +18,9 @@ public sealed partial class SqliteCatalogProjectionStore
         private readonly IReadOnlyList<string> _textFieldIds;
         private readonly CatalogProjectionQuery _query;
         private readonly ProfileFieldDescriptor? _sortField;
+        private readonly CatalogColumnTarget _sortTarget;
+        private readonly IReadOnlyList<CatalogColumnFilter> _filters;
+        private readonly CancellationTokenSource _lifetime = new();
         private readonly bool _building;
         private readonly string[] _terms;
         private readonly long _buildingRevision;
@@ -26,7 +29,7 @@ public sealed partial class SqliteCatalogProjectionStore
 
         public ProjectionQuery(SqliteCatalogProjectionStore owner, string generation,
             CatalogProjectionScope scope, IReadOnlyList<ProfileFieldDescriptor> fields,
-            CatalogProjectionQuery query, bool building)
+            CatalogProjectionQuery query, bool building, long? expectedRevision = null)
         {
             ArgumentNullException.ThrowIfNull(query);
             if (query.TextPreviewCharacters < 0)
@@ -39,18 +42,24 @@ public sealed partial class SqliteCatalogProjectionStore
                 .Select(field => field.FieldId.ToLowerInvariant()).ToArray();
             _query = query;
             _building = building;
-            _sortField = query.SortFieldId is "FullPath" or "CoveragePending" ? null
-                : fields.FirstOrDefault(field => string.Equals(field.FieldId, query.SortFieldId, StringComparison.OrdinalIgnoreCase));
-            if (!string.IsNullOrWhiteSpace(query.SortFieldId) && _sortField is null
-                && query.SortFieldId is not "FullPath" and not "fullPath" and not "CoveragePending")
+            _sortTarget = query.SortTarget ?? (query.SortFieldId is null or "FullPath" or "fullPath"
+                ? CatalogColumnTarget.FullPath : query.SortFieldId == "CoveragePending"
+                    ? CatalogColumnTarget.Coverage : CatalogColumnTarget.Field(query.SortFieldId));
+            _sortField = _sortTarget.Kind == CatalogColumnTargetKind.ProfileField
+                ? fields.FirstOrDefault(field => string.Equals(field.FieldId, _sortTarget.FieldId, StringComparison.OrdinalIgnoreCase)) : null;
+            if (!Enum.IsDefined(_sortTarget.Kind) || (_sortTarget.Kind == CatalogColumnTargetKind.ProfileField && _sortField is null))
                 throw new ArgumentException("The sort field is not defined by the profile.", nameof(query));
+            _filters = query.Filters.ToArray();
+            foreach (var filter in _filters) CatalogColumnFilters.Validate(filter, fields);
+            if (_filters.Select(filter => filter.Target).Distinct().Count() != _filters.Count)
+                throw new ArgumentException("A column may have only one active condition.", nameof(query));
             _terms = (query.Keyword ?? string.Empty).Split((char[]?)null,
                 StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .Select(term => term.ToLowerInvariant()).Distinct(StringComparer.Ordinal).ToArray();
             _owner._leases.AddOrUpdate(generation, 1, static (_, value) => value + 1);
             try
             {
-                using var connection = _owner.OpenConnection();
+                using var connection = _owner.OpenConnection(readOperation: true);
                 using var transaction = connection.BeginTransaction(deferred: true);
                 _notesRevision = NotesRevision(connection, transaction, _scope.ProfileId);
                 if (_building)
@@ -60,6 +69,8 @@ public sealed partial class SqliteCatalogProjectionStore
                     revision.CommandText = "SELECT revision FROM projection_generations WHERE generation=$generation;";
                     revision.Parameters.AddWithValue("$generation", _generation);
                     _buildingRevision = Convert.ToInt64(revision.ExecuteScalar(), CultureInfo.InvariantCulture);
+                    if (expectedRevision.HasValue && _buildingRevision != expectedRevision.Value)
+                        throw new ResultQueryChangedException(generation + ":" + expectedRevision, generation + ":" + _buildingRevision);
                 }
                 EnsureGeneration(connection, transaction);
             }
@@ -72,14 +83,17 @@ public sealed partial class SqliteCatalogProjectionStore
 
         public string Identity => _building ? _generation + ":" + _buildingRevision : _generation;
 
-        public async Task<long> CountAsync(CancellationToken cancellationToken = default)
+        public Task<long> CountAsync(CancellationToken cancellationToken = default) => ExecuteReadAsync(CountCoreAsync, cancellationToken);
+
+        private async Task<long> CountCoreAsync(CancellationToken cancellationToken)
         {
             ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
             cancellationToken.ThrowIfCancellationRequested();
-            using var connection = _owner.OpenConnection();
+            using var connection = _owner.OpenConnection(readOperation: true);
+            using var interrupt = new SqliteReadCancellation(connection, cancellationToken);
             using var transaction = connection.BeginTransaction(deferred: true);
             EnsureGeneration(connection, transaction);
-            if (_terms.Length == 0)
+            if (_terms.Length == 0 && _filters.Count == 0)
             {
                 using var count = connection.CreateCommand();
                 count.Transaction = transaction;
@@ -92,14 +106,22 @@ public sealed partial class SqliteCatalogProjectionStore
             return Convert.ToInt64(await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false), CultureInfo.InvariantCulture);
         }
 
-        public async Task<ResultPage<CatalogProjectionRow>> ReadRangeAsync(int offset, int limit,
-            CancellationToken cancellationToken = default)
+        public Task<ResultPage<CatalogProjectionRow>> ReadRangeAsync(int offset, int limit,
+            CancellationToken cancellationToken = default) => ExecuteReadAsync(async token =>
         {
             ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
             ValidateRange(offset, limit);
-            using var connection = _owner.OpenConnection();
+            using var connection = _owner.OpenConnection(readOperation: true);
+            using var interrupt = new SqliteReadCancellation(connection, token);
             return await ReadPageAsync(connection, "user_inputs", null, offset, limit,
-                checkPublication: true, previewCharacters: _query.TextPreviewCharacters, cancellationToken).ConfigureAwait(false);
+                checkPublication: true, previewCharacters: _query.TextPreviewCharacters, token).ConfigureAwait(false);
+        }, cancellationToken);
+
+        private async Task<T> ExecuteReadAsync<T>(Func<CancellationToken, Task<T>> operation, CancellationToken token)
+        {
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, _lifetime.Token);
+            return await Task.Run(() => SqliteReadCancellation.RunAsync(operation, linked.Token), linked.Token).ConfigureAwait(false);
         }
 
         public async IAsyncEnumerable<CatalogProjectionRow> EnumerateSelectionAsync(QuerySelection selection,
@@ -107,12 +129,15 @@ public sealed partial class SqliteCatalogProjectionStore
         {
             ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
             ArgumentNullException.ThrowIfNull(selection);
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
+            cancellationToken = linked.Token;
             var captured = selection.Capture();
             // Retain the immutable projection independently of the UI query lifetime.
             _owner._leases.AddOrUpdate(_generation, 1, static (_, value) => value + 1);
             try
             {
-                using var connection = _owner.OpenConnection();
+                using var connection = _owner.OpenConnection(readOperation: true);
+                using var interrupt = new SqliteReadCancellation(connection, cancellationToken);
                 using (var transaction = connection.BeginTransaction(deferred: true))
                 {
                     EnsureGeneration(connection, transaction);
@@ -124,7 +149,7 @@ public sealed partial class SqliteCatalogProjectionStore
                         CREATE TEMP TABLE selection_keys(path_key TEXT PRIMARY KEY COLLATE BINARY) WITHOUT ROWID;
                         """;
                     capture.Parameters.AddWithValue("$profile", ProfileKey(_scope.ProfileId));
-                    await capture.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+                    await SqliteReadCancellation.RunAsync(token => capture.ExecuteNonQueryAsync(token), cancellationToken).ConfigureAwait(false);
                     capture.CommandText = "INSERT OR IGNORE INTO selection_keys(path_key) VALUES($path);";
                     capture.Parameters.Clear();
                     var key = capture.Parameters.Add("$path", SqliteType.Text);
@@ -140,8 +165,8 @@ public sealed partial class SqliteCatalogProjectionStore
                 var offset = 0;
                 while (true)
                 {
-                    var page = await ReadPageAsync(connection, "captured_notes", captured,
-                        offset, BatchSize, checkPublication: false, previewCharacters: 0, cancellationToken).ConfigureAwait(false);
+                    var page = await SqliteReadCancellation.RunAsync(token => ReadPageAsync(connection, "captured_notes", captured,
+                        offset, BatchSize, checkPublication: false, previewCharacters: 0, token), cancellationToken).ConfigureAwait(false);
                     foreach (var row in page.Items)
                     {
                         cancellationToken.ThrowIfCancellationRequested();
@@ -274,7 +299,7 @@ public sealed partial class SqliteCatalogProjectionStore
             command.Parameters.AddWithValue("$generation", _generation);
             command.Parameters.AddWithValue("$profile", ProfileKey(_scope.ProfileId));
             var joins = string.Empty;
-            var order = _query.SortFieldId == "CoveragePending" ? "r.coverage" : "r.path_key COLLATE BINARY";
+            var order = _sortTarget.Kind == CatalogColumnTargetKind.Coverage ? "r.coverage" : "r.path_key COLLATE BINARY";
             if (_sortField is not null)
             {
                 joins = $"""
@@ -292,6 +317,7 @@ public sealed partial class SqliteCatalogProjectionStore
                     };
             }
             var predicates = new List<string> { "r.generation=$generation" };
+            AddColumnFilters(command, notesTable, predicates);
             for (var index = 0; index < _terms.Length; index++)
             {
                 var term = "$term" + index;
@@ -362,6 +388,7 @@ public sealed partial class SqliteCatalogProjectionStore
         public async ValueTask DisposeAsync()
         {
             if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+            _lifetime.Cancel();
             ReleaseLease();
             if (!_owner._disposed)
             {

@@ -34,6 +34,7 @@ public partial class SettingsViewModel : ObservableObject
     private string _savedNotificationAutoDismissSeconds = string.Empty;
     private ThemePreference _savedTheme;
     private BackdropPreference _savedBackdrop;
+    private CatalogRowDensity _savedCatalogRowDensity;
 
     public SettingsViewModel(
         IValidatedSettingsState<IndexingOptions> indexingSettings,
@@ -72,6 +73,12 @@ public partial class SettingsViewModel : ObservableObject
             new(BackdropPreference.Auto, L("Loc.Settings.Backdrop.Auto", "자동 (지원 시 효과 사용)")),
             new(BackdropPreference.None, L("Loc.Settings.Backdrop.None", "사용 안 함")),
         ];
+        CatalogRowDensityChoices =
+        [
+            new(CatalogRowDensity.Narrow, L("Loc.Settings.Density.Narrow", "좁게")),
+            new(CatalogRowDensity.Normal, L("Loc.Settings.Density.Normal", "보통")),
+            new(CatalogRowDensity.Wide, L("Loc.Settings.Density.Wide", "넓게")),
+        ];
 
         var indexing = indexingSettings.Current;
         SearchPageSize = indexing.SearchPageSize;
@@ -83,6 +90,7 @@ public partial class SettingsViewModel : ObservableObject
         var appearance = appearanceSettings.Current;
         SelectedTheme = ThemeChoices.First(choice => choice.Value == appearance.Theme);
         SelectedBackdrop = BackdropChoices.First(choice => choice.Value == appearance.Backdrop);
+        SelectedCatalogRowDensity = CatalogRowDensityChoices.First(choice => choice.Value == appearance.CatalogRowDensity);
         RefreshFromSavedSettings(force: true);
         UserSettingsFile = paths.UserSettingsFile;
         StatusMessage = L(
@@ -96,6 +104,8 @@ public partial class SettingsViewModel : ObservableObject
     public IReadOnlyList<SettingChoice<ThemePreference>> ThemeChoices { get; }
 
     public IReadOnlyList<SettingChoice<BackdropPreference>> BackdropChoices { get; }
+
+    public IReadOnlyList<SettingChoice<CatalogRowDensity>> CatalogRowDensityChoices { get; }
 
     public string UserSettingsFile { get; }
 
@@ -176,6 +186,9 @@ public partial class SettingsViewModel : ObservableObject
     private SettingChoice<BackdropPreference> _selectedBackdrop = null!;
 
     [ObservableProperty]
+    private SettingChoice<CatalogRowDensity> _selectedCatalogRowDensity = null!;
+
+    [ObservableProperty]
     private bool _isSaving;
 
     [ObservableProperty]
@@ -230,6 +243,7 @@ public partial class SettingsViewModel : ObservableObject
         NotificationAutoDismissSecondsText = NotificationAutoDismissSeconds.ToString(CultureInfo.InvariantCulture);
         SelectedTheme = ThemeChoices.First(choice => choice.Value == ThemePreference.System);
         SelectedBackdrop = BackdropChoices.First(choice => choice.Value == BackdropPreference.Auto);
+        SelectedCatalogRowDensity = CatalogRowDensityChoices.First(choice => choice.Value == CatalogRowDensity.Normal);
         await SaveCoreAsync(showResetMessage: true).ConfigureAwait(true);
     }
 
@@ -282,6 +296,7 @@ public partial class SettingsViewModel : ObservableObject
             {
                 Theme = SelectedTheme.Value,
                 Backdrop = SelectedBackdrop.Value,
+                CatalogRowDensity = SelectedCatalogRowDensity.Value,
             };
             await _settingsWriter.SaveAsync(
                 new UserSettingsUpdate(
@@ -298,6 +313,7 @@ public partial class SettingsViewModel : ObservableObject
             _savedNotificationAutoDismissSeconds = notifications.AutoDismissSeconds.ToString(CultureInfo.InvariantCulture);
             _savedTheme = appearance.Theme;
             _savedBackdrop = appearance.Backdrop;
+            _savedCatalogRowDensity = appearance.CatalogRowDensity;
 
             StatusSeverity = InfoBarSeverity.Success;
             StatusMessage = showResetMessage
@@ -402,6 +418,8 @@ public partial class SettingsViewModel : ObservableObject
                 SelectedTheme = ThemeChoices.First(choice => choice.Value == appearance.Theme);
             if (force || SelectedBackdrop.Value == _savedBackdrop)
                 SelectedBackdrop = BackdropChoices.First(choice => choice.Value == appearance.Backdrop);
+            if (force || SelectedCatalogRowDensity.Value == _savedCatalogRowDensity)
+                SelectedCatalogRowDensity = CatalogRowDensityChoices.First(choice => choice.Value == appearance.CatalogRowDensity);
 
             _savedSearchPageSize = indexing.SearchPageSize.ToString(CultureInfo.InvariantCulture);
             _savedMaxEntriesPerSecond = indexing.MaxEntriesPerSecond.ToString(CultureInfo.InvariantCulture);
@@ -410,6 +428,7 @@ public partial class SettingsViewModel : ObservableObject
             _savedNotificationAutoDismissSeconds = notifications.AutoDismissSeconds.ToString(CultureInfo.InvariantCulture);
             _savedTheme = appearance.Theme;
             _savedBackdrop = appearance.Backdrop;
+            _savedCatalogRowDensity = appearance.CatalogRowDensity;
         }
         finally { _isRefreshing = false; }
         ValidateNumericDrafts();

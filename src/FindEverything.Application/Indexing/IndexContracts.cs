@@ -295,7 +295,11 @@ public sealed record IndexedPathEntry(
     long? SizeBytes,
     DateTimeOffset CreatedUtc,
     DateTimeOffset ModifiedUtc,
-    bool CoveragePending);
+    bool CoveragePending)
+{
+    public string? OriginalFullPath { get; init; }
+    public string? StableKey { get; init; }
+}
 
 public sealed record EntrySearchResult(
     IReadOnlyList<IndexedPathEntry> Entries,

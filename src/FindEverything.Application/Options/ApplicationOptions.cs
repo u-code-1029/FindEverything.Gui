@@ -103,13 +103,29 @@ public enum BackdropPreference
     None
 }
 
-public sealed class AppearanceOptions
+public enum CatalogRowDensity
+{
+    Narrow,
+    Normal,
+    Wide
+}
+
+public sealed class AppearanceOptions : IValidatableObject
 {
     public const string SectionName = "Appearance";
 
     public ThemePreference Theme { get; set; } = ThemePreference.System;
 
     public BackdropPreference Backdrop { get; set; } = BackdropPreference.Auto;
+
+    public CatalogRowDensity CatalogRowDensity { get; set; } = CatalogRowDensity.Normal;
+
+    public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+    {
+        if (!Enum.IsDefined(Theme) || !Enum.IsDefined(Backdrop) || !Enum.IsDefined(CatalogRowDensity))
+            yield return new ValidationResult("Appearance values must be supported enum values.",
+                [nameof(Theme), nameof(Backdrop), nameof(CatalogRowDensity)]);
+    }
 }
 
 public sealed class LocalizationOptions

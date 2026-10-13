@@ -16,6 +16,10 @@ public sealed class FileSearchItemViewModel(
 
     public string FullPath => Entry.FullPath;
 
+    public string OriginalFullPath => Entry.OriginalFullPath ?? FullPath;
+
+    public string SelectionKey => Entry.StableKey ?? FullPath;
+
     public string Name => Entry.Name;
 
     public string ParentPath => Entry.ParentPath;

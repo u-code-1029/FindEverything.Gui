@@ -40,7 +40,7 @@
                     Margin="0,0,8,0"
                     VerticalAlignment="Center"
                     Symbol="WindowConsole20" />
-                <TextBlock
+                <ui:TextBlock
                     Grid.Column="1"
                     VerticalAlignment="Center"
                     FontSize="14"
@@ -49,7 +49,7 @@
                 <ui:Button
                     Grid.Column="2"
                     MinWidth="64"
-                    Padding="10,5"
+                    Padding="10,4"
                     AutomationProperties.Name="탐색 로그 닫기"
                     Appearance="Transparent"
                     Command="{Binding ClosePanelCommand}"
@@ -76,11 +76,11 @@
                             Height="8"
                             Margin="0,0,8,0"
                             Fill="{Binding StatusBrush}" />
-                        <TextBlock
+                        <ui:TextBlock
                             VerticalAlignment="Center"
                             FontWeight="SemiBold"
                             Text="{Binding StatusText}" />
-                        <TextBlock
+                        <ui:TextBlock
                             x:Name="SessionSummaryText"
                             Margin="12,0,0,0"
                             VerticalAlignment="Center"
@@ -147,11 +147,11 @@
                     VirtualizingPanel.VirtualizationMode="Recycling">
                     <ListBox.ContextMenu>
                         <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
-                            <MenuItem
+                            <ui:MenuItem
                                 AutomationProperties.Name="선택한 로그 메시지 전체 복사"
                                 Command="{Binding CopySelectedMessageCommand}"
                                 Header="메시지 전체 복사" />
-                            <MenuItem
+                            <ui:MenuItem
                                 AutomationProperties.Name="선택한 로그 경로만 복사"
                                 Command="{Binding CopySelectedPathCommand}"
                                 Header="경로만 복사" />
@@ -165,8 +165,8 @@
                     </ListBox.ItemContainerStyle>
                     <ListBox.ItemTemplate>
                         <DataTemplate DataType="{x:Type viewModels:ScanConsoleLineViewModel}">
-                            <TextBlock Text="{Binding Text}" TextWrapping="NoWrap">
-                                <TextBlock.Style>
+                            <ui:TextBlock Text="{Binding Text}" TextWrapping="NoWrap">
+                                <ui:TextBlock.Style>
                                     <Style TargetType="TextBlock">
                                         <Setter Property="Foreground" Value="#D4D4D4" />
                                         <Style.Triggers>
@@ -190,8 +190,8 @@
                                             </DataTrigger>
                                         </Style.Triggers>
                                     </Style>
-                                </TextBlock.Style>
-                            </TextBlock>
+                                </ui:TextBlock.Style>
+                            </ui:TextBlock>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
@@ -199,7 +199,7 @@
 
             <Grid
                 Grid.Row="3"
-                Margin="12,7"
+                Margin="12,8"
                 Background="{DynamicResource CardBackgroundFillColorDefaultBrush}">
                 <Grid>
                     <Grid.ColumnDefinitions>
@@ -207,7 +207,7 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <StackPanel>
-                        <TextBlock Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextWrapping="Wrap">
+                        <ui:TextBlock Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextWrapping="Wrap">
                             <Run Text="방문 " />
                             <Run FontWeight="SemiBold" Text="{Binding VisitedCount}" />
                             <Run Text="  ·  일치 " />
@@ -218,15 +218,15 @@
                             <Run FontWeight="SemiBold" Text="{Binding InvalidCount}" />
                             <Run Text="  ·  하위 탐색 생략 " />
                             <Run FontWeight="SemiBold" Text="{Binding PrunedCount}" />
-                        </TextBlock>
-                        <TextBlock
+                        </ui:TextBlock>
+                        <ui:TextBlock
                             x:Name="LogLegendText"
-                            Margin="0,3,0,0"
+                            Margin="0,4,0,0"
                             FontSize="11"
                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                             Text="MATCH 일치 · NO MATCH 규칙 외 · INVALID 변환 오류 · EXCLUDED 이름 규칙 제외 · PRUNE 하위 탐색 중단" TextTrimming="CharacterEllipsis" />
                     </StackPanel>
-                    <TextBlock
+                    <ui:TextBlock
                         Grid.Column="1"
                         Margin="16,0,0,0"
                         VerticalAlignment="Top"

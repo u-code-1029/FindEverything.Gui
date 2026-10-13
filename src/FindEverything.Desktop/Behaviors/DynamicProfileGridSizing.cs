@@ -183,8 +183,10 @@ public static partial class DynamicProfileGrid
             foreach (var column in grid.Columns.Skip(1))
             {
                 if (column.GetValue(FieldIdProperty) is not string id) continue;
-                var header = fields.TryGetValue(id, out var field) ? field.Header : column.Header?.ToString() ?? "";
-                var desired = Measure(header) + (field?.SourceKind == ProfileFieldSourceKind.TextFileContent ? 64 : 28);
+                var header = fields.TryGetValue(id, out var field) ? field.Header : GetColumnHeaderContent(column)?.ToString() ?? "";
+                // Filter/sort markers need their own header gutter, independent
+                // of text-cell padding and the optional text refresh action.
+                var desired = Measure(header) + (field?.SourceKind == ProfileFieldSourceKind.TextFileContent ? 96 : 60);
                 foreach (var item in sample)
                 {
                     var text = id == PathColumnId ? item.FullPath : id == StatusColumnId ? item.CoverageText
@@ -249,7 +251,7 @@ public static partial class DynamicProfileGrid
         if (sender is not DataGrid grid || e.OriginalSource is not DependencyObject source
             || FindAncestor<DataGridColumnHeader>(source)?.Column is not { CanUserResize: true } column) return;
         var menu = new ContextMenu();
-        var reset = new MenuItem { Header = L(GetLocalizer(grid), "Loc.Catalog.Column.Width.Reset", "내용에 맞춰 너비 초기화") };
+        var reset = new Wpf.Ui.Controls.MenuItem { Header = L(GetLocalizer(grid), "Loc.Catalog.Column.Width.Reset", "내용에 맞춰 너비 초기화") };
         reset.Click += (_, _) =>
         {
             column.SetValue(IsManualWidthProperty, false);

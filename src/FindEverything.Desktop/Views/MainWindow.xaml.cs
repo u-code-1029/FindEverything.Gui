@@ -17,6 +17,8 @@ public partial class MainWindow
     private readonly ISnackbarService _snackbars;
     private bool _closeConfirmed;
     private bool _confirmingClose;
+    private readonly HashSet<FrameworkElement> _notificationChrome = [];
+    private bool _notificationPlacementPending;
 
     public MainWindow(
         MainWindowViewModel viewModel,
@@ -90,6 +92,7 @@ public partial class MainWindow
     private void OnWindowSizeChanged(object sender, SizeChangedEventArgs eventArgs)
     {
         ApplyAdaptiveShellLayout(eventArgs.NewSize.Width);
+        UpdatePageNotificationSpace();
     }
 
     private void OnOperationInfoBarSizeChanged(object sender, SizeChangedEventArgs eventArgs)
@@ -100,27 +103,39 @@ public partial class MainWindow
 
     private void UpdatePageNotificationSpace()
     {
-        // FrameMargin belongs to the whole content-column border, including its
-        // overlay. Only reserve space on the page presenter: this keeps the bar
-        // at the page bottom without resizing or covering the navigation pane.
-        RootNavigation.ApplyTemplate();
-        if (RootNavigation.Template?.FindName("PART_NavigationViewContentPresenter", RootNavigation)
-            is not FrameworkElement pagePresenter)
+        if (_notificationPlacementPending) return;
+        _notificationPlacementPending = true;
+        _ = Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, new Action(() =>
         {
-            return;
-        }
+            _notificationPlacementPending = false;
+            if (!OperationInfoBar.IsOpen || PageNotificationOverlay.ActualHeight <= 0) return;
+            var bottom = 16d;
+            foreach (var chrome in _notificationChrome)
+            {
+                if (!chrome.IsLoaded || !chrome.IsVisible || chrome.ActualHeight <= 0) continue;
+                try
+                {
+                    var top = chrome.TranslatePoint(new Point(0, 0), PageNotificationOverlay).Y;
+                    if (top >= 0 && top < PageNotificationOverlay.ActualHeight)
+                        bottom = Math.Max(bottom, PageNotificationOverlay.ActualHeight - top + 16);
+                }
+                catch (InvalidOperationException) { /* A page may have just navigated away. */ }
+            }
+            var margin = new Thickness(16, 0, 16, bottom);
+            if (OperationInfoBar.Margin != margin) OperationInfoBar.SetCurrentValue(MarginProperty, margin);
+        }));
+    }
 
-        var reservedHeight = OperationInfoBar.IsVisible && OperationInfoBar.IsOpen
-            ? OperationInfoBar.ActualHeight + OperationInfoBar.Margin.Top + OperationInfoBar.Margin.Bottom
-            : 0;
-        var currentMargin = pagePresenter.Margin;
-        if (Math.Abs(currentMargin.Bottom - reservedHeight) < 0.01)
-        {
-            return;
-        }
+    internal void RegisterNotificationChrome(FrameworkElement element)
+    {
+        _notificationChrome.Add(element);
+        UpdatePageNotificationSpace();
+    }
 
-        pagePresenter.SetCurrentValue(FrameworkElement.MarginProperty,
-            new Thickness(currentMargin.Left, currentMargin.Top, currentMargin.Right, reservedHeight));
+    internal void UnregisterNotificationChrome(FrameworkElement element)
+    {
+        _notificationChrome.Remove(element);
+        UpdatePageNotificationSpace();
     }
 
     private void ApplyAdaptiveShellLayout(double width)

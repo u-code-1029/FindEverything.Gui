@@ -92,6 +92,14 @@
         <Setter Property="VirtualizingPanel.VirtualizationMode" Value="Recycling" />
     </Style>
 
+    <Style x:Key="CatalogUserInputTextBoxStyle" TargetType="ui:TextBox" BasedOn="{StaticResource {x:Type ui:TextBox}}">
+        <Setter Property="ClearButtonEnabled" Value="True" />
+        <Setter Property="MinHeight" Value="32" />
+        <Style.Triggers>
+            <Trigger Property="IsReadOnly" Value="True"><Setter Property="ClearButtonEnabled" Value="False" /></Trigger>
+        </Style.Triggers>
+    </Style>
+
     <!--
         WPF-UI renders a deliberately compact vertical scrollbar.  Give it a
         dedicated content gutter so text fields and cards never sit underneath

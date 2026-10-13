@@ -89,7 +89,7 @@ public sealed class OutputFormatsViewModelTests
 
         Assert.Equal("projects", vm.SelectedProfileChoice?.ProfileId);
         Assert.True(vm.HasProfileTokens);
-        Assert.Equal(3, vm.CommonTokenChoices.Count);
+        Assert.Equal(4, vm.CommonTokenChoices.Count);
         var token = Assert.Single(vm.ProfileTokenChoices);
         Assert.Equal("Client name", token.DisplayName);
         Assert.Equal("{Field:Client}", token.Token);

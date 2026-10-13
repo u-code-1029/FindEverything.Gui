@@ -25,6 +25,10 @@ public sealed class CatalogItemViewModel : ObservableObject
     private bool _isSelected;
     public bool IsSelected { get => _isSelected; set => SetProperty(ref _isSelected, value); }
     public bool IsPlaceholder { get; init; }
+    public string? SourceFullPath { get; init; }
+    public string? SourceRowKey { get; init; }
+    public string OriginalFullPath => SourceFullPath ?? FullPath;
+    public string SelectionKey => SourceRowKey ?? FullPath;
     public IReadOnlyDictionary<string, string> FieldErrors { get; init; } = new Dictionary<string, string>();
     private readonly string _previewTooltip;
     private IReadOnlyList<string> _previewFields = [];

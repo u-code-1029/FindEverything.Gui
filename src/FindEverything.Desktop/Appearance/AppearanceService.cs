@@ -44,6 +44,9 @@ public sealed class AppearanceService : IAppearanceService, IDisposable
             return;
         }
 
+        CatalogDensityMetrics.Apply(System.Windows.Application.Current?.Resources ?? window.Resources,
+            options.CatalogRowDensity);
+
         var backdrop = options.Backdrop == BackdropPreference.Auto
             && WindowBackdrop.IsSupported(WindowBackdropType.Auto)
                 ? WindowBackdropType.Auto

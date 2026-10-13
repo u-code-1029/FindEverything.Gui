@@ -24,7 +24,7 @@ public sealed class PageHeader : ContentControl
             {
                 var tip = new ToolTip
                 {
-                    Content = new TextBlock { Text = Description, TextWrapping = TextWrapping.Wrap, MaxWidth = 380 },
+                    Content = new Wpf.Ui.Controls.TextBlock { Text = Description, TextWrapping = TextWrapping.Wrap, MaxWidth = 380 },
                     PlacementTarget = button,
                     StaysOpen = false,
                 };
@@ -167,9 +167,9 @@ public sealed class SplitWorkspace : Grid
         _secondaryTab = null;
         if (compact)
         {
-            _primaryTab = new TabItem { Header = PrimaryTitle, Content = PrimaryContent };
-            _secondaryTab = new TabItem { Header = SecondaryTitle, Content = SecondaryContent };
-            var tabs = new TabControl { HorizontalContentAlignment = HorizontalAlignment.Stretch, VerticalContentAlignment = VerticalAlignment.Stretch };
+            _primaryTab = new Wpf.Ui.Controls.TabViewItem { Header = PrimaryTitle, Content = PrimaryContent };
+            _secondaryTab = new Wpf.Ui.Controls.TabViewItem { Header = SecondaryTitle, Content = SecondaryContent };
+            var tabs = new Wpf.Ui.Controls.TabView { HorizontalContentAlignment = HorizontalAlignment.Stretch, VerticalContentAlignment = VerticalAlignment.Stretch };
             tabs.Items.Add(_primaryTab);
             tabs.Items.Add(_secondaryTab);
             Children.Add(tabs);

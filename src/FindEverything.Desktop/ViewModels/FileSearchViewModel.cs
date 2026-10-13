@@ -1046,6 +1046,7 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
         var capturedSelection = _selection.Capture();
         var legacyItems = _selectedItems.Where(static item => !item.IsPlaceholder).ToArray();
         var selectedCount = SelectedCount;
+        var importedSource = WorkspaceTransfer?.CurrentSource;
         try
         {
             ILoadedProfile? profile = null;
@@ -1065,11 +1066,27 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
                 {
                     // The output session owns its lifetime independently of a
                     // new filter, navigation, or the virtual list's eviction.
-                    await using var outputQuery = await _fileSearchService.OpenQueryAsync(scope, request, token)
-                        .ConfigureAwait(false);
+                    var openedQuery = await _fileSearchService.OpenQueryAsync(scope, request, token).ConfigureAwait(false);
+                    await using var outputQuery = importedSource is null ? openedQuery : new ImportedFileQuerySession(openedQuery, importedSource);
+                    using var importedCatalog = importedSource?.HasCatalog == true && profile is not null
+                        ? WorkspaceTransfer!.OpenCatalogStore(importedSource) as IDisposable : null;
+                    await using var structuredQuery = importedCatalog is FindEverything.Application.Sharing.IImportedCatalogProjectionStore store
+                        ? store.OpenImportedQuery(new()) : null;
                     await foreach (var entry in outputQuery.EnumerateSelectionAsync(capturedSelection, token)
                         .WithCancellation(token).ConfigureAwait(false))
-                        yield return CreateOutputItem(entry, profile);
+                    {
+                        if (importedSource is null || profile is null) yield return CreateOutputItem(entry, profile);
+                        else
+                        {
+                            if (structuredQuery is null || !profile.Descriptor.Id.Equals(importedSource.ProfileId, StringComparison.OrdinalIgnoreCase))
+                                throw new InvalidOperationException(L("Loc.Transfer.Output.Missing", "공유 데이터에 해당 구조화 값이 포함되어 있지 않습니다."));
+                            var folder = entry.Kind == IndexedPathKind.Directory ? entry.FullPath : entry.ParentPath;
+                            var originalFolder = FindEverything.Application.Sharing.WorkspacePathMapping.ToOriginal(importedSource, folder);
+                            await using var rows = structuredQuery.EnumerateSelectionAsync(new QuerySelection(false, [originalFolder.ToUpperInvariant()]), token).GetAsyncEnumerator(token);
+                            if (!await rows.MoveNextAsync()) throw new InvalidOperationException(L("Loc.Transfer.Output.Missing", "공유 데이터에 해당 구조화 값이 포함되어 있지 않습니다."));
+                            yield return new SelectionOutputItem(entry.FullPath, folder, entry.Name, rows.Current.Values) { OriginalFullPath = entry.OriginalFullPath };
+                        }
+                    }
                     yield break;
                 }
 
@@ -1136,7 +1153,7 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
             }
             fields = mapping.Item.Values;
         }
-        return new SelectionOutputItem(entry.FullPath, folderPath, entry.Name, fields);
+        return new SelectionOutputItem(entry.FullPath, folderPath, entry.Name, fields) { OriginalFullPath = entry.OriginalFullPath };
     }
 
     public void SetSelection(IEnumerable<FileSearchItemViewModel> items)
@@ -1155,16 +1172,16 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
         SortDirection = direction;
     }
 
-    private bool CanRefreshIndex() => !IsBusy && HasRoot;
+    private bool CanRefreshIndex() => !IsBusy && HasRoot && !IsReadOnlyDataSource && WorkspaceTransfer?.IsBusy != true && WorkspaceTransfer?.IsInitialized != false;
 
-    private bool CanBrowseRefreshScope() => !IsBusy && HasRoot && HasIndex;
+    private bool CanBrowseRefreshScope() => !IsBusy && HasRoot && HasIndex && !IsReadOnlyDataSource;
 
     private bool CanRefreshScope() =>
-        !IsBusy && HasRoot && HasIndex && !string.IsNullOrWhiteSpace(RefreshScopePath);
+        !IsBusy && HasRoot && HasIndex && !IsReadOnlyDataSource && !string.IsNullOrWhiteSpace(RefreshScopePath);
 
     private bool CanRefreshItemScope(FileSearchItemViewModel? item)
     {
-        if (IsBusy || !HasRoot || !HasIndex || item is null || item.IsPlaceholder)
+        if (IsBusy || IsReadOnlyDataSource || !HasRoot || !HasIndex || item is null || item.IsPlaceholder)
         {
             return false;
         }
@@ -1180,16 +1197,16 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
         }
     }
 
-    private bool CanChangeWorkspace() => !IsBusy;
+    private bool CanChangeWorkspace() => !IsBusy && !IsReadOnlyDataSource && WorkspaceTransfer?.IsInitialized != false;
 
-    private bool CanUseDefaultDatabasePath() => !IsBusy && !IsUsingDefaultDatabasePath;
+    private bool CanUseDefaultDatabasePath() => !IsBusy && !IsReadOnlyDataSource && !IsUsingDefaultDatabasePath;
 
     private bool CanCancel() => IsBusy;
 
     private bool CanLoadMore() => HasMore && !IsSearching && !IsBusy;
 
     private bool CanUseSelected() => SelectedItem is { IsPlaceholder: false }
-        && (!UsesQuerySelection || (SelectedCount == 1 && _selection.Contains(SelectedItem.FullPath)));
+        && (!UsesQuerySelection || (SelectedCount == 1 && _selection.Contains(SelectedItem.SelectionKey)));
 
     private bool CanCopySelection() => SelectedCount > 0 && !IsSearching && !IsCopyingSelection;
 
@@ -1383,6 +1400,7 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
         {
             // Keep ownership fields initialized even when there is no index to load.
             await Task.Yield();
+            if (WorkspaceTransfer is not null) await WorkspaceTransfer.InitializationTask.WaitAsync(cancellation.Token);
             if (debounce)
             {
                 await Task.Delay(TimeSpan.FromMilliseconds(250), cancellation.Token)
@@ -1461,6 +1479,8 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
                 try
                 {
                     query = await Task.Run(() => _fileSearchService.OpenQueryAsync(scope, request, cancellationToken), cancellationToken);
+                    if (WorkspaceTransfer?.CurrentSource is { } imported)
+                        query = new ImportedFileQuerySession(query, imported);
                 }
                 catch (IndexSnapshotChangedException) when (attempt == 0)
                 {
@@ -1641,7 +1661,7 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
                     var page = await Task.Run(() => query.ReadRangeAsync(offset,
                         Math.Min(500, end - offset + 1), cancellation.Token), cancellation.Token).ConfigureAwait(true);
                     if (!ReferenceEquals(query, _fileQuery) || version != Volatile.Read(ref _queryVersion)) return;
-                    foreach (var entry in page.Items) captured.Set(entry.FullPath, true);
+                    foreach (var entry in page.Items) captured.Set(entry.StableKey ?? entry.FullPath, true);
                 }
                 cancellation.Token.ThrowIfCancellationRequested();
                 RestoreSelection(captured);
@@ -1649,7 +1669,7 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
             else
             {
                 if (!additive) _selection.Clear();
-                _selection.Set(row.FullPath, additive ? !_selection.Contains(row.FullPath) : true);
+                _selection.Set(row.SelectionKey, additive ? !_selection.Contains(row.SelectionKey) : true);
                 _selectionAnchor = index;
             }
             cancellation.Token.ThrowIfCancellationRequested();
@@ -1668,7 +1688,7 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
     {
         if (!UsesQuerySelection) return;
         if (Items is VirtualResultCollection<FileSearchItemViewModel> list)
-            foreach (var row in changedItems ?? list.LoadedItems) row.IsSelected = _selection.Contains(row.FullPath);
+            foreach (var row in changedItems ?? list.LoadedItems) row.IsSelected = _selection.Contains(row.SelectionKey);
         SelectedCount = checked((int)_selection.Count(TotalCount));
         OnPropertyChanged(nameof(HasSelection));
         CopySelectionCommand.NotifyCanExecuteChanged();
@@ -1888,6 +1908,7 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
 
     private void OnWorkspaceChanged(object? sender, WorkspaceChangedEventArgs eventArgs)
     {
+        if (IsReadOnlyDataSource) return;
         void Apply()
         {
             var databasePath = _databasePathResolver.ResolveFileSearchDatabasePath(
@@ -1943,6 +1964,7 @@ public partial class FileSearchViewModel : ObservableObject, IDisposable
         }
 
         _disposed = true;
+        DetachWorkspaceTransfer();
         _workspaceContext.Changed -= OnWorkspaceChanged;
         _outputFormatStore.Changed -= OnOutputFormatsChanged;
         _profileCatalog.Changed -= OnProfilesChanged;

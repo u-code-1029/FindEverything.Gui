@@ -26,14 +26,17 @@
     </Page.Resources>
     <controls:WorkspacePageFrame x:Name="FilePageLayout" Margin="24,0,24,8">
         <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-        <controls:PageHeader Title="{DynamicResource Loc.Shell.Nav.Files}" Description="{DynamicResource Loc.Workspace.Files.Description}" />
+        <controls:PageHeader Title="{DynamicResource Loc.Shell.Nav.Files}" Description="{DynamicResource Loc.Workspace.Files.Description}">
+            <controls:WorkspaceTransferPanel x:Name="FilesWorkspaceTransferPanel" DataContext="{Binding WorkspaceTransfer}" ExportOwner="{Binding DataContext, RelativeSource={RelativeSource AncestorType=Page}}" />
+        </controls:PageHeader>
         <controls:CommandStrip Grid.Row="1">
+            <StackPanel>
             <Grid>
                 <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                 <Grid x:Name="FileCommandLayout">
                     <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                     <Grid.ColumnDefinitions><ColumnDefinition x:Name="FileLocationColumn" Width="220" /><ColumnDefinition x:Name="FileSearchColumn" Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                    <TextBlock x:Name="FileRootPathText" VerticalAlignment="Center" Text="{Binding RootPath, TargetNullValue={StaticResource Loc.Files.Root.None}}" TextTrimming="CharacterEllipsis" ToolTip="{Binding RootPath}" AutomationProperties.Name="{DynamicResource Loc.Workspace.Location.Change}" />
+                    <ui:TextBlock x:Name="FileRootPathText" VerticalAlignment="Center" Text="{Binding RootPath, TargetNullValue={StaticResource Loc.Files.Root.None}}" TextTrimming="CharacterEllipsis" ToolTip="{Binding RootPath}" AutomationProperties.Name="{DynamicResource Loc.Workspace.Location.Change}" />
                 <ui:TextBox x:Name="SearchBox" Grid.Column="1" Margin="12,0,0,0" MinHeight="36" AutomationProperties.Name="{DynamicResource Loc.Workspace.Files.Search}" ClearButtonEnabled="True" Icon="{ui:SymbolIcon Symbol=Search20}" PlaceholderText="{DynamicResource Loc.Workspace.Files.Search}" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" ToolTip="{DynamicResource Loc.Workspace.Files.Search.Help}" IsEnabled="{Binding CanSearch}" />
                     <WrapPanel Grid.Column="2" Margin="8,0,0,0">
                         <ui:Button MinWidth="76" Margin="0,0,8,0" Command="{Binding BrowseRootCommand}" Content="{DynamicResource Loc.Workspace.Location.Change}" Icon="{ui:SymbolIcon Symbol=FolderOpen20}" ToolTip="{DynamicResource Loc.Workspace.Location.Change.Help}" ToolTipService.ShowOnDisabled="True" />
@@ -44,6 +47,7 @@
                 </Grid>
 
             </Grid>
+            </StackPanel>
         </controls:CommandStrip>
         <Grid Grid.Row="2">
             <Grid.RowDefinitions>
@@ -53,7 +57,7 @@
             </Grid.RowDefinitions>
 
             <DockPanel Margin="0,0,0,4" Visibility="{Binding HasIndex, Converter={StaticResource BooleanToVisibilityConverter}}">
-                <TextBlock
+                <ui:TextBlock
                     AutomationProperties.LiveSetting="Polite"
                     DockPanel.Dock="Left"
                     FontWeight="SemiBold"
@@ -65,14 +69,14 @@
                         Margin="0,0,8,0"
                         IsIndeterminate="True"
                         Visibility="{Binding IsSearching, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                    <TextBlock
+                    <ui:TextBlock
                         VerticalAlignment="Center"
                         Style="{StaticResource CaptionTextStyle}"
                         Text="{Binding ProgressMessage}" />
                 </StackPanel>
             </DockPanel>
 
-            <DataGrid
+            <ui:DataGrid
                 x:Name="ResultsGrid"
                 Grid.Row="1"
                 Style="{StaticResource FluentDataGridStyle}"
@@ -94,7 +98,7 @@
                 ScrollViewer.VerticalScrollBarVisibility="Auto"
                 Sorting="OnResultsGridSorting"
                 Visibility="{Binding HasIndex, Converter={StaticResource BooleanToVisibilityConverter}}">
-                <DataGrid.RowStyle>
+                <ui:DataGrid.RowStyle>
                     <Style BasedOn="{StaticResource FluentResultRowStyle}" TargetType="DataGridRow">
                         <Style.Triggers>
                             <DataTrigger Binding="{Binding IsPlaceholder}" Value="True"><Setter Property="IsEnabled" Value="False" /><Setter Property="Opacity" Value="0.45" /></DataTrigger>
@@ -102,19 +106,19 @@
                             <MultiDataTrigger><MultiDataTrigger.Conditions><Condition Binding="{Binding DataContext.UsesQuerySelection, RelativeSource={RelativeSource AncestorType=DataGrid}}" Value="True" /><Condition Binding="{Binding IsSelected}" Value="False" /></MultiDataTrigger.Conditions><Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" /></MultiDataTrigger>
                         </Style.Triggers>
                     </Style>
-                </DataGrid.RowStyle>
-                <DataGrid.ContextMenu>
+                </ui:DataGrid.RowStyle>
+                <ui:DataGrid.ContextMenu>
                     <ContextMenu DataContext="{Binding PlacementTarget, RelativeSource={RelativeSource Self}}">
-                        <MenuItem Command="{Binding DataContext.RefreshItemScopeCommand}" CommandParameter="{Binding CurrentItem}" Header="{DynamicResource Loc.View.Files.Header.RefreshOnlyThisFolder}" />
+                        <ui:MenuItem Command="{Binding DataContext.RefreshItemScopeCommand}" CommandParameter="{Binding CurrentItem}" Header="{DynamicResource Loc.View.Files.Header.RefreshOnlyThisFolder}" />
                         <Separator />
-                        <MenuItem Command="{Binding DataContext.OpenItemFolderCommand}" CommandParameter="{Binding CurrentItem}" Header="{DynamicResource Loc.View.Files.Header.OpenFolder}" />
-                        <MenuItem Command="{Binding DataContext.CopyItemFolderPathCommand}" CommandParameter="{Binding CurrentItem}" Header="{DynamicResource Loc.View.Files.Header.CopyFolderPath}" />
+                        <ui:MenuItem Command="{Binding DataContext.OpenItemFolderCommand}" CommandParameter="{Binding CurrentItem}" Header="{DynamicResource Loc.View.Files.Header.OpenFolder}" />
+                        <ui:MenuItem Command="{Binding DataContext.CopyItemFolderPathCommand}" CommandParameter="{Binding CurrentItem}" Header="{DynamicResource Loc.View.Files.Header.CopyFolderPath}" />
                         <Separator />
-                        <MenuItem Command="{Binding DataContext.CopySelectionCommand}" Header="{DynamicResource Loc.View.Files.Header.CopySelectionUsingCurrentOutputFormat}" />
-                        <MenuItem Command="{Binding DataContext.OpenItemCommand}" CommandParameter="{Binding CurrentItem}" Header="{DynamicResource Loc.View.Files.Header.OpenItem}" />
+                        <ui:MenuItem Command="{Binding DataContext.CopySelectionCommand}" Header="{DynamicResource Loc.View.Files.Header.CopySelectionUsingCurrentOutputFormat}" />
+                        <ui:MenuItem Command="{Binding DataContext.OpenItemCommand}" CommandParameter="{Binding CurrentItem}" Header="{DynamicResource Loc.View.Files.Header.OpenItem}" />
                     </ContextMenu>
-                </DataGrid.ContextMenu>
-                <DataGrid.Columns>
+                </ui:DataGrid.ContextMenu>
+                <ui:DataGrid.Columns>
                     <DataGridTemplateColumn Width="64" MinWidth="64" MaxWidth="64" CanUserReorder="False" CanUserResize="False" CanUserSort="False">
                         <DataGridTemplateColumn.CellStyle>
                             <Style TargetType="DataGridCell" BasedOn="{StaticResource DefaultDataGridCellStyle}">
@@ -129,7 +133,7 @@
                     <DataGridTemplateColumn Width="180" MinWidth="160" Header="{DynamicResource Loc.Profiles.New.DefaultField}" SortMemberPath="Name">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
-                                <TextBlock
+                                <ui:TextBlock
                                     Margin="8,0"
                                     VerticalAlignment="Center"
                                     behaviors:TextHighlighting.DisplayText="{Binding Name}"
@@ -142,14 +146,14 @@
                     <DataGridTemplateColumn Width="*" MinWidth="240" Header="{DynamicResource Loc.Files.Sort.Path}" SortMemberPath="Path">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
-                                <TextBlock
+                                <ui:TextBlock
                                     Margin="8,0"
                                     VerticalAlignment="Center"
                                     behaviors:TextHighlighting.DisplayText="{Binding ParentPath}"
                                     behaviors:TextHighlighting.HighlightText="{Binding DataContext.SearchText, RelativeSource={RelativeSource AncestorType=DataGrid}}"
                                     Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                     TextTrimming="CharacterEllipsis"
-                                    ToolTip="{Binding FullPath}" />
+                                    ToolTip="{Binding OriginalFullPath}" />
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
@@ -158,29 +162,29 @@
                     <DataGridTextColumn Width="150" MinWidth="140" ElementStyle="{StaticResource FileMetadataCellTextStyle}" Binding="{Binding ModifiedLocal, StringFormat={}{0:g}}" Header="{DynamicResource Loc.Files.Sort.Modified}" SortMemberPath="Modified" />
                     <DataGridTextColumn Width="150" MinWidth="140" ElementStyle="{StaticResource FileMetadataCellTextStyle}" Binding="{Binding CreatedLocal, StringFormat={}{0:g}}" Header="{DynamicResource Loc.Files.Sort.Created}" SortMemberPath="Created" />
                     <DataGridTextColumn Width="90" MinWidth="80" ElementStyle="{StaticResource FileMetadataCellTextStyle}" Binding="{Binding StatusText}" Header="{DynamicResource Loc.Catalog.Column.Status}" CanUserSort="False" />
-                </DataGrid.Columns>
-            </DataGrid>
+                </ui:DataGrid.Columns>
+            </ui:DataGrid>
 
-            <controls:SectionCard x:Name="SelectionToolbar" Grid.Row="2" Margin="0,8,0,0" Padding="12,4"
+            <controls:SectionCard x:Name="SelectionToolbar" controls:FloatingNotificationChrome.IsBottomChrome="True" Grid.Row="2" Margin="0,8,0,0" Padding="12,4"
                 Style="{StaticResource FluentToolbarCardStyle}" SizeChanged="OnSelectionToolbarSizeChanged"
                 Visibility="{Binding HasSelection, Converter={StaticResource BooleanToVisibilityConverter}}">
                 <controls:SectionCard.Header>
                     <controls:PurposeFooterPanel>
                         <WrapPanel x:Name="SelectionManagementGroup" VerticalAlignment="Center">
-                            <TextBlock Margin="0,0,12,0" VerticalAlignment="Center" FontWeight="SemiBold"
+                            <ui:TextBlock Margin="0,0,12,0" VerticalAlignment="Center" FontWeight="SemiBold"
                                 Visibility="{Binding Visibility, ElementName=SelectAllResultsButton}"
                                 Text="{Binding SelectedCount, StringFormat={StaticResource Loc.Common.SelectedCountFormat}}" />
                             <ui:Button x:Name="SelectionActionsMenuButton" Margin="0,0,8,0" Padding="8,4" Click="OnFooterMenuClick"
                                 Icon="{ui:SymbolIcon Symbol=ChevronDown20}"
                                 AutomationProperties.Name="{DynamicResource Loc.Workspace.Selection.Manage}" ToolTip="{DynamicResource Loc.Workspace.Selection.Manage.Help}">
                                 <ui:Button.Content>
-                                    <TextBlock Text="{Binding SelectedCount, StringFormat={StaticResource Loc.Common.SelectedCountFormat}}" />
+                                    <ui:TextBlock Text="{Binding SelectedCount, StringFormat={StaticResource Loc.Common.SelectedCountFormat}}" />
                                 </ui:Button.Content>
                                 <ui:Button.ContextMenu>
                                     <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
-                                        <MenuItem Command="{Binding SelectAllCommand}" Header="{DynamicResource Loc.Selection.All}" />
-                                        <MenuItem Command="{Binding ClearSelectionCommand}" Header="{DynamicResource Loc.Workspace.Selection.Clear}" />
-                                        <MenuItem Command="{Binding InvertSelectionCommand}" Header="{DynamicResource Loc.Workspace.Selection.Invert}" />
+                                        <ui:MenuItem Command="{Binding SelectAllCommand}" Header="{DynamicResource Loc.Selection.All}" />
+                                        <ui:MenuItem Command="{Binding ClearSelectionCommand}" Header="{DynamicResource Loc.Workspace.Selection.Clear}" />
+                                        <ui:MenuItem Command="{Binding InvertSelectionCommand}" Header="{DynamicResource Loc.Workspace.Selection.Invert}" />
                                     </ContextMenu>
                                 </ui:Button.ContextMenu>
                             </ui:Button>
@@ -208,7 +212,7 @@
                                 Icon="{ui:SymbolIcon Symbol=MoreHorizontal20}">
                                 <ui:Button.ContextMenu>
                                     <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
-                                        <MenuItem Command="{Binding OpenSelectedCommand}" Header="{DynamicResource Loc.Workspace.Selection.Open}" />
+                                        <ui:MenuItem Command="{Binding OpenSelectedCommand}" Header="{DynamicResource Loc.Workspace.Selection.Open}" />
                                     </ContextMenu>
                                 </ui:Button.ContextMenu>
                             </ui:Button>
@@ -228,13 +232,13 @@
                         HorizontalAlignment="Center"
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                         Symbol="FolderSearch24" />
-                    <TextBlock
+                    <ui:TextBlock
                         Margin="0,16,0,0"
                         HorizontalAlignment="Center"
                         Style="{StaticResource SectionTitleTextStyle}"
                         Text="{Binding IndexStatusTitle}"
                         TextAlignment="Center" />
-                    <TextBlock
+                    <ui:TextBlock
                         Margin="0,8,0,20"
                         HorizontalAlignment="Center"
                         Style="{StaticResource PageSubtitleTextStyle}"
@@ -278,12 +282,12 @@
                         HorizontalAlignment="Center"
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                         Symbol="Search48" />
-                    <TextBlock
+                    <ui:TextBlock
                         Margin="0,16,0,0"
                         HorizontalAlignment="Center"
                         Style="{StaticResource SectionTitleTextStyle}"
                         Text="{DynamicResource Loc.View.Files.Text.NoMatchingItems}" />
-                    <TextBlock
+                    <ui:TextBlock
                         Margin="0,8,0,20"
                         HorizontalAlignment="Center"
                         Style="{StaticResource PageSubtitleTextStyle}"
@@ -298,22 +302,22 @@
 
         <Grid Grid.Row="3" Margin="0,4" Background="Transparent">
             <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                <TextBlock Text="{Binding StatusMessage}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" ToolTip="{Binding StatusMessage}" AutomationProperties.LiveSetting="Polite" />
-                <TextBlock Grid.Column="1" MaxWidth="260" Margin="12,0,0,0" Text="{Binding ResultSourceDescription}" Style="{StaticResource CaptionTextStyle}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" ToolTip="{Binding ResultSourceDescription}" AutomationProperties.Name="{DynamicResource Loc.Workspace.ResultSource}" />
+                <ui:TextBlock Text="{Binding StatusMessage}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" ToolTip="{Binding StatusMessage}" AutomationProperties.LiveSetting="Polite" />
+                <ui:TextBlock Grid.Column="1" MaxWidth="260" Margin="12,0,0,0" Text="{Binding ResultSourceDescription}" Style="{StaticResource CaptionTextStyle}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" ToolTip="{Binding ResultSourceDescription}" AutomationProperties.Name="{DynamicResource Loc.Workspace.ResultSource}" />
             </Grid>
         </Grid>
         <controls:SectionCard x:Name="FileDetailsPanel" Grid.Row="2" Width="340" HorizontalAlignment="Right" VerticalAlignment="Stretch" Panel.ZIndex="8" Style="{StaticResource FluentSectionCardStyle}" Visibility="{Binding IsDetailsOpen, Converter={StaticResource BooleanToVisibilityConverter}}">
           <controls:SectionCard.Header>
-            <ScrollViewer x:Name="FileDetailsScrollViewer" Style="{StaticResource FluentGutteredScrollViewerStyle}">
+            <ui:DynamicScrollViewer x:Name="FileDetailsScrollViewer" Style="{StaticResource FluentGutteredScrollViewerStyle}">
                 <StackPanel>
-                    <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.Workspace.Details}" />
-                    <TextBlock Margin="0,4,0,12" Style="{StaticResource CaptionTextStyle}" Text="{Binding IndexStatusDetail}" />
+                    <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.Workspace.Details}" />
+                    <ui:TextBlock Margin="0,4,0,12" Style="{StaticResource CaptionTextStyle}" Text="{Binding IndexStatusDetail}" />
                     <WrapPanel>
                         <ui:Button Command="{Binding BrowseDatabaseCommand}" Content="{DynamicResource Loc.Workspace.Database.Choose}" ToolTip="{Binding DatabasePath}" Margin="0,0,8,8" />
                         <ui:Button Command="{Binding UseDefaultDatabasePathCommand}" Content="{DynamicResource Loc.Workspace.Database.Default}" ToolTip="{Binding DefaultDatabasePath}" Margin="0,0,0,8" />
                     </WrapPanel>
-                    <TextBlock Margin="0,8,0,4" FontWeight="SemiBold" Text="{DynamicResource Loc.Workspace.Partial.Title}" />
-                    <TextBlock Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.Workspace.Partial.Help}" />
+                    <ui:TextBlock Margin="0,8,0,4" FontWeight="SemiBold" Text="{DynamicResource Loc.Workspace.Partial.Title}" />
+                    <ui:TextBlock Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.Workspace.Partial.Help}" />
                     <ui:TextBox x:Name="PartialRefreshPathTextBox" Margin="0,8,0,0" MinWidth="120" ClearButtonEnabled="True" PlaceholderText="{DynamicResource Loc.Workspace.Partial.Path}" Text="{Binding RefreshScopePath, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{DynamicResource Loc.Workspace.Partial.Path}" />
                     <WrapPanel Margin="0,8,0,0">
                         <ui:Button Command="{Binding BrowseRefreshScopeCommand}" Content="{DynamicResource Loc.Workspace.Folder.Choose}" Margin="0,0,8,8" />
@@ -338,13 +342,13 @@
                     Margin="0,8,0,0"
                     DataContext="{Binding DataContext, ElementName=FilterButton}"
                     Style="{StaticResource FluentCardStyle}"><controls:SectionCard.Header>
-                    <ScrollViewer
+                    <ui:DynamicScrollViewer
                         x:Name="FileFilterScrollViewer"
                         MaxHeight="560"
                         Style="{StaticResource FluentGutteredScrollViewerStyle}">
                         <StackPanel>
                             <DockPanel Margin="0,0,0,16">
-                                <TextBlock
+                                <ui:TextBlock
                                     DockPanel.Dock="Left"
                                     Style="{StaticResource SectionTitleTextStyle}"
                                     Text="{DynamicResource Loc.View.Files.Text.SearchFilters}" />
@@ -354,8 +358,8 @@
                                     Content="{DynamicResource Loc.View.Files.Content.ClearAll}" />
                             </DockPanel>
 
-                            <TextBlock FontWeight="SemiBold" Text="{DynamicResource Loc.View.Files.Text.FileSize}" />
-                            <TextBlock
+                            <ui:TextBlock FontWeight="SemiBold" Text="{DynamicResource Loc.View.Files.Text.FileSize}" />
+                            <ui:TextBlock
                                 Margin="0,2,0,8"
                                 Style="{StaticResource CaptionTextStyle}"
                                 Text="{DynamicResource Loc.View.Files.Text.SizeFiltersApplyOnlyToFilesFolders}" />
@@ -366,7 +370,7 @@
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel>
-                                    <TextBlock Text="{DynamicResource Loc.View.Files.Text.Minimum}" />
+                                    <ui:TextBlock Text="{DynamicResource Loc.View.Files.Text.Minimum}" />
                                     <Slider
                                         Margin="0,6,0,0"
                                         AutomationProperties.Name="{DynamicResource Loc.View.Files.AutomationName.MinimumFileSize}"
@@ -375,10 +379,10 @@
                                         Minimum="0"
                                         TickFrequency="1"
                                         Value="{Binding MinimumSizeStep}" />
-                                    <TextBlock Margin="0,4,0,0" Style="{StaticResource CaptionTextStyle}" Text="{Binding MinimumSizeText}" />
+                                    <ui:TextBlock Margin="0,4,0,0" Style="{StaticResource CaptionTextStyle}" Text="{Binding MinimumSizeText}" />
                                 </StackPanel>
                                 <StackPanel Grid.Column="2">
-                                    <TextBlock Text="{DynamicResource Loc.View.Files.Text.Maximum}" />
+                                    <ui:TextBlock Text="{DynamicResource Loc.View.Files.Text.Maximum}" />
                                     <Slider
                                         Margin="0,6,0,0"
                                         AutomationProperties.Name="{DynamicResource Loc.View.Files.AutomationName.MaximumFileSize}"
@@ -387,12 +391,12 @@
                                         Minimum="1"
                                         TickFrequency="1"
                                         Value="{Binding MaximumSizeStep}" />
-                                    <TextBlock Margin="0,4,0,0" Style="{StaticResource CaptionTextStyle}" Text="{Binding MaximumSizeText}" />
+                                    <ui:TextBlock Margin="0,4,0,0" Style="{StaticResource CaptionTextStyle}" Text="{Binding MaximumSizeText}" />
                                 </StackPanel>
                             </Grid>
 
                             <Separator Margin="0,16" />
-                            <TextBlock FontWeight="SemiBold" Text="{DynamicResource Loc.Files.Sort.Created}" />
+                            <ui:TextBlock FontWeight="SemiBold" Text="{DynamicResource Loc.Files.Sort.Created}" />
                             <ComboBox
                                 Margin="0,8,0,0"
                                 AutomationProperties.Name="{DynamicResource Loc.View.Files.AutomationName.CreatedDateFilter}"
@@ -405,11 +409,11 @@
                                     <ColumnDefinition Width="12" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
-                                <DatePicker AutomationProperties.Name="{DynamicResource Loc.View.Files.AutomationName.CreatedStartDate}" SelectedDate="{Binding CreatedFromDate}" />
-                                <DatePicker Grid.Column="2" AutomationProperties.Name="{DynamicResource Loc.View.Files.AutomationName.CreatedEndDate}" SelectedDate="{Binding CreatedToDate}" />
+                                <ui:CalendarDatePicker AutomationProperties.Name="{DynamicResource Loc.View.Files.AutomationName.CreatedStartDate}" Date="{Binding CreatedFromDate}" />
+                                <ui:CalendarDatePicker Grid.Column="2" AutomationProperties.Name="{DynamicResource Loc.View.Files.AutomationName.CreatedEndDate}" Date="{Binding CreatedToDate}" />
                             </Grid>
 
-                            <TextBlock Margin="0,16,0,0" FontWeight="SemiBold" Text="{DynamicResource Loc.Files.Sort.Modified}" />
+                            <ui:TextBlock Margin="0,16,0,0" FontWeight="SemiBold" Text="{DynamicResource Loc.Files.Sort.Modified}" />
                             <ComboBox
                                 Margin="0,8,0,0"
                                 AutomationProperties.Name="{DynamicResource Loc.View.Files.AutomationName.ModifiedDateFilter}"
@@ -422,15 +426,15 @@
                                     <ColumnDefinition Width="12" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
-                                <DatePicker AutomationProperties.Name="{DynamicResource Loc.View.Files.AutomationName.ModifiedStartDate}" SelectedDate="{Binding ModifiedFromDate}" />
-                                <DatePicker Grid.Column="2" AutomationProperties.Name="{DynamicResource Loc.View.Files.AutomationName.ModifiedEndDate}" SelectedDate="{Binding ModifiedToDate}" />
+                                <ui:CalendarDatePicker AutomationProperties.Name="{DynamicResource Loc.View.Files.AutomationName.ModifiedStartDate}" Date="{Binding ModifiedFromDate}" />
+                                <ui:CalendarDatePicker Grid.Column="2" AutomationProperties.Name="{DynamicResource Loc.View.Files.AutomationName.ModifiedEndDate}" Date="{Binding ModifiedToDate}" />
                             </Grid>
                         </StackPanel>
-                    </ScrollViewer>
+                    </ui:DynamicScrollViewer>
                 </controls:SectionCard.Header></controls:SectionCard>
             </Popup>
                 </StackPanel>
-            </ScrollViewer>
+            </ui:DynamicScrollViewer>
           </controls:SectionCard.Header>
         </controls:SectionCard>
     </controls:WorkspacePageFrame>

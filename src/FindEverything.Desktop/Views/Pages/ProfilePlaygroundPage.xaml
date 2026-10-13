@@ -28,7 +28,7 @@
                     <DataTemplate>
                         <controls:SectionCard
                             Margin="0,0,0,12"
-                            Padding="14"
+                            Padding="16"
                             Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
                             BorderBrush="{Binding AccentBrush}"
                             BorderThickness="3,1,1,1"
@@ -39,21 +39,21 @@
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock FontWeight="SemiBold" Text="{Binding RuleId}" />
-                                    <TextBlock
+                                    <ui:TextBlock FontWeight="SemiBold" Text="{Binding RuleId}" />
+                                    <ui:TextBlock
                                         Grid.Column="1"
                                         Margin="12,0,0,0"
                                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                         Text="{Binding MatchMode}" />
                                 </Grid>
-                                <TextBlock
-                                    Margin="0,5,0,0"
+                                <ui:TextBlock
+                                    Margin="0,4,0,0"
                                     FontFamily="Consolas"
                                     Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                     Text="{Binding Pattern}"
                                     TextWrapping="Wrap" />
-                                <TextBlock
-                                    Margin="0,5,0,10"
+                                <ui:TextBlock
+                                    Margin="0,4,0,10"
                                     FontWeight="SemiBold"
                                     Text="{Binding Status}"
                                     TextWrapping="Wrap" />
@@ -65,28 +65,28 @@
                                                     <ColumnDefinition Width="150" />
                                                     <ColumnDefinition Width="*" />
                                                 </Grid.ColumnDefinitions>
-                                                <StackPanel Margin="0,1,12,0">
+                                                <StackPanel Margin="0,2,12,0">
                                                     <StackPanel Orientation="Horizontal">
                                                         <controls:DisplayBadge
                                                             Width="10"
                                                             Height="10"
-                                                            Margin="0,0,7,0"
+                                                            Margin="0,0,8,0"
                                                             VerticalAlignment="Center"
                                                             Background="{Binding MarkerBrush}"
                                                             CornerRadius="2" />
-                                                        <TextBlock
+                                                        <ui:TextBlock
                                                             FontWeight="SemiBold"
                                                             Text="{Binding Label}"
                                                             TextTrimming="CharacterEllipsis"
                                                             ToolTip="{Binding Label}" />
                                                     </StackPanel>
-                                                    <TextBlock
-                                                        Margin="17,2,0,0"
+                                                    <ui:TextBlock
+                                                        Margin="16,2,0,0"
                                                         FontSize="11"
                                                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                                         Text="{Binding Detail}" />
                                                 </StackPanel>
-                                                <ScrollViewer
+                                                <ui:DynamicScrollViewer
                                                     Grid.Column="1"
                                                     HorizontalScrollBarVisibility="Auto"
                                                     VerticalScrollBarVisibility="Disabled">
@@ -99,8 +99,8 @@
                                                         <ItemsControl.ItemTemplate>
                                                             <DataTemplate>
                                                                 <controls:DisplayBadge Background="{Binding BackgroundBrush}">
-                                                                    <TextBlock
-                                                                        Padding="1,3"
+                                                                    <ui:TextBlock
+                                                                        Padding="2,4"
                                                                         FontFamily="Consolas"
                                                                         Text="{Binding Text}"
                                                                         ToolTip="{Binding ToolTip}" />
@@ -108,7 +108,7 @@
                                                             </DataTemplate>
                                                         </ItemsControl.ItemTemplate>
                                                     </ItemsControl>
-                                                </ScrollViewer>
+                                                </ui:DynamicScrollViewer>
                                             </Grid>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
@@ -138,12 +138,12 @@
         </controls:CommandStrip>
         <controls:SplitWorkspace x:Name="PlaygroundWorkspace" Grid.Row="2" PrimaryRatio="0.35" PrimaryTitle="{DynamicResource Loc.Workspace.Playground.Values}" SecondaryTitle="{DynamicResource Loc.Workspace.Playground.Debug}">
             <controls:SplitWorkspace.PrimaryContent>
-                <ScrollViewer x:Name="ProfilePlaygroundScrollViewer" Style="{StaticResource FluentGutteredScrollViewerStyle}">
+                <ui:DynamicScrollViewer x:Name="ProfilePlaygroundScrollViewer" Style="{StaticResource FluentGutteredScrollViewerStyle}">
                     <StackPanel>                <controls:SectionCard Margin="0" Style="{StaticResource FluentSectionCardStyle}">
                       <controls:SectionCard.Header>
                     <StackPanel>
-                        <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.ProfilePlayground.Text.StructuredValues}" />
-                        <TextBlock
+                        <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.ProfilePlayground.Text.StructuredValues}" />
+                        <ui:TextBlock
                             Margin="0,4,0,12"
                             Style="{StaticResource CaptionTextStyle}"
                             Text="{DynamicResource Loc.View.ProfilePlayground.Text.TheseValuesComeFromTheSameProfile}"
@@ -162,17 +162,17 @@
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="Auto" />
                                             </Grid.ColumnDefinitions>
-                                            <TextBlock FontWeight="SemiBold" Text="{Binding FieldName}" />
-                                            <TextBlock
+                                            <ui:TextBlock FontWeight="SemiBold" Text="{Binding FieldName}" />
+                                            <ui:TextBlock
                                                 Grid.Column="1"
                                                 Margin="12,0"
                                                 Text="{Binding Value}"
                                                 TextWrapping="Wrap" />
-                                            <TextBlock
+                                            <ui:TextBlock
                                                 Grid.Column="2"
                                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                                 Text="{Binding Status}" />
-                                            <TextBlock
+                                            <ui:TextBlock
                                                 Grid.Row="1"
                                                 Grid.Column="1"
                                                 Grid.ColumnSpan="2"
@@ -195,8 +195,8 @@
                     Visibility="{Binding HasDirectoryExclusionTestResult, Converter={StaticResource BooleanToVisibilityConverter}}">
                   <controls:SectionCard.Header>
                     <StackPanel>
-                        <TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.ProfilePlayground.Text.FolderNameExclusionDecision}" />
-                        <TextBlock
+                        <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.ProfilePlayground.Text.FolderNameExclusionDecision}" />
+                        <ui:TextBlock
                             Margin="0,4,0,10"
                             Style="{StaticResource CaptionTextStyle}"
                             Text="{DynamicResource Loc.View.ProfilePlayground.Text.OnlyTheFinalFolderNameOfThe}"
@@ -206,8 +206,8 @@
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
-                            <TextBlock FontWeight="SemiBold" Text="{DynamicResource Loc.View.ProfilePlayground.Text.InputLeaf}" />
-                            <TextBlock
+                            <ui:TextBlock FontWeight="SemiBold" Text="{DynamicResource Loc.View.ProfilePlayground.Text.InputLeaf}" />
+                            <ui:TextBlock
                                 Grid.Column="1"
                                 Margin="12,0,0,0"
                                 FontFamily="Consolas"
@@ -224,11 +224,11 @@
                     </StackPanel>
                   </controls:SectionCard.Header>
                 </controls:SectionCard></StackPanel>
-                </ScrollViewer>
+                </ui:DynamicScrollViewer>
             </controls:SplitWorkspace.PrimaryContent>
             <controls:SplitWorkspace.SecondaryContent>
-                <ScrollViewer x:Name="PlaygroundDebugScrollViewer" Style="{StaticResource FluentGutteredScrollViewerStyle}">
-                    <StackPanel>                <Expander
+                <ui:DynamicScrollViewer x:Name="PlaygroundDebugScrollViewer" Style="{StaticResource FluentGutteredScrollViewerStyle}">
+                    <StackPanel>                <ui:CardExpander
                     x:Name="PlaygroundRegexDebugExpander"
                     Margin="0"
                     VerticalAlignment="Top"
@@ -240,11 +240,11 @@
                     <controls:SectionCard x:Name="PlaygroundRegexDebugCard" Margin="0,8,0,0" Style="{StaticResource FluentSectionCardStyle}">
                       <controls:SectionCard.Header>
                         <StackPanel>
-                            <TextBlock x:Name="PlaygroundRegexDebugCaption"
+                            <ui:TextBlock x:Name="PlaygroundRegexDebugCaption"
                                 Style="{StaticResource CaptionTextStyle}"
                                 Text="{DynamicResource Loc.View.ProfilePlayground.Text.ShowsPartialCandidatesAndNamedGroupsFrom}"
                                 TextWrapping="Wrap" />
-                            <TextBlock
+                            <ui:TextBlock
                                 Margin="0,8,0,12"
                                 FontFamily="Consolas"
                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
@@ -257,7 +257,7 @@
                         </StackPanel>
                       </controls:SectionCard.Header>
                     </controls:SectionCard>
-                </Expander>                <Expander
+                </ui:CardExpander>                <ui:CardExpander
                     x:Name="PlaygroundDirectoryExclusionRegexDebugExpander"
                     Margin="0,12,0,0"
                     VerticalAlignment="Top"
@@ -268,7 +268,7 @@
                     <controls:SectionCard Margin="0,8,0,0" Style="{StaticResource FluentSectionCardStyle}">
                       <controls:SectionCard.Header>
                         <StackPanel>
-                            <TextBlock
+                            <ui:TextBlock
                                 Style="{StaticResource CaptionTextStyle}"
                                 Text="{DynamicResource Loc.View.ProfilePlayground.Text.ShowsPartialCandidatesForEachExclusionPattern}"
                                 TextWrapping="Wrap" />
@@ -279,14 +279,14 @@
                         </StackPanel>
                       </controls:SectionCard.Header>
                     </controls:SectionCard>
-                </Expander></StackPanel>
-                </ScrollViewer>
+                </ui:CardExpander></StackPanel>
+                </ui:DynamicScrollViewer>
             </controls:SplitWorkspace.SecondaryContent>
         </controls:SplitWorkspace>
-        <Grid Grid.Row="3" Margin="0,8" Background="Transparent">
+        <Grid controls:FloatingNotificationChrome.IsBottomChrome="True" Grid.Row="3" Margin="0,8" Background="Transparent">
             <StackPanel Orientation="Horizontal">
                 <ui:ProgressRing Width="18" Height="18" Margin="0,0,8,0" IsIndeterminate="True" Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                <TextBlock Text="{Binding Summary}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Summary}" AutomationProperties.LiveSetting="Polite" />
+                <ui:TextBlock Text="{Binding Summary}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Summary}" AutomationProperties.LiveSetting="Polite" />
             </StackPanel>
         </Grid>
     </controls:WorkspacePageFrame>

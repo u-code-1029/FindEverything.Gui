@@ -10,6 +10,7 @@ public sealed record SelectionOutputItem(
     string Name,
     IReadOnlyDictionary<string, object?> Fields)
 {
+    public string? OriginalFullPath { get; init; }
     public static SelectionOutputItem FromPath(
         string fullPath,
         string? folderPath = null,
@@ -131,6 +132,7 @@ public sealed class SelectionOutputFormatter(IAppLocalizer? localizer = null) : 
                 {
                     SegmentKind.Literal => segment.Value,
                     SegmentKind.FullPath => item.FullPath,
+                    SegmentKind.OriginalFullPath => item.OriginalFullPath ?? item.FullPath,
                     SegmentKind.FolderPath => item.FolderPath,
                     SegmentKind.Name => item.Name,
                     SegmentKind.Field => FormatField(item.Fields, segment.Value),
@@ -249,6 +251,7 @@ public sealed class SelectionOutputFormatter(IAppLocalizer? localizer = null) : 
                 {
                     SegmentKind.Literal => segment.Value,
                     SegmentKind.FullPath => item.FullPath,
+                    SegmentKind.OriginalFullPath => item.OriginalFullPath ?? item.FullPath,
                     SegmentKind.FolderPath => item.FolderPath,
                     SegmentKind.Name => item.Name,
                     SegmentKind.Field => FormatField(item.Fields, segment.Value),
@@ -330,7 +333,11 @@ public sealed class SelectionOutputFormatter(IAppLocalizer? localizer = null) : 
             }
 
             var token = template[(index + 1)..closingIndex].Trim();
-            if (token.Equals("FullPath", StringComparison.OrdinalIgnoreCase))
+            if (token.Equals("OriginalFullPath", StringComparison.OrdinalIgnoreCase))
+            {
+                segments.Add(new TemplateSegment(SegmentKind.OriginalFullPath, token));
+            }
+            else if (token.Equals("FullPath", StringComparison.OrdinalIgnoreCase))
             {
                 segments.Add(new TemplateSegment(SegmentKind.FullPath, token));
             }
@@ -427,6 +434,7 @@ public sealed class SelectionOutputFormatter(IAppLocalizer? localizer = null) : 
     {
         Literal,
         FullPath,
+        OriginalFullPath,
         FolderPath,
         Name,
         Field,
