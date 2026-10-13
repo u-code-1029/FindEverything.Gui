@@ -192,23 +192,27 @@ public sealed partial class SqliteCatalogProjectionStore
                 EnsureGeneration(connection, transaction, checkPublication);
                 using var command = BuildCommand(connection, transaction, notesTable, selection, offset, limit);
                 var (valuesJson, previewFields) = PreviewSql(command, previewCharacters);
-                command.CommandText = $"SELECT r.full_path, r.relative_path, r.rule_id, {valuesJson}, r.coverage, r.errors_json, r.path_key, {previewFields} " + command.CommandText;
+                var rowBytes = previewCharacters == 0 ? FullRowBytesSql(valuesJson, previewFields, notesTable) : "0";
+                command.CommandText = $"SELECT r.full_path, r.relative_path, r.rule_id, {valuesJson}, r.coverage, r.errors_json, r.path_key, {previewFields}, {rowBytes} " + command.CommandText;
                 using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
                 while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
                 {
                     if (rows.Count == limit) { hasMore = true; break; }
-                    var serializedValues = reader.GetString(3);
+                    // Include saved/default notes before materializing any strings.
+                    // A rejected row is retried at the next offset, not skipped.
+                    var estimatedBytes = previewCharacters == 0 ? reader.GetInt64(8) : 0;
                     if (previewCharacters == 0 && rows.Count > 0
-                        && bufferedBytes + 2L * serializedValues.Length > 8L * 1024 * 1024)
+                        && estimatedBytes > 8L * 1024 * 1024 - bufferedBytes)
                     {
                         hasMore = true;
                         break;
                     }
+                    var serializedValues = reader.GetString(3);
                     rows.Add(new CatalogProjectionRow(reader.GetString(0), reader.GetString(1), reader.GetString(2),
                         DeserializeValues(serializedValues), reader.GetBoolean(4),
                         Deserialize<Dictionary<string, string>>(reader.GetString(5)))
                     { PreviewFields = Deserialize<string[]>(reader.GetString(7)) });
-                    bufferedBytes += 2L * serializedValues.Length;
+                    bufferedBytes += estimatedBytes;
                     if (previewCharacters == 0 && bufferedBytes >= 8L * 1024 * 1024)
                     {
                         hasMore = await reader.ReadAsync(cancellationToken).ConfigureAwait(false);
@@ -230,7 +234,13 @@ public sealed partial class SqliteCatalogProjectionStore
                         parameters.Add(parameter);
                         notes.Parameters.AddWithValue(parameter, PathKey(rows[index].FullPath));
                     }
-                    notes.CommandText = $"SELECT path_key, field_id, value FROM {notesTable} WHERE profile_key=$profile AND path_key IN ({string.Join(',', parameters)});";
+                    var inputParameters = new List<string>(_inputFields.Count);
+                    for (var index = 0; index < _inputFields.Count; index++)
+                    {
+                        var parameter = "$inputField" + index;
+                        inputParameters.Add(parameter); notes.Parameters.AddWithValue(parameter, _inputFields[index].FieldId.ToLowerInvariant());
+                    }
+                    notes.CommandText = $"SELECT path_key, field_id, value FROM {notesTable} WHERE profile_key=$profile AND path_key IN ({string.Join(',', parameters)}) AND field_id IN ({string.Join(',', inputParameters)});";
                     using var noteReader = await notes.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
                     while (await noteReader.ReadAsync(cancellationToken).ConfigureAwait(false))
                     {
@@ -251,23 +261,26 @@ public sealed partial class SqliteCatalogProjectionStore
                                 ? note : field.DefaultValue ?? string.Empty;
                         rows[rowIndex] = row with { Values = values };
                     }
-                if (previewCharacters == 0)
-                {
-                    var returnedBytes = 0L;
-                    for (var index = 0; index < rows.Count; index++)
-                    {
-                        var valueBytes = rows[index].Values.Sum(pair => pair.Value is string text ? 2L * text.Length : 64L);
-                        if (index > 0 && returnedBytes + valueBytes > 8L * 1024 * 1024)
-                        {
-                            rows.RemoveRange(index, rows.Count - index);
-                            hasMore = true;
-                            break;
-                        }
-                        returnedBytes += valueBytes;
-                    }
-                }
             }
             return new ResultPage<CatalogProjectionRow>(rows, offset, hasMore);
+        }
+
+        private string FullRowBytesSql(string valuesJson, string previewFields, string notesTable)
+        {
+            // Twice UTF-8 length conservatively bounds UTF-16 string payloads,
+            // including supplementary Unicode and JSON-escaped values. SQLite
+            // computes this scalar without allocating rejected row text in .NET.
+            var notes = _inputFields.Count == 0 ? "0" : $"""
+                COALESCE((SELECT SUM(length(CAST(COALESCE(bn.value,bc.raw_search) AS BLOB)))
+                    FROM projection_cells bc LEFT JOIN {notesTable} bn
+                    ON bn.profile_key=$profile AND bn.path_key=bc.path_key AND bn.field_id=bc.field_id
+                    WHERE bc.generation=r.generation AND bc.path_key=r.path_key AND bc.is_user_input=1),0)
+                """;
+            return $"""
+                512 + 2 * (length(CAST({valuesJson} AS BLOB)) + length(CAST(r.full_path AS BLOB))
+                    + length(CAST(r.relative_path AS BLOB)) + length(CAST(r.rule_id AS BLOB))
+                    + length(CAST(r.errors_json AS BLOB)) + length(CAST({previewFields} AS BLOB)) + {notes})
+                """;
         }
 
         private (string Values, string Fields) PreviewSql(SqliteCommand command, int characters)

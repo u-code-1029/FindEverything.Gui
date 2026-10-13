@@ -115,18 +115,19 @@ public sealed class ProfileTransferService(IProfileAuthoringService authoring, I
         {
             // Save can fail after the atomic file move (for example an observer throwing during Publish).
             // Restore only bytes still equal to this import; never overwrite a concurrent external edit.
-            if (File.Exists(installedPath)
-                && (await File.ReadAllBytesAsync(installedPath, CancellationToken.None).ConfigureAwait(false)).AsSpan().SequenceEqual(stagedBytes))
+            bool restored = true;
+            try
             {
-                bool restored;
-                try { restored = await RollbackAsync(installation).ConfigureAwait(false); }
-                catch (Exception rollback)
-                {
-                    // Preserve the original save failure as the first cause; never replace it with an observer/cleanup error.
-                    throw new AggregateException("The profile save failed and its previous state could not be restored.", failure, rollback);
-                }
-                if (!restored) throw new InvalidOperationException("The profile was changed externally during rollback. The external edit was preserved; reload it before retrying.", failure);
+                if (File.Exists(installedPath)
+                    && (await File.ReadAllBytesAsync(installedPath, CancellationToken.None).ConfigureAwait(false)).AsSpan().SequenceEqual(stagedBytes))
+                    restored = await RollbackAsync(installation).ConfigureAwait(false);
             }
+            catch (Exception rollback)
+            {
+                // Preserve the original save failure as the first cause; never replace it with a read/observer/cleanup error.
+                throw new AggregateException("The profile save failed and its previous state could not be restored.", failure, rollback);
+            }
+            if (!restored) throw new InvalidOperationException("The profile was changed externally during rollback. The external edit was preserved; reload it before retrying.", failure);
             throw;
         }
     }

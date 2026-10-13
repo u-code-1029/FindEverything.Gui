@@ -55,7 +55,8 @@ internal static class WorkspaceTransferUiChecks
                 Assert.Same(button, popup.PlacementTarget);
                 Assert.False(popup.StaysOpen);
                 var popupContent = Assert.IsAssignableFrom<FrameworkElement>(popup.Child);
-                popupContent.UpdateLayout();
+                WaitForPopupArrangement(window.Dispatcher, popup, popupContent);
+                Assert.True(popupContent.IsVisible);
                 Assert.True(popupContent.ActualWidth > 300);
                 Assert.True(popupContent.ActualHeight > 0);
                 capture?.Invoke(popupContent, $"{page.GetType().Name}-source-sharing-popup.png");
@@ -67,6 +68,32 @@ internal static class WorkspaceTransferUiChecks
             }
             finally { flyout.Hide(); }
         }
+    }
+
+    private static void WaitForPopupArrangement(Dispatcher dispatcher, Popup popup, FrameworkElement content)
+    {
+        // Popup creates a separate HWND. A synchronous UpdateLayout on its
+        // still-detached child (or one Input-priority no-op) cannot arrange it;
+        // let the actual HWND/load/render queue settle before checking bounds.
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(3);
+        bool Ready() => popup.IsOpen && content.IsMeasureValid && content.IsArrangeValid
+            && content.ActualWidth > 0 && content.ActualHeight > 0;
+        while (!Ready() && DateTime.UtcNow < deadline)
+        {
+            var frame = new DispatcherFrame();
+            var timer = new DispatcherTimer(DispatcherPriority.ApplicationIdle, dispatcher)
+            {
+                Interval = TimeSpan.FromMilliseconds(10),
+            };
+            timer.Tick += (_, _) => { timer.Stop(); frame.Continue = false; };
+            timer.Start();
+            try { Dispatcher.PushFrame(frame); }
+            finally { timer.Stop(); }
+            content.UpdateLayout();
+        }
+        Assert.True(Ready(), $"Shared-data popup must actually arrange: open={popup.IsOpen}, "
+            + $"visible={content.IsVisible}, measure={content.IsMeasureValid}, arrange={content.IsArrangeValid}, "
+            + $"size={content.ActualWidth:0.##}×{content.ActualHeight:0.##}.");
     }
 
     private static bool HasAncestor<T>(DependencyObject? element) where T : DependencyObject
