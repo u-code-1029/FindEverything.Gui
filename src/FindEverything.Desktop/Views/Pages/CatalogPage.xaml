@@ -29,6 +29,7 @@
             </controls:PageHeader>
             <controls:CommandStrip Grid.Row="1">
                 <Grid>
+                    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <Label x:Name="CatalogProfileLabel" Padding="0" Margin="0,0,8,0" VerticalAlignment="Center" Content="{DynamicResource Loc.Workspace.Profile.Label}" Target="{Binding ElementName=CatalogProfileComboBox}" />
@@ -41,23 +42,8 @@
                         <ui:Button Command="{Binding ToggleDetailsCommand}" Content="{Binding DetailsButtonText}" ToolTip="{DynamicResource Loc.Workspace.Details.Help}" />
                         <ui:Button Margin="8,0,0,0" Command="{Binding CancelCommand}" Content="{DynamicResource Loc.Workspace.Cancel}" Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}" ToolTip="{DynamicResource Loc.Workspace.Cancel.Help}" />
                     </WrapPanel>
-                </Grid>
-            </controls:CommandStrip>
-        <Grid x:Name="CatalogResultsWorkspace" Grid.Row="2">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="*" />
-                <RowDefinition Height="Auto" />
-            </Grid.RowDefinitions>
-
-            <controls:SectionCard
-                Grid.Row="0"
-                Margin="0,0,0,8"
-                Padding="8,4"
-                Style="{StaticResource FluentToolbarCardStyle}"
-                Visibility="{Binding HasLoadedItems, Converter={StaticResource BooleanToVisibilityConverter}}"><controls:SectionCard.Header>
-                <Grid>
+                <Grid Grid.Row="1" Grid.ColumnSpan="3" Margin="0,8,0,0"
+                    Visibility="{Binding HasLoadedItems, Converter={StaticResource BooleanToVisibilityConverter}}">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
@@ -94,13 +80,14 @@
                         Text="{Binding FilterSummary}"
                         TextAlignment="Right" />
                 </Grid>
-            </controls:SectionCard.Header></controls:SectionCard>
-
-
+                </Grid>
+            </controls:CommandStrip>
+        <Grid x:Name="CatalogResultsWorkspace" Grid.Row="2">
+            <Grid.RowDefinitions><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
 
             <DataGrid
                 x:Name="ResultsGrid"
-                Grid.Row="2"
+                Grid.Row="0"
                 behaviors:DynamicProfileGrid.Fields="{Binding Fields}"
                 behaviors:DynamicProfileGrid.Localizer="{Binding Localizer}"
                 behaviors:DynamicProfileGrid.ProfileId="{Binding SelectedProfile.Id}"
@@ -152,7 +139,7 @@
                 </DataGrid.ContextMenu>
             </DataGrid>
 
-            <controls:SectionCard x:Name="SelectionToolbar" Grid.Row="3" Margin="0,8,0,0" Padding="12,4"
+            <controls:SectionCard x:Name="SelectionToolbar" Grid.Row="1" Margin="0,8,0,0" Padding="12,4"
                 Style="{StaticResource FluentToolbarCardStyle}" SizeChanged="OnSelectionToolbarSizeChanged"
                 Visibility="{Binding HasSelection, Converter={StaticResource BooleanToVisibilityConverter}}">
                 <controls:SectionCard.Header>
@@ -212,7 +199,7 @@
                 </controls:SectionCard.Header>
             </controls:SectionCard>
 
-            <controls:SectionCard Grid.RowSpan="3" Padding="24"><controls:SectionCard.Style>
+            <controls:SectionCard Grid.RowSpan="2" Padding="24"><controls:SectionCard.Style>
                     <Style BasedOn="{StaticResource FluentEmptyStateStyle}" TargetType="ui:CardControl">
                         <Setter Property="Visibility" Value="Visible" />
                         <Style.Triggers>
