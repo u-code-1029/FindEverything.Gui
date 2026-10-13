@@ -40,6 +40,10 @@ public sealed class ProfileEditorEntryPresenter : Decorator
         _template = null;
         if (template is null) return;
 
+        // Unlike ContentPresenter, public LoadContent does not seal a
+        // code-created FrameworkElementFactory template before instantiation.
+        // Finalize it here just as WPF's normal template application does.
+        if (!template.IsSealed) template.Seal();
         var root = template.LoadContent() as FrameworkElement
             ?? throw new InvalidOperationException("A profile editor section must create a FrameworkElement.");
         root.DataContext = entry!.Value;

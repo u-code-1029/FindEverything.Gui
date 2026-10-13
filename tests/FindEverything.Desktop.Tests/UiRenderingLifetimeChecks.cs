@@ -83,16 +83,19 @@ internal static class UiRenderingLifetimeChecks
         var textFactory = new FrameworkElementFactory(typeof(TextBlock));
         textFactory.SetBinding(TextBlock.TextProperty, new Binding(nameof(ProfileFieldDraftViewModel.Header)));
         cardFactory.AppendChild(textFactory);
+        var template = new DataTemplate { VisualTree = cardFactory };
+        Assert.False(template.IsSealed); // The presenter supports code-created templates too.
         list.Sections.Add(new ProfileEditorSection
         {
             IsCollection = true, ItemsSource = new[] { field },
-            Template = new DataTemplate { VisualTree = cardFactory },
+            Template = template,
         });
         var window = new Window { Content = list, Width = 700, Height = 400, ShowInTaskbar = false };
         try
         {
             window.Show(); Pump(); window.UpdateLayout(); Pump();
             Assert.Single(list.Items);
+            Assert.True(template.IsSealed);
             var card = Assert.Single(Descendants<SectionCard>(list));
             Assert.Same(field, card.DataContext);
             Assert.Contains(Descendants<TextBlock>(card), text => text.Text == field.Header);
