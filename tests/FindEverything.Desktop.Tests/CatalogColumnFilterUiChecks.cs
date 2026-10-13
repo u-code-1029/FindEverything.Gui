@@ -151,8 +151,13 @@ internal static class CatalogColumnFilterUiChecks
 
     private static MouseButtonEventArgs RaiseHeaderMouse(UIElement source, RoutedEvent routedEvent)
     {
+        // WPF's button-specific preview events are Direct. Real mouse input
+        // tunnels the generic event, which re-raises those events on each ancestor.
+        // Raising LeftButtonUp only on the header would never reach the grid.
+        var inputEvent = routedEvent == UIElement.PreviewMouseLeftButtonDownEvent
+            ? Mouse.PreviewMouseDownEvent : Mouse.PreviewMouseUpEvent;
         var args = new MouseButtonEventArgs(Mouse.PrimaryDevice, Environment.TickCount, MouseButton.Left)
-            { RoutedEvent = routedEvent };
+            { RoutedEvent = inputEvent };
         source.RaiseEvent(args);
         return args;
     }
