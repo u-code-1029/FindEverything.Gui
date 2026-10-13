@@ -16,7 +16,7 @@ namespace FindEverything.Desktop.Tests;
 /// <summary>Uses the composition smoke test's single application/STA dispatcher.</summary>
 internal static class WorkspaceTransferUiChecks
 {
-    public static void Verify(IServiceProvider services, MainWindow window)
+    public static void Verify(IServiceProvider services, MainWindow window, Action<FrameworkElement, string>? capture = null)
     {
         var transfer = services.GetRequiredService<WorkspaceTransferViewModel>();
         var navigation = services.GetRequiredService<INavigationService>();
@@ -54,6 +54,11 @@ internal static class WorkspaceTransferUiChecks
                 var popup = Assert.IsType<Popup>(flyout.Template.FindName("PART_Popup", flyout));
                 Assert.Same(button, popup.PlacementTarget);
                 Assert.False(popup.StaysOpen);
+                var popupContent = Assert.IsAssignableFrom<FrameworkElement>(popup.Child);
+                popupContent.UpdateLayout();
+                Assert.True(popupContent.ActualWidth > 300);
+                Assert.True(popupContent.ActualHeight > 0);
+                capture?.Invoke(popupContent, $"{page.GetType().Name}-source-sharing-popup.png");
                 Assert.Equal(size, page.RenderSize);
                 Assert.IsType<Ui.DynamicScrollViewer>(flyout.Content);
                 Assert.True(picker.IsEnabled);

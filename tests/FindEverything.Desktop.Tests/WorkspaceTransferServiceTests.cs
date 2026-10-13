@@ -1,6 +1,8 @@
 using System.IO;
 using System.IO.Compression;
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Security.Cryptography;
 using System.Globalization;
 using FindEverything.Application.Catalog;
 using FindEverything.Application.Indexing;
@@ -247,6 +249,153 @@ public sealed class WorkspaceTransferServiceTests
         }
         Assert.Same(updated, await english.EnsureCultureAsync(updated));
         Assert.Equal(originalArchive, await File.ReadAllBytesAsync(archivedCatalog));
+    }
+
+    [Theory]
+    [InlineData("export")]
+    [InlineData("import")]
+    [InlineData("relink")]
+    public async Task StagingSetupFailureAlwaysReleasesTransferGate(string operation)
+    {
+        using var fixture = new Fixture();
+        var request = await fixture.CreateExportAsync(false);
+        var service = fixture.Provider.GetRequiredService<IIndexedDatasetTransferService>();
+        await service.ExportAsync(request);
+        var source = operation == "relink" ? (await service.ImportAsync(request.DestinationPath, ProfileImportConflictChoice.NewProfile))! : null;
+        var imports = Path.Combine(fixture.Paths.LocalDataDirectory, "Imports");
+        var backup = Path.Combine(fixture.Paths.LocalDataDirectory, "Imports-test-backup");
+        Directory.Move(imports, backup);
+        await File.WriteAllTextAsync(imports, "A test-owned file prevents creating the staging directory.");
+        async Task RunOperation()
+        {
+            if (operation == "export") await service.ExportAsync(request);
+            else if (operation == "import") await service.ImportAsync(request.DestinationPath, ProfileImportConflictChoice.NewProfile);
+            else await service.RelinkAsync(source!, Path.Combine(fixture.Root, "receiver"));
+        }
+        try { await Assert.ThrowsAnyAsync<IOException>(RunOperation); }
+        finally { File.Delete(imports); Directory.Move(backup, imports); }
+        await RunOperation().WaitAsync(TimeSpan.FromSeconds(10));
+    }
+
+    [Fact]
+    public async Task InvalidExportDestinationDoesNotAcquireOrStrandTheTransferGate()
+    {
+        using var fixture = new Fixture();
+        var request = await fixture.CreateExportAsync(false);
+        var service = fixture.Provider.GetRequiredService<IIndexedDatasetTransferService>();
+        await Assert.ThrowsAsync<ArgumentException>(() => service.ExportAsync(request with { DestinationPath = "\0" }));
+        await service.ExportAsync(request).WaitAsync(TimeSpan.FromSeconds(10));
+    }
+
+    [Fact]
+    public async Task WindowsStagingCleanupFailureDoesNotFailCommittedExportOrStrandGate()
+    {
+        if (!OperatingSystem.IsWindows()) return; // Windows open-file delete semantics are the deterministic failure injection.
+        using var fixture = new Fixture();
+        var request = await fixture.CreateExportAsync(false);
+        var service = fixture.Provider.GetRequiredService<IIndexedDatasetTransferService>();
+        FileStream? heldStagingFile = null;
+        var imports = Path.Combine(fixture.Paths.LocalDataDirectory, "Imports");
+        try
+        {
+            var progress = new InlineProgress(_ =>
+            {
+                if (heldStagingFile is not null) return;
+                var stage = Directory.EnumerateDirectories(imports, ".stage-*").Single();
+                heldStagingFile = new FileStream(Path.Combine(stage, "profile.json"), FileMode.Open, FileAccess.Read, FileShare.Read);
+            });
+            await service.ExportAsync(request, progress);
+            Assert.NotNull(heldStagingFile);
+            Assert.True(File.Exists(request.DestinationPath));
+            heldStagingFile.Dispose(); heldStagingFile = null;
+            await service.ExportAsync(request).WaitAsync(TimeSpan.FromSeconds(10));
+        }
+        finally { heldStagingFile?.Dispose(); }
+    }
+
+    [Fact]
+    public async Task PackageCallbackFailureRestoresExactOriginalJsonIncludingCommentsAndUnknownProperties()
+    {
+        using var fixture = new Fixture();
+        var authoring = fixture.Provider.GetRequiredService<IProfileAuthoringService>();
+        var original = Manifest(); original.DisplayName = "Original";
+        Assert.True((await authoring.SaveAndApplyAsync(original, null)).Applied);
+        var editable = Assert.Single(await authoring.ListAsync());
+        var text = await File.ReadAllTextAsync(editable.ManifestPath);
+        var commented = "/* preserve this user note */\n" + text[..text.LastIndexOf('}')] + ",\n\"userNote\":\"preserve this unknown property\"\n}";
+        await File.WriteAllTextAsync(editable.ManifestPath, commented);
+        var before = await File.ReadAllBytesAsync(editable.ManifestPath);
+        var incoming = Manifest(); incoming.DisplayName = "Incoming";
+        var transfer = fixture.Provider.GetRequiredService<ProfileTransferService>();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => transfer.InstallAtomicallyAsync<bool>(incoming,
+            ProfileImportConflictChoice.Replace, _ => Task.FromException<bool>(new OperationCanceledException()), CancellationToken.None));
+        Assert.Equal(before, await File.ReadAllBytesAsync(editable.ManifestPath));
+        Assert.Equal("Original", Assert.Single(fixture.Provider.GetRequiredService<IProfileCatalog>().Current.Profiles).Descriptor.DisplayName);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PackageRollbackNeverOverwritesOrDeletesExternalProfileEdits(bool replacing)
+    {
+        using var fixture = new Fixture();
+        var authoring = fixture.Provider.GetRequiredService<IProfileAuthoringService>();
+        if (replacing) Assert.True((await authoring.SaveAndApplyAsync(Manifest(), null)).Applied);
+        var transfer = fixture.Provider.GetRequiredService<ProfileTransferService>();
+        string? changedPath = null;
+        byte[]? externalBytes = null;
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => transfer.InstallAtomicallyAsync<bool>(Manifest(),
+            replacing ? ProfileImportConflictChoice.Replace : ProfileImportConflictChoice.NewProfile,
+            async result =>
+            {
+                var external = Manifest(); external.Id = result.ProfileId; external.DisplayName = "External editor owns this change";
+                externalBytes = JsonSerializer.SerializeToUtf8Bytes(external, ProfileTransferService.WriteOptions);
+                changedPath = result.ManifestPath;
+                await File.WriteAllBytesAsync(changedPath, externalBytes);
+                throw new OperationCanceledException();
+            }, CancellationToken.None));
+        Assert.Contains("externally", failure.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.NotNull(changedPath);
+        Assert.Equal(externalBytes, await File.ReadAllBytesAsync(changedPath));
+        Assert.Equal("External editor owns this change", Assert.Single(fixture.Provider.GetRequiredService<IProfileCatalog>().Current.Profiles).Descriptor.DisplayName);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PackageRejectsInconsistentProfileColumnTypeOrMappingEvenWhenChecksumsAreValid(bool changeMapping)
+    {
+        using var fixture = new Fixture();
+        var request = await fixture.CreateExportAsync(false);
+        var service = fixture.Provider.GetRequiredService<IIndexedDatasetTransferService>();
+        await service.ExportAsync(request);
+        using (var zip = ZipFile.Open(request.DestinationPath, ZipArchiveMode.Update))
+        {
+            var profileEntry = zip.GetEntry("profile.json")!;
+            ProfileManifest changed;
+            await using (var stream = profileEntry.Open())
+                changed = (await JsonSerializer.DeserializeAsync<ProfileManifest>(stream, ProfileTransferService.ReadOptions))!;
+            if (changeMapping) changed.Fields![0].ValueMappings = [new() { Source = "item", Display = "Forged display" }];
+            else changed.Fields![0].Kind = ProfileFieldValueKind.Int32;
+            var replacement = JsonSerializer.SerializeToUtf8Bytes(changed, ProfileTransferService.WriteOptions);
+            profileEntry.Delete();
+            await using (var stream = zip.CreateEntry("profile.json").Open()) await stream.WriteAsync(replacement);
+            var manifestEntry = zip.GetEntry("manifest.json")!;
+            JsonNode manifest;
+            await using (var stream = manifestEntry.Open()) manifest = (await JsonNode.ParseAsync(stream))!;
+            var file = manifest["files"]!.AsArray().Single(node => node!["name"]!.GetValue<string>() == "profile.json")!;
+            file["length"] = replacement.LongLength;
+            file["sha256"] = Convert.ToHexString(SHA256.HashData(replacement));
+            manifestEntry.Delete();
+            await using (var stream = zip.CreateEntry("manifest.json").Open())
+                await JsonSerializer.SerializeAsync(stream, manifest);
+        }
+        await Assert.ThrowsAsync<InvalidDataException>(() => service.InspectAsync(request.DestinationPath));
+        await Assert.ThrowsAsync<InvalidDataException>(() => service.ImportAsync(request.DestinationPath, ProfileImportConflictChoice.Replace));
+        Assert.Empty(await fixture.Provider.GetRequiredService<IImportedWorkspaceRegistry>().ListAsync());
+        var authoring = fixture.Provider.GetRequiredService<IProfileAuthoringService>();
+        var editable = Assert.Single(await authoring.ListAsync());
+        Assert.Equal(ProfileFieldValueKind.String, (await authoring.LoadAsync(editable))!.Fields![0].Kind);
     }
 
     private sealed class InlineProgress(Action<WorkspaceTransferProgress> report) : IProgress<WorkspaceTransferProgress>

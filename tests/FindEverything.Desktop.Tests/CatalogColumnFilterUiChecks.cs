@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Data;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using FindEverything.Application.Catalog;
 using FindEverything.Application.Results;
@@ -27,9 +28,19 @@ internal static class CatalogColumnFilterUiChecks
         var fields = new[]
         {
             Field("name", ProfileFieldValueKind.String), Field("amount", ProfileFieldValueKind.Decimal),
-            Field("date", ProfileFieldValueKind.DateTime), Field("flag", ProfileFieldValueKind.Boolean)
+            Field("date", ProfileFieldValueKind.DateTime), Field("flag", ProfileFieldValueKind.Boolean),
+            Field("document", ProfileFieldValueKind.String) with { SourceKind = ProfileFieldSourceKind.TextFileContent }
         };
         owner.Fields = fields;
+        var examples = (List<CatalogItemViewModel>)typeof(CatalogViewModel).GetField("_loadedItems", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(owner)!;
+        for (var index = 0; index < 2; index++)
+        {
+            var values = new Dictionary<string, object?> { ["name"] = "Apollo", ["amount"] = (decimal)(index * 10),
+                ["date"] = new DateTime(2026, 5, 21).AddDays(index), ["flag"] = index == 0,
+                ["document"] = "Example text-file content" };
+            examples.Add(new(new CatalogItem(@"C:\Archive\Apollo\item-" + index, "item-" + index, "rule", values, values, false), fields, owner.Localizer));
+        }
+        owner.Items.Refresh();
         var grid = new Ui.DataGrid
         {
             DataContext = owner, AutoGenerateColumns = false, CanUserAddRows = false,
@@ -41,7 +52,12 @@ internal static class CatalogColumnFilterUiChecks
         try
         {
             window.Show(); grid.UpdateLayout();
-            PumpUntil(() => grid.Columns[2].Header is StackPanel);
+            PumpUntil(() => grid.Columns[2].Header is StackPanel && grid.Columns[6].Header is StackPanel);
+            var documentHeader = Assert.IsType<StackPanel>(DynamicProfileGrid.GetColumnHeaderContent(grid.Columns[6]));
+            var documentRefresh = Assert.Single(documentHeader.Children.OfType<Ui.Button>());
+            Assert.Same(owner.RefreshTextColumnCommand, documentRefresh.Command);
+            Assert.Equal("document", documentRefresh.CommandParameter);
+            Assert.Same(documentHeader, Assert.IsType<StackPanel>(grid.Columns[6].Header).Children[0]);
             var stateProperty = (DependencyProperty)typeof(DynamicProfileGrid).GetField("ColumnFiltersStateProperty", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;
             var state = grid.GetValue(stateProperty);
             Assert.NotNull(state);
@@ -63,12 +79,14 @@ internal static class CatalogColumnFilterUiChecks
             var text = body.Children.OfType<StackPanel>().SelectMany(panel => panel.Children.OfType<Ui.TextBox>()).Single();
             text.Text = "Apollo";
             Assert.Equal("Apollo", Assert.Single(owner.ActiveColumnFilters).Filter.Text);
+            CaptureFlyoutQa(grid, flyout, "catalog-filter-text.png");
             Show(3, CatalogColumnTarget.Field("amount"));
             body = Assert.IsType<StackPanel>(flyout.Content); mode = body.Children.OfType<ComboBox>().Single(); mode.SelectedIndex = 1;
             Assert.Equal(2, body.Children.OfType<StackPanel>().SelectMany(panel => panel.Children.OfType<Slider>()).Count());
             var numbers = body.Children.OfType<StackPanel>().SelectMany(panel => panel.Children.OfType<Ui.TextBox>()).ToArray();
             numbers[0].Text = "1"; numbers[1].Text = "2";
             Assert.Equal(2, owner.ActiveColumnFilters.Count);
+            CaptureFlyoutQa(grid, flyout, "catalog-filter-number.png");
             numbers[0].Text = "3";
             Assert.Equal(1m, owner.GetColumnFilter(CatalogColumnTarget.Field("amount"))!.Minimum);
             Show(4, CatalogColumnTarget.Field("date"));
@@ -78,9 +96,11 @@ internal static class CatalogColumnFilterUiChecks
             dates[0].SetCurrentValue(Ui.CalendarDatePicker.DateProperty, new DateTime(2026, 5, 21));
             dates[1].SetCurrentValue(Ui.CalendarDatePicker.DateProperty, new DateTime(2026, 5, 22));
             Assert.Equal(new DateTime(2026, 5, 22), owner.GetColumnFilter(CatalogColumnTarget.Field("date"))!.EndDate);
+            CaptureFlyoutQa(grid, flyout, "catalog-filter-date.png");
             Show(5, CatalogColumnTarget.Field("flag"));
             body = Assert.IsType<StackPanel>(flyout.Content); mode = body.Children.OfType<ComboBox>().Single(); mode.SelectedIndex = 1;
             Assert.True(owner.GetColumnFilter(CatalogColumnTarget.Field("flag"))!.Boolean);
+            CaptureFlyoutQa(grid, flyout, "catalog-filter-boolean.png");
             owner.ApplyColumnSort(CatalogColumnTarget.Field("amount"), true);
             Assert.True(owner.IsColumnSorted(CatalogColumnTarget.Field("amount")));
             owner.ClearColumnFiltersCommand.Execute(null);
@@ -90,6 +110,137 @@ internal static class CatalogColumnFilterUiChecks
         }
         finally { window.Close(); }
         VerifyLiveFullText(services);
+        VerifySupersededNumericRange(services);
+    }
+
+    private static void CaptureFlyoutQa(Ui.DataGrid grid, Ui.Flyout flyout, string fileName)
+    {
+        var directory = Environment.GetEnvironmentVariable("FINDEVERYTHING_QA_DIR");
+        if (string.IsNullOrWhiteSpace(directory)) return;
+        var popup = Assert.IsType<Popup>(flyout.Template.FindName("PART_Popup", flyout));
+        Assert.True(popup.IsOpen);
+        var root = Assert.IsAssignableFrom<FrameworkElement>(popup.Child);
+        root.UpdateLayout(); grid.UpdateLayout();
+        PumpUntil(() => root.IsArrangeValid && root.ActualWidth > 0 && root.ActualHeight > 0);
+        var width = checked((int)Math.Ceiling(root.ActualWidth));
+        var height = checked((int)Math.Ceiling(root.ActualHeight));
+        var background = root.TryFindResource("ApplicationBackgroundBrush") as Brush
+            ?? root.TryFindResource("SolidBackgroundFillColorBaseBrush") as Brush ?? Brushes.White;
+        System.IO.Directory.CreateDirectory(directory);
+        var popupBitmap = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
+        var backdrop = new DrawingVisual();
+        using (var drawing = backdrop.RenderOpen()) drawing.DrawRectangle(background, null, new Rect(0, 0, width, height));
+        popupBitmap.Render(backdrop); popupBitmap.Render(root);
+        Save(popupBitmap, fileName);
+
+        // Popup HWNDs are outside the window's visual tree. Preserve the actual
+        // popup render above, and add a separate context composite using the real
+        // grid header strip and native popup contents, not a recreated mockup.
+        var presenter = Descendants<DataGridColumnHeadersPresenter>(grid).Single();
+        var headerHeight = presenter.ActualHeight;
+        Assert.True(headerHeight > 0);
+        const int margin = 16;
+        var contextWidth = checked((int)Math.Ceiling(Math.Max(grid.ActualWidth, width) + margin * 2));
+        var contextHeight = checked((int)Math.Ceiling(headerHeight + height + margin * 3));
+        var context = new DrawingVisual();
+        using (var drawing = context.RenderOpen())
+        {
+            drawing.DrawRectangle(background, null, new Rect(0, 0, contextWidth, contextHeight));
+            var headers = new VisualBrush(grid) { ViewboxUnits = BrushMappingMode.Absolute,
+                Viewbox = new Rect(0, 0, grid.ActualWidth, headerHeight), Stretch = Stretch.Fill };
+            drawing.DrawRectangle(headers, null, new Rect(margin, margin, grid.ActualWidth, headerHeight));
+            var anchor = Assert.IsType<DataGridColumnHeader>(popup.PlacementTarget);
+            var x = anchor.TransformToAncestor(grid).Transform(new Point()).X;
+            drawing.DrawImage(popupBitmap, new Rect(Math.Clamp(margin + x, margin, contextWidth - width - margin),
+                margin * 2 + headerHeight, width, height));
+        }
+        var contextBitmap = new RenderTargetBitmap(contextWidth, contextHeight, 96, 96, PixelFormats.Pbgra32);
+        contextBitmap.Render(context);
+        Save(contextBitmap, System.IO.Path.GetFileNameWithoutExtension(fileName) + "-context.png");
+
+        void Save(BitmapSource bitmap, string name)
+        {
+            var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap));
+            using var stream = System.IO.File.Create(System.IO.Path.Combine(directory, name)); encoder.Save(stream);
+        }
+    }
+
+    private static void VerifySupersededNumericRange(IServiceProvider services)
+    {
+        var store = new DelayedNumericRangeStore();
+        using var owner = ActivatorUtilities.CreateInstance<CatalogViewModel>(services, store);
+        var fields = new[] { Field("amount", ProfileFieldValueKind.Decimal) };
+        owner.Fields = fields;
+        var scope = new CatalogProjectionScope("range-ui", "range-ui", @"C:\Archive", @"C:\metadata.db", "range-ui", owner.Localizer.Culture.Name, null);
+        var snapshot = new CatalogProjectionSnapshot("range-ui", scope, new(0, 0, 0, 0, 0, false, null, DateTimeOffset.UtcNow), fields);
+        typeof(CatalogViewModel).GetField("_projectionSnapshot", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(owner, snapshot);
+        owner.ApplyColumnFilter(new(CatalogColumnTarget.Field("amount"), CatalogFilterOperator.NumberRange) { Minimum = 1 });
+        var grid = new Ui.DataGrid { DataContext = owner, AutoGenerateColumns = false, CanUserAddRows = false,
+            ItemsSource = owner.Items, Style = System.Windows.Application.Current!.TryFindResource("FluentDataGridStyle") as Style };
+        DynamicProfileGrid.SetLocalizer(grid, owner.Localizer); DynamicProfileGrid.SetFields(grid, fields);
+        var window = new Window { Content = grid, Width = 700, Height = 240, ShowInTaskbar = false };
+        try
+        {
+            window.Show(); grid.UpdateLayout(); PumpUntil(() => grid.Columns[2].Header is StackPanel);
+            var stateProperty = (DependencyProperty)typeof(DynamicProfileGrid).GetField("ColumnFiltersStateProperty", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;
+            var state = grid.GetValue(stateProperty);
+            var flyout = (Ui.Flyout)state.GetType().GetField("Flyout")!.GetValue(state)!;
+            var open = typeof(DynamicProfileGrid).GetMethod("OpenColumnFlyoutAsync", BindingFlags.NonPublic | BindingFlags.Static)!;
+            Task Open()
+            {
+                var header = Descendants<DataGridColumnHeader>(grid).First(candidate => candidate.Column == grid.Columns[2]);
+                return (Task)open.Invoke(null, [grid, state, owner, header, CatalogColumnTarget.Field("amount")])!;
+            }
+            var first = Open();
+            Assert.Single(store.Requests);
+            var body = Assert.IsType<StackPanel>(flyout.Content); var mode = body.Children.OfType<ComboBox>().Single();
+            var oldSliders = body.Children.OfType<StackPanel>().SelectMany(panel => panel.Children.OfType<Slider>()).ToArray();
+            mode.SelectedIndex = 0; mode.SelectedIndex = 1;
+            Assert.Equal(2, store.Requests.Count);
+            var currentSliders = body.Children.OfType<StackPanel>().SelectMany(panel => panel.Children.OfType<Slider>()).ToArray();
+            Assert.NotSame(oldSliders[0], currentSliders[0]);
+            store.Requests[0].SetResult(new(1, 2)); PumpUntil(() => first.IsCompleted); first.GetAwaiter().GetResult();
+            Assert.All(currentSliders, slider => Assert.False(slider.IsEnabled));
+            store.Requests[1].SetResult(new(10, 20)); PumpUntil(() => currentSliders.All(slider => slider.IsEnabled));
+            currentSliders[0].Value = 5000;
+            Assert.Equal(15m, owner.GetColumnFilter(CatalogColumnTarget.Field("amount"))!.Minimum);
+
+            var failed = Open(); Assert.Equal(3, store.Requests.Count);
+            body = Assert.IsType<StackPanel>(flyout.Content); mode = body.Children.OfType<ComboBox>().Single(); mode.SelectedIndex = 0;
+            store.Requests[2].SetException(new System.IO.IOException("A superseded range read failed."));
+            PumpUntil(() => failed.IsCompleted); failed.GetAwaiter().GetResult();
+            var staleError = body.Children.OfType<Ui.TextBlock>().Single(block => block.Text == string.Empty);
+            Assert.Equal(Visibility.Collapsed, staleError.Visibility);
+        }
+        finally { window.Close(); }
+    }
+
+    private sealed class DelayedNumericRangeStore : ICatalogProjectionStore
+    {
+        public List<TaskCompletionSource<CatalogNumericRange?>> Requests { get; } = [];
+        public Task<CatalogNumericRange?> ReadNumericRangeAsync(CatalogProjectionSnapshot snapshot, string fieldId, CancellationToken token = default)
+        {
+            var completion = new TaskCompletionSource<CatalogNumericRange?>(TaskCreationOptions.RunContinuationsAsynchronously);
+            Requests.Add(completion); return completion.Task;
+        }
+        public Task<CatalogProjectionSnapshot?> FindAsync(CatalogProjectionScope scope, CancellationToken token = default) => Task.FromResult<CatalogProjectionSnapshot?>(null);
+        public ICatalogProjectionWriter Begin(CatalogProjectionScope scope, IReadOnlyList<ProfileFieldDescriptor> fields) => throw new NotSupportedException();
+        public IResultQuerySession<CatalogProjectionRow> OpenQuery(CatalogProjectionSnapshot snapshot, CatalogProjectionQuery query) => new EmptyRangeQuery(snapshot.Generation);
+        public IResultQuerySession<CatalogProjectionRow> OpenBuildingQuery(ICatalogProjectionWriter writer, CatalogProjectionScope scope, IReadOnlyList<ProfileFieldDescriptor> fields, CatalogProjectionQuery query) => throw new NotSupportedException();
+        public Task<CatalogProjectionSnapshot> RefreshColumnAsync(CatalogProjectionSnapshot snapshot, string fieldId,
+            Func<string, CancellationToken, Task<TextColumnReadResult>> readValue, IProgress<TextColumnRefreshProgress>? progress = null,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    }
+    private sealed class EmptyRangeQuery(string identity) : IResultQuerySession<CatalogProjectionRow>
+    {
+        public string Identity => identity;
+        public Task<long> CountAsync(CancellationToken cancellationToken = default) => Task.FromResult(0L);
+        public Task<ResultPage<CatalogProjectionRow>> ReadRangeAsync(int offset, int limit, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new ResultPage<CatalogProjectionRow>([], offset, false));
+        public async IAsyncEnumerable<CatalogProjectionRow> EnumerateSelectionAsync(QuerySelection selection,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        { await Task.CompletedTask; yield break; }
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
     private static void VerifyLoadedSchemaReplacementWhilePaging(Ui.DataGrid grid, CatalogViewModel owner,
@@ -141,7 +292,12 @@ internal static class CatalogColumnFilterUiChecks
             Assert.Equal(replacementFields[0].Header, DynamicProfileGrid.GetColumnHeaderContent(grid.Columns[2]));
             Assert.All(grid.Columns.Skip(1), column => Assert.False(column.CanUserSort));
         }
-        finally { grid.ItemsSource = owner.Items; }
+        finally
+        {
+            owner.Fields = initialFields;
+            DynamicProfileGrid.SetFields(grid, initialFields);
+            grid.ItemsSource = owner.Items;
+        }
     }
 
     private static void VerifyLiveFullText(IServiceProvider services)

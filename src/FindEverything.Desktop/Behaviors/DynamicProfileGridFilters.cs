@@ -146,15 +146,24 @@ public static partial class DynamicProfileGrid
         headerStyle.Setters.Add(new Setter(UIElement.FocusableProperty, true));
         headerStyle.Setters.Add(new Setter(KeyboardNavigation.IsTabStopProperty, true));
         column.HeaderStyle = headerStyle;
-        column.SetValue(OriginalFilterHeaderProperty, column.Header);
+        var originalHeader = column.Header;
+        column.SetValue(OriginalFilterHeaderProperty, originalHeader);
+        if (originalHeader is UIElement)
+        {
+            // A loaded text-file header contains its refresh button and already
+            // belongs to the header presenter. Release that content before moving
+            // it into the decorated panel, without replacing a header binding.
+            column.SetCurrentValue(DataGridColumn.HeaderProperty, null);
+            grid.UpdateLayout();
+        }
         var panel = new StackPanel { Orientation = Orientation.Horizontal };
-        if (column.Header is UIElement element) panel.Children.Add(element);
-        else panel.Children.Add(new Ui.TextBlock { Text = Convert.ToString(column.Header), VerticalAlignment = VerticalAlignment.Center });
+        if (originalHeader is UIElement element) panel.Children.Add(element);
+        else panel.Children.Add(new Ui.TextBlock { Text = Convert.ToString(originalHeader), VerticalAlignment = VerticalAlignment.Center });
         var marker = new Ui.TextBlock { Text = "⌄", Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
             ToolTip = L(GetLocalizer(grid), "Loc.Catalog.ColumnFilter.Open.Help", "클릭하여 이 컬럼을 필터링하거나 정렬합니다.") };
         panel.Children.Add(marker);
         column.SetValue(HeaderFilterMarkerProperty, marker);
-        column.Header = panel;
+        column.SetCurrentValue(DataGridColumn.HeaderProperty, panel);
     }
 
     private static void UpdateHeaderFilterMarkers(DataGrid grid, ColumnFiltersState state)
@@ -316,7 +325,12 @@ public static partial class DynamicProfileGrid
                     synchronizing = false;
                 }
                 catch (OperationCanceledException) { }
-                catch (Exception) { error.Text = T("RangeUnavailable", "범위를 불러오지 못했습니다. 숫자를 직접 입력할 수 있습니다."); error.Visibility = Visibility.Visible; }
+                catch (Exception)
+                {
+                    if (token.IsCancellationRequested || !Equals(mode.SelectedItem, selected) || !editors.Children.Contains(lower)) return;
+                    error.Text = T("RangeUnavailable", "범위를 불러오지 못했습니다. 숫자를 직접 입력할 수 있습니다.");
+                    error.Visibility = Visibility.Visible;
+                }
                 return;
             }
             Apply(draft);

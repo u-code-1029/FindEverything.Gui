@@ -4,6 +4,12 @@
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
     xmlns:controls="clr-namespace:FindEverything.Desktop.Views.Controls">
 
+    <!-- WPF-UI 4.3's TabView classes are empty TabControl/TabItem subclasses.
+         Its Fluent templates are keyed to the base types; explicitly bridge
+         those styles so the UI namespace does not fall back to OS chrome. -->
+    <Style TargetType="ui:TabView" BasedOn="{StaticResource {x:Type TabControl}}" />
+    <Style TargetType="ui:TabViewItem" BasedOn="{StaticResource {x:Type TabItem}}" />
+
     <!-- Keep WPF-UI's native card template and theme states. Editor groups use
          Header (the stretching column) rather than the auto-width action slot.
          Their nested editors remain keyboard-focusable, but the passive card

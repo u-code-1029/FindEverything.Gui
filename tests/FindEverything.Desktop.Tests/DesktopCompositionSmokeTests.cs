@@ -174,7 +174,7 @@ public sealed class DesktopCompositionSmokeTests
             VerifyPageScrollContracts(filesPage, catalogPage);
             VerifyCompactSelectionPages(filesPage, catalogPage);
             VerifyCoreWorkspaceBounds(provider, window);
-            WorkspaceTransferUiChecks.Verify(provider, window);
+            WorkspaceTransferUiChecks.Verify(provider, window, (visual, name) => SaveQaImage(visual, name));
             Assert.True(navigation.Navigate(typeof(CatalogPage)));
             Assert.True(navigation.Navigate(typeof(ProfilesPage)));
             VerifyProfilesScrolling(window, profilesPage);
@@ -329,6 +329,12 @@ public sealed class DesktopCompositionSmokeTests
                     Assert.InRange(page.ActualHeight, size.Height - 0.01, size.Height + 0.01);
                     var grid = Assert.IsAssignableFrom<System.Windows.Controls.DataGrid>(page.FindName("ResultsGrid"));
                     var toolbar = Assert.IsAssignableFrom<Wpf.Ui.Controls.CardControl>(page.FindName("SelectionToolbar"));
+                    if (page is CatalogPage)
+                    {
+                        var clearFilters = Assert.Single(FindVisualChildren<Wpf.Ui.Controls.Button>(page),
+                            button => ReferenceEquals(button.Command, ((WorkspaceLayoutFixture)page.DataContext).ClearColumnFiltersCommand));
+                        Assert.Equal(Visibility.Collapsed, Assert.IsType<WrapPanel>(clearFilters.Parent).Visibility);
+                    }
                     Assert.True(grid.ActualHeight / page.ActualHeight >= minimumRatio,
                         $"{page.GetType().Name}: results occupy {grid.ActualHeight / page.ActualHeight:P1} at {size}.");
                     Assert.True(toolbar.ActualHeight > 0);
@@ -1301,6 +1307,18 @@ public sealed class DesktopCompositionSmokeTests
         Assert.False(ScrollViewer.GetCanContentScroll(page));
 
         var tabControl = Assert.IsAssignableFrom<TabControl>(page.FindName("ProfilesTabControl"));
+        tabControl.ApplyTemplate();
+        var baseTabStyle = Assert.IsType<Style>(page.FindResource(typeof(TabControl)));
+        Assert.Same(baseTabStyle, Assert.IsType<Style>(tabControl.Style).BasedOn);
+        Assert.True(tabControl.OverridesDefaultStyle);
+        Assert.IsType<Border>(tabControl.Template.FindName("Border", tabControl));
+        foreach (var tab in tabControl.Items.OfType<Wpf.Ui.Controls.TabViewItem>())
+        {
+            tab.ApplyTemplate();
+            Assert.Same(Assert.IsType<Style>(page.FindResource(typeof(TabItem))), Assert.IsType<Style>(tab.Style).BasedOn);
+            Assert.True(tab.OverridesDefaultStyle);
+            Assert.IsType<Border>(tab.Template.FindName("Border", tab));
+        }
         Assert.Equal(HorizontalAlignment.Stretch, tabControl.HorizontalContentAlignment);
         Assert.Equal(VerticalAlignment.Stretch, tabControl.VerticalContentAlignment);
         var viewModel = Assert.IsType<ProfilesViewModel>(page.DataContext);
@@ -2392,6 +2410,15 @@ public sealed class DesktopCompositionSmokeTests
         public bool IsSetupStateVisible => false;
         public bool IsNoResultsVisible => false;
         public bool HasValueMappings => false;
+        public bool HasColumnFilters => false;
+        public bool IsReadOnlyDataSource => false;
+        public CatalogActiveColumnFilter[] ActiveColumnFilters => [];
+        public System.Windows.Input.ICommand ClearColumnFiltersCommand { get; } = new CommunityToolkit.Mvvm.Input.RelayCommand(static () => { });
+        public WorkspaceTransferLayoutFixture WorkspaceTransfer { get; } = new();
+        public bool HasRoot => true;
+        public bool HasNoRoot => false;
+        public bool IsCreatedCustomRange => false;
+        public bool IsModifiedCustomRange => false;
         public bool UsesQuerySelection { get; set; }
         public int SelectedCount { get; }
         public string RootPath { get; set; } = @"C:\Archive\Projects";
@@ -2426,6 +2453,31 @@ public sealed class DesktopCompositionSmokeTests
         public object[] Items { get; }
         public ProfileFieldDescriptor[] Fields { get; }
         public object[] OutputFormats => [_format];
+    }
+
+    private sealed class WorkspaceTransferLayoutFixture
+    {
+        public WorkspaceTransferLayoutFixture()
+        {
+            var localSource = new WorkspaceSourceChoice("local", Resource("Loc.Transfer.Source.Local", "로컬 스캔 결과"), null);
+            SelectedSource = localSource;
+            Sources = [localSource];
+        }
+        public bool IsBusy => false;
+        public bool IsImported => false;
+        public bool IsLocal => true;
+        public bool CanSelectSource => true;
+        public string ProgressText => string.Empty;
+        public string SourceDescription => Resource("Loc.Transfer.Source.Local.Help", "이 PC에서 스캔한 결과입니다.");
+        public WorkspaceSourceChoice[] Sources { get; }
+        public WorkspaceSourceChoice? SelectedSource { get; set; }
+        public System.Windows.Input.ICommand OpenCommand { get; } = new CommunityToolkit.Mvvm.Input.RelayCommand(static () => { });
+        public System.Windows.Input.ICommand ExportPackageCommand { get; } = new CommunityToolkit.Mvvm.Input.RelayCommand(static () => { });
+        public System.Windows.Input.ICommand ExportProfileCommand { get; } = new CommunityToolkit.Mvvm.Input.RelayCommand(static () => { });
+        public System.Windows.Input.ICommand CancelCommand { get; } = new CommunityToolkit.Mvvm.Input.RelayCommand(static () => { });
+        public System.Windows.Input.ICommand RelinkCommand { get; } = new CommunityToolkit.Mvvm.Input.RelayCommand(static () => { });
+        public System.Windows.Input.ICommand UseLocalCommand { get; } = new CommunityToolkit.Mvvm.Input.RelayCommand(static () => { });
+        private static string Resource(string key, string fallback) => System.Windows.Application.Current.TryFindResource(key) as string ?? fallback;
     }
 
     private sealed class PlaygroundLayoutFixture

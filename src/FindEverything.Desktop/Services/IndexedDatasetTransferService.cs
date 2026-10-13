@@ -74,12 +74,15 @@ public sealed class IndexedDatasetTransferService(AppPaths paths, ProfileTransfe
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        var stage = CreateStage();
+        // Resolve caller input before taking the gate. Every task-owned staging operation below is inside its finally.
         var destination = Path.GetFullPath(request.DestinationPath);
         var temporary = destination + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        string? stage = null;
+        var ownsTemporary = false;
         try
         {
+            stage = CreateStage();
             await profiles.ExportAsync(request.Profile, Path.Combine(stage, "profile.json"), cancellationToken).ConfigureAwait(false);
             var canonicalRoot = WorkspacePathMapping.NormalizeRoot(request.CanonicalRootPath ?? request.RootPath);
             var metadata = await Task.Run(() => MetadataSnapshotTransfer.CopyAsync(request.MetadataDatabasePath,
@@ -117,6 +120,7 @@ public sealed class IndexedDatasetTransferService(AppPaths paths, ProfileTransfe
             Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
             await using (var output = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None, 65536, FileOptions.Asynchronous))
             {
+                ownsTemporary = true;
                 using var zip = new ZipArchive(output, ZipArchiveMode.Create, leaveOpen: true);
                 foreach (var name in AllowedFiles.Where(f => File.Exists(Path.Combine(stage, f))))
                 {
@@ -132,9 +136,12 @@ public sealed class IndexedDatasetTransferService(AppPaths paths, ProfileTransfe
         }
         finally
         {
-            if (File.Exists(temporary)) File.Delete(temporary);
-            DeleteStage(stage);
-            _gate.Release();
+            try
+            {
+                if (ownsTemporary) DeleteTemporaryFile(temporary);
+                DeleteStage(stage);
+            }
+            finally { _gate.Release(); }
         }
     }
 
@@ -142,11 +149,13 @@ public sealed class IndexedDatasetTransferService(AppPaths paths, ProfileTransfe
         string? effectiveRoot = null, IProgress<WorkspaceTransferProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
+        if (!Enum.IsDefined(choice)) throw new ArgumentOutOfRangeException(nameof(choice));
         if (choice == ProfileImportConflictChoice.Cancel) return null;
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        var stage = CreateStage();
+        string? stage = null;
         try
         {
+            stage = CreateStage();
             var archive = Path.Combine(stage, "archive");
             Directory.CreateDirectory(archive);
             var (manifest, profile, snapshot) = await ReadPackageAsync(path, archive, cancellationToken).ConfigureAwait(false);
@@ -182,16 +191,18 @@ public sealed class IndexedDatasetTransferService(AppPaths paths, ProfileTransfe
                 return source;
             }, cancellationToken).ConfigureAwait(false);
         }
-        finally { DeleteStage(stage); _gate.Release(); }
+        finally { try { DeleteStage(stage); } finally { _gate.Release(); } }
     }
 
     public async Task<ImportedWorkspaceSource> RelinkAsync(ImportedWorkspaceSource source, string effectiveRoot,
         IProgress<WorkspaceTransferProgress>? progress = null, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(source);
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        var stage = CreateStage();
+        string? stage = null;
         try
         {
+            stage = CreateStage();
             var installed = Path.Combine(ImportsDirectory, source.Id);
             if (!Guid.TryParseExact(source.Id, "N", out _) || !Directory.Exists(installed))
                 throw new InvalidDataException("The imported workspace is not installed.");
@@ -214,7 +225,7 @@ public sealed class IndexedDatasetTransferService(AppPaths paths, ProfileTransfe
             RaiseChanged();
             return updated;
         }
-        finally { DeleteStage(stage); _gate.Release(); }
+        finally { try { DeleteStage(stage); } finally { _gate.Release(); } }
     }
 
     public ICatalogProjectionStore OpenCatalogStore(ImportedWorkspaceSource source) => new ImportedCatalogProjectionStore(source);
@@ -286,6 +297,8 @@ public sealed class IndexedDatasetTransferService(AppPaths paths, ProfileTransfe
             throw new InvalidDataException("The structured results do not match this package's profile, root, or scan.");
         if (catalog is null && (manifest.CatalogRowCount != 0 || manifest.IncludesUserInputs))
             throw new InvalidDataException("The workspace advertises missing structured data.");
+        // Compare portable semantics, not a producer runtime-module fingerprint or the recipient's newly assigned profile ID.
+        if (catalog is not null) profiles.ValidateSnapshotFields(profile, catalog.Fields);
         if (names.Contains("presentation.json")) await ReadPresentationAsync(Path.Combine(directory, "presentation.json"), ct).ConfigureAwait(false);
         return (manifest, profile, catalog);
     }
@@ -306,8 +319,8 @@ public sealed class IndexedDatasetTransferService(AppPaths paths, ProfileTransfe
     {
         Directory.CreateDirectory(ImportsDirectory);
         var stage = Path.Combine(ImportsDirectory, ".stage-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(stage);
-        return stage;
+        try { Directory.CreateDirectory(stage); return stage; }
+        catch { DeleteStage(stage); throw; }
     }
     private void RaiseChanged()
     {
@@ -316,7 +329,18 @@ public sealed class IndexedDatasetTransferService(AppPaths paths, ProfileTransfe
         foreach (EventHandler handler in handlers.GetInvocationList())
             try { handler(this, EventArgs.Empty); } catch (Exception) { /* Registry observers refresh independently on the next list request. */ }
     }
-    private static void DeleteStage(string stage) { if (Directory.Exists(stage)) Directory.Delete(stage, true); }
+    private static void DeleteStage(string? stage)
+    {
+        // Only our fresh .stage-* directory is best-effort cleanup. Published source/profile rollback is never suppressed.
+        if (stage is null) return;
+        try { if (Directory.Exists(stage)) Directory.Delete(stage, true); }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { }
+    }
+    private static void DeleteTemporaryFile(string temporary)
+    {
+        try { if (File.Exists(temporary)) File.Delete(temporary); }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { }
+    }
     private static async Task<string> HashFileAsync(string path, CancellationToken ct)
     {
         await using var input = File.OpenRead(path);

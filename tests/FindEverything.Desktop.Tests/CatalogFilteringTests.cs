@@ -227,12 +227,19 @@ public sealed class CatalogFilteringTests
             static () => { });
 
         input.Value = "first";
-        await firstWriteStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        // Start the older write explicitly instead of relying on the 400 ms
+        // debounce timer/thread-pool scheduling while the WPF benchmark runs.
+        // Both routes use the same versioned persist gate under test.
+        var firstCommit = input.CommitAsync();
+        Assert.True(firstWriteStarted.Task.IsCompletedSuccessfully);
+        Assert.False(firstCommit.IsCompleted);
         input.Value = "latest";
         var latestCommit = input.CommitAsync();
+        Assert.False(latestCommit.IsCompleted);
+        Assert.Empty(writes);
         releaseFirstWrite.TrySetResult();
 
-        await latestCommit.WaitAsync(TimeSpan.FromSeconds(2));
+        await Task.WhenAll(firstCommit, latestCommit).WaitAsync(TimeSpan.FromSeconds(2));
 
         Assert.Equal(["first", "latest"], writes);
         Assert.False(input.HasPendingSave);
