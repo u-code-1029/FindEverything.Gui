@@ -28,7 +28,7 @@ public enum ProfileEditorStep
     Review = 5,
 }
 
-public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
+public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IPageSession
 {
     private readonly IProfileCatalog _profileCatalog;
     private readonly IProfileAuthoringService _authoringService;
@@ -43,10 +43,11 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
     private readonly ILogger<ProfilesViewModel> _logger;
     private string? _originalProfileId;
     private string _draftVersion = "1.0.0";
-    private bool _isPopulatingDraft;
+    private readonly ProfileEditorSession _editorSession = new();
+    private bool _isPopulatingDraft { get => _editorSession.IsPopulating; set => _editorSession.IsPopulating = value; }
     private string _analyzedNormalizedPath = string.Empty;
     private readonly IDraftProtectionService? _draftProtection;
-    private bool _hasUserChanges;
+    private bool _hasUserChanges { get => _editorSession.HasUserChanges; set => _editorSession.HasUserChanges = value; }
     private readonly IUiScheduler _uiScheduler;
     private readonly IProfilePresentationStore? _presentationStore;
     private string? _savedRuleDefinition;
@@ -213,7 +214,6 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
         ApplySnapshot(profileCatalog.Current, preferredProfileId: null);
         _profileCatalog.Changed += OnProfileCatalogChanged;
         NewDraftCore();
-        _ = RefreshEditableProfilesAsync();
     }
 
     public IReadOnlyList<SettingChoice<ProfileFieldValueKind>> FieldKindChoices { get; }
@@ -229,7 +229,10 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
 
     public bool HasUnsavedChanges => IsDraftDirty && _hasUserChanges;
 
-    public string NumericValidationMessage => string.Join(Environment.NewLine,
+    private string _numericValidationMessage = string.Empty;
+    public string NumericValidationMessage => _numericValidationMessage;
+
+    private string BuildNumericValidationMessage() => string.Join(Environment.NewLine,
         DraftRules.Select(static row => row.NumericValidationMessage)
             .Concat(DraftExcludedDirectoryNameRules.Select(static row => row.NumericValidationMessage))
             .Concat(DraftTextFileFields.Select(static row => row.NumericValidationMessage))
@@ -292,18 +295,18 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
         && _originalProfileId is { Length: > 0 } profileId
         && _profileCatalog.Current.TryGetProfile(profileId, out _);
 
-    public ObservableCollection<ProfileFieldDraftViewModel> DraftFields { get; } = [];
+    public ObservableCollection<ProfileFieldDraftViewModel> DraftFields => _editorSession.Fields;
 
-    public ObservableCollection<ProfileRuleDraftViewModel> DraftRules { get; } = [];
+    public ObservableCollection<ProfileRuleDraftViewModel> DraftRules => _editorSession.Rules;
 
     public ObservableCollection<ProfileDirectoryNameExclusionRuleDraftViewModel>
-        DraftExcludedDirectoryNameRules { get; } = [];
+        DraftExcludedDirectoryNameRules => _editorSession.Exclusions;
 
     public ObservableCollection<ProfileTextFileFieldDraftViewModel>
-        DraftTextFileFields { get; } = [];
+        DraftTextFileFields => _editorSession.TextFiles;
 
     public ObservableCollection<ProfileUserInputFieldDraftViewModel>
-        DraftUserInputFields { get; } = [];
+        DraftUserInputFields => _editorSession.UserInputs;
 
     public event EventHandler? AssignmentPickerRequested;
 
@@ -330,9 +333,9 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
             .ToArray() ?? [];
     }
 
-    partial void OnDraftDisplayNameChanged(string value) => MarkDraftChanged();
+    partial void OnDraftDisplayNameChanged(string value) => MarkDraftChanged(refreshStructure: false);
 
-    partial void OnDraftIdChanged(string value) => MarkDraftChanged();
+    partial void OnDraftIdChanged(string value) => MarkDraftChanged(refreshStructure: false);
 
     partial void OnSamplePathChanged(string value)
     {
@@ -380,8 +383,8 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
             return;
         }
 
-        RefreshTemplatePreview();
-        MarkDraftChanged();
+        MarkDraftChanged(refreshStructure: false);
+        ScheduleTemplatePreview();
     }
 
     partial void OnIsEditorBusyChanged(bool value)
@@ -440,6 +443,9 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
 
     private void NewDraftCore()
     {
+        _editorSession.CancelPreview();
+        _previewPending = false;
+        _editorSession.Changed();
         ClearDefinitionValidationIssues();
         _isPopulatingDraft = true;
         try
@@ -505,6 +511,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
 
         RefreshTemplatePreview();
         RefreshNumericValidation();
+        RefreshAvailableSelectionFields();
         _hasUserChanges = false;
         IsDraftDirty = true;
         OpenSavedProfileInPlaygroundCommand.NotifyCanExecuteChanged();
@@ -1059,7 +1066,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
     }
 
     [RelayCommand(CanExecute = nameof(CanValidateAndSave))]
-    private void ValidateDraft()
+    private async Task ValidateDraftAsync()
     {
         ClearDefinitionValidationIssues();
         if (HasNumericValidationError)
@@ -1070,7 +1077,11 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
         }
         try
         {
-            var review = _authoringService.Validate(BuildManifest());
+            var manifest = BuildManifest();
+            var revision = _editorSession.Revision;
+            IsEditorBusy = true;
+            var review = await Task.Run(() => _authoringService.Validate(manifest)).ConfigureAwait(true);
+            if (_disposed || revision != _editorSession.Revision) return;
             ApplyReview(
                 review,
                 L(
@@ -1087,6 +1098,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
                     "프로필 설정을 검증할 수 없습니다. 필수 입력값과 규칙을 확인하세요."),
                 InfoBarSeverity.Error);
         }
+        finally { IsEditorBusy = false; }
     }
 
     [RelayCommand(CanExecute = nameof(CanValidateAndSave))]
@@ -1101,7 +1113,8 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
         }
         // A presentation-only edit must not publish a new compiled profile or invalidate cached results.
         string definition;
-        try { definition = JsonSerializer.Serialize(BuildManifest()); }
+        ProfileManifest definitionManifest;
+        try { definitionManifest = BuildManifest(); definition = JsonSerializer.Serialize(definitionManifest); }
         catch (InvalidOperationException exception)
         {
             _logger.LogWarning(exception, "Could not build the profile draft.");
@@ -1135,7 +1148,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
             ProfileSaveResult? result = null;
             try
             {
-                var manifest = BuildManifest();
+                var manifest = definitionManifest;
                 var originalProfileId = _originalProfileId;
                 await _operationCoordinator.RunAsync(ApplicationOperationKind.ProfileWrite, async cancellationToken =>
                 {
@@ -1389,6 +1402,9 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
 
     private void PopulateDraft(ProfileManifest manifest)
     {
+        _editorSession.CancelPreview();
+        _previewPending = false;
+        _editorSession.Changed();
         ClearDefinitionValidationIssues();
         _isPopulatingDraft = true;
         try
@@ -1480,6 +1496,8 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
         }
 
         IsDraftDirty = false;
+        RefreshNumericValidation();
+        RefreshAvailableSelectionFields();
         _savedRuleDefinition = JsonSerializer.Serialize(BuildManifest());
         _hasUserChanges = false;
         RefreshNumericValidation();
@@ -1513,17 +1531,20 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
             InfoBarSeverity.Error);
     }
 
-    private async Task RefreshEditableProfilesAsync(string? preferredProfileId = null)
+    private async Task RefreshEditableProfilesAsync(string? preferredProfileId = null, CancellationToken cancellationToken = default)
     {
         try
         {
-            var profiles = await _authoringService.ListAsync().ConfigureAwait(true);
+            var profiles = await _authoringService.ListAsync(cancellationToken).ConfigureAwait(true);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (_disposed) return;
             EditableProfiles = profiles;
             var preferredId = preferredProfileId ?? SelectedEditableProfile?.Id;
             SelectedEditableProfile = profiles.FirstOrDefault(profile =>
                     string.Equals(profile.Id, preferredId, StringComparison.OrdinalIgnoreCase))
                 ?? profiles.FirstOrDefault();
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
         catch (Exception exception)
         {
             _logger.LogWarning(exception, "Could not enumerate editable profiles.");
@@ -1563,7 +1584,15 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
     }
 
     private void OnProfileCatalogChanged(object? sender, ProfileCatalogChangedEventArgs eventArgs)
-        => _uiScheduler.Post(() => ApplySnapshot(eventArgs.Current, SelectedProfile?.Id));
+        => _uiScheduler.Post(() =>
+        {
+            if (_disposed) return;
+            _editableProfilesLoaded = false;
+            if (_isActive) ApplySnapshot(eventArgs.Current, SelectedProfile?.Id);
+            else _profileSnapshotPending = true;
+            OpenSavedProfileInPlaygroundCommand.NotifyCanExecuteChanged();
+            OnPropertyChanged(nameof(CanOpenSavedProfileInPlayground));
+        });
 
     private void ApplySnapshot(ProfileCatalogSnapshot snapshot, string? preferredProfileId)
     {
@@ -1651,7 +1680,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
 
     private void OnDraftRowChanged(object? sender, PropertyChangedEventArgs eventArgs)
     {
-        if (_isPopulatingDraft)
+        if (_isPopulatingDraft || !ProfileDraftChanges.IsInput(sender, eventArgs.PropertyName))
         {
             return;
         }
@@ -1660,7 +1689,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
         {
             // Width is GUI-only; do not rebuild the guided regex preview.
             ClearDefinitionValidationIssues();
-            _hasUserChanges = true;
+            _editorSession.Changed();
             IsDraftDirty = true;
             SetEditorStatus(L("Loc.Profiles.ColumnWidth.Dirty", "컬럼 너비를 변경했습니다. 저장하면 기존 결과에 적용됩니다."), InfoBarSeverity.Informational);
             return;
@@ -1670,7 +1699,9 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
             or ProfileTextFileFieldDraftViewModel
             or ProfileUserInputFieldDraftViewModel)
         {
-            MarkDraftChanged();
+            MarkDraftChanged(refreshStructure: false);
+            if (eventArgs.PropertyName == "FieldId") RefreshAvailableSelectionFields();
+            if (ProfileDraftChanges.AffectsNumericValidation(eventArgs.PropertyName)) RefreshNumericValidation();
             return;
         }
 
@@ -1704,42 +1735,35 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
             }
         }
 
-        if (IsGuidedMode)
+        MarkDraftChanged(refreshStructure: false);
+        if (eventArgs.PropertyName == "FieldId") RefreshAvailableSelectionFields();
+        if (ProfileDraftChanges.AffectsNumericValidation(eventArgs.PropertyName)) RefreshNumericValidation();
+        if (ProfileDraftChanges.AffectsPath(eventArgs.PropertyName))
         {
-            if (HasAnalyzedPath)
+            if (IsGuidedMode && HasAnalyzedPath)
             {
-                RebuildGuidedTemplate();
+                RebuildGuidedTemplate(refreshPreview: false);
             }
-            else
-            {
-                RefreshTemplatePreview();
-            }
+            ScheduleTemplatePreview();
         }
-        else
-        {
-            CanUseGuidedMode = TryResolveGuidedTemplate(out _);
-        }
-
-        MarkDraftChanged();
     }
 
-    private void MarkDraftChanged()
+    private void MarkDraftChanged(bool refreshStructure = true)
     {
         if (_isPopulatingDraft)
         {
             return;
         }
 
-        if (IsExpertMode)
-        {
-            CanUseGuidedMode = TryResolveGuidedTemplate(out _);
-        }
-
-        _hasUserChanges = true;
+        _editorSession.Changed();
         IsDraftDirty = true;
         ClearDefinitionValidationIssues();
-        OnPropertyChanged(nameof(AvailableSelectionFieldIds));
-        RefreshNumericValidation();
+        if (refreshStructure)
+        {
+            RefreshAvailableSelectionFields();
+            RefreshNumericValidation();
+            ScheduleTemplatePreview();
+        }
         SetEditorStatus(
             L(
                 "Loc.Profiles.Status.Dirty",
@@ -1755,10 +1779,15 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
     private void RefreshNumericValidation()
     {
         RefreshValidationIssues();
-        OnPropertyChanged(nameof(NumericValidationMessage));
-        OnPropertyChanged(nameof(HasNumericValidationError));
-        SaveDraftCommand.NotifyCanExecuteChanged();
-        ValidateDraftCommand.NotifyCanExecuteChanged();
+        var message = BuildNumericValidationMessage();
+        if (_numericValidationMessage != message)
+        {
+            _numericValidationMessage = message;
+            OnPropertyChanged(nameof(NumericValidationMessage));
+            OnPropertyChanged(nameof(HasNumericValidationError));
+            SaveDraftCommand.NotifyCanExecuteChanged();
+            ValidateDraftCommand.NotifyCanExecuteChanged();
+        }
     }
 
     private List<ProfileFieldManifest> BuildFieldManifests() =>
@@ -1802,18 +1831,10 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
 
     private void RefreshTemplatePreview()
     {
-        if (!TryCompileTemplate(out var result))
-        {
-            GeneratedPatternPreview = string.Empty;
-            ApplyTemplateErrors(result);
-            return;
-        }
-
-        GeneratedPatternPreview = result.Pattern!;
-        TemplateStatusMessage = L(
-            "Loc.Profiles.Status.TemplateReady",
-            "경로 규칙이 준비되었습니다. 아래에서 같은 경로를 시험해 보세요.");
-        TemplateStatusSeverity = InfoBarSeverity.Success;
+        _editorSession.CancelPreview();
+        _previewPending = false;
+        _ = TryCompileTemplate(out var result);
+        ApplyTemplatePreview(result);
     }
 
     private void ApplyTemplateErrors(ProfilePathTemplateCompileResult result)
@@ -2053,7 +2074,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
         HasAnalyzedPath = segments.Count > 0;
     }
 
-    private void RebuildGuidedTemplate()
+    private void RebuildGuidedTemplate(bool refreshPreview = true)
     {
         if (!HasAnalyzedPath)
         {
@@ -2100,7 +2121,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant
             _isPopulatingDraft = wasPopulating;
         }
 
-        RefreshTemplatePreview();
+        if (refreshPreview) RefreshTemplatePreview();
     }
 
     private static string EscapeTemplateLiteral(string value) =>

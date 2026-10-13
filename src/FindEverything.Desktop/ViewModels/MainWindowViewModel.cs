@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.Input;
 using FindEverything.Application.Options;
 using FindEverything.Desktop.Localization;
+using FindEverything.Desktop.Services;
 using FindEverything.Desktop.Views.Pages;
 using Wpf.Ui;
 using Wpf.Ui.Controls;
@@ -15,7 +16,7 @@ public sealed class MainWindowViewModel
     private readonly ISnackbarService _snackbarService;
 
     public MainWindowViewModel(
-        CatalogViewModel catalog,
+        CatalogActivityState catalog,
         ScanConsoleViewModel scanConsole,
         INavigationService navigationService,
         ILanguageSelectionService languageSelectionService,
@@ -34,7 +35,7 @@ public sealed class MainWindowViewModel
 
     public string ApplicationTitle { get; } = "FindEverything";
 
-    public CatalogViewModel Catalog { get; }
+    public CatalogActivityState Catalog { get; }
 
     public ScanConsoleViewModel ScanConsole { get; }
 

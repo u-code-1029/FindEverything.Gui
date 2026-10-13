@@ -8,11 +8,19 @@ namespace FindEverything.Desktop.ViewModels;
 public partial class ProfilesViewModel
 {
     [ObservableProperty] private string _draftMaxScanDepthText = "256";
-    public ObservableCollection<ProfileChildDirectoryFieldDraftViewModel> DraftChildDirectoryFields { get; } = [];
-    public ObservableCollection<ProfileSelectionRuleDraftViewModel> DraftSelectionRules { get; } = [];
-    public IReadOnlyList<string> AvailableSelectionFieldIds => DraftFields.Select(column => column.FieldId)
-        .Concat(DraftTextFileFields.Select(column => column.FieldId)).Concat(DraftUserInputFields.Select(column => column.FieldId))
-        .Concat(DraftChildDirectoryFields.Select(column => column.FieldId)).Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+    public ObservableCollection<ProfileChildDirectoryFieldDraftViewModel> DraftChildDirectoryFields => _editorSession.ChildDirectories;
+    public ObservableCollection<ProfileSelectionRuleDraftViewModel> DraftSelectionRules => _editorSession.SelectionRules;
+    private IReadOnlyList<string> _availableSelectionFieldIds = [];
+    public IReadOnlyList<string> AvailableSelectionFieldIds => _availableSelectionFieldIds;
+    private void RefreshAvailableSelectionFields()
+    {
+        var ids = DraftFields.Select(column => column.FieldId)
+            .Concat(DraftTextFileFields.Select(column => column.FieldId)).Concat(DraftUserInputFields.Select(column => column.FieldId))
+            .Concat(DraftChildDirectoryFields.Select(column => column.FieldId)).Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        if (_availableSelectionFieldIds.SequenceEqual(ids, StringComparer.Ordinal)) return;
+        _availableSelectionFieldIds = ids;
+        OnPropertyChanged(nameof(AvailableSelectionFieldIds));
+    }
     public IReadOnlyList<SettingChoice<ProfileSelectionInputKind>> SelectionInputChoices =>
     [ new(ProfileSelectionInputKind.TextLines, L("Loc.Profiles.Selection.Lines", "한 줄에 값 하나")),
       new(ProfileSelectionInputKind.Table, L("Loc.Profiles.Selection.Table", "표 / CSV / Excel")),
@@ -25,7 +33,12 @@ public partial class ProfilesViewModel
       new(ProfileSelectionDateComparison.Exact, L("Loc.Profiles.Selection.ExactDate", "시각까지 비교")) ];
     public string ScanDepthValidationMessage => ProfileNumericInput.TryInt(DraftMaxScanDepthText, 0, 1024, out _)
         ? string.Empty : L("Loc.Profiles.ScanDepth.Invalid", "최대 탐색 깊이는 0–1024인 정수를 입력하세요.");
-    partial void OnDraftMaxScanDepthTextChanged(string value) => MarkDraftChanged();
+    partial void OnDraftMaxScanDepthTextChanged(string value)
+    {
+        if (_isPopulatingDraft) return;
+        MarkDraftChanged(refreshStructure: false);
+        RefreshNumericValidation();
+    }
     private void ResetAdditionalDraft()
     {
         DraftChildDirectoryFields.Clear(); DraftSelectionRules.Clear(); DraftMaxScanDepthText = "256";
@@ -36,7 +49,12 @@ public partial class ProfilesViewModel
         foreach (var row in DraftSelectionRules) row.PropertyChanged -= OnAdditionalDraftChanged;
     }
     private void OnAdditionalDraftChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
-    { OnPropertyChanged(nameof(AvailableSelectionFieldIds)); MarkDraftChanged(); }
+    {
+        if (_isPopulatingDraft || !ProfileDraftChanges.IsInput(sender, args.PropertyName)) return;
+        MarkDraftChanged(refreshStructure: false);
+        if (args.PropertyName == "FieldId") RefreshAvailableSelectionFields();
+        if (ProfileDraftChanges.AffectsNumericValidation(args.PropertyName)) RefreshNumericValidation();
+    }
     private void AddChildDirectoryFieldRow(ProfileChildDirectoryFieldDraftViewModel row)
     { row.PropertyChanged += OnAdditionalDraftChanged; DraftChildDirectoryFields.Add(row); MarkDraftChanged(); }
     private void AddSelectionRuleRow(ProfileSelectionRuleDraftViewModel row)

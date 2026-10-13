@@ -5,14 +5,12 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    xmlns:localization="clr-namespace:FindEverything.Desktop.Localization"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
     xmlns:controls="clr-namespace:FindEverything.Desktop.Views.Controls"
     xmlns:viewModels="clr-namespace:FindEverything.Desktop.ViewModels"
     AutomationProperties.AutomationId="ScanConsolePanel"
     Background="Transparent"
     Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-    localization:LocalizationScope.IsEnabled="True"
     mc:Ignorable="d">
     <controls:SectionCard Style="{StaticResource FluentCardStyle}" Padding="0"
         Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
@@ -45,16 +43,16 @@
                     VerticalAlignment="Center"
                     FontSize="14"
                     FontWeight="SemiBold"
-                    Text="탐색 로그" />
+                    Text="{StaticResource Loc.View.ScanConsolePanel.Text.ScanLog}" />
                 <ui:Button
                     Grid.Column="2"
                     MinWidth="64"
                     Padding="10,4"
-                    AutomationProperties.Name="탐색 로그 닫기"
+                    AutomationProperties.Name="{StaticResource Loc.View.ScanConsolePanel.Name.CloseScanLog}"
                     Appearance="Transparent"
                     Command="{Binding ClosePanelCommand}"
-                    Content="닫기"
-                    ToolTip="하단 탐색 로그 닫기" />
+                    Content="{StaticResource Loc.View.ScanConsolePanel.Content.Close}"
+                    ToolTip="{StaticResource Loc.Scan.Panel.Close}" />
             </Grid>
 
             <Grid
@@ -93,10 +91,10 @@
                         Grid.Column="1"
                         Margin="12,0"
                         VerticalAlignment="Center"
-                        AutomationProperties.Name="새 로그 자동 스크롤"
+                        AutomationProperties.Name="{StaticResource Loc.View.ScanConsolePanel.Name.AutomaticallyScrollToNewLogEntries}"
                         IsChecked="{Binding AutoScroll}"
-                        OffContent="자동 스크롤 끔"
-                        OnContent="자동 스크롤" />
+                        OffContent="{StaticResource Loc.View.ScanConsolePanel.OffContent.AutoScrollOff}"
+                        OnContent="{StaticResource Loc.View.ScanConsolePanel.OnContent.AutoScroll}" />
                     <ui:Button
                         x:Name="CopyAllLogsButton"
                         Grid.Column="2"
@@ -104,18 +102,18 @@
                         Margin="0,0,8,0"
                         Command="{Binding CopyAllCommand}"
                         Icon="{ui:SymbolIcon Symbol=Copy20}"
-                        ToolTip="전체 복사"
-                        Content="전체 복사" />
+                        ToolTip="{StaticResource Loc.Scan.CopyAll}"
+                        Content="{StaticResource Loc.Scan.CopyAll}" />
                     <ui:Button
                         Grid.Column="3"
                         x:Name="SaveScanLogButton"
                         MinWidth="112"
                         Margin="0,0,8,0"
-                        AutomationProperties.Name="{DynamicResource Loc.Scan.Save.Help}"
+                        AutomationProperties.Name="{StaticResource Loc.Scan.Save.Help}"
                         Command="{Binding SaveLogCommand}"
-                        Content="로그 저장"
+                        Content="{StaticResource Loc.View.ScanConsolePanel.Content.SaveLog}"
                         Icon="{ui:SymbolIcon Symbol=Save16}"
-                        ToolTip="{DynamicResource Loc.Scan.Save.Help}" />
+                        ToolTip="{StaticResource Loc.Scan.Save.Help}" />
                     <ui:Button
                         x:Name="ClearLogsButton"
                         Grid.Column="4"
@@ -123,8 +121,8 @@
                         Appearance="Secondary"
                         Command="{Binding ClearCommand}"
                         Icon="{ui:SymbolIcon Symbol=Delete20}"
-                        ToolTip="로그 지우기"
-                        Content="로그 지우기" />
+                        ToolTip="{StaticResource Loc.Scan.Clear}"
+                        Content="{StaticResource Loc.Scan.Clear}" />
                 </Grid>
             </Grid>
 
@@ -132,7 +130,7 @@
                 <ListBox
                     x:Name="TraceList"
                     Padding="8,6"
-                    AutomationProperties.Name="방문 폴더 탐색 로그"
+                    AutomationProperties.Name="{StaticResource Loc.View.ScanConsolePanel.Name.VisitedFolderScanLog}"
                     Background="Transparent"
                     BorderThickness="0"
                     FontFamily="Cascadia Mono,Consolas"
@@ -148,13 +146,13 @@
                     <ListBox.ContextMenu>
                         <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
                             <ui:MenuItem
-                                AutomationProperties.Name="선택한 로그 메시지 전체 복사"
+                                AutomationProperties.Name="{StaticResource Loc.View.ScanConsolePanel.Name.CopyTheCompleteSelectedLogMessage}"
                                 Command="{Binding CopySelectedMessageCommand}"
-                                Header="메시지 전체 복사" />
+                                Header="{StaticResource Loc.View.ScanConsolePanel.Header.CopyFullMessage}" />
                             <ui:MenuItem
-                                AutomationProperties.Name="선택한 로그 경로만 복사"
+                                AutomationProperties.Name="{StaticResource Loc.View.ScanConsolePanel.Name.CopyOnlyTheSelectedLogPath}"
                                 Command="{Binding CopySelectedPathCommand}"
-                                Header="경로만 복사" />
+                                Header="{StaticResource Loc.View.ScanConsolePanel.Header.CopyPathOnly}" />
                         </ContextMenu>
                     </ListBox.ContextMenu>
                     <ListBox.ItemContainerStyle>
@@ -208,15 +206,15 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel>
                         <ui:TextBlock Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextWrapping="Wrap">
-                            <Run Text="방문 " />
+                            <Run Text="{StaticResource Loc.View.ScanConsolePanel.Text.Visited}" />
                             <Run FontWeight="SemiBold" Text="{Binding VisitedCount}" />
-                            <Run Text="  ·  일치 " />
+                            <Run Text="{StaticResource Loc.View.ScanConsolePanel.Text.Matched}" />
                             <Run FontWeight="SemiBold" Text="{Binding MatchedCount}" />
-                            <Run Text="  ·  규칙 외 " />
+                            <Run Text="{StaticResource Loc.View.ScanConsolePanel.Text.NoMatch}" />
                             <Run FontWeight="SemiBold" Text="{Binding NoMatchCount}" />
-                            <Run Text="  ·  변환 오류 " />
+                            <Run Text="{StaticResource Loc.View.ScanConsolePanel.Text.Invalid}" />
                             <Run FontWeight="SemiBold" Text="{Binding InvalidCount}" />
-                            <Run Text="  ·  하위 탐색 생략 " />
+                            <Run Text="{StaticResource Loc.View.ScanConsolePanel.Text.Pruned}" />
                             <Run FontWeight="SemiBold" Text="{Binding PrunedCount}" />
                         </ui:TextBlock>
                         <ui:TextBlock
@@ -224,7 +222,7 @@
                             Margin="0,4,0,0"
                             FontSize="11"
                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="MATCH 일치 · NO MATCH 규칙 외 · INVALID 변환 오류 · EXCLUDED 이름 규칙 제외 · PRUNE 하위 탐색 중단" TextTrimming="CharacterEllipsis" />
+                            Text="{StaticResource Loc.View.ScanConsolePanel.Text.MATCHMatchedNOMATCHOutsideRulesINVALIDConversion}" TextTrimming="CharacterEllipsis" />
                     </StackPanel>
                     <ui:TextBlock
                         Grid.Column="1"

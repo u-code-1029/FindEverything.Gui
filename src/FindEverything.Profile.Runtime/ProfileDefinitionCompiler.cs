@@ -2,26 +2,6 @@ using Microsoft.Extensions.Options;
 
 namespace FindEverything.Profile.Runtime;
 
-public sealed record ProfileDefinitionReview(
-    ILoadedProfile? Profile,
-    IReadOnlyList<ProfileDiagnostic> Diagnostics)
-{
-    public bool IsValid => Profile is not null
-        && Diagnostics.All(static diagnostic =>
-            diagnostic.Severity != ProfileDiagnosticSeverity.Error);
-}
-
-public sealed record ProfileDefinitionTestResult(
-    ProfileDefinitionReview Review,
-    ProfileMapResult? Mapping);
-
-public interface IProfileDefinitionCompiler
-{
-    ProfileDefinitionReview Validate(ProfileManifest manifest);
-
-    ProfileDefinitionTestResult Test(ProfileManifest manifest, string samplePath);
-}
-
 internal sealed class ProfileDefinitionCompiler(
     IOptions<PluginDiscoveryOptions> options,
     ProfileModelCompiler modelCompiler,

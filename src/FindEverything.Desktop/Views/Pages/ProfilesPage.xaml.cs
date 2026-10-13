@@ -2,15 +2,21 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using FindEverything.Desktop.ViewModels;
+using FindEverything.Desktop.Behaviors;
 
 namespace FindEverything.Desktop.Views.Pages;
 
 public partial class ProfilesPage
 {
+    private Grid? _guidedWorkspace;
+    private System.Windows.FrameworkElement? _assignmentPicker;
+    private bool? _compact;
+
     public ProfilesPage(ProfilesViewModel viewModel)
     {
         DataContext = viewModel;
         InitializeComponent();
+        PageActivation.Attach(this);
         viewModel.AssignmentPickerRequested += OnAssignmentPickerRequested;
         viewModel.EditorStepChanged += OnEditorStepChanged;
         viewModel.ValidationIssuesRequested += OnEditorStepChanged;
@@ -22,17 +28,38 @@ public partial class ProfilesPage
 
     private void ApplyWorkspaceLayout()
     {
-        if (ProfileStepButtons is null || GuidedWorkspace is null || AssignmentPickerPanel is null) return;
+        if (ProfileStepButtons is null) return;
         var compact = ProfilePageLayout.ActualWidth < 900;
-        ProfileStepButtons.Columns = compact ? 2 : 3;
-        var showPicker = AssignmentPickerPanel.Visibility == System.Windows.Visibility.Visible;
-        System.Windows.Controls.Grid.SetColumn(AssignmentPickerPanel, compact ? 0 : 2);
-        System.Windows.Controls.Grid.SetRow(AssignmentPickerPanel, compact ? 1 : 0);
-        System.Windows.Controls.Grid.SetColumnSpan(AssignmentPickerPanel, compact ? 3 : 1);
-        GuidedEditorColumn.Width = new System.Windows.GridLength(showPicker && !compact ? 0.65 : 1, System.Windows.GridUnitType.Star);
-        GuidedGapColumn.Width = new System.Windows.GridLength(showPicker && !compact ? 16 : 0);
-        GuidedChoicesColumn.Width = new System.Windows.GridLength(showPicker && !compact ? 0.35 : 0, System.Windows.GridUnitType.Star);
-        AssignmentPickerPanel.Margin = compact ? new System.Windows.Thickness(0, 12, 0, 0) : new System.Windows.Thickness(0);
+        if (_compact != compact) { ProfileStepButtons.Columns = compact ? 2 : 3; _compact = compact; }
+        if (_guidedWorkspace is not { IsLoaded: true } workspace || _assignmentPicker is not { IsLoaded: true } picker) return;
+        var showPicker = picker.Visibility == System.Windows.Visibility.Visible;
+        Grid.SetColumn(picker, compact ? 0 : 2);
+        Grid.SetRow(picker, compact ? 1 : 0);
+        Grid.SetColumnSpan(picker, compact ? 3 : 1);
+        workspace.ColumnDefinitions[0].Width = new System.Windows.GridLength(showPicker && !compact ? 0.65 : 1, System.Windows.GridUnitType.Star);
+        workspace.ColumnDefinitions[1].Width = new System.Windows.GridLength(showPicker && !compact ? 16 : 0);
+        workspace.ColumnDefinitions[2].Width = new System.Windows.GridLength(showPicker && !compact ? 0.35 : 0, System.Windows.GridUnitType.Star);
+        picker.Margin = compact ? new System.Windows.Thickness(0, 12, 0, 0) : new System.Windows.Thickness(0);
+    }
+
+    private void OnEditorStepContentLoaded(object sender, System.Windows.RoutedEventArgs e)
+    {
+        _guidedWorkspace = FindEditorElement<Grid>("GuidedWorkspace");
+        _assignmentPicker = FindEditorElement<System.Windows.FrameworkElement>("AssignmentPickerPanel");
+        ApplyWorkspaceLayout();
+    }
+
+    /// <summary>Finds only instantiated step controls; never creates another step or enumerates data items.</summary>
+    internal T? FindEditorElement<T>(string name) where T : System.Windows.DependencyObject
+    {
+        T? Find(System.Windows.DependencyObject parent)
+        {
+            if (parent is T match && parent is System.Windows.FrameworkElement { Name: var elementName } && elementName == name) return match;
+            for (var index = 0; index < VisualTreeHelper.GetChildrenCount(parent); index++)
+                if (Find(VisualTreeHelper.GetChild(parent, index)) is { } found) return found;
+            return null;
+        }
+        return ProfileEditorStepHost is null ? null : Find(ProfileEditorStepHost);
     }
 
     private void OnEditorStepChanged(object? sender, EventArgs e)
@@ -56,7 +83,7 @@ public partial class ProfilesPage
 
         _ = Dispatcher.BeginInvoke(
             System.Windows.Threading.DispatcherPriority.Loaded,
-            new Action(() => AssignmentPickerPanel.BringIntoView()));
+            new Action(() => _assignmentPicker?.BringIntoView()));
     }
 
     private void OnNestedDataGridPreviewMouseWheel(

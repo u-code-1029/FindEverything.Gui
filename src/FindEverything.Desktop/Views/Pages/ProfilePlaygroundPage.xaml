@@ -4,13 +4,11 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    xmlns:localization="clr-namespace:FindEverything.Desktop.Localization"
     xmlns:controls="clr-namespace:FindEverything.Desktop.Views.Controls"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
-    Title="프로필 Playground"
+    Title="{StaticResource Loc.Shell.Nav.Playground}"
     Background="Transparent"
     Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-    localization:LocalizationScope.IsEnabled="True"
     ScrollViewer.CanContentScroll="False"
     mc:Ignorable="d">
     <Page.Resources>
@@ -123,32 +121,32 @@
 
     <controls:WorkspacePageFrame>
         <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-        <controls:PageHeader Title="{DynamicResource Loc.Shell.Nav.Playground}" Description="{DynamicResource Loc.Workspace.Playground.Description}" />
+        <controls:PageHeader Title="{StaticResource Loc.Shell.Nav.Playground}" Description="{StaticResource Loc.Workspace.Playground.Description}" />
         <controls:CommandStrip Grid.Row="1">
             <Grid x:Name="PlaygroundInputPanel" IsEnabled="{Binding IsReady}">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <Label x:Name="PlaygroundProfileLabel" Padding="0" Margin="0,0,8,0" VerticalAlignment="Center" Content="{DynamicResource Loc.Workspace.Profile.Label}" Target="{Binding ElementName=PlaygroundProfileComboBox}" />
-                    <ComboBox x:Name="PlaygroundProfileComboBox" Width="140" ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}" DisplayMemberPath="Description" AutomationProperties.Name="{DynamicResource Loc.Workspace.Playground.Profile}" ToolTip="{DynamicResource Loc.Workspace.Playground.Profile.Help}" />
+                    <Label x:Name="PlaygroundProfileLabel" Padding="0" Margin="0,0,8,0" VerticalAlignment="Center" Content="{StaticResource Loc.Workspace.Profile.Label}" Target="{Binding ElementName=PlaygroundProfileComboBox}" />
+                    <ComboBox x:Name="PlaygroundProfileComboBox" Width="140" ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}" DisplayMemberPath="Description" AutomationProperties.Name="{StaticResource Loc.Workspace.Playground.Profile}" ToolTip="{StaticResource Loc.Workspace.Playground.Profile.Help}" />
                 </StackPanel>
-                <ui:TextBox Grid.Column="1" Margin="8,0" ClearButtonEnabled="True" PlaceholderText="{DynamicResource Loc.Workspace.Playground.Path}" Text="{Binding InputPath, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{DynamicResource Loc.Workspace.Playground.Path}" ToolTip="{DynamicResource Loc.Workspace.Playground.Path.Help}" />
-                <ui:Button Grid.Column="2" Width="36" Padding="0" Command="{Binding BrowsePathCommand}" Icon="{ui:SymbolIcon Symbol=FolderOpen20}" AutomationProperties.Name="{DynamicResource Loc.Workspace.Playground.Browse}" ToolTip="{DynamicResource Loc.Workspace.Playground.Browse}" />
-                <ui:Button Grid.Column="3" Margin="8,0,0,0" Appearance="Primary" Command="{Binding EvaluateCommand}" Content="{DynamicResource Loc.Workspace.Playground.Run}" Icon="{ui:SymbolIcon Symbol=Play20}" ToolTip="{DynamicResource Loc.Workspace.Playground.Run.Help}" ToolTipService.ShowOnDisabled="True" />
+                <ui:TextBox Grid.Column="1" Margin="8,0" ClearButtonEnabled="True" PlaceholderText="{StaticResource Loc.Workspace.Playground.Path}" Text="{Binding InputPath, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{StaticResource Loc.Workspace.Playground.Path}" ToolTip="{StaticResource Loc.Workspace.Playground.Path.Help}" />
+                <ui:Button Grid.Column="2" Width="36" Padding="0" Command="{Binding BrowsePathCommand}" Icon="{ui:SymbolIcon Symbol=FolderOpen20}" AutomationProperties.Name="{StaticResource Loc.Workspace.Playground.Browse}" ToolTip="{StaticResource Loc.Workspace.Playground.Browse}" />
+                <ui:Button Grid.Column="3" Margin="8,0,0,0" Appearance="Primary" Command="{Binding EvaluateCommand}" Content="{StaticResource Loc.Workspace.Playground.Run}" Icon="{ui:SymbolIcon Symbol=Play20}" ToolTip="{StaticResource Loc.Workspace.Playground.Run.Help}" ToolTipService.ShowOnDisabled="True" />
             </Grid>
         </controls:CommandStrip>
         <TabControl Grid.Row="2" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
-        <TabItem Header="{DynamicResource Loc.Profiles.Features.Playground.PathTab}">
-        <controls:SplitWorkspace x:Name="PlaygroundWorkspace" PrimaryRatio="0.35" PrimaryTitle="{DynamicResource Loc.Workspace.Playground.Values}" SecondaryTitle="{DynamicResource Loc.Workspace.Playground.Debug}">
+        <TabItem Header="{StaticResource Loc.Profiles.Features.Playground.PathTab}">
+        <controls:SplitWorkspace x:Name="PlaygroundWorkspace" PrimaryRatio="0.35" PrimaryTitle="{StaticResource Loc.Workspace.Playground.Values}" SecondaryTitle="{StaticResource Loc.Workspace.Playground.Debug}">
             <controls:SplitWorkspace.PrimaryContent>
                 <ui:DynamicScrollViewer x:Name="ProfilePlaygroundScrollViewer" Style="{StaticResource FluentGutteredScrollViewerStyle}">
                     <StackPanel>                <controls:SectionCard Margin="0" Style="{StaticResource FluentSectionCardStyle}">
                       <controls:SectionCard.Header>
                     <StackPanel>
-                        <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.ProfilePlayground.Text.StructuredValues}" />
+                        <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{StaticResource Loc.View.ProfilePlayground.Text.StructuredValues}" />
                         <ui:TextBlock
                             Margin="0,4,0,12"
                             Style="{StaticResource CaptionTextStyle}"
-                            Text="{DynamicResource Loc.View.ProfilePlayground.Text.TheseValuesComeFromTheSameProfile}"
+                            Text="{StaticResource Loc.View.ProfilePlayground.Text.TheseValuesComeFromTheSameProfile}"
                             TextWrapping="Wrap" />
                         <ItemsControl ItemsSource="{Binding Rows}">
                             <ItemsControl.ItemTemplate>
@@ -192,23 +190,23 @@
                 </controls:SectionCard>                <controls:SectionCard
                     x:Name="PlaygroundDirectoryExclusionResultPanel"
                     Margin="0,16,0,0"
-                    AutomationProperties.Name="{DynamicResource Loc.View.ProfilePlayground.AutomationName.PlaygroundFolderNameExclusionResult}"
+                    AutomationProperties.Name="{StaticResource Loc.View.ProfilePlayground.AutomationName.PlaygroundFolderNameExclusionResult}"
                     Style="{StaticResource FluentSectionCardStyle}"
                     Visibility="{Binding HasDirectoryExclusionTestResult, Converter={StaticResource BooleanToVisibilityConverter}}">
                   <controls:SectionCard.Header>
                     <StackPanel>
-                        <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.View.ProfilePlayground.Text.FolderNameExclusionDecision}" />
+                        <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{StaticResource Loc.View.ProfilePlayground.Text.FolderNameExclusionDecision}" />
                         <ui:TextBlock
                             Margin="0,4,0,10"
                             Style="{StaticResource CaptionTextStyle}"
-                            Text="{DynamicResource Loc.View.ProfilePlayground.Text.OnlyTheFinalFolderNameOfThe}"
+                            Text="{StaticResource Loc.View.ProfilePlayground.Text.OnlyTheFinalFolderNameOfThe}"
                             TextWrapping="Wrap" />
                         <Grid Margin="0,0,0,10">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
-                            <ui:TextBlock FontWeight="SemiBold" Text="{DynamicResource Loc.View.ProfilePlayground.Text.InputLeaf}" />
+                            <ui:TextBlock FontWeight="SemiBold" Text="{StaticResource Loc.View.ProfilePlayground.Text.InputLeaf}" />
                             <ui:TextBlock
                                 Grid.Column="1"
                                 Margin="12,0,0,0"
@@ -235,8 +233,8 @@
                     Margin="0"
                     VerticalAlignment="Top"
                     VerticalContentAlignment="Stretch"
-                    AutomationProperties.Name="{DynamicResource Loc.View.ProfilePlayground.AutomationName.PathRegexColorDebugger}"
-                    Header="{DynamicResource Loc.View.ProfilePlayground.AutomationName.PathRegexColorDebugger}"
+                    AutomationProperties.Name="{StaticResource Loc.View.ProfilePlayground.AutomationName.PathRegexColorDebugger}"
+                    Header="{StaticResource Loc.View.ProfilePlayground.AutomationName.PathRegexColorDebugger}"
                     IsExpanded="True"
                     Visibility="{Binding HasRegexDebugRules, Converter={StaticResource BooleanToVisibilityConverter}}">
                     <controls:SectionCard x:Name="PlaygroundRegexDebugCard" Margin="0,8,0,0" Style="{StaticResource FluentSectionCardStyle}">
@@ -244,7 +242,7 @@
                         <StackPanel>
                             <ui:TextBlock x:Name="PlaygroundRegexDebugCaption"
                                 Style="{StaticResource CaptionTextStyle}"
-                                Text="{DynamicResource Loc.View.ProfilePlayground.Text.ShowsPartialCandidatesAndNamedGroupsFrom}"
+                                Text="{StaticResource Loc.View.ProfilePlayground.Text.ShowsPartialCandidatesAndNamedGroupsFrom}"
                                 TextWrapping="Wrap" />
                             <ui:TextBlock
                                 Margin="0,8,0,12"
@@ -264,15 +262,15 @@
                     Margin="0,12,0,0"
                     VerticalAlignment="Top"
                     VerticalContentAlignment="Stretch"
-                    AutomationProperties.Name="{DynamicResource Loc.View.ProfilePlayground.AutomationName.FolderExclusionRegexColorDebugger}"
-                    Header="{DynamicResource Loc.View.ProfilePlayground.AutomationName.FolderExclusionRegexColorDebugger}"
+                    AutomationProperties.Name="{StaticResource Loc.View.ProfilePlayground.AutomationName.FolderExclusionRegexColorDebugger}"
+                    Header="{StaticResource Loc.View.ProfilePlayground.AutomationName.FolderExclusionRegexColorDebugger}"
                     Visibility="{Binding HasDirectoryExclusionRegexDebugRules, Converter={StaticResource BooleanToVisibilityConverter}}">
                     <controls:SectionCard Margin="0,8,0,0" Style="{StaticResource FluentSectionCardStyle}">
                       <controls:SectionCard.Header>
                         <StackPanel>
                             <ui:TextBlock
                                 Style="{StaticResource CaptionTextStyle}"
-                                Text="{DynamicResource Loc.View.ProfilePlayground.Text.ShowsPartialCandidatesForEachExclusionPattern}"
+                                Text="{StaticResource Loc.View.ProfilePlayground.Text.ShowsPartialCandidatesForEachExclusionPattern}"
                                 TextWrapping="Wrap" />
                             <ItemsControl
                                 Margin="0,12,0,0"
@@ -286,18 +284,18 @@
             </controls:SplitWorkspace.SecondaryContent>
         </controls:SplitWorkspace>
         </TabItem>
-        <TabItem Header="{DynamicResource Loc.Profiles.Features.Playground.SelectionTab}">
+        <TabItem Header="{StaticResource Loc.Profiles.Features.Playground.SelectionTab}">
             <ui:DynamicScrollViewer Style="{StaticResource FluentGutteredScrollViewerStyle}">
                 <controls:SectionCard Style="{StaticResource FluentSectionCardStyle}"><controls:SectionCard.Header><StackPanel>
-                    <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.Profiles.Features.Selection.Title}" />
-                    <ui:TextBlock Margin="0,4,0,12" Style="{StaticResource CaptionTextStyle}" TextWrapping="Wrap" Text="{DynamicResource Loc.Profiles.Features.Playground.Help}" />
-                    <ui:TextBlock Margin="0,0,0,4" Text="{DynamicResource Loc.Profiles.Features.Selection.RuleName}" />
+                    <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{StaticResource Loc.Profiles.Features.Selection.Title}" />
+                    <ui:TextBlock Margin="0,4,0,12" Style="{StaticResource CaptionTextStyle}" TextWrapping="Wrap" Text="{StaticResource Loc.Profiles.Features.Playground.Help}" />
+                    <ui:TextBlock Margin="0,0,0,4" Text="{StaticResource Loc.Profiles.Features.Selection.RuleName}" />
                     <ComboBox ItemsSource="{Binding SelectionRules}" SelectedItem="{Binding SelectedSelectionRule}" DisplayMemberPath="DisplayName" />
                     <ui:TextBox Margin="0,12,0,0" MinHeight="160" AcceptsReturn="True" TextWrapping="Wrap"
                         VerticalScrollBarVisibility="Auto" Text="{Binding SelectionInputText, UpdateSourceTrigger=PropertyChanged}"
-                        PlaceholderText="{DynamicResource Loc.Profiles.Features.Playground.Input}" />
+                        PlaceholderText="{StaticResource Loc.Profiles.Features.Playground.Input}" />
                     <ui:Button Margin="0,12,0,0" HorizontalAlignment="Left" Appearance="Primary" Command="{Binding PreviewSelectionRuleCommand}"
-                        Content="{DynamicResource Loc.Profiles.Features.Playground.Run}" Icon="{ui:SymbolIcon Symbol=Play20}" />
+                        Content="{StaticResource Loc.Profiles.Features.Playground.Run}" Icon="{ui:SymbolIcon Symbol=Play20}" />
                     <ui:TextBlock Margin="0,12,0,12" Text="{Binding SelectionTestSummary}" TextWrapping="Wrap" />
                     <ItemsControl ItemsSource="{Binding SelectionPreviewRows}"><ItemsControl.ItemTemplate><DataTemplate>
                         <ui:TextBox Margin="0,0,0,8" IsReadOnly="True" Text="{Binding}" TextWrapping="Wrap" />

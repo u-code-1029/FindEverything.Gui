@@ -75,16 +75,9 @@ public sealed class ApplicationLifecycleService(
             ?? throw new InvalidOperationException("WPF Application 인스턴스를 찾을 수 없습니다.");
         await application.Dispatcher.InvokeAsync(() =>
         {
-            // WPF views must be constructed on the Dispatcher. Resolve every
-            // top-level graph before showing the shell so navigation cannot reveal
-            // a late DI failure.
-            _ = serviceProvider.GetRequiredService<HomePage>();
-            _ = serviceProvider.GetRequiredService<FilesPage>();
-            _ = serviceProvider.GetRequiredService<CatalogPage>();
-            _ = serviceProvider.GetRequiredService<ProfilesPage>();
-            _ = serviceProvider.GetRequiredService<ProfilePlaygroundPage>();
-            _ = serviceProvider.GetRequiredService<OutputFormatsPage>();
-            _ = serviceProvider.GetRequiredService<SettingsPage>();
+            // WPF-UI resolves the selected singleton page on first navigation.
+            // Keep other feature graphs out of the shell's first-render path;
+            // composition tests validate all registered pages independently.
             var mainWindow = serviceProvider.GetRequiredService<MainWindow>();
             application.MainWindow = mainWindow;
 

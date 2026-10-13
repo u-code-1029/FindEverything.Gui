@@ -521,7 +521,7 @@ internal static class CatalogColumnFilterUiChecks
             var snapshot = writer.Publish(new(1, 1, 0, 0, 0, false, null, DateTimeOffset.UtcNow));
             typeof(CatalogViewModel).GetField("_projectionSnapshot", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(owner, snapshot);
             var refresh = (Task)typeof(CatalogViewModel).GetMethod("RefreshProjectionQueryAsync", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .Invoke(owner, [false, true, CancellationToken.None, false])!;
+                .Invoke(owner, [false, true, CancellationToken.None, false, false])!;
             PumpUntil(() => refresh.IsCompleted); refresh.GetAwaiter().GetResult();
             Assert.Equal(0, owner.Items.Count);
             Assert.True(owner.HasLoadedItems, owner.StatusMessage); // Empty filters must not hide the headers/search needed to clear them.

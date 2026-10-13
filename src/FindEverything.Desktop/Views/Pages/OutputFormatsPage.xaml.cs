@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using FindEverything.Desktop.ViewModels;
+using FindEverything.Desktop.Behaviors;
 
 namespace FindEverything.Desktop.Views.Pages;
 
@@ -10,6 +11,7 @@ public partial class OutputFormatsPage
     {
         DataContext = viewModel;
         InitializeComponent();
+        PageActivation.Attach(this);
     }
 
     private void OnInsertTokenClick(object sender, RoutedEventArgs e)

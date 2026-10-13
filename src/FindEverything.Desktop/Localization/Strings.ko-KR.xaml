@@ -1206,4 +1206,25 @@
     <sys:String x:Key="Loc.SelectionImport.Table">HTML 표 번호</sys:String>
     <sys:String x:Key="Loc.SelectionImport.Table.Invalid">HTML 표 번호는 1–1000이어야 합니다.</sys:String>
     <sys:String x:Key="Loc.Catalog.Query.FieldIssues"> · 컬럼 확인 필요 {0:N0}개 항목</sys:String>
+    <sys:String x:Key="Loc.View.ProfilesPage.Message.RulesAndTestsAlwaysReceiveAbsolutePathsMapped" xml:space="preserve">규칙과 테스트에는 절대 경로만 전달됩니다. 매핑된 네트워크 드라이브는 실제 UNC 경로로 자동 변환됩니다.</sys:String>
+    <sys:String x:Key="Loc.View.ProfilesPage.Message.TheRegularExpressionReceivesOnlyTheFileName" xml:space="preserve">정규식에는 전체 경로가 아닌 파일 이름만 전달됩니다. 여러 파일이 맞으면 파일 이름을 대소문자 무시 오름차순으로 정렬해 첫 파일을 사용합니다. UTF-8을 기본으로 읽고 BOM이 있으면 해당 인코딩을 감지합니다.</sys:String>
+    <sys:String x:Key="Loc.View.ProfilesPage.Message.ReviewValidationErrorsBelowThenSaveAfterSaving" xml:space="preserve">아래에서 검증 오류를 확인한 뒤 저장하세요. 저장이 완료되면 ‘Playground에서 테스트’ 버튼이 활성화됩니다. 수정 후에는 다시 저장해야 최신 내용으로 테스트할 수 있습니다.</sys:String>
+    <sys:String x:Key="Loc.View.ScanConsolePanel.Text.ScanLog" xml:space="preserve">탐색 로그</sys:String>
+    <sys:String x:Key="Loc.View.ScanConsolePanel.Name.CloseScanLog" xml:space="preserve">탐색 로그 닫기</sys:String>
+    <sys:String x:Key="Loc.View.ScanConsolePanel.Content.Close" xml:space="preserve">닫기</sys:String>
+    <sys:String x:Key="Loc.View.ScanConsolePanel.Name.AutomaticallyScrollToNewLogEntries" xml:space="preserve">새 로그 자동 스크롤</sys:String>
+    <sys:String x:Key="Loc.View.ScanConsolePanel.OffContent.AutoScrollOff" xml:space="preserve">자동 스크롤 끔</sys:String>
+    <sys:String x:Key="Loc.View.ScanConsolePanel.OnContent.AutoScroll" xml:space="preserve">자동 스크롤</sys:String>
+    <sys:String x:Key="Loc.View.ScanConsolePanel.Content.SaveLog" xml:space="preserve">로그 저장</sys:String>
+    <sys:String x:Key="Loc.View.ScanConsolePanel.Name.VisitedFolderScanLog" xml:space="preserve">방문 폴더 탐색 로그</sys:String>
+    <sys:String x:Key="Loc.View.ScanConsolePanel.Name.CopyTheCompleteSelectedLogMessage" xml:space="preserve">선택한 로그 메시지 전체 복사</sys:String>
+    <sys:String x:Key="Loc.View.ScanConsolePanel.Header.CopyFullMessage" xml:space="preserve">메시지 전체 복사</sys:String>
+    <sys:String x:Key="Loc.View.ScanConsolePanel.Name.CopyOnlyTheSelectedLogPath" xml:space="preserve">선택한 로그 경로만 복사</sys:String>
+    <sys:String x:Key="Loc.View.ScanConsolePanel.Header.CopyPathOnly" xml:space="preserve">경로만 복사</sys:String>
+    <sys:String x:Key="Loc.View.ScanConsolePanel.Text.Visited" xml:space="preserve">방문 </sys:String>
+    <sys:String x:Key="Loc.View.ScanConsolePanel.Text.Matched" xml:space="preserve">  ·  일치 </sys:String>
+    <sys:String x:Key="Loc.View.ScanConsolePanel.Text.NoMatch" xml:space="preserve">  ·  규칙 외 </sys:String>
+    <sys:String x:Key="Loc.View.ScanConsolePanel.Text.Invalid" xml:space="preserve">  ·  변환 오류 </sys:String>
+    <sys:String x:Key="Loc.View.ScanConsolePanel.Text.Pruned" xml:space="preserve">  ·  하위 탐색 생략 </sys:String>
+    <sys:String x:Key="Loc.View.ScanConsolePanel.Text.MATCHMatchedNOMATCHOutsideRulesINVALIDConversion" xml:space="preserve">MATCH 일치 · NO MATCH 규칙 외 · INVALID 변환 오류 · EXCLUDED 이름 규칙 제외 · PRUNE 하위 탐색 중단</sys:String>
 </ResourceDictionary>

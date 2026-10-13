@@ -9,18 +9,28 @@ public interface IProfilePlaygroundNavigator
     bool Navigate(string profileId);
 }
 
-public sealed class ProfilePlaygroundNavigator(
-    INavigationService navigationService,
-    ProfilePlaygroundViewModel playgroundViewModel) : IProfilePlaygroundNavigator
+public sealed class ProfilePlaygroundNavigator : IProfilePlaygroundNavigator
 {
+    private readonly INavigationService _navigationService;
+    private readonly Func<ProfilePlaygroundViewModel> _getPlayground;
+
+    public ProfilePlaygroundNavigator(INavigationService navigationService, Func<ProfilePlaygroundViewModel> getPlayground)
+    {
+        _navigationService = navigationService;
+        _getPlayground = getPlayground;
+    }
+
+    public ProfilePlaygroundNavigator(INavigationService navigationService, ProfilePlaygroundViewModel playgroundViewModel)
+        : this(navigationService, () => playgroundViewModel) { }
+
     public bool Navigate(string profileId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(profileId);
-        if (!playgroundViewModel.SelectProfile(profileId))
+        if (!_getPlayground().SelectProfile(profileId))
         {
             return false;
         }
 
-        return navigationService.Navigate(typeof(ProfilePlaygroundPage));
+        return _navigationService.Navigate(typeof(ProfilePlaygroundPage));
     }
 }

@@ -36,6 +36,7 @@ public partial class CatalogPage
         _viewModel = viewModel;
         DataContext = viewModel;
         InitializeComponent();
+        PageActivation.Attach(this);
         _dialogs = dialogs;
         _textFiles = textFiles ?? new TextFileEditingService();
         _directoryBrowser = new LiveDirectoryBrowser(liveDirectories ?? new LiveDirectoryService(), viewModel.Localizer);
@@ -205,13 +206,11 @@ public partial class CatalogPage
         }
     }
 
-    private void OnPageLoaded(object sender, System.Windows.RoutedEventArgs e) =>
-        _viewModel.Activate();
+    private void OnPageLoaded(object sender, System.Windows.RoutedEventArgs e) { }
 
     private void OnPageUnloaded(object sender, System.Windows.RoutedEventArgs e)
     {
         LiveFolderFlyout.Hide(); _directoryBrowser.Stop(); _fileEditCancellation?.Cancel();
-        _viewModel.Deactivate();
     }
 
     private async void OnWorkspacePathLostKeyboardFocus(

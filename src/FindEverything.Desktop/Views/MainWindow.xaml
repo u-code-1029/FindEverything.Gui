@@ -4,7 +4,6 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    xmlns:localization="clr-namespace:FindEverything.Desktop.Localization"
     xmlns:pages="clr-namespace:FindEverything.Desktop.Views.Pages"
     xmlns:controls="clr-namespace:FindEverything.Desktop.Views.Controls"
     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
@@ -14,7 +13,6 @@
     Language="{StaticResource Loc.Culture.XmlLanguage}"
     MinWidth="760"
     MinHeight="640"
-    localization:LocalizationScope.IsEnabled="True"
     ExtendsContentIntoTitleBar="True"
     Foreground="{DynamicResource TextFillColorPrimaryBrush}"
     SizeChanged="OnWindowSizeChanged"
@@ -39,36 +37,36 @@
             Transition="FadeInWithSlide">
             <ui:NavigationView.MenuItems>
                 <ui:NavigationViewItem
-                    AutomationProperties.Name="{DynamicResource Loc.Home.Nav}"
-                    Content="{DynamicResource Loc.Home.Nav}"
+                    AutomationProperties.Name="{StaticResource Loc.Home.Nav}"
+                    Content="{StaticResource Loc.Home.Nav}"
                     Icon="{ui:SymbolIcon Symbol=HomeDatabase24}"
                     NavigationCacheMode="Required"
                     TargetPageTag="home"
                     TargetPageType="{x:Type pages:HomePage}"
-                    ToolTip="{DynamicResource Loc.Home.Nav}" />
+                    ToolTip="{StaticResource Loc.Home.Nav}" />
                 <ui:NavigationViewItem
-                    AutomationProperties.Name="{DynamicResource Loc.Shell.Nav.Files}"
-                    Content="{DynamicResource Loc.Shell.Nav.Files}"
+                    AutomationProperties.Name="{StaticResource Loc.Shell.Nav.Files}"
+                    Content="{StaticResource Loc.Shell.Nav.Files}"
                     Icon="{ui:SymbolIcon Symbol=Search24}"
                     NavigationCacheMode="Required"
                     TargetPageTag="files"
                     TargetPageType="{x:Type pages:FilesPage}"
-                    ToolTip="{DynamicResource Loc.Shell.Nav.Files}" />
+                    ToolTip="{StaticResource Loc.Shell.Nav.Files}" />
                 <ui:NavigationViewItem
                     x:Name="CatalogNavigationItem"
-                    AutomationProperties.Name="{DynamicResource Loc.Shell.Nav.Catalog}"
-                    Content="{DynamicResource Loc.Shell.Nav.Catalog}"
+                    AutomationProperties.Name="{StaticResource Loc.Shell.Nav.Catalog}"
+                    Content="{StaticResource Loc.Shell.Nav.Catalog}"
                     Icon="{ui:SymbolIcon Symbol=TableSimple24}"
                     NavigationCacheMode="Required"
                     TargetPageTag="catalog"
                     TargetPageType="{x:Type pages:CatalogPage}"
-                    ToolTip="{DynamicResource Loc.Shell.Nav.Catalog}">
+                    ToolTip="{StaticResource Loc.Shell.Nav.Catalog}">
                     <ui:NavigationViewItem.InfoBadge>
                         <ui:InfoBadge
                             x:Name="CatalogScanBadge"
-                            AutomationProperties.Name="{DynamicResource Loc.Shell.Catalog.ScanInProgress.Name}"
+                            AutomationProperties.Name="{StaticResource Loc.Shell.Catalog.ScanInProgress.Name}"
                             AutomationProperties.LiveSetting="Polite"
-                            ToolTip="{DynamicResource Loc.Shell.Catalog.ScanInProgress.ToolTip}"
+                            ToolTip="{StaticResource Loc.Shell.Catalog.ScanInProgress.ToolTip}"
                             Visibility="{Binding Catalog.IsScanning, Converter={StaticResource BooleanToVisibilityConverter}}">
                             <ui:InfoBadge.Style>
                                 <Style TargetType="{x:Type ui:InfoBadge}">
@@ -96,39 +94,39 @@
                     </ui:NavigationViewItem.InfoBadge>
                 </ui:NavigationViewItem>
                 <ui:NavigationViewItem
-                    AutomationProperties.Name="{DynamicResource Loc.Shell.Nav.Profiles}"
-                    Content="{DynamicResource Loc.Shell.Nav.Profiles}"
+                    AutomationProperties.Name="{StaticResource Loc.Shell.Nav.Profiles}"
+                    Content="{StaticResource Loc.Shell.Nav.Profiles}"
                     Icon="{ui:SymbolIcon Symbol=DocumentEdit24}"
                     NavigationCacheMode="Required"
                     TargetPageTag="profiles"
                     TargetPageType="{x:Type pages:ProfilesPage}"
-                    ToolTip="{DynamicResource Loc.Shell.Nav.Profiles}" />
+                    ToolTip="{StaticResource Loc.Shell.Nav.Profiles}" />
                 <ui:NavigationViewItem
-                    AutomationProperties.Name="{DynamicResource Loc.Shell.Nav.Playground}"
-                    Content="{DynamicResource Loc.Shell.Nav.Playground}"
+                    AutomationProperties.Name="{StaticResource Loc.Shell.Nav.Playground}"
+                    Content="{StaticResource Loc.Shell.Nav.Playground}"
                     Icon="{ui:SymbolIcon Symbol=DocumentSearch24}"
                     NavigationCacheMode="Required"
                     TargetPageTag="profile-playground"
                     TargetPageType="{x:Type pages:ProfilePlaygroundPage}"
-                    ToolTip="{DynamicResource Loc.Shell.Nav.Playground}" />
+                    ToolTip="{StaticResource Loc.Shell.Nav.Playground}" />
                 <ui:NavigationViewItem
-                    AutomationProperties.Name="{DynamicResource Loc.Shell.Nav.OutputFormats}"
-                    Content="{DynamicResource Loc.Shell.Nav.OutputFormats}"
+                    AutomationProperties.Name="{StaticResource Loc.Shell.Nav.OutputFormats}"
+                    Content="{StaticResource Loc.Shell.Nav.OutputFormats}"
                     Icon="{ui:SymbolIcon Symbol=ClipboardTask24}"
                     NavigationCacheMode="Required"
                     TargetPageTag="output-formats"
                     TargetPageType="{x:Type pages:OutputFormatsPage}"
-                    ToolTip="{DynamicResource Loc.Shell.Nav.OutputFormats}" />
+                    ToolTip="{StaticResource Loc.Shell.Nav.OutputFormats}" />
             </ui:NavigationView.MenuItems>
             <ui:NavigationView.FooterMenuItems>
                 <ui:NavigationViewItem
-                    AutomationProperties.Name="{DynamicResource Loc.Shell.Nav.Settings}"
-                    Content="{DynamicResource Loc.Shell.Nav.Settings}"
+                    AutomationProperties.Name="{StaticResource Loc.Shell.Nav.Settings}"
+                    Content="{StaticResource Loc.Shell.Nav.Settings}"
                     Icon="{ui:SymbolIcon Symbol=Settings24}"
                     NavigationCacheMode="Required"
                     TargetPageTag="settings"
                     TargetPageType="{x:Type pages:SettingsPage}"
-                    ToolTip="{DynamicResource Loc.Shell.Nav.Settings}" />
+                    ToolTip="{StaticResource Loc.Shell.Nav.Settings}" />
             </ui:NavigationView.FooterMenuItems>
             <ui:NavigationView.ContentOverlay>
                 <!-- The page-only overlay never reserves layout space. Its null
@@ -182,10 +180,10 @@
                                             Height="32"
                                             Padding="0"
                                             Appearance="Transparent"
-                                            AutomationProperties.Name="{DynamicResource Loc.Workspace.Notifications.Dismiss}"
+                                            AutomationProperties.Name="{StaticResource Loc.Workspace.Notifications.Dismiss}"
                                             Command="{Binding DismissCommand}"
                                             Icon="{ui:SymbolIcon Symbol=Dismiss20}"
-                                            ToolTip="{DynamicResource Loc.Workspace.Notifications.Dismiss}"
+                                            ToolTip="{StaticResource Loc.Workspace.Notifications.Dismiss}"
                                             VerticalAlignment="Center" />
                                     </Grid>
                                 </Border>
@@ -218,7 +216,7 @@
                                 MinWidth="36"
                                 Height="28"
                                 Padding="8,0"
-                                AutomationProperties.Name="{DynamicResource Loc.Shell.Language.Korean}"
+                                AutomationProperties.Name="{StaticResource Loc.Shell.Language.Korean}"
                                 Command="{Binding ChangeLanguageCommand}"
                                 CommandParameter="ko-KR"
                                 Content="KO">
@@ -237,7 +235,7 @@
                                 MinWidth="36"
                                 Height="28"
                                 Padding="8,0"
-                                AutomationProperties.Name="{DynamicResource Loc.Shell.Language.English}"
+                                AutomationProperties.Name="{StaticResource Loc.Shell.Language.English}"
                                 Command="{Binding ChangeLanguageCommand}"
                                 CommandParameter="en-US"
                                 Content="EN">

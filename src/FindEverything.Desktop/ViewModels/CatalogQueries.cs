@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text;
@@ -28,6 +29,9 @@ public partial class CatalogViewModel
     private IResultQuerySession<CatalogProjectionRow>? _projectionQuery;
     private VirtualResultCollection<CatalogItemViewModel>? _virtualItems;
     private readonly QuerySelection _querySelection = new();
+    private ResultSelectionController? _selectionController;
+    private ResultSelectionController SelectionController => _selectionController ??= new(_querySelection);
+    private long _selectionRevision;
     private CatalogProjectionQuery _queryDefinition = new() { TextPreviewCharacters = 2048 };
     private CatalogProjectionQuery _displayedQueryDefinition = new();
     private CancellationTokenSource? _projectionCancellation;
@@ -35,11 +39,19 @@ public partial class CatalogViewModel
     private readonly CancellationTokenSource _outputLifetime = new();
     private int _selectionAnchor = -1;
     private long _matchingCount;
+    private bool _hasExactResultCount = true;
     private long _queryVersion;
     private bool _isRecoveringProjection;
     private int _activeNoteEdits;
     private bool _deferredQueryRefresh;
     private bool _deferredPreserveSelection;
+
+    [CommunityToolkit.Mvvm.ComponentModel.ObservableProperty]
+    [CommunityToolkit.Mvvm.ComponentModel.NotifyCanExecuteChangedFor(nameof(SelectAllCommand))]
+    [CommunityToolkit.Mvvm.ComponentModel.NotifyCanExecuteChangedFor(nameof(InvertSelectionCommand))]
+    private bool _isResultCountPending;
+    [CommunityToolkit.Mvvm.ComponentModel.ObservableProperty]
+    private string _appliedHighlightQuery = string.Empty;
 
     public void BeginUserInputEdit() => _activeNoteEdits++;
     public void EndUserInputEdit()
@@ -94,6 +106,8 @@ public partial class CatalogViewModel
         ICatalogProjectionWriter? writer = null;
         CatalogProjectionScope? scope = null;
         var scanFields = Fields.ToArray();
+        var scanShowsOriginal = ShowOriginalValues;
+        var liveRows = new ConcurrentDictionary<string, CatalogItemViewModel>(StringComparer.OrdinalIgnoreCase);
         var operationProfile = SelectedProfile?.Profile;
         var hadPublishedResults = _displayedProjectionSnapshot is not null;
         var liveVersion = Interlocked.Increment(ref _resultSessionVersion);
@@ -138,18 +152,19 @@ public partial class CatalogViewModel
                 writer = _projectionStore!.Begin(scope, scanFields);
                 // Only bounded live rows are materialized. The projection writer
                 // receives every match synchronously on the scan worker.
-                var delivery = new CatalogProgressDelivery(
-                    action => _dispatcher.BeginInvoke(DispatcherPriority.Background, action), batch =>
+                using var liveDelivery = new CoalescingProgressDelivery<Action>(
+                    action => _dispatcher.BeginInvoke(DispatcherPriority.Background, action), action => action());
+                var delivery = new CatalogProgressDelivery(liveDelivery.Report, batch =>
                 {
                     if (_disposed || liveVersion != Volatile.Read(ref _resultSessionVersion)) return;
+                    if (!hadPublishedResults && _projectionSnapshot is not null) return;
                     ProgressMessage = FormatProgress(batch.Latest, batch.Latest.MatchedCount);
                     if (!hadPublishedResults && batch.Latest.AttemptReset) _loadedItems.Clear();
                     if (!hadPublishedResults && batch.Matches.Count > 0)
                     {
                         foreach (var value in batch.Matches.Take(Math.Max(0, 500 - _loadedItems.Count)))
                         {
-                            var row = CreateItemViewModel(value.MatchedItem!, scanFields);
-                            row.PreviewFields = value.PreviewFields;
+                            if (!liveRows.TryRemove(value.MatchedItem!.FullPath, out var row)) continue;
                             _loadedItems.Add(row);
                         }
                         HasLoadedItems = _loadedItems.Count > 0;
@@ -160,6 +175,7 @@ public partial class CatalogViewModel
                 });
                 var progress = new CatalogProgressBatcher(_indexingSettings?.Current.UiUpdateBatchSize ?? 10, batch =>
                 {
+                    if (batch.Latest.AttemptReset) liveRows.Clear();
                     if (!hadPublishedResults) CaptureLiveFilterSnapshot(writer, scope, scanFields, liveVersion);
                     var previews = batch.Matches.Select(value =>
                     {
@@ -176,6 +192,12 @@ public partial class CatalogViewModel
                                 values[field] = text[..(char.IsHighSurrogate(text[2047]) ? 2047 : 2048)];
                             }
                             fullItem = fullItem with { Model = values, Values = values };
+                        }
+                        if (!hadPublishedResults)
+                        {
+                            var row = CreateItemViewModel(fullItem, scanFields, workspace.ProfileId, scanShowsOriginal);
+                            row.PreviewFields = previewFields;
+                            liveRows[fullItem.FullPath] = row;
                         }
                         return value with { MatchedItem = fullItem, PreviewFields = previewFields };
                     }).ToArray();
@@ -265,7 +287,7 @@ public partial class CatalogViewModel
         }
         catch (OperationCanceledException)
         {
-            if (!hadPublishedResults)
+            if (!hadPublishedResults && _projectionQuery is null)
             {
                 _loadedItems.Clear();
                 Items.Refresh();
@@ -280,7 +302,7 @@ public partial class CatalogViewModel
         catch (Exception exception)
         {
             _logger.LogError(exception, "Catalog projection operation failed.");
-            if (!hadPublishedResults)
+            if (!hadPublishedResults && _projectionQuery is null)
             {
                 _loadedItems.Clear();
                 Items.Refresh();
@@ -331,7 +353,7 @@ public partial class CatalogViewModel
     }
 
     private async Task RefreshProjectionQueryAsync(bool preserveSelection = false, bool force = false,
-        CancellationToken cancellationToken = default, bool allowRevisionChange = false)
+        CancellationToken cancellationToken = default, bool allowRevisionChange = false, bool debounce = false)
     {
         if (ActiveProjectionStore is null || _projectionSnapshot is not { } snapshot) return;
         if (_activeNoteEdits > 0 && !force)
@@ -353,19 +375,12 @@ public partial class CatalogViewModel
         {
             // Debounce query construction, not the user's text input. Superseded
             // definitions never allocate a grid or queue a count query.
-            await Task.Delay(300, source.Token);
+            if (debounce) await Task.Delay(250, source.Token);
             query = await OpenProjectionQueryAsync(snapshot, definition, source.Token);
             var localizer = _localizer;
-            var queryToken = source.Token;
-            var first = await Task.Run(async () =>
-            {
-                var page = await query.ReadRangeAsync(0, VirtualResultCollection<CatalogItemViewModel>.PageSize, queryToken)
-                    .ConfigureAwait(false);
-                queryToken.ThrowIfCancellationRequested();
-                var items = page.Items.Select(row => CreateProjectionItem(row, snapshot, definition, localizer)).ToArray();
-                return new ResultPage<CatalogItemViewModel>(items, page.Offset, page.HasMore);
-            }, queryToken).WaitAsync(queryToken);
-            var total = await Task.Run(() => query.CountAsync(source.Token), source.Token).WaitAsync(source.Token);
+            var loader = new ResultPageLoader<CatalogProjectionRow, CatalogItemViewModel>(query,
+                row => CreateProjectionItem(row, snapshot, definition, localizer));
+            var first = await loader.ReadAsync(0, VirtualResultCollection<CatalogItemViewModel>.PageSize, source.Token);
             source.Token.ThrowIfCancellationRequested();
             if (version != Volatile.Read(ref _queryVersion) || _disposed) return;
             preserveSelection = preserveSelection && _displayedProjectionSnapshot?.Generation == snapshot.Generation &&
@@ -378,14 +393,11 @@ public partial class CatalogViewModel
             query = null;
             var adoptedQuery = _projectionQuery;
             if (!preserveSelection) { _querySelection.Clear(); _selectionAnchor = -1; }
-            _matchingCount = total;
+            _matchingCount = preserveSelection ? _matchingCount : first.Items.Count;
+            _hasExactResultCount = !first.HasMore;
+            IsResultCountPending = true;
             _virtualItems = new VirtualResultCollection<CatalogItemViewModel>(
-                async (offset, limit, token) =>
-                {
-                    var page = await adoptedQuery.ReadRangeAsync(offset, limit, token).ConfigureAwait(false);
-                    token.ThrowIfCancellationRequested();
-                    return new(page.Items.Select(row => CreateProjectionItem(row, snapshot, definition, localizer)).ToArray(), offset, page.HasMore);
-                },
+                loader.ReadAsync,
                 _ => new CatalogItemViewModel(new CatalogItem("", "", "", new object(),
                     new Dictionary<string, object?>(), false), snapshot.Fields, _localizer) { IsPlaceholder = true },
                 action => _dispatcher.BeginInvoke(DispatcherPriority.Background, action),
@@ -396,19 +408,32 @@ public partial class CatalogViewModel
                 foreach (var item in page.Items) TrackNoteEditors(item, snapshot.Scope.ProfileId);
                 UpdateProjectionSelection(page.Items);
             };
-            _virtualItems.Seed(first, total);
+            _virtualItems.Seed(first);
             Items = new ListCollectionView(_virtualItems);
+            AppliedHighlightQuery = definition.Keyword ?? string.Empty;
             _loadedItems.Clear();
             SelectedItem = null;
             HasLoadedItems = snapshot.Summary.MatchedCount > 0;
-            FilterSummary = F("Loc.Catalog.Query.FilterSummary", "{0:N0} / {1:N0}개 항목",
-                total, snapshot.Summary.MatchedCount);
+            FilterSummary = IsResultCountPending
+                ? F("Loc.Files.Results.CountPending", "{0:N0}개 로드됨 · 전체 개수 확인 중", first.Items.Count)
+                : F("Loc.Catalog.Query.FilterSummary", "{0:N0} / {1:N0}개 항목", first.Items.Count, snapshot.Summary.MatchedCount);
             OnPropertyChanged(nameof(UsesQuerySelection));
             NotifySelectionImportAvailability();
             RefreshTextColumnCommand.NotifyCanExecuteChanged();
             OnPropertyChanged(nameof(ResultSourceDescription));
             UpdateProjectionSelection();
             PruneCompletedNoteEditors();
+            // Counting a substring filter can inspect every row. The first page
+            // is already usable while this work finishes on the query worker.
+            var total = await Task.Run(() => adoptedQuery.CountAsync(source.Token), source.Token).WaitAsync(source.Token);
+            source.Token.ThrowIfCancellationRequested();
+            if (version != Volatile.Read(ref _queryVersion) || _disposed || !ReferenceEquals(adoptedQuery, _projectionQuery)) return;
+            _matchingCount = total;
+            _hasExactResultCount = true;
+            _virtualItems.SetCount(total);
+            IsResultCountPending = false;
+            FilterSummary = F("Loc.Catalog.Query.FilterSummary", "{0:N0} / {1:N0}개 항목", total, snapshot.Summary.MatchedCount);
+            UpdateProjectionSelection();
         }
         catch (OperationCanceledException) when (source.IsCancellationRequested)
         { cancellationToken.ThrowIfCancellationRequested(); }
@@ -421,7 +446,11 @@ public partial class CatalogViewModel
         finally
         {
             if (query is not null) _ = DisposeProjectionQueryAsync(query);
-            if (ReferenceEquals(_queryCancellation, source)) _queryCancellation = null;
+            if (ReferenceEquals(_queryCancellation, source))
+            {
+                _queryCancellation = null;
+                IsResultCountPending = false;
+            }
             source.Dispose();
         }
     }
@@ -467,6 +496,7 @@ public partial class CatalogViewModel
 
     private void ReleaseProjectionQuery(bool cancelPending = true)
     {
+        CancelSelectionRequests();
         if (cancelPending) { _queryCancellation?.Cancel(); Interlocked.Increment(ref _queryVersion); }
         _virtualItems?.Dispose();
         _virtualItems = null;
@@ -541,18 +571,24 @@ public partial class CatalogViewModel
         ApplyColumnSort(target, direction == EntrySortDirection.Descending);
     }
 
-    [RelayCommand] private void SelectAll()
+    private bool CanSelectAllResults() => !UsesQuerySelection || _hasExactResultCount;
+    [RelayCommand(CanExecute = nameof(CanSelectAllResults))] private void SelectAll()
     {
+        CancelSelectionRequests();
+        if (!CanSelectAllResults()) return;
         if (UsesQuerySelection) { _querySelection.SelectAll(); UpdateProjectionSelection(); }
         else SetSelection(Items.Cast<CatalogItemViewModel>());
     }
     [RelayCommand] private void ClearSelection()
     {
+        CancelSelectionRequests();
         _querySelection.Clear(); _selectionAnchor = -1;
         if (UsesQuerySelection) UpdateProjectionSelection(); else SetSelection([]);
     }
-    [RelayCommand] private void InvertSelection()
+    [RelayCommand(CanExecute = nameof(CanSelectAllResults))] private void InvertSelection()
     {
+        CancelSelectionRequests();
+        if (!CanSelectAllResults()) return;
         if (UsesQuerySelection) { _querySelection.Invert(); UpdateProjectionSelection(); }
         else SetSelection(Items.Cast<CatalogItemViewModel>().Except(_selectedItems).ToArray());
     }
@@ -583,18 +619,11 @@ public partial class CatalogViewModel
                 return;
             }
             var index = _virtualItems!.IndexOf(row);
-            if (!additive) _querySelection.Clear();
-            if (range && _selectionAnchor >= 0 && index >= 0)
-            {
-                for (var start = Math.Min(index, _selectionAnchor); start <= Math.Max(index, _selectionAnchor); start += 500)
-                {
-                    var page = await Task.Run(() => query.ReadRangeAsync(start,
-                        Math.Min(500, Math.Max(index, _selectionAnchor) - start + 1)));
-                    if (!ReferenceEquals(query, _projectionQuery)) return;
-                    foreach (var item in page.Items) _querySelection.Set(item.StableKey ?? item.FullPath, true);
-                }
-            }
-            else { _querySelection.Set(row.SelectionKey, !additive || !_querySelection.Contains(row.SelectionKey)); _selectionAnchor = index; }
+            CancelSelectionRequests();
+            if (!await SelectionController.SelectAsync(query, row.SelectionKey, index, _selectionAnchor,
+                additive, range, item => item.StableKey ?? item.FullPath,
+                () => !_disposed && ReferenceEquals(query, _projectionQuery))) return;
+            if (!range || _selectionAnchor < 0) _selectionAnchor = index;
             SelectedItem = row;
             UpdateProjectionSelection(additive && !range ? [row] : null);
         }
@@ -607,10 +636,33 @@ public partial class CatalogViewModel
     private void UpdateProjectionSelection(IReadOnlyList<CatalogItemViewModel>? changedItems = null)
     {
         if (_virtualItems is null) return;
-        foreach (var item in changedItems ?? _virtualItems.LoadedItems) item.IsSelected = _querySelection.Contains(item.SelectionKey);
+        var items = changedItems ?? _virtualItems.LoadedItems;
+        if (_querySelection.Baseline is null)
+            foreach (var item in items) item.IsSelected = _querySelection.Contains(item.SelectionKey);
+        else _ = UpdateProjectionSelectionFlagsAsync(items, _selectionRevision, _projectionQuery);
         SelectedCount = checked((int)_querySelection.Count(_matchingCount));
         CopySelectionCommand.NotifyCanExecuteChanged();
         ExportSelectionCommand.NotifyCanExecuteChanged();
+    }
+
+    private void CancelSelectionRequests()
+    {
+        _selectionRevision++;
+        _selectionController?.Cancel();
+    }
+
+    private async Task UpdateProjectionSelectionFlagsAsync(IReadOnlyList<CatalogItemViewModel> items,
+        long revision, IResultQuerySession<CatalogProjectionRow>? query)
+    {
+        using var captured = _querySelection.Capture();
+        try
+        {
+            var flags = await captured.ReadMembershipAsync(items.Select(item => item.SelectionKey).ToArray(), _outputLifetime.Token);
+            if (_disposed || revision != _selectionRevision || !ReferenceEquals(query, _projectionQuery)) return;
+            for (var index = 0; index < items.Count; index++) items[index].IsSelected = flags[index];
+        }
+        catch (OperationCanceledException) when (_outputLifetime.IsCancellationRequested) { }
+        catch (Exception exception) { _logger.LogWarning(exception, "Could not refresh selection flags."); }
     }
 
     private bool CanRefreshTextColumn(string fieldId) => !IsBusy && !IsReadOnlyDataSource && _projectionQuery is not null &&

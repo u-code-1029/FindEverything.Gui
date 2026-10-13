@@ -4,6 +4,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using FindEverything.Application.Indexing;
 using FindEverything.Desktop.ViewModels;
+using FindEverything.Desktop.Behaviors;
 
 namespace FindEverything.Desktop.Views.Pages;
 
@@ -18,6 +19,7 @@ public partial class FilesPage
         _viewModel = viewModel;
         DataContext = viewModel;
         InitializeComponent();
+        PageActivation.Attach(this);
         viewModel.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(FileSearchViewModel.IsDetailsOpen)) ApplyWorkspaceLayout();

@@ -80,6 +80,7 @@ internal static class WorkspaceTransferBehaviorChecks
             var transfer = provider.GetRequiredService<WorkspaceTransferViewModel>();
             var catalog = provider.GetRequiredService<CatalogViewModel>();
             var files = provider.GetRequiredService<FileSearchViewModel>();
+            Await(files.ActivateAsync());
             catalog.Activate();
             Until(() => transfer.CurrentSource?.Id == source.Id && catalog.HasLoadedItems && !catalog.IsBusy && files.HasIndex && !files.IsSearching,
                 "Persisted shared source was not restored and queried.");

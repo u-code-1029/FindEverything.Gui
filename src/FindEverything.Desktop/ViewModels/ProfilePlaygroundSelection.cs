@@ -44,7 +44,15 @@ public partial class ProfilePlaygroundViewModel
                 SelectionTestSummary = _localizer.Get("Loc.SelectionImport.Regex.PassedRows", "정규식 조건을 모두 통과한 행 기준 · ") + SelectionTestSummary;
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
-        catch (Exception exception) { SelectionTestSummary = UserFacingExceptionLocalizer.TranslateOperationFailure(_localizer, exception); }
-        finally { if (ReferenceEquals(_selectionTestCancellation, cancellation)) _selectionTestCancellation = null; IsBusy = false; }
+        catch (Exception exception)
+        {
+            if (revision == Volatile.Read(ref _evaluationGeneration) && !cancellation.IsCancellationRequested)
+                SelectionTestSummary = UserFacingExceptionLocalizer.TranslateOperationFailure(_localizer, exception);
+        }
+        finally
+        {
+            if (ReferenceEquals(_selectionTestCancellation, cancellation)) _selectionTestCancellation = null;
+            if (revision == Volatile.Read(ref _evaluationGeneration)) IsBusy = false;
+        }
     }
 }

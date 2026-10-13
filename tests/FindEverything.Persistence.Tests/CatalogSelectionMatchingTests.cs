@@ -82,6 +82,16 @@ public sealed class CatalogSelectionMatchingTests
         await using var query = fixture.Store.OpenQuery(snapshot, new());
         using var result = await ((ICatalogSelectionMatchQuery)query).CreateSelectionMatchAsync(new([new("group")], InputRows(["A"]), "en-US"));
         Assert.Equal(5001, result.Summary.MatchingItems);
+        var pageKeys = Enumerable.Range(0, 1200).Select(index => fixture.PathFor(index.ToString("D6"))).ToArray();
+        var membership = await result.Keys.ReadMembershipAsync(pageKeys);
+        Assert.Equal(600, membership.Count);
+        Assert.True(membership.Contains(pageKeys[0].ToUpperInvariant()));
+        Assert.False(membership.Contains(pageKeys[1]));
+        using (var cancelled = new CancellationTokenSource())
+        {
+            cancelled.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => result.Keys.ReadMembershipAsync(pageKeys, cancelled.Token));
+        }
         using var selection = new QuerySelection(); selection.ReplaceBaseline(result.Keys);
         Assert.Empty(selection.Keys); Assert.True(selection.Contains(fixture.PathFor("010000")));
         Assert.Equal(5001, (await Collect(query, selection)).Count);

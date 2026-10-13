@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using FindEverything.Application.Catalog;
 using FindEverything.Application.Results;
+using FindEverything.Desktop.Results;
+using FindEverything.Desktop.Filtering;
 using FindEverything.Profile.Runtime;
 using Microsoft.Extensions.Logging;
 
@@ -17,6 +19,22 @@ public partial class CatalogViewModel
     private bool _liveRefreshPending;
     private bool _liveRefreshQueued;
     private long _liveFilterVersion;
+    private readonly LatestRequestController _liveInputRequests = new();
+    private IReadOnlyList<string> _liveFilterTerms = [];
+
+    private void ScheduleTextFilter()
+    {
+        if (_projectionSnapshot is not null && ActiveProjectionStore is not null)
+        {
+            _ = RefreshProjectionQueryAsync(debounce: true);
+            return;
+        }
+        _ = _liveInputRequests.RunAsync(TimeSpan.FromMilliseconds(250), token =>
+        {
+            if (!_disposed) ApplyFilter();
+            return Task.CompletedTask;
+        });
+    }
 
     /// <summary>Called only by the scan worker, never by a UI query. Flushing is
     /// coalesced so full-text filter eligibility can be read without retaining text.</summary>
@@ -42,7 +60,7 @@ public partial class CatalogViewModel
         var live = Volatile.Read(ref _liveProjectionState);
         if (_liveMatchingPaths is not null && SameLiveGeneration(live, _liveAppliedState))
             return _liveMatchingPaths.Contains(item.FullPath);
-        return item.Matches(FilterText) && MatchesColumnFilters(item);
+        return item.MatchesTerms(_liveFilterTerms) && MatchesColumnFilters(item);
     }
 
     private static bool SameLiveRevision(LiveProjectionState? left, LiveProjectionState? right) =>
@@ -85,7 +103,7 @@ public partial class CatalogViewModel
         {
             if (debounce) await Task.Delay(300, token);
             var paths = _loadedItems.Select(item => item.FullPath).Take(500).ToArray();
-            var definition = _queryDefinition with { Keyword = FilterText, ShowOriginalValues = ShowOriginalValues };
+            var definition = _queryDefinition with { Keyword = AppliedHighlightQuery, ShowOriginalValues = ShowOriginalValues };
             var matches = await _projectionStore!.FindMatchingPathsAsync(live.Snapshot, definition, paths, token);
             token.ThrowIfCancellationRequested();
             if (_disposed || version != Volatile.Read(ref _liveFilterVersion) || live.SessionVersion != Volatile.Read(ref _resultSessionVersion)
@@ -122,6 +140,7 @@ public partial class CatalogViewModel
 
     private void ResetLiveFilters()
     {
+        _liveInputRequests.Cancel();
         _liveFilterCancellation?.Cancel(); _liveFilterCancellation = null;
         Volatile.Write(ref _liveProjectionState, null);
         _liveLastFlushTimestamp = 0; _liveMatchingPaths = null; _liveAppliedState = null;

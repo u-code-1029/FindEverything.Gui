@@ -8,6 +8,9 @@ public interface IIndexSessionFactory
     IIndexSession Create(string databasePath);
 }
 
+/// <summary>The undecorated engine factory used by host-specific read-only boundaries.</summary>
+public interface ILocalIndexSessionFactory : IIndexSessionFactory { }
+
 /// <summary>
 /// Provides engine-independent indexing, metadata search, and root status operations.
 /// </summary>

@@ -121,6 +121,7 @@ public static partial class DynamicProfileGrid
         sizing.Schema = signature;
         sizing.MeasuredWidths.Clear();
         sizing.HasMeasured = false;
+        sizing.Measurement = null;
         dataGrid.FrozenColumnCount = 0;
         dataGrid.Columns.Clear();
         dataGrid.ColumnReordered -= OnColumnReordered;
@@ -147,6 +148,7 @@ public static partial class DynamicProfileGrid
                         MaxWidth = 560,
                     };
                     inputColumn.SetValue(FieldIdProperty, field.FieldId);
+                    PrepareFilterHeader(dataGrid, inputColumn);
                     dataGrid.Columns.Add(inputColumn);
                     continue;
                 }
@@ -161,6 +163,7 @@ public static partial class DynamicProfileGrid
                     MaxWidth = 320,
                 };
                 column.SetValue(FieldIdProperty, field.FieldId);
+                PrepareFilterHeader(dataGrid, column);
                 dataGrid.Columns.Add(column);
             }
         }
@@ -176,6 +179,7 @@ public static partial class DynamicProfileGrid
             MaxWidth = 720,
         };
         pathColumn.SetValue(FieldIdProperty, PathColumnId);
+        PrepareFilterHeader(dataGrid, pathColumn);
         dataGrid.Columns.Add(pathColumn);
 
         ApplyLayout(dataGrid);
@@ -554,6 +558,11 @@ public static partial class DynamicProfileGrid
     private sealed class MappedHighlightingTextColumn(ProfileFieldDescriptor field) : DataGridColumn
     {
         private readonly string fieldId = field.FieldId;
+        private static readonly BooleanToVisibilityConverter MappingVisibility = new();
+        private static readonly FieldErrorConverter ErrorVisibility = new(visibility: true);
+        private static readonly FieldErrorConverter ErrorText = new(visibility: false);
+        private readonly FileCellActionConverter _fileActionVisibility = new(field.FieldId, visibility: true);
+        private readonly FileCellActionConverter _fileActionLabel = new(field.FieldId, visibility: false);
         protected override FrameworkElement GenerateElement(DataGridCell cell, object dataItem) =>
             CreateContent();
 
@@ -577,50 +586,53 @@ public static partial class DynamicProfileGrid
                 panel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             panel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-            var valueText = new Views.Controls.SelectableCatalogText(new Binding($"DisplayValues[{fieldId}]")
+            var valueText = new Views.Controls.SelectableCatalogText(new Binding($"DisplayCells[{fieldId}].Value")
             {
                 Mode = BindingMode.OneWay,
             });
             panel.Children.Add(valueText);
-            valueText.SetBinding(FrameworkElement.ToolTipProperty, new Binding($"DisplayValues[{fieldId}]") { Mode = BindingMode.OneWay });
+            valueText.SetBinding(FrameworkElement.ToolTipProperty, new Binding($"DisplayCells[{fieldId}].Value") { Mode = BindingMode.OneWay });
 
-            var mappingBadge = new Views.Controls.DisplayBadge
+            if (field.ValueMappings.Count > 0)
             {
-                Margin = new Thickness(6, 0, 0, 0),
-                Padding = new Thickness(4, 0, 4, 0),
-                VerticalAlignment = VerticalAlignment.Center,
-                CornerRadius = new CornerRadius(4),
-                Content = new Wpf.Ui.Controls.TextBlock
+                var mappingBadge = new Views.Controls.DisplayBadge
                 {
-                    Text = "↔",
-                    FontSize = 10,
-                    FontWeight = FontWeights.SemiBold,
-                },
-            };
-            mappingBadge.SetResourceReference(
-                Control.BackgroundProperty,
-                "ControlFillColorSecondaryBrush");
-            mappingBadge.SetResourceReference(
-                Control.BorderBrushProperty,
-                "ControlStrokeColorDefaultBrush");
-            mappingBadge.BorderThickness = new Thickness(1);
-            BindingOperations.SetBinding(
-                mappingBadge,
-                UIElement.VisibilityProperty,
-                new Binding($"MappedValueIndicators[{fieldId}]")
-                {
-                    Mode = BindingMode.OneWay,
-                    Converter = new BooleanToVisibilityConverter(),
-                });
-            BindingOperations.SetBinding(
-                mappingBadge,
-                FrameworkElement.ToolTipProperty,
-                new Binding($"MappedValueTooltips[{fieldId}]")
-                {
-                    Mode = BindingMode.OneWay,
-                });
-            Grid.SetColumn(mappingBadge, 1);
-            panel.Children.Add(mappingBadge);
+                    Margin = new Thickness(6, 0, 0, 0),
+                    Padding = new Thickness(4, 0, 4, 0),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    CornerRadius = new CornerRadius(4),
+                    Content = new Wpf.Ui.Controls.TextBlock
+                    {
+                        Text = "↔",
+                        FontSize = 10,
+                        FontWeight = FontWeights.SemiBold,
+                    },
+                };
+                mappingBadge.SetResourceReference(
+                    Control.BackgroundProperty,
+                    "ControlFillColorSecondaryBrush");
+                mappingBadge.SetResourceReference(
+                    Control.BorderBrushProperty,
+                    "ControlStrokeColorDefaultBrush");
+                mappingBadge.BorderThickness = new Thickness(1);
+                BindingOperations.SetBinding(
+                    mappingBadge,
+                    UIElement.VisibilityProperty,
+                    new Binding($"MappedValueIndicators[{fieldId}]")
+                    {
+                        Mode = BindingMode.OneWay,
+                        Converter = MappingVisibility,
+                    });
+                BindingOperations.SetBinding(
+                    mappingBadge,
+                    FrameworkElement.ToolTipProperty,
+                    new Binding($"MappedValueTooltips[{fieldId}]")
+                    {
+                        Mode = BindingMode.OneWay,
+                    });
+                Grid.SetColumn(mappingBadge, 1);
+                panel.Children.Add(mappingBadge);
+            }
             var errorBadge = new Wpf.Ui.Controls.SymbolIcon(Wpf.Ui.Controls.SymbolRegular.Warning20)
             {
                 Width = 16, Height = 16, Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
@@ -628,50 +640,50 @@ public static partial class DynamicProfileGrid
             errorBadge.SetResourceReference(Control.ForegroundProperty, "SystemFillColorCautionBrush");
             errorBadge.SetBinding(UIElement.VisibilityProperty, new Binding("FieldErrors")
             {
-                Converter = new FieldErrorConverter(visibility: true), ConverterParameter = fieldId,
+                Converter = ErrorVisibility, ConverterParameter = fieldId,
             });
             errorBadge.SetBinding(FrameworkElement.ToolTipProperty, new Binding("FieldErrors")
             {
-                Converter = new FieldErrorConverter(visibility: false), ConverterParameter = fieldId,
+                Converter = ErrorText, ConverterParameter = fieldId,
             });
             BindingOperations.SetBinding(errorBadge, System.Windows.Automation.AutomationProperties.NameProperty, new Binding("FieldErrors")
             {
-                Converter = new FieldErrorConverter(visibility: false), ConverterParameter = fieldId,
+                Converter = ErrorText, ConverterParameter = fieldId,
             });
             Grid.SetColumn(errorBadge, 2);
             panel.Children.Add(errorBadge);
-            var previewBadge = new Views.Controls.DisplayBadge
-            {
-                Margin = new Thickness(6, 0, 0, 0), Padding = new Thickness(4, 0, 4, 0), CornerRadius = new CornerRadius(4),
-                VerticalAlignment = VerticalAlignment.Center,
-                Content = new Wpf.Ui.Controls.TextBlock { Text = "…", FontWeight = FontWeights.SemiBold },
-            };
-            previewBadge.SetResourceReference(Control.BackgroundProperty, "ControlFillColorSecondaryBrush");
-            previewBadge.SetBinding(UIElement.VisibilityProperty, new Binding("PreviewTooltips")
-            {
-                Converter = new FieldErrorConverter(visibility: true), ConverterParameter = fieldId,
-            });
-            previewBadge.SetBinding(FrameworkElement.ToolTipProperty, new Binding("PreviewTooltips")
-            {
-                Converter = new FieldErrorConverter(visibility: false), ConverterParameter = fieldId,
-            });
-            BindingOperations.SetBinding(previewBadge, System.Windows.Automation.AutomationProperties.NameProperty, new Binding("PreviewTooltips")
-            {
-                Converter = new FieldErrorConverter(visibility: false), ConverterParameter = fieldId,
-            });
-            Grid.SetColumn(previewBadge, 3);
-            panel.Children.Add(previewBadge);
             if (field.SourceKind == ProfileFieldSourceKind.TextFileContent)
             {
+                var previewBadge = new Views.Controls.DisplayBadge
+                {
+                    Margin = new Thickness(6, 0, 0, 0), Padding = new Thickness(4, 0, 4, 0), CornerRadius = new CornerRadius(4),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Content = new Wpf.Ui.Controls.TextBlock { Text = "…", FontWeight = FontWeights.SemiBold },
+                };
+                previewBadge.SetResourceReference(Control.BackgroundProperty, "ControlFillColorSecondaryBrush");
+                previewBadge.SetBinding(UIElement.VisibilityProperty, new Binding("PreviewTooltips")
+                {
+                    Converter = ErrorVisibility, ConverterParameter = fieldId,
+                });
+                previewBadge.SetBinding(FrameworkElement.ToolTipProperty, new Binding("PreviewTooltips")
+                {
+                    Converter = ErrorText, ConverterParameter = fieldId,
+                });
+                BindingOperations.SetBinding(previewBadge, System.Windows.Automation.AutomationProperties.NameProperty, new Binding("PreviewTooltips")
+                {
+                    Converter = ErrorText, ConverterParameter = fieldId,
+                });
+                Grid.SetColumn(previewBadge, 3);
+                panel.Children.Add(previewBadge);
                 var action = new Wpf.Ui.Controls.Button { Height = 28, Padding = new(8, 0, 8, 0), Margin = new(8, 0, 0, 0),
                     Appearance = Wpf.Ui.Controls.ControlAppearance.Transparent,
                     Icon = new Wpf.Ui.Controls.SymbolIcon(Wpf.Ui.Controls.SymbolRegular.Edit20) };
-                var visibility = new MultiBinding { Converter = new FileCellActionConverter(fieldId, visibility: true) };
+                var visibility = new MultiBinding { Converter = _fileActionVisibility };
                 visibility.Bindings.Add(new Binding());
                 visibility.Bindings.Add(new Binding("DataContext") { RelativeSource = new(RelativeSourceMode.FindAncestor, typeof(DataGrid), 1) });
                 visibility.Bindings.Add(new Binding("DataContext.CanEditWorkspace") { RelativeSource = new(RelativeSourceMode.FindAncestor, typeof(DataGrid), 1) });
                 action.SetBinding(UIElement.VisibilityProperty, visibility);
-                var label = new MultiBinding { Converter = new FileCellActionConverter(fieldId, visibility: false) };
+                var label = new MultiBinding { Converter = _fileActionLabel };
                 label.Bindings.Add(new Binding());
                 label.Bindings.Add(new Binding("DataContext") { RelativeSource = new(RelativeSourceMode.FindAncestor, typeof(DataGrid), 1) });
                 action.SetBinding(ContentControl.ContentProperty, label);

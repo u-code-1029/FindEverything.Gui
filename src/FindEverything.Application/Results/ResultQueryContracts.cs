@@ -28,6 +28,28 @@ public interface IQuerySelectionKeySet : IDisposable
     string DatabasePath { get; }
     bool Contains(string stableKey);
     bool ContainsQueryKey(string key) => Contains(key);
+    Task<IReadOnlySet<string>> ReadMembershipAsync(IReadOnlyList<string> keys,
+        CancellationToken cancellationToken = default) => Task.Run<IReadOnlySet<string>>(() =>
+    {
+        var matches = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var key in keys)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (Contains(key)) matches.Add(key);
+        }
+        return matches;
+    }, cancellationToken);
+    Task<IReadOnlySet<string>> ReadQueryMembershipAsync(IReadOnlyList<string> keys,
+        CancellationToken cancellationToken = default) => Task.Run<IReadOnlySet<string>>(() =>
+    {
+        var matches = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var key in keys)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (ContainsQueryKey(key)) matches.Add(key);
+        }
+        return matches;
+    }, cancellationToken);
     IQuerySelectionKeySet Retain();
 }
 
@@ -90,6 +112,30 @@ public sealed class QuerySelection : IDisposable
         captured._unavailable.UnionWith(_unavailable);
         return captured;
     }
+    /// <summary>Adopts a prepared selection without storage lookups for each key.</summary>
+    public void ReplaceWith(QuerySelection source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        if (ReferenceEquals(this, source)) return;
+        var baseline = source._baseline?.Retain();
+        Clear();
+        _baseline = baseline;
+        AllMatching = source.AllMatching;
+        _keys.UnionWith(source._keys);
+        _unavailable.UnionWith(source._unavailable);
+        _baselineExceptionCount = source._baselineExceptionCount;
+        _baselineUnavailableCount = source._baselineUnavailableCount;
+    }
+    /// <summary>Reads a stable snapshot's flags in a bounded storage batch.</summary>
+    public async Task<IReadOnlyList<bool>> ReadMembershipAsync(IReadOnlyList<string> keys,
+        CancellationToken cancellationToken = default)
+    {
+        var baseline = _baseline is null ? null
+            : await _baseline.ReadMembershipAsync(keys, cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        return keys.Select(key => !_unavailable.Contains(key)
+            && (AllMatching ^ (baseline?.Contains(key) ?? false) ^ _keys.Contains(key))).ToArray();
+    }
     /// <summary>Only explicit overrides are translated. Baseline query keys already belong to the original query.</summary>
     public QuerySelection MapKeys(Func<string, string> mapper)
     {
@@ -107,6 +153,10 @@ public sealed class QuerySelection : IDisposable
         public string DatabasePath => inner.DatabasePath;
         public bool Contains(string key) => inner.ContainsQueryKey(key);
         public bool ContainsQueryKey(string key) => inner.ContainsQueryKey(key);
+        public Task<IReadOnlySet<string>> ReadMembershipAsync(IReadOnlyList<string> keys,
+            CancellationToken cancellationToken = default) => inner.ReadQueryMembershipAsync(keys, cancellationToken);
+        public Task<IReadOnlySet<string>> ReadQueryMembershipAsync(IReadOnlyList<string> keys,
+            CancellationToken cancellationToken = default) => inner.ReadQueryMembershipAsync(keys, cancellationToken);
         public IQuerySelectionKeySet Retain() => new MappedKeySet(inner.Retain());
         public void Dispose() => inner.Dispose();
     }

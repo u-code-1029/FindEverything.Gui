@@ -4,6 +4,11 @@ on:
   push:
     branches: [codex/ui-performance-refactor]
   workflow_dispatch:
+    inputs:
+      baseline_ref:
+        description: Commit to compare against using the identical UI workload
+        required: true
+        default: f59b4ab81685385b400a7687ca9690aadf6f0906
 
 jobs:
   compare:
@@ -22,7 +27,7 @@ jobs:
         run: dotnet test tests/FindEverything.Desktop.Tests/FindEverything.Desktop.Tests.csproj -c Release --filter FullyQualifiedName~Shell_pages_and_navigation_resolve_on_an_sta_thread
       - uses: actions/checkout@v7
         with:
-          ref: 7875e07677fb141f7f16889d3d8d0b0f3c29345a
+          ref: ${{ inputs.baseline_ref || 'f59b4ab81685385b400a7687ca9690aadf6f0906' }}
           path: performance-baseline
           submodules: recursive
       - name: Apply the identical measurement fixture to the baseline
@@ -30,10 +35,15 @@ jobs:
         run: |
           $fixture = 'tests/FindEverything.Desktop.Tests/WorkspacePerformanceChecks.cs'
           Copy-Item $fixture (Join-Path 'performance-baseline' $fixture)
+          $pages = 'tests/FindEverything.Desktop.Tests/PageResponsivenessChecks.cs'
+          Copy-Item $pages (Join-Path 'performance-baseline' $pages)
           $smoke = 'performance-baseline/tests/FindEverything.Desktop.Tests/DesktopCompositionSmokeTests.cs'
           $source = Get-Content $smoke -Raw
           if (-not $source.Contains('WorkspacePerformanceChecks.Verify(provider);')) {
             $source = $source.Replace('VerifyProjectionQueries(provider, window);', "VerifyProjectionQueries(provider, window);`n            WorkspacePerformanceChecks.Verify(provider);")
+          }
+          if (-not $source.Contains('PageResponsivenessChecks.Verify(provider);')) {
+            $source = $source.Replace('window = provider.GetRequiredService<MainWindow>();', "PageResponsivenessChecks.Verify(provider);`n            window = provider.GetRequiredService<MainWindow>();")
           }
           $source = $source.Replace('completion.Task.WaitAsync(TimeSpan.FromSeconds(60))', 'completion.Task.WaitAsync(TimeSpan.FromSeconds(180))')
           [IO.File]::WriteAllText((Join-Path $PWD $smoke), $source)

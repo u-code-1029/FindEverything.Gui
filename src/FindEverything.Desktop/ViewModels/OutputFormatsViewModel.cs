@@ -33,7 +33,7 @@ public sealed record OutputFormatTokenChoice(
     string Token,
     string Description);
 
-public partial class OutputFormatsViewModel : ObservableObject, IDraftParticipant
+public partial class OutputFormatsViewModel : ObservableObject, IDraftParticipant, IPageSession
 {
     private readonly ISelectionOutputFormatStore _formatStore;
     private readonly ISelectionOutputFormatter _formatter;
@@ -48,6 +48,11 @@ public partial class OutputFormatsViewModel : ObservableObject, IDraftParticipan
     private readonly IDraftProtectionService? _draftProtection;
     private OutputFormatSummaryViewModel? _loadedFormat;
     private readonly IUiScheduler _uiScheduler;
+    private volatile bool _isActive;
+    private volatile bool _disposed;
+    private int _pendingProfilesRefresh;
+    private int _pendingFormatsRefresh;
+    private int _refreshScheduled;
 
     [ObservableProperty]
     private bool _isSaving;
@@ -617,11 +622,52 @@ public partial class OutputFormatsViewModel : ObservableObject, IDraftParticipan
         id, displayName, DraftTemplate, DecodeSeparator(DraftItemSeparator), SelectedProfileChoice?.ProfileId,
         DecodeSeparator(DraftPrefix), DecodeSeparator(DraftSuffix));
 
-    private void OnFormatStoreChanged(object? sender, EventArgs e) =>
-        RunOnDispatcher(() => RefreshFormats(_draftId));
+    public Task ActivateAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        _isActive = true;
+        ApplyPendingRefresh();
+        return Task.CompletedTask;
+    }
 
-    private void OnProfileCatalogChanged(object? sender, ProfileCatalogChangedEventArgs e) =>
+    public void Deactivate() => _isActive = false;
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        Deactivate();
+        _formatStore.Changed -= OnFormatStoreChanged;
+        _profileCatalog.Changed -= OnProfileCatalogChanged;
+    }
+
+    private void OnFormatStoreChanged(object? sender, EventArgs e)
+    {
+        Interlocked.Exchange(ref _pendingFormatsRefresh, 1);
+        ScheduleRefresh();
+    }
+
+    private void OnProfileCatalogChanged(object? sender, ProfileCatalogChangedEventArgs e)
+    {
+        Interlocked.Exchange(ref _pendingProfilesRefresh, 1);
+        Interlocked.Exchange(ref _pendingFormatsRefresh, 1);
+        ScheduleRefresh();
+    }
+
+    private void ScheduleRefresh()
+    {
+        if (_disposed || !_isActive || Interlocked.Exchange(ref _refreshScheduled, 1) != 0) return;
         RunOnDispatcher(() =>
+        {
+            Interlocked.Exchange(ref _refreshScheduled, 0);
+            if (_isActive && !_disposed) ApplyPendingRefresh();
+        });
+    }
+
+    private void ApplyPendingRefresh()
+    {
+        if (Interlocked.Exchange(ref _pendingProfilesRefresh, 0) != 0)
         {
             var profileId = SelectedProfileChoice?.ProfileId;
             _isPopulatingDraft = true;
@@ -634,8 +680,10 @@ public partial class OutputFormatsViewModel : ObservableObject, IDraftParticipan
                 _isPopulatingDraft = false;
             }
 
-            RefreshFormats(SelectedFormat?.Definition.Id);
-        });
+        }
+        if (Interlocked.Exchange(ref _pendingFormatsRefresh, 0) != 0)
+            RefreshFormats(_draftId);
+    }
 
     private void RunOnDispatcher(Action action) => _uiScheduler.Post(action);
 

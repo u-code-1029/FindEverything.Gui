@@ -287,14 +287,8 @@ public static partial class DynamicProfileGrid
         column.HeaderStyle = headerStyle;
         var originalHeader = column.Header;
         column.SetValue(OriginalFilterHeaderProperty, originalHeader);
-        if (originalHeader is UIElement)
-        {
-            // A loaded text-file header contains its refresh button and already
-            // belongs to the header presenter. Release that content before moving
-            // it into the decorated panel, without replacing a header binding.
-            column.SetCurrentValue(DataGridColumn.HeaderProperty, null);
-            grid.UpdateLayout();
-        }
+        // Decorate before the column joins the grid. Its refresh button has no
+        // visual parent yet, so constructing the header never forces layout.
         var panel = new StackPanel { Orientation = Orientation.Horizontal };
         if (originalHeader is UIElement element) panel.Children.Add(element);
         else panel.Children.Add(new Ui.TextBlock { Text = Convert.ToString(originalHeader), VerticalAlignment = VerticalAlignment.Center });

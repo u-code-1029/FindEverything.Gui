@@ -74,6 +74,7 @@ public partial class CatalogViewModel
             await query.CountAsync(lifetime.Token);
             lifetime.Token.ThrowIfCancellationRequested();
             if (!Current()) throw new OperationCanceledException();
+            CancelSelectionRequests();
             _querySelection.ReplaceBaseline(result.Keys); _selectionAnchor = -1;
             UpdateProjectionSelection();
             SetStatus(L("Loc.SelectionImport.Completed", "데이터로 선택 완료"),

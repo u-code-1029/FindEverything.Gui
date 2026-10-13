@@ -9,7 +9,11 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddFindEverythingInfrastructure(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
-        services.TryAddSingleton<IIndexSessionFactory, FindEverythingIndexSessionFactory>();
+        services.TryAddSingleton<FindEverythingIndexSessionFactory>();
+        services.TryAddSingleton<ILocalIndexSessionFactory>(
+            static provider => provider.GetRequiredService<FindEverythingIndexSessionFactory>());
+        services.TryAddSingleton<IIndexSessionFactory>(
+            static provider => provider.GetRequiredService<ILocalIndexSessionFactory>());
         services.TryAddSingleton<IDirectoryDiscoveryService, DirectoryDiscoveryService>();
         return services;
     }

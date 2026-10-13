@@ -6,6 +6,8 @@
   <ItemGroup>
     <!-- The virtual list has no WPF dependencies; verify its bounds on every OS. -->
     <Compile Include="../../src/FindEverything.Desktop/Results/VirtualResultCollection.cs" Link="Desktop/VirtualResultCollection.cs" />
+    <Compile Include="../../src/FindEverything.Desktop/Results/CoalescingProgressDelivery.cs" Link="Desktop/CoalescingProgressDelivery.cs" />
+    <Compile Include="../../src/FindEverything.Desktop/Results/ResultPageLoader.cs" Link="Desktop/ResultPageLoader.cs" />
     <ProjectReference Include="../../src/FindEverything.Application/FindEverything.Application.csproj" />
     <!-- Tests exercise the real compiler without making Application depend on it. -->
     <ProjectReference Include="../../src/FindEverything.Profile.Runtime/FindEverything.Profile.Runtime.csproj" />

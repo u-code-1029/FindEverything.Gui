@@ -1644,4 +1644,25 @@
     <sys:String x:Key="Loc.SelectionImport.Table">HTML table number</sys:String>
     <sys:String x:Key="Loc.SelectionImport.Table.Invalid">HTML table number must be between 1 and 1000.</sys:String>
     <sys:String x:Key="Loc.Catalog.Query.FieldIssues"> · {0:N0} items need column attention</sys:String>
+    <sys:String x:Key="Loc.View.ProfilesPage.Message.RulesAndTestsAlwaysReceiveAbsolutePathsMapped" xml:space="preserve">Rules and tests always receive absolute paths. Mapped network drives are automatically converted to their actual UNC paths.</sys:String>
+    <sys:String x:Key="Loc.View.ProfilesPage.Message.TheRegularExpressionReceivesOnlyTheFileName" xml:space="preserve">The regular expression receives only the file name, not the full path. If multiple files match, the first file is chosen after sorting names case-insensitively in ascending order. Files are read as UTF-8 by default, with BOM-based encoding detection.</sys:String>
+    <sys:String x:Key="Loc.View.ProfilesPage.Message.ReviewValidationErrorsBelowThenSaveAfterSaving" xml:space="preserve">Review validation errors below, then save. After saving, the Test in Playground button becomes available. Save again after making changes so the Playground uses the latest version.</sys:String>
+    <sys:String x:Key="Loc.View.ScanConsolePanel.Text.ScanLog" xml:space="preserve">Scan log</sys:String>
+    <sys:String x:Key="Loc.View.ScanConsolePanel.Name.CloseScanLog" xml:space="preserve">Close scan log</sys:String>
+    <sys:String x:Key="Loc.View.ScanConsolePanel.Content.Close" xml:space="preserve">Close</sys:String>
+    <sys:String x:Key="Loc.View.ScanConsolePanel.Name.AutomaticallyScrollToNewLogEntries" xml:space="preserve">Automatically scroll to new log entries</sys:String>
+    <sys:String x:Key="Loc.View.ScanConsolePanel.OffContent.AutoScrollOff" xml:space="preserve">Auto-scroll off</sys:String>
+    <sys:String x:Key="Loc.View.ScanConsolePanel.OnContent.AutoScroll" xml:space="preserve">Auto-scroll</sys:String>
+    <sys:String x:Key="Loc.View.ScanConsolePanel.Content.SaveLog" xml:space="preserve">Save log</sys:String>
+    <sys:String x:Key="Loc.View.ScanConsolePanel.Name.VisitedFolderScanLog" xml:space="preserve">Visited-folder scan log</sys:String>
+    <sys:String x:Key="Loc.View.ScanConsolePanel.Name.CopyTheCompleteSelectedLogMessage" xml:space="preserve">Copy the complete selected log message</sys:String>
+    <sys:String x:Key="Loc.View.ScanConsolePanel.Header.CopyFullMessage" xml:space="preserve">Copy full message</sys:String>
+    <sys:String x:Key="Loc.View.ScanConsolePanel.Name.CopyOnlyTheSelectedLogPath" xml:space="preserve">Copy only the selected log path</sys:String>
+    <sys:String x:Key="Loc.View.ScanConsolePanel.Header.CopyPathOnly" xml:space="preserve">Copy path only</sys:String>
+    <sys:String x:Key="Loc.View.ScanConsolePanel.Text.Visited" xml:space="preserve">Visited </sys:String>
+    <sys:String x:Key="Loc.View.ScanConsolePanel.Text.Matched" xml:space="preserve">  ·  matched </sys:String>
+    <sys:String x:Key="Loc.View.ScanConsolePanel.Text.NoMatch" xml:space="preserve">  ·  no match </sys:String>
+    <sys:String x:Key="Loc.View.ScanConsolePanel.Text.Invalid" xml:space="preserve">  ·  invalid </sys:String>
+    <sys:String x:Key="Loc.View.ScanConsolePanel.Text.Pruned" xml:space="preserve">  ·  pruned </sys:String>
+    <sys:String x:Key="Loc.View.ScanConsolePanel.Text.MATCHMatchedNOMATCHOutsideRulesINVALIDConversion" xml:space="preserve">MATCH matched · NO MATCH outside rules · INVALID conversion error · EXCLUDED name-rule exclusion · PRUNE descendants skipped</sys:String>
 </ResourceDictionary>

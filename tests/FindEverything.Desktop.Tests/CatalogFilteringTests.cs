@@ -176,6 +176,37 @@ public sealed class CatalogFilteringTests
     }
 
     [Fact]
+    public void Editing_one_cell_notifies_only_its_binding_and_keeps_export_values_current()
+    {
+        var fields = new[]
+        {
+            Field("note", "Note", 0, ProfileFieldValueKind.String) with { SourceKind = ProfileFieldSourceKind.UserInput },
+            Field("alias", "Alias", 1, ProfileFieldValueKind.String) with
+            { ValueMappings = new Dictionary<string, string> { ["A"] = "Alice" } },
+        };
+        var item = new CatalogItemViewModel(new CatalogItem(Path.GetTempPath(), "", "rule", new object(),
+            new Dictionary<string, object?> { ["alias"] = "A" }, false), fields, new TestAppLocalizer());
+        var note = item.DisplayCells["note"];
+        var alias = item.DisplayCells["alias"];
+        var noteChanges = 0; var aliasChanges = 0; var rowChanges = 0;
+        note.PropertyChanged += (_, _) => noteChanges++;
+        alias.PropertyChanged += (_, _) => aliasChanges++;
+        item.PropertyChanged += (_, _) => rowChanges++;
+        item.UserInputValues["note"].Value = "Reviewed";
+        Assert.Equal(1, noteChanges);
+        Assert.Equal(0, aliasChanges);
+        Assert.Equal(0, rowChanges);
+        Assert.Equal("Reviewed", note.Value);
+        Assert.Equal("Reviewed", item.OutputValues["note"]);
+        Assert.Equal("Reviewed", item.ExportDisplayValues["note"]);
+        item.SetShowOriginalValues(true);
+        Assert.Same(alias, item.DisplayCells["alias"]);
+        Assert.Equal("A", alias.Value);
+        Assert.Equal(1, aliasChanges);
+        Assert.Equal(1, noteChanges);
+    }
+
+    [Fact]
     public async Task User_input_commit_flushes_the_latest_debounced_value()
     {
         var writes = new List<(string FieldId, string Value)>();

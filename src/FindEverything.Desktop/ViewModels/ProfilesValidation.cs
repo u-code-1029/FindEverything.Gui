@@ -25,6 +25,7 @@ public partial class ProfilesViewModel
 
     private void ClearDefinitionValidationIssues()
     {
+        if (_definitionValidationIssues.Count == 0) return;
         _definitionValidationIssues = [];
         RefreshValidationIssues();
     }
@@ -88,8 +89,9 @@ public partial class ProfilesViewModel
         foreach (var row in DraftChildDirectoryFields) AddNumeric(row.NumericValidationMessage, "child_directory_numeric_invalid", ProfileEditorStep.DataSources, row.FieldId);
         foreach (var row in DraftSelectionRules) AddNumeric(row.NumericValidationMessage, "selection_numeric_invalid", ProfileEditorStep.SelectionRules, row.Id);
         AddNumeric(ScanDepthValidationMessage, "scan_depth_invalid", ProfileEditorStep.ScanOptions);
-        ValidationIssues = numeric.Concat(_definitionValidationIssues)
+        var issues = numeric.Concat(_definitionValidationIssues)
             .DistinctBy(static issue => (issue.Code, issue.Message, issue.Step)).ToArray();
+        if (!ValidationIssues.SequenceEqual(issues)) ValidationIssues = issues;
 
         void AddNumeric(string message, string code, ProfileEditorStep step, string? reference = null)
         {

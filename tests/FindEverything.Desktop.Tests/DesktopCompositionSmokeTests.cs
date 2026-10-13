@@ -124,6 +124,7 @@ public sealed class DesktopCompositionSmokeTests
                 ValidateScopes = true,
             });
 
+            PageResponsivenessChecks.Verify(provider);
             window = provider.GetRequiredService<MainWindow>();
             var homePage = provider.GetRequiredService<HomePage>();
             Assert.NotNull(homePage);
@@ -190,6 +191,7 @@ public sealed class DesktopCompositionSmokeTests
             LiveFileUiChecks.Verify();
             SelectionImportUiChecks.Verify();
             ProfilesValidationUiChecks.Verify((visual, name) => SaveQaImage(visual, name));
+            UiRenderingLifetimeChecks.Verify();
             ReadOnlyCellTemplateChecks.Verify();
             WorkspacePerformanceChecks.Verify(provider);
             CatalogColumnFilterUiChecks.Verify(provider);
@@ -1331,10 +1333,12 @@ public sealed class DesktopCompositionSmokeTests
         Assert.True(viewModel.NextEditorStepCommand.CanExecute(null));
         Assert.True(viewModel.IsGuidedMode);
         Assert.NotEmpty(viewModel.GeneratedPatternPreview);
+        viewModel.GoToEditorStepCommand.Execute(ProfileEditorStep.PathAndFields);
+        PumpLayout(window, page);
         var templateBox = Assert.IsType<Wpf.Ui.Controls.TextBox>(
-            page.FindName("ProfilePathTemplateTextBox"));
+            page.FindEditorElement<FrameworkElement>("ProfilePathTemplateTextBox"));
         Assert.True(templateBox.IsReadOnly);
-        Assert.IsAssignableFrom<CardControl>(page.FindName("AssignmentPickerPanel"));
+        Assert.IsAssignableFrom<CardControl>(page.FindEditorElement<FrameworkElement>("AssignmentPickerPanel"));
         Assert.NotEmpty(viewModel.GuidedPathSegments);
         VerifyGuidedPathButtonAuthoring(window, viewModel);
 
@@ -1346,11 +1350,11 @@ public sealed class DesktopCompositionSmokeTests
         Assert.IsAssignableFrom<CardControl>(page.FindName("ProfileEditorStepRail"));
         Assert.IsType<Wpf.Ui.Controls.Button>(page.FindName("PreviousProfileStepButton"));
         Assert.IsType<Wpf.Ui.Controls.Button>(page.FindName("NextProfileStepButton"));
-        var userInputEditor = Assert.IsAssignableFrom<CardControl>(page.FindName("UserInputFieldsEditor"));
         Assert.True(viewModel.AddUserInputFieldCommand.CanExecute(null));
         viewModel.AddUserInputFieldCommand.Execute(null);
         Assert.Single(viewModel.DraftUserInputFields);
 
+        viewModel.GoToEditorStepCommand.Execute(ProfileEditorStep.Profile);
         viewModel.NextEditorStepCommand.Execute(null);
         PumpDispatcherFor(window.Dispatcher, TimeSpan.FromMilliseconds(20));
         Assert.Equal(ProfileEditorStep.PathAndFields, viewModel.CurrentEditorStep);
@@ -1359,6 +1363,7 @@ public sealed class DesktopCompositionSmokeTests
 
         viewModel.GoToEditorStepCommand.Execute(ProfileEditorStep.DataSources);
         PumpDispatcherFor(window.Dispatcher, TimeSpan.FromMilliseconds(20));
+        var userInputEditor = Assert.IsAssignableFrom<CardControl>(page.FindEditorElement<FrameworkElement>("UserInputFieldsEditor"));
         Assert.Equal(Visibility.Visible, userInputEditor.Visibility);
         Assert.Contains(
             FindVisualChildren<System.Windows.Controls.TextBlock>(userInputEditor),
@@ -1369,7 +1374,7 @@ public sealed class DesktopCompositionSmokeTests
         Assert.True(viewModel.IsReviewStep);
         Assert.Equal(
             Visibility.Visible,
-            Assert.IsAssignableFrom<CardControl>(page.FindName("ProfileReviewPanel")).Visibility);
+            Assert.IsAssignableFrom<CardControl>(page.FindEditorElement<FrameworkElement>("ProfileReviewPanel")).Visibility);
 
         tabControl.SelectedIndex = 1;
         PumpLayout(window, page);
@@ -1477,11 +1482,17 @@ public sealed class DesktopCompositionSmokeTests
 
     private static void VerifyProfilesFluentControls(ProfilesPage page)
     {
+        var vm = (ProfilesViewModel)page.DataContext;
+        var previousStep = vm.CurrentEditorStep;
+        vm.GoToEditorStepCommand.Execute(ProfileEditorStep.ScanOptions);
+        PumpDispatcherFor(page.Dispatcher, TimeSpan.FromMilliseconds(30));
         var exclusionScopeDescription = Assert.IsAssignableFrom<System.Windows.Controls.TextBlock>(
-            page.FindName("DirectoryExclusionScopeDescription"));
+            page.FindEditorElement<FrameworkElement>("DirectoryExclusionScopeDescription"));
         Assert.Contains("마지막 폴더 이름(leaf)", exclusionScopeDescription.Text, StringComparison.Ordinal);
         Assert.Contains("절대경로 전체가 아니라", exclusionScopeDescription.Text, StringComparison.Ordinal);
         Assert.Contains("상위 폴더는 비교하지 않습니다", exclusionScopeDescription.Text, StringComparison.Ordinal);
+        vm.GoToEditorStepCommand.Execute(previousStep);
+        PumpDispatcherFor(page.Dispatcher, TimeSpan.FromMilliseconds(30));
 
         foreach (var resourceKey in new[]
                  {
@@ -1553,14 +1564,19 @@ public sealed class DesktopCompositionSmokeTests
             rule.StopTraversalGroupsText);
 
         rule.StopTraversalGroupsText = "year, arbitrary";
+        PumpDispatcherUntil(window.Dispatcher, () => viewModel.PendingPreview.IsCompleted, TimeSpan.FromSeconds(5));
         Assert.False(viewModel.CanUseGuidedMode);
         rule.StopTraversalGroupsText = "field_1Year, field_1MonthDay";
+        PumpDispatcherUntil(window.Dispatcher, () => viewModel.PendingPreview.IsCompleted, TimeSpan.FromSeconds(5));
         Assert.True(viewModel.CanUseGuidedMode);
 
         dateField.GroupName = "legacyDate";
-        viewModel.ValidateDraftCommand.Execute(null);
+        var validate = viewModel.ValidateDraftCommand.ExecuteAsync(null);
+        PumpDispatcherUntil(window.Dispatcher, () => validate.IsCompleted, TimeSpan.FromSeconds(5));
+        validate.GetAwaiter().GetResult();
         Assert.Contains("동시에", viewModel.EditorStatusMessage);
         dateField.GroupName = string.Empty;
+        PumpDispatcherUntil(window.Dispatcher, () => viewModel.PendingPreview.IsCompleted, TimeSpan.FromSeconds(5));
         Assert.True(viewModel.CanUseGuidedMode);
 
         viewModel.UseGuidedModeCommand.Execute(null);

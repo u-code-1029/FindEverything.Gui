@@ -20,6 +20,13 @@ public sealed class ProfileChoiceViewModel(ILoadedProfile profile)
     public override string ToString() => DisplayName;
 }
 
+/// <summary>A stable binding target: editing one field invalidates one cell.</summary>
+public sealed class CatalogDisplayCell(string value) : ObservableObject
+{
+    private string _value = value;
+    public string Value { get => _value; internal set => SetProperty(ref _value, value); }
+}
+
 public sealed class CatalogItemViewModel : ObservableObject
 {
     private bool _isSelected;
@@ -88,6 +95,7 @@ public sealed class CatalogItemViewModel : ObservableObject
 
         var rawDisplayValues = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var mappedDisplayValues = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var displayCells = new Dictionary<string, CatalogDisplayCell>(StringComparer.OrdinalIgnoreCase);
         var mappedOutputValues = Values.ToDictionary(
             static pair => pair.Key,
             static pair => pair.Value,
@@ -123,9 +131,7 @@ public sealed class CatalogItemViewModel : ObservableObject
                         mappedDisplayValues[field.FieldId] = current.Value;
                         rawOutputValues[field.FieldId] = current.Value;
                         mappedOutputValues[field.FieldId] = current.Value;
-                        OnPropertyChanged(nameof(DisplayValues));
-                        OnPropertyChanged(nameof(OutputValues));
-                        OnPropertyChanged(nameof(ExportDisplayValues));
+                        displayCells[field.FieldId].Value = current.Value;
                         // In-memory consumers have no asynchronous persistence
                         // or focused editor to protect; update them immediately.
                         if (persistUserInput is null) userInputChanged?.Invoke();
@@ -134,6 +140,7 @@ public sealed class CatalogItemViewModel : ObservableObject
                 userInputValues[field.FieldId] = input;
                 rawDisplayValues[field.FieldId] = initialValue;
                 mappedDisplayValues[field.FieldId] = initialValue;
+                displayCells[field.FieldId] = new(initialValue);
                 rawOutputValues[field.FieldId] = initialValue;
                 mappedOutputValues[field.FieldId] = initialValue;
                 mappedValueIndicators[field.FieldId] = false;
@@ -157,6 +164,7 @@ public sealed class CatalogItemViewModel : ObservableObject
 
             rawDisplayValues[field.FieldId] = rawDisplayValue;
             mappedDisplayValues[field.FieldId] = mappedDisplayValue;
+            displayCells[field.FieldId] = new(mappedDisplayValue);
             mappedValueIndicators[field.FieldId] = isMapped;
             mappedValueTooltips[field.FieldId] = isMapped
                 ? localizer.Format(
@@ -178,6 +186,7 @@ public sealed class CatalogItemViewModel : ObservableObject
         mappedSearchableValues.Add(FullPath);
         _rawDisplayValues = rawDisplayValues;
         _mappedDisplayValues = mappedDisplayValues;
+        DisplayCells = displayCells;
         _rawOutputValues = rawOutputValues;
         _mappedOutputValues = mappedOutputValues;
         UserInputValues = userInputValues;
@@ -204,6 +213,8 @@ public sealed class CatalogItemViewModel : ObservableObject
 
     public IReadOnlyDictionary<string, string> DisplayValues =>
         _showOriginalValues ? _rawDisplayValues : _mappedDisplayValues;
+
+    public IReadOnlyDictionary<string, CatalogDisplayCell> DisplayCells { get; }
 
     public IReadOnlyDictionary<string, object?> OutputValues =>
         _showOriginalValues ? _rawOutputValues : _mappedOutputValues;
@@ -234,10 +245,16 @@ public sealed class CatalogItemViewModel : ObservableObject
 
     public bool Matches(string? filterText)
     {
-        return TextFilter.MatchesAll(
-            (_showOriginalValues ? _rawSearchableValues : _mappedSearchableValues)
-                .Concat(UserInputValues.Values.Select(static value => value.Value)),
-            filterText);
+        return MatchesTerms(TextFilter.Terms(filterText));
+    }
+
+    public bool MatchesTerms(IReadOnlyList<string> terms)
+    {
+        var values = _showOriginalValues ? _rawSearchableValues : _mappedSearchableValues;
+        foreach (var term in terms)
+            if (!values.Any(value => TextFilter.Contains(value, term))
+                && !UserInputValues.Values.Any(value => TextFilter.Contains(value.Value, term))) return false;
+        return true;
     }
 
     public void SetShowOriginalValues(bool showOriginalValues)
@@ -248,6 +265,7 @@ public sealed class CatalogItemViewModel : ObservableObject
         }
 
         _showOriginalValues = showOriginalValues;
+        foreach (var pair in DisplayValues) DisplayCells[pair.Key].Value = pair.Value;
         OnPropertyChanged(nameof(DisplayValues));
         OnPropertyChanged(nameof(OutputValues));
         OnPropertyChanged(nameof(ExportDisplayValues));

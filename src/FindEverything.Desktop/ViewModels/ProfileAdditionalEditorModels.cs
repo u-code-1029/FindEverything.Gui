@@ -100,7 +100,12 @@ public partial class ProfileSelectionRuleDraftViewModel : ObservableObject
         foreach (var column in rule.Columns) Columns.Add(new(column));
     }
     private void ColumnChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
-    { OnPropertyChanged(nameof(Columns)); OnPropertyChanged(nameof(NumericValidationMessage)); }
+    {
+        if (!ProfileDraftChanges.IsInput(sender, args.PropertyName)) return;
+        OnPropertyChanged(nameof(Columns));
+        if (args.PropertyName == nameof(ProfileSelectionColumnDraftViewModel.InputColumnIndexText))
+            OnPropertyChanged(nameof(NumericValidationMessage));
+    }
     public ProfileSelectionMatchRuleManifest ToManifest() => new()
     {
         Id = Id.Trim(), DisplayName = DisplayName.Trim(), InputKind = InputKind, HasHeaderRow = HasHeaderRow,

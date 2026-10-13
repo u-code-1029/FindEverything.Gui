@@ -16,7 +16,7 @@ using Wpf.Ui.Controls;
 
 namespace FindEverything.Desktop.ViewModels;
 
-public partial class CatalogViewModel : ObservableObject, IDisposable
+public partial class CatalogViewModel : ObservableObject, IPageSession
 {
     private readonly ICatalogService _catalogService;
     private readonly IProfileCatalog _profileCatalog;
@@ -54,6 +54,8 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
     private readonly IValidatedSettingsState<IndexingOptions>? _indexingSettings;
     private bool _automaticLoadSuppressed;
     private bool _disposed;
+    private Task _automaticLoadTask = Task.CompletedTask;
+    private readonly CatalogActivityState? _activityState;
 
     [ObservableProperty]
     private IReadOnlyList<ProfileChoiceViewModel> _profiles = [];
@@ -161,7 +163,8 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
         IIndexSessionFactory? indexSessions = null,
         ICatalogMissingDataPrompt? missingDataPrompt = null,
         IValidatedSettingsState<IndexingOptions>? indexingSettings = null,
-        Dispatcher? dispatcher = null)
+        Dispatcher? dispatcher = null,
+        CatalogActivityState? activityState = null)
     {
         _catalogService = catalogService;
         _profileCatalog = profileCatalog;
@@ -181,6 +184,7 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
         _indexSessions = indexSessions;
         _missingDataPrompt = missingDataPrompt;
         _indexingSettings = indexingSettings;
+        _activityState = activityState;
         _localizer = localizer;
         _logger = logger;
         _filterSummary = F("Loc.Catalog.Filter.Empty", "{0:N0}개 항목", 0);
@@ -222,9 +226,23 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
         ScheduleAutomaticLoad();
     }
 
+    partial void OnIsScanningChanged(bool value)
+    {
+        if (_activityState is not null) _activityState.IsScanning = value;
+    }
+
+    public Task ActivateAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (_disposed) return Task.CompletedTask;
+        Activate();
+        return _automaticLoadTask.WaitAsync(cancellationToken);
+    }
+
     public void Deactivate()
     {
         _isActive = false;
+        _liveInputRequests.Cancel();
         if (!_isAutomaticIndexLoad
             || !IsLoadingExistingIndex)
         {
@@ -256,6 +274,8 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
         FlushPendingUserInputValues();
         ReleaseProjectionQuery();
         _querySelection.Dispose();
+        _selectionController?.Dispose();
+        _liveInputRequests.Dispose();
         CancelWorkspacePersistenceDebounce();
         _profileCatalog.Changed -= OnProfileCatalogChanged;
         _workspaceContext.Changed -= OnWorkspaceChanged;
@@ -378,7 +398,7 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
         CopySelectedFolderPathCommand.NotifyCanExecuteChanged();
     }
 
-    partial void OnFilterTextChanged(string value) => ApplyFilter();
+    partial void OnFilterTextChanged(string value) => ScheduleTextFilter();
 
     partial void OnShowOriginalValuesChanged(bool value)
     {
@@ -1233,7 +1253,7 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
         }
 
         _lastAutomaticLoadKey = key;
-        _ = RunAutomaticLoadAsync(key);
+        _automaticLoadTask = RunAutomaticLoadAsync(key);
     }
 
     private async Task RunAutomaticLoadAsync(string key)
@@ -1620,6 +1640,8 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
             return;
         }
         var selectedPath = preferredSelectedPath ?? SelectedItem?.FullPath;
+        AppliedHighlightQuery = FilterText;
+        _liveFilterTerms = TextFilter.Terms(AppliedHighlightQuery);
         ScheduleLiveFilterRefresh(criteriaChanged: true);
         Items.Refresh();
         SelectedItem = selectedPath is null
@@ -1646,9 +1668,12 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
 
     private CatalogItemViewModel CreateItemViewModel(
         CatalogItem item,
-        IReadOnlyList<ProfileFieldDescriptor> fields)
+        IReadOnlyList<ProfileFieldDescriptor> fields) =>
+        CreateItemViewModel(item, fields, SelectedProfile?.Id, ShowOriginalValues);
+
+    private CatalogItemViewModel CreateItemViewModel(CatalogItem item,
+        IReadOnlyList<ProfileFieldDescriptor> fields, string? profileId, bool showOriginalValues)
     {
-        var profileId = SelectedProfile?.Id;
         var persistedValues = profileId is not null && _userInputValueStore is not null
             ? _userInputValueStore.GetValues(profileId, item.FullPath)
             : null;
@@ -1667,7 +1692,7 @@ public partial class CatalogViewModel : ObservableObject, IDisposable
                     viewModel!.UserInputValues[fieldId])
                 : null,
             () => ApplyFilter());
-        viewModel.SetShowOriginalValues(ShowOriginalValues);
+        viewModel.SetShowOriginalValues(showOriginalValues);
         TrackNoteEditors(viewModel, profileId);
         return viewModel;
     }

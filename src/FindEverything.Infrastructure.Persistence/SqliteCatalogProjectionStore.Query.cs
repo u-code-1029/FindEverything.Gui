@@ -382,7 +382,12 @@ public sealed partial class SqliteCatalogProjectionStore
             command.CommandText = $"FROM projection_rows r {joins} WHERE " + string.Join(" AND ", predicates);
             if (offset is not null && limit is not null)
             {
-                command.CommandText += $" ORDER BY ({order} IS NULL) ASC, {order} {(_query.Descending ? "DESC" : "ASC")}, r.path_key COLLATE BINARY ASC LIMIT $limit OFFSET $offset;";
+                // The path key is NOT NULL. A redundant IS NULL expression makes
+                // SQLite sort the entire generation instead of walking its PK.
+                var ordering = _sortTarget.Kind == CatalogColumnTargetKind.FullPath
+                    ? $"r.path_key COLLATE BINARY {(_query.Descending ? "DESC" : "ASC")}"
+                    : $"({order} IS NULL) ASC, {order} {(_query.Descending ? "DESC" : "ASC")}, r.path_key COLLATE BINARY ASC";
+                command.CommandText += $" ORDER BY {ordering} LIMIT $limit OFFSET $offset;";
                 command.Parameters.AddWithValue("$limit", limit.Value + 1);
                 command.Parameters.AddWithValue("$offset", offset.Value);
             }

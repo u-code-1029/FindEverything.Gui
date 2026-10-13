@@ -32,15 +32,13 @@ public static class DependencyInjection
         ArgumentNullException.ThrowIfNull(paths);
 
         services.AddSingleton(paths);
-        var indexFactory = services.LastOrDefault(descriptor => descriptor.ServiceType == typeof(IIndexSessionFactory));
-        if (indexFactory is not null)
-        {
-            services.Remove(indexFactory);
-            services.AddSingleton(provider => new UnderlyingIndexSessionFactory((IIndexSessionFactory)(indexFactory.ImplementationInstance
-                ?? indexFactory.ImplementationFactory?.Invoke(provider)
-                ?? ActivatorUtilities.CreateInstance(provider, indexFactory.ImplementationType!))));
-            services.AddSingleton<IIndexSessionFactory, ImportedIndexSessionFactory>();
-        }
+        services.AddWorkspacePersistence(paths);
+        services.AddProfileAuthoringFeature(paths);
+        services.AddSelectionOutputFeature();
+        services.AddFeaturePages();
+        services.AddSingleton(static provider => new UnderlyingIndexSessionFactory(
+            provider.GetRequiredService<ILocalIndexSessionFactory>()));
+        services.Replace(ServiceDescriptor.Singleton<IIndexSessionFactory, ImportedIndexSessionFactory>());
 
         services.AddOptions<HostLifecycleOptions>()
             .Bind(configuration.GetSection(HostLifecycleOptions.SectionName))
@@ -90,9 +88,6 @@ public static class DependencyInjection
         services.AddSingleton<IUiScheduler, WpfUiScheduler>();
         services.AddSingleton<IDraftDecisionPrompt, ContentDialogDraftDecisionPrompt>();
         services.AddSingleton<IDraftProtectionService, DraftProtectionService>();
-        services.AddSingleton(_ => new SqliteCatalogProjectionStore(paths.ResultsDatabaseFile));
-        services.AddSingleton<ICatalogProjectionStore>(provider => provider.GetRequiredService<SqliteCatalogProjectionStore>());
-        services.AddSingleton<IUserInputStore>(provider => provider.GetRequiredService<SqliteCatalogProjectionStore>());
         services.AddSingleton<ILanguageSelectionService, LanguageSelectionService>();
         services.AddSingleton<IIndexDatabasePathResolver, IndexDatabasePathResolver>();
         services.AddSingleton<IWorkspaceContext, WorkspaceContext>();
@@ -101,21 +96,7 @@ public static class DependencyInjection
         services.AddSingleton<ITextFileEditingService, TextFileEditingService>();
         services.AddSingleton<IScanConsoleLogWriter, ScanConsoleLogWriter>();
         services.AddSingleton<IPathLauncher, ExplorerPathLauncher>();
-        services.AddSingleton<IProfileAuthoringService, ProfileAuthoringService>();
-        services.AddSingleton<ProfileTransferService>();
-        services.AddSingleton<IProfileTransferService>(provider => provider.GetRequiredService<ProfileTransferService>());
-        services.AddSingleton<IndexedDatasetTransferService>();
-        services.AddSingleton<IIndexedDatasetTransferService>(provider => provider.GetRequiredService<IndexedDatasetTransferService>());
-        services.AddSingleton<IImportedWorkspaceRegistry>(provider => provider.GetRequiredService<IndexedDatasetTransferService>());
-        services.AddSingleton<WorkspaceTransferViewModel>();
-        services.AddSingleton<IProfilePlaygroundEvaluator, ProfilePlaygroundEvaluator>();
-        services.AddSingleton<IProfilePlaygroundNavigator, ProfilePlaygroundNavigator>();
         services.AddSingleton<IHomeNavigationService, HomeNavigationService>();
-        services.AddSingleton<ISelectionOutputFormatStore, SelectionOutputFormatStore>();
-        services.AddSingleton<IProfileUserInputValueStore, ProfileUserInputValueStore>();
-        services.AddSingleton<ISelectionOutputFormatter, SelectionOutputFormatter>();
-        services.AddSingleton<ICatalogSelectionExporter, CatalogSelectionExporter>();
-        services.AddSingleton<IClipboardService, WpfClipboardService>();
         services.TryAddSingleton<IWindowsMappedDrivePathResolver, WindowsMappedDrivePathResolver>();
         services.Replace(ServiceDescriptor.Singleton<IProfilePathCanonicalizer,
             WindowsProfilePathCanonicalizer>());
@@ -139,42 +120,13 @@ public static class DependencyInjection
             static provider => provider.GetRequiredService<SettingsReloadDiagnostics>());
 
         services.AddSingleton<MainWindow>();
+        services.AddSingleton<CatalogActivityState>();
         services.AddSingleton<MainWindowViewModel>();
         services.AddSingleton<ScanConsoleViewModel>();
         services.AddSingleton<IScanConsolePanelController>(
             static provider => provider.GetRequiredService<ScanConsoleViewModel>());
         services.Replace(ServiceDescriptor.Singleton<ICatalogScanTraceSink>(
             static provider => provider.GetRequiredService<ScanConsoleViewModel>()));
-        services.AddSingleton<HomePage>();
-        services.AddSingleton<HomeViewModel>();
-        services.AddSingleton<FilesPage>();
-        services.AddSingleton<FileSearchViewModel>(provider =>
-        {
-            var viewModel = ActivatorUtilities.CreateInstance<FileSearchViewModel>(provider);
-            viewModel.AttachWorkspaceTransfer(provider.GetRequiredService<WorkspaceTransferViewModel>());
-            return viewModel;
-        });
-        services.AddSingleton<CatalogPage>();
-        services.AddSingleton<CatalogViewModel>(provider =>
-        {
-            var viewModel = ActivatorUtilities.CreateInstance<CatalogViewModel>(provider);
-            viewModel.AttachWorkspaceTransfer(provider.GetRequiredService<WorkspaceTransferViewModel>(),
-                provider.GetRequiredService<IIndexedDatasetTransferService>());
-            return viewModel;
-        });
-        services.AddSingleton<ProfilesPage>();
-        services.AddSingleton<ProfilesViewModel>(provider =>
-        {
-            var viewModel = ActivatorUtilities.CreateInstance<ProfilesViewModel>(provider);
-            viewModel.AttachWorkspaceTransfer(provider.GetRequiredService<WorkspaceTransferViewModel>());
-            return viewModel;
-        });
-        services.AddSingleton<ProfilePlaygroundPage>();
-        services.AddSingleton<ProfilePlaygroundViewModel>();
-        services.AddSingleton<OutputFormatsPage>();
-        services.AddSingleton<OutputFormatsViewModel>();
-        services.AddSingleton<SettingsPage>();
-        services.AddSingleton<SettingsViewModel>();
 
         services.AddHostedService<ApplicationLifecycleService>();
         return services;

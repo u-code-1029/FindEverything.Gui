@@ -245,8 +245,14 @@ internal static class LiveFileUiChecks
                 { RoutedEvent = Mouse.MouseUpEvent });
             Pump(); Assert.Single(paths.Opened); Assert.Equal(request + 1, reads.Requests.Count);
 
-            Assert.Equal(3, fileNode.ContextMenu!.Items.Count); // Open file, copy path, reveal in Explorer.
-            Assert.Equal(2, directoryNode.ContextMenu!.Items.Count);
+            Assert.Empty(fileNode.ContextMenu!.Items); // Optional actions do not allocate on folder expansion.
+            Assert.Empty(directoryNode.ContextMenu!.Items);
+            fileNode.ContextMenu.IsOpen = true; Pump();
+            Assert.Equal(3, fileNode.ContextMenu.Items.Count); // Open file, copy path, reveal in Explorer.
+            fileNode.ContextMenu.IsOpen = false;
+            directoryNode.ContextMenu.IsOpen = true; Pump();
+            Assert.Equal(2, directoryNode.ContextMenu.Items.Count);
+            directoryNode.ContextMenu.IsOpen = false; Pump();
             paths.Failure = new System.IO.IOException("The default application could not open this file.");
             fileNode.IsSelected = true;
             tree.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(tree)!,

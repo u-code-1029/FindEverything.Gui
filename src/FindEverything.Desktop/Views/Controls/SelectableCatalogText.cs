@@ -42,7 +42,7 @@ internal sealed class SelectableCatalogText : Grid
         {
             Source = Highlight, Path = new PropertyPath(TextHighlighting.DisplayTextProperty), Mode = BindingMode.OneWay,
         });
-        Highlight.SetBinding(TextHighlighting.HighlightTextProperty, new Binding("DataContext.FilterText")
+        Highlight.SetBinding(TextHighlighting.HighlightTextProperty, new Binding("DataContext.AppliedHighlightQuery")
         {
             Mode = BindingMode.OneWay,
             RelativeSource = new(RelativeSourceMode.FindAncestor, typeof(DataGrid), 1),

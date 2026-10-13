@@ -88,8 +88,10 @@ public sealed class LiveDirectoryBrowser : UserControl
             if (state.Offset == 0) node.Items.Clear();
             if (state.Error is { } previousError) node.Items.Remove(previousError);
             state.Error = null;
+            var published = 0;
             foreach (var entry in page.Entries)
             {
+                if (token.IsCancellationRequested || version != _version) return false;
                 var child = new Ui.TreeViewItem { Header = Header(entry.Name, entry.IsDirectory), ToolTip = entry.FullPath };
                 if (entry.IsDirectory && !entry.IsReparsePoint)
                 {
@@ -99,7 +101,10 @@ public sealed class LiveDirectoryBrowser : UserControl
                 else child.Tag = new LeafState(entry.FullPath, entry.IsDirectory);
                 if (entry.IsReparsePoint) child.ToolTip = entry.FullPath + "\n" + L("Loc.LiveBrowser.Link", "링크·정션은 자동으로 펼치지 않습니다.");
                 AddContextMenu(child, entry.FullPath, !entry.IsDirectory); node.Items.Add(child);
+                if (++published % 16 == 0)
+                    await System.Windows.Threading.Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.Background);
             }
+            if (token.IsCancellationRequested || version != _version) return false;
             state.Offset = page.NextOffset; state.Loaded = true;
             if (page.HasMore)
             {
@@ -149,16 +154,23 @@ public sealed class LiveDirectoryBrowser : UserControl
     private void AddContextMenu(TreeViewItem node, string path, bool isFile = false)
     {
         var menu = new ContextMenu();
-        if (isFile)
+        node.ContextMenu = menu;
+        node.ContextMenuOpening += (_, _) => Populate();
+        menu.Opened += (_, _) => Populate();
+        void Populate()
         {
-            var openFile = new Ui.MenuItem { Header = L("Loc.LiveBrowser.OpenFile", "기본 프로그램으로 열기") };
-            openFile.Click += async (_, _) => await OpenFileAsync(path);
-            menu.Items.Add(openFile);
+            if (menu.Items.Count > 0) return;
+            if (isFile)
+            {
+                var openFile = new Ui.MenuItem { Header = L("Loc.LiveBrowser.OpenFile", "기본 프로그램으로 열기") };
+                openFile.Click += async (_, _) => await OpenFileAsync(path);
+                menu.Items.Add(openFile);
+            }
+            var copy = new Ui.MenuItem { Header = L("Loc.LiveBrowser.Copy", "경로 복사") };
+            copy.Click += (_, _) => Copy(path); menu.Items.Add(copy);
+            var open = new Ui.MenuItem { Header = L("Loc.LiveBrowser.Open", "탐색기에서 보기") };
+            open.Click += async (_, _) => await OpenExplorerAsync(path); menu.Items.Add(open);
         }
-        var copy = new Ui.MenuItem { Header = L("Loc.LiveBrowser.Copy", "경로 복사") };
-        copy.Click += (_, _) => Copy(path); menu.Items.Add(copy);
-        var open = new Ui.MenuItem { Header = L("Loc.LiveBrowser.Open", "탐색기에서 보기") };
-        open.Click += async (_, _) => await OpenExplorerAsync(path); menu.Items.Add(open); node.ContextMenu = menu;
     }
     private string? SelectedPath() => _tree.SelectedItem is TreeViewItem { Tag: NodeState state } ? state.Path
         : _tree.SelectedItem is TreeViewItem { Tag: LeafState leaf } ? leaf.Path : _root;

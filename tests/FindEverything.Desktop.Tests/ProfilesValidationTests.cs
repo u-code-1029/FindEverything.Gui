@@ -33,7 +33,7 @@ public sealed class ProfilesValidationTests
         => Assert.Equal(expected, ProfilesViewModel.GetValidationStep(code));
 
     [Fact]
-    public void Validation_errors_are_not_truncated_and_navigation_opens_the_target_step()
+    public async Task Validation_errors_are_not_truncated_and_navigation_opens_the_target_step()
     {
         var service = new StubAuthoringService
         {
@@ -43,7 +43,7 @@ public sealed class ProfilesValidationTests
         };
         var vm = Create(service);
 
-        vm.ValidateDraftCommand.Execute(null);
+        await vm.ValidateDraftCommand.ExecuteAsync(null);
 
         Assert.True(vm.HasValidationIssues);
         Assert.Equal(12, vm.ValidationIssues.Count);
@@ -93,12 +93,12 @@ public sealed class ProfilesValidationTests
     }
 
     [Fact]
-    public void Guided_template_build_failure_links_to_path_and_fields_instead_of_an_unactionable_summary()
+    public async Task Guided_template_build_failure_links_to_path_and_fields_instead_of_an_unactionable_summary()
     {
         var vm = Create(new StubAuthoringService());
         vm.DraftPathTemplate = "{missing@missing}";
 
-        vm.ValidateDraftCommand.Execute(null);
+        await vm.ValidateDraftCommand.ExecuteAsync(null);
 
         Assert.True(vm.HasValidationIssues);
         Assert.All(vm.ValidationIssues, issue => Assert.Equal(ProfileEditorStep.PathAndFields, issue.Step));
@@ -123,28 +123,28 @@ public sealed class ProfilesValidationTests
     }
 
     [Fact]
-    public void Successful_revalidation_removes_old_definition_errors()
+    public async Task Successful_revalidation_removes_old_definition_errors()
     {
         var service = new StubAuthoringService
         {
             Review = new(null, [new(ProfileDiagnosticSeverity.Error, "profile_id_invalid", "Invalid ID")]),
         };
         var vm = Create(service);
-        vm.ValidateDraftCommand.Execute(null);
+        await vm.ValidateDraftCommand.ExecuteAsync(null);
         Assert.True(vm.HasValidationIssues);
 
         service.Review = new(new StubLoadedProfile(), []);
-        vm.ValidateDraftCommand.Execute(null);
+        await vm.ValidateDraftCommand.ExecuteAsync(null);
         Assert.False(vm.HasValidationIssues);
         Assert.Equal(Wpf.Ui.Controls.InfoBarSeverity.Success, vm.EditorStatusSeverity);
     }
 
-    private static ProfilesViewModel Create(StubAuthoringService service) => new(
-        new StubCatalog(), service, new ProfilePathTemplateCompiler(), new FixedCanonicalizer(),
+    private static ProfilesViewModel Create(StubAuthoringService service, IProfilePathTemplateCompiler? compiler = null) => new(
+        new StubCatalog(), service, compiler ?? new ProfilePathTemplateCompiler(), new FixedCanonicalizer(),
         null!, new ApplicationOperationCoordinator(NullLogger<ApplicationOperationCoordinator>.Instance),
         null!, null!, null!, new TestAppLocalizer(), NullLogger<ProfilesViewModel>.Instance);
 
-    internal static ProfilesViewModel CreateForUi() => Create(new StubAuthoringService());
+    internal static ProfilesViewModel CreateForUi(IProfilePathTemplateCompiler? compiler = null) => Create(new StubAuthoringService(), compiler);
 
     private sealed class FixedCanonicalizer : IProfilePathCanonicalizer
     {

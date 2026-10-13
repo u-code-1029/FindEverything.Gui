@@ -29,6 +29,11 @@ public sealed class CatalogMissingDataAndCancellationTests
         await fixture.Query.CountStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.True(fixture.ViewModel.IsBusy);
+        Assert.True(fixture.ViewModel.HasLoadedItems);
+        Assert.True(fixture.ViewModel.IsResultCountPending);
+        var firstRow = Assert.Single(fixture.ViewModel.Items.Cast<CatalogItemViewModel>());
+        await fixture.ViewModel.SelectRowAsync(firstRow, additive: true, range: false);
+        Assert.True(firstRow.IsSelected);
         Assert.True(fixture.ViewModel.CancelCommand.CanExecute(null));
         fixture.ViewModel.CancelCommand.Execute(null);
         await load.WaitAsync(TimeSpan.FromSeconds(2));
@@ -36,18 +41,20 @@ public sealed class CatalogMissingDataAndCancellationTests
         Assert.True(fixture.Query.CountToken.IsCancellationRequested);
         Assert.False(fixture.ViewModel.IsBusy);
         Assert.False(fixture.ViewModel.CancelCommand.CanExecute(null));
-        Assert.False(fixture.ViewModel.HasLoadedItems);
-        Assert.Empty(fixture.ViewModel.Items);
+        Assert.True(fixture.ViewModel.HasLoadedItems);
+        Assert.Same(firstRow, Assert.Single(fixture.ViewModel.Items.Cast<CatalogItemViewModel>()));
+        Assert.False(fixture.ViewModel.IsResultCountPending);
         Assert.Equal(0, fixture.Service.ScanCalls);
         Assert.Equal(0, fixture.Service.LoadCalls);
 
         // An uncooperative background read may finish later, but it must not
-        // adopt rows or turn a user-cancelled load into a successful load.
+        // replace already-visible rows or turn cancellation into successful completion.
         fixture.Query.ReleaseCount.TrySetResult(1);
         await Task.Delay(250);
-        Assert.False(fixture.ViewModel.HasLoadedItems);
-        Assert.Empty(fixture.ViewModel.Items);
-        Assert.True(fixture.Query.IsDisposed);
+        Assert.True(fixture.ViewModel.HasLoadedItems);
+        Assert.Same(firstRow, Assert.Single(fixture.ViewModel.Items.Cast<CatalogItemViewModel>()));
+        Assert.True(firstRow.IsSelected);
+        Assert.False(fixture.Query.IsDisposed); // The visible page still owns its query.
     });
 
     [Fact]
@@ -67,7 +74,7 @@ public sealed class CatalogMissingDataAndCancellationTests
         Assert.Equal(1, fixture.Store.FindCalls);
         Assert.Equal(1, fixture.Store.OpenQueryCalls);
         Assert.False(fixture.ViewModel.IsBusy);
-        Assert.False(fixture.ViewModel.HasLoadedItems);
+        Assert.True(fixture.ViewModel.HasLoadedItems);
         Assert.Equal(0, fixture.Service.ScanCalls);
     });
 

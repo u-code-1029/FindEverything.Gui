@@ -1,4 +1,5 @@
 using FindEverything.Desktop.ViewModels;
+using FindEverything.Desktop.Behaviors;
 
 namespace FindEverything.Desktop.Views.Pages;
 
@@ -8,5 +9,6 @@ public partial class ProfilePlaygroundPage
     {
         DataContext = viewModel;
         InitializeComponent();
+        PageActivation.Attach(this);
     }
 }

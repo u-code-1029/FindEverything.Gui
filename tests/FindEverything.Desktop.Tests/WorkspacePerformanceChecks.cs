@@ -75,6 +75,9 @@ internal static class WorkspacePerformanceChecks
         // Set the existing backing field without invoking the in-memory filter,
         // which would deliberately enumerate the virtual IList in this fixture.
         SetField(viewModel, "_filterText", "Alpha client-3");
+        // Newer revisions publish a committed highlight query separately. Use
+        // the same terms on both revisions, without requiring the new API.
+        typeof(CatalogViewModel).GetProperty("AppliedHighlightQuery")?.SetValue(viewModel, "Alpha client-3");
         viewModel.Fields = fields;
         viewModel.Items = new ListCollectionView(collection);
         var grid = new DataGrid
