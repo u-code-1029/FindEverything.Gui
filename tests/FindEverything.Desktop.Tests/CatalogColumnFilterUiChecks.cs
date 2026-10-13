@@ -367,6 +367,11 @@ internal static class CatalogColumnFilterUiChecks
             var open = typeof(DynamicProfileGrid).GetMethod("OpenColumnFlyoutAsync", BindingFlags.NonPublic | BindingFlags.Static)!;
             Task Open()
             {
+                // Header metadata can exist before WPF realizes its container;
+                // neither decoration nor an asynchronous query forces layout.
+                PumpUntil(() => flyout.IsLoaded && Descendants<DataGridColumnHeader>(grid)
+                    .Any(candidate => candidate.Column == grid.Columns[2] && candidate.ActualWidth > 0));
+                grid.UpdateLayout();
                 var header = Descendants<DataGridColumnHeader>(grid).First(candidate => candidate.Column == grid.Columns[2]);
                 return (Task)open.Invoke(null, [grid, state, owner, header, CatalogColumnTarget.Field("amount")])!;
             }
