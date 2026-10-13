@@ -121,7 +121,7 @@ public static partial class DynamicProfileGrid
         var statusColumn = new HighlightingTextColumn
         {
             Header = L(localizer, "Loc.Catalog.Column.Status", "상태"),
-            Binding = new Binding(nameof(ViewModels.CatalogItemViewModel.CoverageText)),
+            Binding = new Binding(nameof(ViewModels.CatalogItemViewModel.CoverageText)) { Mode = BindingMode.OneWay },
             IsReadOnly = true,
             Width = DataGridLength.Auto,
             MinWidth = 80,
@@ -167,7 +167,7 @@ public static partial class DynamicProfileGrid
         var pathColumn = new HighlightingTextColumn
         {
             Header = L(localizer, "Loc.Catalog.Column.FolderPath", "폴더 경로"),
-            Binding = new Binding(nameof(ViewModels.CatalogItemViewModel.FullPath)),
+            Binding = new Binding(nameof(ViewModels.CatalogItemViewModel.FullPath)) { Mode = BindingMode.OneWay },
             ToolTipBinding = new Binding(nameof(ViewModels.CatalogItemViewModel.OriginalFullPath)),
             IsReadOnly = true,
             Width = new DataGridLength(240),

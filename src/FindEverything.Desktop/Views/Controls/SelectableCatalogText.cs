@@ -33,8 +33,13 @@ internal sealed class SelectableCatalogText : Grid
             TextTrimming = TextTrimming.CharacterEllipsis,
             IsHitTestVisible = false,
         };
-        TextBox.SetBinding(System.Windows.Controls.TextBox.TextProperty, displayBinding);
         Highlight.SetBinding(TextHighlighting.DisplayTextProperty, displayBinding);
+        // TextBox.Text defaults to TwoWay even when IsReadOnly is true. Bind
+        // through the display property's OneWay bridge, never back to a DTO.
+        TextBox.SetBinding(System.Windows.Controls.TextBox.TextProperty, new Binding
+        {
+            Source = Highlight, Path = new PropertyPath(TextHighlighting.DisplayTextProperty), Mode = BindingMode.OneWay,
+        });
         Highlight.SetBinding(TextHighlighting.HighlightTextProperty, new Binding("DataContext.FilterText")
         {
             Mode = BindingMode.OneWay,
