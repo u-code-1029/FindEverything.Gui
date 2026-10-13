@@ -62,10 +62,10 @@
                     FontWeight="SemiBold"
                     Text="{Binding ResultSummary}" />
                 <ui:Button x:Name="RetryResultCountButton" DockPanel.Dock="Left"
-                    Width="28" Height="28" MinWidth="0" MinHeight="0" Padding="0" Margin="8,0,8,0"
+                    Width="28" Height="24" MinWidth="0" MinHeight="0" Padding="0" Margin="8,0,8,0"
                     VerticalAlignment="Center" Appearance="Transparent" Icon="{ui:SymbolIcon Symbol=ArrowSync20}"
                     Command="{Binding RetryResultCountCommand}"
-                    Visibility="{Binding CanRetryResultCount, Converter={StaticResource BooleanToVisibilityConverter}}"
+                    Visibility="{Binding CanRetryResultCount, Converter={StaticResource BooleanToVisibilityConverter}, FallbackValue=Collapsed}"
                     AutomationProperties.Name="{StaticResource Loc.Files.Count.Retry}"
                     ToolTip="{StaticResource Loc.Files.Count.Retry.Help}" />
                 <StackPanel HorizontalAlignment="Right" Orientation="Horizontal"><ui:Button MinWidth="84" Padding="8,2" Margin="0,0,8,0" Content="{StaticResource Loc.Selection.All}" Command="{Binding SelectAllCommand}" ToolTip="{StaticResource Loc.Selection.All.ToolTip}" ToolTipService.ShowOnDisabled="True" />

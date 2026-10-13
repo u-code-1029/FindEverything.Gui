@@ -196,7 +196,7 @@ public sealed class DesktopCompositionSmokeTests
             WorkspacePerformanceChecks.Verify(provider);
             CatalogColumnFilterUiChecks.Verify(provider);
             WorkspaceTransferBehaviorChecks.Verify();
-            CaptureOptionalEnglishQaScreenshots(provider, window, filesPage, catalogPage);
+            CaptureOptionalEnglishQaScreenshots(window);
             VerifyDynamicGridHighlighting();
             VerifyCatalogDensity(appearance, window, catalogPage);
             window.Close();
@@ -321,7 +321,12 @@ public sealed class DesktopCompositionSmokeTests
             var originalContext = page.DataContext;
             try
             {
-                page.DataContext = new WorkspaceLayoutFixture(page is CatalogPage);
+                page.DataContext = new WorkspaceLayoutFixture(page is CatalogPage)
+                {
+                    // Even a count retry must fit without shrinking the result
+                    // workspace below its compact-window acceptance threshold.
+                    CanRetryResultCount = page is FilesPage,
+                };
                 foreach (var (size, minimumRatio) in new[]
                          {
                              (new Size(1140, 790), 0.70),
@@ -576,42 +581,74 @@ public sealed class DesktopCompositionSmokeTests
         }
     }
 
-    private static void CaptureOptionalEnglishQaScreenshots(IServiceProvider provider, MainWindow window, FilesPage files, CatalogPage catalog)
+    private static void CaptureOptionalEnglishQaScreenshots(MainWindow originalWindow)
     {
         if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("FINDEVERYTHING_QA_DIR"))) return;
-        var navigation = provider.GetRequiredService<INavigationService>();
-        var width = window.Width; var height = window.Height;
-        // Run last: LocalizationScope can replace legacy literal captions. Production
-        // language changes deliberately restart instead of mutating existing views.
+        // Language changes restart the app. Both static XAML resources and the
+        // localizer's immutable snapshot need a fresh composition, not a tree walk.
         LocalizationBootstrapper.Apply(System.Windows.Application.Current,
             new LocalizationOptions { CultureName = LocalizationOptions.EnglishCultureName });
+        var configuration = new ConfigurationManager();
+        configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Appearance:Theme"] = "Light", ["Appearance:Backdrop"] = "None",
+            ["Localization:CultureName"] = LocalizationOptions.EnglishCultureName,
+        });
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton<IConfiguration>(configuration);
+        services.AddFindEverythingApplication(configuration)
+            .AddFindEverythingInfrastructure().AddProfileRuntime()
+            .AddDesktopPresentation(configuration, new AppPaths(
+                Path.Combine(Path.GetTempPath(), $"findeverything-english-{Guid.NewGuid():N}"),
+                Path.Combine(Path.GetTempPath(), $"findeverything-english-settings-{Guid.NewGuid():N}.json")));
+        services.AddSingleton<IDraftDecisionPrompt, DiscardDraftPrompt>();
+        services.AddSingleton<ICatalogMissingDataPrompt, LaterCatalogMissingDataPrompt>();
+        services.RemoveAll<ICatalogProjectionStore>();
+        using var provider = services.BuildServiceProvider();
+        MainWindow? window = null;
         try
         {
+            var localizer = provider.GetRequiredService<IAppLocalizer>();
+            Assert.Equal(LocalizationOptions.EnglishCultureName, localizer.Culture.Name);
+            window = provider.GetRequiredService<MainWindow>();
+            var files = provider.GetRequiredService<FilesPage>();
+            var catalog = provider.GetRequiredService<CatalogPage>();
+            files.DataContext = new WorkspaceLayoutFixture(false, localizer);
+            catalog.DataContext = new WorkspaceLayoutFixture(true, localizer);
+            Assert.Equal("Find files", files.Title);
+            Assert.Equal("Profile", Assert.IsType<Label>(catalog.FindName("CatalogProfileLabel")).Content);
+            var shell = Assert.IsType<NavigationView>(window.FindName("RootNavigation"));
+            Assert.Equal("File search", shell.MenuItems.OfType<NavigationViewItem>()
+                .Single(item => item.TargetPageType == typeof(FilesPage)).Content);
+            Assert.Equal("Structured view", shell.MenuItems.OfType<NavigationViewItem>()
+                .Single(item => item.TargetPageType == typeof(CatalogPage)).Content);
+            var navigation = provider.GetRequiredService<INavigationService>();
+            window.Show();
             foreach (var size in new[] { new Size(1360, 860), new Size(760, 640) })
             {
                 window.Width = size.Width; window.Height = size.Height;
                 foreach (var page in new Page[] { files, catalog })
                 {
-                    var original = page.DataContext;
-                    try
-                    {
-                        page.DataContext = new WorkspaceLayoutFixture(page is CatalogPage);
-                        navigation.Navigate(page.GetType());
-                        PumpDispatcherFor(window.Dispatcher, TimeSpan.FromMilliseconds(120));
-                        PumpLayout(window, page);
-                        var name = $"{(page is CatalogPage ? "catalog" : "files")}-en-{(size.Width > 900 ? "wide" : "small")}";
-                        SaveQaImage(Assert.IsAssignableFrom<FrameworkElement>(window.Content), name + ".png");
-                        if (size.Width < 900) SaveQaImage(Assert.IsAssignableFrom<FrameworkElement>(window.Content), name + "-200percent-render.png", 2);
-                    }
-                    finally { page.DataContext = original; }
+                    navigation.Navigate(page.GetType());
+                    PumpDispatcherFor(window.Dispatcher, TimeSpan.FromMilliseconds(120));
+                    PumpLayout(window, page);
+                    var name = $"{(page is CatalogPage ? "catalog" : "files")}-en-{(size.Width > 900 ? "wide" : "small")}";
+                    SaveQaImage(Assert.IsAssignableFrom<FrameworkElement>(window.Content), name + ".png");
+                    if (size.Width < 900) SaveQaImage(Assert.IsAssignableFrom<FrameworkElement>(window.Content), name + "-200percent-render.png", 2);
                 }
             }
         }
         finally
         {
+            if (window is not null)
+            {
+                window.Close();
+                PumpDispatcherUntil(window.Dispatcher, () => !window.IsVisible, TimeSpan.FromSeconds(5));
+            }
             LocalizationBootstrapper.Apply(System.Windows.Application.Current,
                 new LocalizationOptions { CultureName = LocalizationOptions.KoreanCultureName });
-            window.Width = width; window.Height = height;
+            originalWindow.Activate();
         }
     }
 
@@ -2423,18 +2460,22 @@ public sealed class DesktopCompositionSmokeTests
 
     private sealed class WorkspaceLayoutFixture
     {
-        private readonly object _profile = new { Id = "layout-sample", DisplayName = "프로젝트 폴더" };
+        private readonly object _profile;
+        private readonly IAppLocalizer _localizer;
         private readonly object _format = new { Id = "layout-output", DisplayName = "Full paths — quoted, comma separated" };
-        public WorkspaceLayoutFixture(bool isCatalog)
+        public WorkspaceLayoutFixture(bool isCatalog, IAppLocalizer? localizer = null)
         {
+            _localizer = localizer ?? new TestAppLocalizer();
+            var english = _localizer.Culture.TwoLetterISOLanguageName == "en";
+            _profile = new { Id = "layout-sample", DisplayName = english ? "Project folders" : "프로젝트 폴더" };
             SelectedProfile = _profile;
             SelectedOutputFormat = _format;
             var fields = new ProfileFieldDescriptor[]
             {
-                new("client", "client", "고객", 0, true, ProfileFieldValueKind.String, false, null, null),
-                new("project", "project", "프로젝트", 1, true, ProfileFieldValueKind.String, false, null, null),
-                new("date", "date", "기준일", 2, false, ProfileFieldValueKind.DateTime, true, "yyyyMMdd", "yyyy-MM-dd"),
-                new("note", "", "검토 메모", 3, false, ProfileFieldValueKind.String, true, null, null) { SourceKind = ProfileFieldSourceKind.UserInput },
+                new("client", "client", english ? "Client" : "고객", 0, true, ProfileFieldValueKind.String, false, null, null),
+                new("project", "project", english ? "Project" : "프로젝트", 1, true, ProfileFieldValueKind.String, false, null, null),
+                new("date", "date", english ? "Date" : "기준일", 2, false, ProfileFieldValueKind.DateTime, true, "yyyyMMdd", "yyyy-MM-dd"),
+                new("note", "", english ? "Review note" : "검토 메모", 3, false, ProfileFieldValueKind.String, true, null, null) { SourceKind = ProfileFieldSourceKind.UserInput },
             };
             Fields = isCatalog ? fields : [];
             SelectedCount = isCatalog ? 100000 : 1000000;
@@ -2444,10 +2485,10 @@ public sealed class DesktopCompositionSmokeTests
                 var path = Path.Combine(RootPath, name);
                 if (!isCatalog) return (object)new FileSearchItemViewModel(new IndexedPathEntry(path, name, RootPath,
                     IndexedPathKind.File, (index + 1) * 128000, DateTimeOffset.Parse("2026-05-21T09:00:00Z"),
-                    DateTimeOffset.Parse("2026-10-13T09:00:00Z"), false), new TestAppLocalizer());
+                    DateTimeOffset.Parse("2026-10-13T09:00:00Z"), false), _localizer);
                 return new CatalogItemViewModel(new CatalogItem(path, name, "sample", new object(),
                     new Dictionary<string, object?> { ["client"] = index % 2 == 0 ? "Apollo" : "Contoso", ["project"] = name,
-                        ["date"] = new DateTime(2026, 5, 21).AddDays(index) }, false), fields, new TestAppLocalizer());
+                        ["date"] = new DateTime(2026, 5, 21).AddDays(index) }, false), fields, _localizer);
             }).ToArray();
         }
         public bool HasIndex => true;
@@ -2458,6 +2499,8 @@ public sealed class DesktopCompositionSmokeTests
         public bool IsDetailsOpen => false;
         public bool IsBusy => false;
         public bool IsSearching => false;
+        public bool CanRetryResultCount { get; set; }
+        public System.Windows.Input.ICommand RetryResultCountCommand { get; } = new CommunityToolkit.Mvvm.Input.RelayCommand(static () => { });
         public bool IsSetupStateVisible => false;
         public bool IsNoResultsVisible => false;
         public bool HasValueMappings => false;
@@ -2473,10 +2516,10 @@ public sealed class DesktopCompositionSmokeTests
         public bool UsesQuerySelection { get; set; }
         public int SelectedCount { get; }
         public string RootPath { get; set; } = @"C:\Archive\Projects";
-        public string DetailsButtonText => "자세히";
-        public string ResultSummary => "1,000,000개 항목";
-        public string FilterSummary => "100,000개 항목";
-        public string StatusMessage => "준비됨";
+        public string DetailsButtonText => _localizer.Get("Loc.Workspace.Details", "자세히");
+        public string ResultSummary => _localizer.Format("Loc.Catalog.Filter.Empty", "{0:N0}개 항목", 1000000);
+        public string FilterSummary => _localizer.Format("Loc.Catalog.Filter.Empty", "{0:N0}개 항목", 100000);
+        public string StatusMessage => _localizer.Get("Loc.Common.Ready", "준비됨");
         public string ProgressMessage => string.Empty;
         public object[] Profiles => [_profile];
         public object? SelectedProfile { get; set; }
