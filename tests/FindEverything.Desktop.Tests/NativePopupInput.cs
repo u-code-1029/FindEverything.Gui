@@ -1,6 +1,9 @@
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Controls.Primitives;
+using System.Windows.Interop;
+using System.Windows.Media;
 using System.Windows.Threading;
 using Xunit;
 
@@ -27,6 +30,29 @@ internal sealed class NativePopupInput : IDisposable
         element.UpdateLayout();
         Assert.True(element.IsVisible && element.ActualWidth > 0 && element.ActualHeight > 0);
         Click(element.PointToScreen(new Point(element.ActualWidth * xFraction, element.ActualHeight / 2)));
+    }
+
+    public string Describe(FrameworkElement element, Popup? popup = null)
+    {
+        var center = element.PointToScreen(new Point(element.ActualWidth / 2, element.ActualHeight / 2));
+        _ = GetCursorPos(out var pointer);
+        var source = PresentationSource.FromVisual(element) as HwndSource;
+        var captured = Mouse.Captured as DependencyObject;
+        var root = source?.RootVisual as UIElement;
+        var hit = root?.InputHitTest(root.PointFromScreen(center));
+        var child = popup?.Child as UIElement;
+        var childHit = child?.InputHitTest(child.PointFromScreen(center));
+        var toggle = element is System.Windows.Controls.ComboBox combo ? combo.Template?.FindName("ToggleButton", combo) : null;
+        var atCenter = WindowFromPoint(new NativePoint { X = (int)Math.Round(center.X), Y = (int)Math.Round(center.Y) });
+        string Name(object? candidate) => candidate is FrameworkElement view
+            ? $"{view.GetType().Name}#{view.Name}({view.ActualWidth:F1}x{view.ActualHeight:F1}, visible={view.IsVisible},hit={view.IsHitTestVisible},enabled={view.IsEnabled})"
+            : candidate?.GetType().Name ?? "none";
+        return $"center={center},cursor={pointer.X},{pointer.Y},target={Name(element)}," +
+            $"windowActive={_window.IsActive},foreground=0x{GetForegroundWindow():X},targetHwnd=0x{source?.Handle ?? IntPtr.Zero:X}," +
+            $"hwndAtCenter=0x{atCenter:X},captureHwnd=0x{GetCapture():X},WpfCaptured={Name(captured)},mouseOver={Name(Mouse.DirectlyOver)}," +
+            $"keyboardFocus={Name(Keyboard.FocusedElement)},root={Name(root)},rootHit={Name(hit)},childHit={Name(childHit)}," +
+            $"popupOpen={popup?.IsOpen},popupLoaded={popup?.IsLoaded},popupChild={Name(popup?.Child)}," +
+            $"toggle={Name(toggle)}";
     }
 
     public void Click(Point screenPoint)
@@ -103,4 +129,7 @@ internal sealed class NativePopupInput : IDisposable
     [return: MarshalAs(UnmanagedType.Bool)] private static extern bool SetCursorPos(int x, int y);
     [DllImport("user32.dll", SetLastError = true)]
     private static extern uint SendInput(uint count, [In] NativeInput[] inputs, int inputSize);
+    [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] private static extern IntPtr GetCapture();
+    [DllImport("user32.dll")] private static extern IntPtr WindowFromPoint(NativePoint point);
 }

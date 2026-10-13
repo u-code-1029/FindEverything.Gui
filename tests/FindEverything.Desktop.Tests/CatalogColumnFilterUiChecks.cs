@@ -191,8 +191,16 @@ internal static class CatalogColumnFilterUiChecks
         void ChooseCondition(StackPanel panel)
         {
             var combo = panel.Children.OfType<ComboBox>().Single();
+            combo.AddHandler(Mouse.PreviewMouseDownEvent, new MouseButtonEventHandler((_, e) =>
+                Console.WriteLine($"[Native popup ComboDown] source={e.OriginalSource?.GetType().Name},handled={e.Handled}; {native.Describe(combo, popup)}")), true);
+            panel.AddHandler(Mouse.PreviewMouseDownEvent, new MouseButtonEventHandler((_, e) =>
+                Console.WriteLine($"[Native popup BodyDown] source={e.OriginalSource?.GetType().Name},handled={e.Handled}; {native.Describe(combo, popup)}")), true);
+            Console.WriteLine("[Native popup Before combo click] " + native.Describe(combo, popup));
+            CaptureFlyoutQa(grid, flyout, "catalog-native-before-combo.png");
             native.Click(combo);
-            PumpUntil(() => combo.IsDropDownOpen);
+            Console.WriteLine("[Native popup After combo click] " + native.Describe(combo, popup) + $", dropdownOpen={combo.IsDropDownOpen}");
+            if (flyout.IsOpen && popup.IsOpen) CaptureFlyoutQa(grid, flyout, "catalog-native-after-combo.png");
+            PumpUntil(() => combo.IsDropDownOpen, () => native.Describe(combo, popup));
             native.Key(0x1B); // Escape only dismisses the nested ComboBox popup.
             PumpUntil(() => !combo.IsDropDownOpen);
             Assert.True(popup.IsOpen);
@@ -528,7 +536,7 @@ internal static class CatalogColumnFilterUiChecks
         }
     }
 
-    private static void PumpUntil(Func<bool> condition)
+    private static void PumpUntil(Func<bool> condition, Func<string>? diagnostics = null)
     {
         if (condition()) return;
         var frame = new DispatcherFrame();
@@ -538,7 +546,7 @@ internal static class CatalogColumnFilterUiChecks
         timer.Start();
         try { Dispatcher.PushFrame(frame); }
         finally { timer.Stop(); }
-        Assert.True(condition(), "The asynchronous live filter did not update its bounded preview.");
+        Assert.True(condition(), "The asynchronous live filter did not update its bounded preview. " + diagnostics?.Invoke());
     }
 
     private static ProfileFieldDescriptor Field(string id, ProfileFieldValueKind kind) => new(id, id, id, 0, false, kind, true, null, null);
