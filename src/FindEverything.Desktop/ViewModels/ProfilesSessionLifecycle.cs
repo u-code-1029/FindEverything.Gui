@@ -15,6 +15,7 @@ public partial class ProfilesViewModel
     private Task _previewTask = Task.CompletedTask;
     private Task? _activationTask;
     private CancellationToken _activationToken;
+    private long _editableProfilesVersion;
 
     public Task ActivateAsync(CancellationToken cancellationToken = default)
     {
@@ -36,7 +37,6 @@ public partial class ProfilesViewModel
     private async Task LoadEditableProfilesOnActivationAsync(CancellationToken cancellationToken)
     {
         await RefreshEditableProfilesAsync(cancellationToken: cancellationToken).ConfigureAwait(true);
-        if (!cancellationToken.IsCancellationRequested && !_disposed) _editableProfilesLoaded = true;
     }
 
     public void Deactivate()

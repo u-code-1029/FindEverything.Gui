@@ -51,6 +51,7 @@ public partial class ProfilePlaygroundViewModel : ObservableObject, IPageSession
     private readonly ILogger<ProfilePlaygroundViewModel> _logger;
     private string? _preferredProfileId;
     private long _evaluationGeneration;
+    private long _busyOperationVersion;
     private volatile bool _isActive;
     private volatile bool _disposed;
     private ProfileCatalogSnapshot? _pendingCatalog;
@@ -190,7 +191,7 @@ public partial class ProfilePlaygroundViewModel : ObservableObject, IPageSession
         // Re-checking the same path can change its file/folder values. A previous
         // input-rule preview belongs to the old sample even when InputPath is unchanged.
         ClearSelectionTest();
-        IsBusy = true;
+        var busyOperation = BeginBusyOperation();
         Summary = L(
             "Loc.Playground.Status.Evaluating",
             "저장된 프로필로 절대 경로를 확인하고 있습니다.");
@@ -246,8 +247,22 @@ public partial class ProfilePlaygroundViewModel : ObservableObject, IPageSession
         }
         finally
         {
-            if (evaluationGeneration == Volatile.Read(ref _evaluationGeneration)) IsBusy = false;
+            CompleteBusyOperation(busyOperation);
         }
+    }
+
+    private long BeginBusyOperation()
+    {
+        var version = Interlocked.Increment(ref _busyOperationVersion);
+        IsBusy = true;
+        return version;
+    }
+
+    private void CompleteBusyOperation(long version)
+    {
+        // Editing inputs invalidates results, not the outstanding operation's
+        // ownership of IsBusy. Leaving/re-entering can instead start a new owner.
+        if (version == Volatile.Read(ref _busyOperationVersion)) IsBusy = false;
     }
 
     private void InvalidateEvaluation(
@@ -299,6 +314,7 @@ public partial class ProfilePlaygroundViewModel : ObservableObject, IPageSession
     {
         _isActive = false;
         Interlocked.Increment(ref _evaluationGeneration);
+        Interlocked.Increment(ref _busyOperationVersion);
         _selectionTestCancellation?.Cancel();
         IsBusy = false;
     }

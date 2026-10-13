@@ -1338,14 +1338,15 @@ public sealed class DesktopCompositionSmokeTests
         var templateBox = Assert.IsType<Wpf.Ui.Controls.TextBox>(
             page.FindEditorElement<FrameworkElement>("ProfilePathTemplateTextBox"));
         Assert.True(templateBox.IsReadOnly);
+        page.ActiveEditorList!.ScrollToSection("AssignmentPicker");
+        PumpLayout(window, page);
         Assert.IsAssignableFrom<CardControl>(page.FindEditorElement<FrameworkElement>("AssignmentPickerPanel"));
         Assert.NotEmpty(viewModel.GuidedPathSegments);
         VerifyGuidedPathButtonAuthoring(window, viewModel);
 
         PumpLayout(window, page);
         VerifyProfilesFluentControls(page);
-        var editorScrollViewer = Assert.IsAssignableFrom<ScrollViewer>(
-            page.FindName("ProfileEditorScrollViewer"));
+        var editorScrollViewer = Assert.IsAssignableFrom<ScrollViewer>(page.EditorScrollViewer);
         Assert.Equal(new Thickness(0, 0, 16, 0), editorScrollViewer.Padding);
         Assert.IsAssignableFrom<CardControl>(page.FindName("ProfileEditorStepRail"));
         Assert.IsType<Wpf.Ui.Controls.Button>(page.FindName("PreviousProfileStepButton"));
@@ -1359,10 +1360,12 @@ public sealed class DesktopCompositionSmokeTests
         PumpDispatcherFor(window.Dispatcher, TimeSpan.FromMilliseconds(20));
         Assert.Equal(ProfileEditorStep.PathAndFields, viewModel.CurrentEditorStep);
         Assert.True(viewModel.IsPathAndFieldsStep);
-        Assert.Equal(0, editorScrollViewer.VerticalOffset);
+        Assert.Equal(0, Assert.IsAssignableFrom<ScrollViewer>(page.EditorScrollViewer).VerticalOffset);
 
         viewModel.GoToEditorStepCommand.Execute(ProfileEditorStep.DataSources);
         PumpDispatcherFor(window.Dispatcher, TimeSpan.FromMilliseconds(20));
+        page.ActiveEditorList!.ScrollToSection("UserInputFields");
+        PumpLayout(window, page);
         var userInputEditor = Assert.IsAssignableFrom<CardControl>(page.FindEditorElement<FrameworkElement>("UserInputFieldsEditor"));
         Assert.Equal(Visibility.Visible, userInputEditor.Visibility);
         Assert.Contains(
@@ -1508,6 +1511,8 @@ public sealed class DesktopCompositionSmokeTests
         Assert.IsAssignableFrom<System.Windows.Controls.TextBlock>(page.FindName("EditorFooterStatusText"));
         Assert.Empty(FindVisualChildren<Wpf.Ui.Controls.InfoBar>(editorFooter));
 
+        vm.GoToEditorStepCommand.Execute(ProfileEditorStep.Profile);
+        PumpDispatcherFor(page.Dispatcher, TimeSpan.FromMilliseconds(30));
         var modeButtons = FindVisualChildren<RadioButton>(page)
             .Where(static button =>
                 System.Windows.Automation.AutomationProperties.GetName(button) is
@@ -1516,6 +1521,8 @@ public sealed class DesktopCompositionSmokeTests
         Assert.Equal(2, modeButtons.Length);
         Assert.All(modeButtons, static button =>
             Assert.Equal("ProfileEditorMode", button.GroupName));
+        vm.GoToEditorStepCommand.Execute(previousStep);
+        PumpDispatcherFor(page.Dispatcher, TimeSpan.FromMilliseconds(30));
     }
 
     private static void VerifyGuidedPathButtonAuthoring(

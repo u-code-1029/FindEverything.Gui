@@ -3,14 +3,16 @@ using System.Windows.Input;
 using System.Windows.Media;
 using FindEverything.Desktop.ViewModels;
 using FindEverything.Desktop.Behaviors;
+using FindEverything.Desktop.Views.Controls;
 
 namespace FindEverything.Desktop.Views.Pages;
 
 public partial class ProfilesPage
 {
-    private Grid? _guidedWorkspace;
-    private System.Windows.FrameworkElement? _assignmentPicker;
+    private ProfileEditorList? _activeEditorList;
     private bool? _compact;
+    internal ProfileEditorList? ActiveEditorList => _activeEditorList;
+    internal ScrollViewer? EditorScrollViewer => _activeEditorList?.ScrollViewer;
 
     public ProfilesPage(ProfilesViewModel viewModel)
     {
@@ -31,21 +33,11 @@ public partial class ProfilesPage
         if (ProfileStepButtons is null) return;
         var compact = ProfilePageLayout.ActualWidth < 900;
         if (_compact != compact) { ProfileStepButtons.Columns = compact ? 2 : 3; _compact = compact; }
-        if (_guidedWorkspace is not { IsLoaded: true } workspace || _assignmentPicker is not { IsLoaded: true } picker) return;
-        var showPicker = picker.Visibility == System.Windows.Visibility.Visible;
-        Grid.SetColumn(picker, compact ? 0 : 2);
-        Grid.SetRow(picker, compact ? 1 : 0);
-        Grid.SetColumnSpan(picker, compact ? 3 : 1);
-        workspace.ColumnDefinitions[0].Width = new System.Windows.GridLength(showPicker && !compact ? 0.65 : 1, System.Windows.GridUnitType.Star);
-        workspace.ColumnDefinitions[1].Width = new System.Windows.GridLength(showPicker && !compact ? 16 : 0);
-        workspace.ColumnDefinitions[2].Width = new System.Windows.GridLength(showPicker && !compact ? 0.35 : 0, System.Windows.GridUnitType.Star);
-        picker.Margin = compact ? new System.Windows.Thickness(0, 12, 0, 0) : new System.Windows.Thickness(0);
     }
 
     private void OnEditorStepContentLoaded(object sender, System.Windows.RoutedEventArgs e)
     {
-        _guidedWorkspace = FindEditorElement<Grid>("GuidedWorkspace");
-        _assignmentPicker = FindEditorElement<System.Windows.FrameworkElement>("AssignmentPickerPanel");
+        _activeEditorList = sender as ProfileEditorList;
         ApplyWorkspaceLayout();
     }
 
@@ -71,7 +63,7 @@ public partial class ProfilesPage
 
         _ = Dispatcher.BeginInvoke(
             System.Windows.Threading.DispatcherPriority.Loaded,
-            new Action(() => ProfileEditorScrollViewer.ScrollToTop()));
+            new Action(() => EditorScrollViewer?.ScrollToTop()));
     }
 
     private void OnAssignmentPickerRequested(object? sender, EventArgs e)
@@ -83,7 +75,7 @@ public partial class ProfilesPage
 
         _ = Dispatcher.BeginInvoke(
             System.Windows.Threading.DispatcherPriority.Loaded,
-            new Action(() => _assignmentPicker?.BringIntoView()));
+            new Action(() => _activeEditorList?.ScrollToSection("AssignmentPicker")));
     }
 
     private void OnNestedDataGridPreviewMouseWheel(

@@ -139,12 +139,13 @@ public sealed class ProfilesValidationTests
         Assert.Equal(Wpf.Ui.Controls.InfoBarSeverity.Success, vm.EditorStatusSeverity);
     }
 
-    private static ProfilesViewModel Create(StubAuthoringService service, IProfilePathTemplateCompiler? compiler = null) => new(
+    private static ProfilesViewModel Create(IProfileAuthoringService service, IProfilePathTemplateCompiler? compiler = null) => new(
         new StubCatalog(), service, compiler ?? new ProfilePathTemplateCompiler(), new FixedCanonicalizer(),
         null!, new ApplicationOperationCoordinator(NullLogger<ApplicationOperationCoordinator>.Instance),
         null!, null!, null!, new TestAppLocalizer(), NullLogger<ProfilesViewModel>.Instance);
 
-    internal static ProfilesViewModel CreateForUi(IProfilePathTemplateCompiler? compiler = null) => Create(new StubAuthoringService(), compiler);
+    internal static ProfilesViewModel CreateForUi(IProfilePathTemplateCompiler? compiler = null,
+        IProfileAuthoringService? authoring = null) => Create(authoring ?? new StubAuthoringService(), compiler);
 
     private sealed class FixedCanonicalizer : IProfilePathCanonicalizer
     {

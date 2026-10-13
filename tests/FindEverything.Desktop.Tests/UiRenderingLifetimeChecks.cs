@@ -1,9 +1,11 @@
 using System.Collections;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 using System.Windows.Threading;
 using FindEverything.Desktop.Localization;
 using FindEverything.Desktop.ViewModels;
+using FindEverything.Desktop.Views.Controls;
 using FindEverything.Desktop.Views.Pages;
 using Xunit;
 
@@ -16,6 +18,7 @@ internal static class UiRenderingLifetimeChecks
     {
         VerifyLocalizationDoesNotReadVirtualRows();
         VerifyOnlyTheActiveProfileStepIsConstructed();
+        VerifyProfileCardsRecycleWithoutLosingDraftEdits();
     }
 
     private static void VerifyLocalizationDoesNotReadVirtualRows()
@@ -58,6 +61,8 @@ internal static class UiRenderingLifetimeChecks
             vm.CurrentEditorStep = ProfileEditorStep.DataSources;
             Pump(); window.UpdateLayout(); Pump();
             Assert.False(path.IsLoaded);
+            page.ActiveEditorList!.ScrollToSection("UserInputFields");
+            Pump(); window.UpdateLayout(); Pump();
             var dataSources = Assert.IsAssignableFrom<Wpf.Ui.Controls.CardControl>(page.FindEditorElement<FrameworkElement>("UserInputFieldsEditor"));
             vm.AddUserInputFieldCommand.Execute(null);
             var field = Assert.Single(vm.DraftUserInputFields);
@@ -71,12 +76,74 @@ internal static class UiRenderingLifetimeChecks
 
             vm.CurrentEditorStep = ProfileEditorStep.DataSources;
             Pump(); window.UpdateLayout(); Pump();
+            page.ActiveEditorList!.ScrollToSection("UserInputFields");
+            Pump(); window.UpdateLayout(); Pump();
             var restored = Assert.IsAssignableFrom<Wpf.Ui.Controls.CardControl>(page.FindEditorElement<FrameworkElement>("UserInputFieldsEditor"));
             Assert.NotSame(dataSources, restored);
             Assert.Same(field, Assert.Single(vm.DraftUserInputFields));
             Assert.Equal("Unsaved draft must survive step views", vm.DraftDisplayName);
         }
         finally { window.Close(); Pump(); }
+    }
+
+    private static void VerifyProfileCardsRecycleWithoutLosingDraftEdits()
+    {
+        using var vm = ProfilesValidationTests.CreateForUi();
+        var page = new ProfilesPage(vm);
+        var window = new Window { Content = page, Width = 1100, Height = 760, ShowInTaskbar = false };
+        try
+        {
+            window.Show(); Pump(); window.UpdateLayout(); Pump();
+            vm.EditorMode = ProfileEditorMode.Expert;
+            vm.DraftFields.Clear();
+            for (var index = 0; index < 200; index++)
+                vm.DraftFields.Add(new ProfileFieldDraftViewModel
+                {
+                    FieldId = "field-" + index, Header = "Column " + index, GroupName = "field" + index,
+                });
+            vm.CurrentEditorStep = ProfileEditorStep.PathAndFields;
+            Pump(); window.UpdateLayout(); Pump();
+            var list = Assert.IsType<ProfileEditorList>(page.ActiveEditorList);
+            Assert.True(VirtualizingPanel.GetIsVirtualizing(list));
+            Assert.Equal(VirtualizationMode.Recycling, VirtualizingPanel.GetVirtualizationMode(list));
+            var entries = list.Items.Cast<ProfileEditorEntry>().ToArray();
+            var first = entries.Single(entry => ReferenceEquals(entry.Value, vm.DraftFields[0]));
+            var last = entries.Single(entry => ReferenceEquals(entry.Value, vm.DraftFields[^1]));
+            Assert.Equal(200, entries.Count(entry => entry.Value is ProfileFieldDraftViewModel));
+            Assert.InRange(Descendants<ListBoxItem>(list).Count(), 1, 40);
+
+            list.ScrollIntoView(first); Pump(); window.UpdateLayout(); Pump();
+            var editor = Descendants<Wpf.Ui.Controls.TextBox>(list).Single(box =>
+                ReferenceEquals(box.DataContext, first.Value)
+                && box.GetBindingExpression(TextBox.TextProperty)?.ParentBinding.Path.Path == "Header");
+            editor.SetCurrentValue(TextBox.TextProperty, "Edited through the visible control");
+            editor.GetBindingExpression(TextBox.TextProperty)!.UpdateSource();
+            Pump();
+            Assert.Equal("Edited through the visible control", vm.DraftFields[0].Header);
+            Assert.Same(first, list.Items.Cast<ProfileEditorEntry>().Single(entry => ReferenceEquals(entry.Value, first.Value)));
+
+            list.ScrollIntoView(last); Pump(); window.UpdateLayout(); Pump();
+            Assert.InRange(Descendants<ListBoxItem>(list).Count(), 1, 40);
+            Assert.Null(list.ItemContainerGenerator.ContainerFromItem(first));
+            list.ScrollIntoView(first); Pump(); window.UpdateLayout(); Pump();
+            var restored = Descendants<Wpf.Ui.Controls.TextBox>(list).Single(box =>
+                ReferenceEquals(box.DataContext, first.Value)
+                && box.GetBindingExpression(TextBox.TextProperty)?.ParentBinding.Path.Path == "Header");
+            Assert.Equal("Edited through the visible control", restored.Text);
+            Assert.Equal("Edited through the visible control", vm.DraftFields[0].Header);
+            Assert.InRange(Descendants<ListBoxItem>(list).Count(), 1, 40);
+        }
+        finally { window.Close(); Pump(); }
+    }
+
+    private static IEnumerable<T> Descendants<T>(DependencyObject parent) where T : DependencyObject
+    {
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(parent); index++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, index);
+            if (child is T match) yield return match;
+            foreach (var descendant in Descendants<T>(child)) yield return descendant;
+        }
     }
 
     private static void Pump()

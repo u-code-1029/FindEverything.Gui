@@ -8,6 +8,7 @@ namespace FindEverything.Application.Results;
 public sealed class ResultSelectionController(QuerySelection selection) : IDisposable
 {
     private CancellationTokenSource? _request;
+    private readonly HashSet<CancellationTokenSource> _additiveRequests = [];
     private long _version;
     private bool _disposed;
 
@@ -16,6 +17,7 @@ public sealed class ResultSelectionController(QuerySelection selection) : IDispo
         _version++;
         _request?.Cancel();
         _request = null;
+        foreach (var request in _additiveRequests.ToArray()) request.Cancel();
     }
 
     public async Task<bool> SelectAsync<T>(IResultQuerySession<T> query, string key,
@@ -23,6 +25,8 @@ public sealed class ResultSelectionController(QuerySelection selection) : IDispo
         Func<bool> isCurrent)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        if (additive && (!range || anchor < 0 || index < 0) && selection.Baseline is { } baseline)
+            return await ToggleBaselineAsync(baseline, key, isCurrent);
         Cancel();
         var version = _version;
         if ((!range || anchor < 0 || index < 0) && selection.Baseline is null)
@@ -46,10 +50,13 @@ public sealed class ResultSelectionController(QuerySelection selection) : IDispo
                     {
                         var page = await query.ReadRangeAsync(start, Math.Min(500, end - start + 1), cancellation.Token)
                             .ConfigureAwait(false);
-                        foreach (var item in page.Items)
+                        var keys = page.Items.Select(keySelector).ToArray();
+                        var baseline = captured.Baseline is { } source
+                            ? await source.ReadMembershipAsync(keys, cancellation.Token).ConfigureAwait(false) : null;
+                        foreach (var itemKey in keys)
                         {
                             cancellation.Token.ThrowIfCancellationRequested();
-                            captured.Set(keySelector(item), true);
+                            captured.SetResolvedMembership(itemKey, true, baseline?.Contains(itemKey) ?? false);
                         }
                     }
                 }
@@ -62,6 +69,30 @@ public sealed class ResultSelectionController(QuerySelection selection) : IDispo
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { return false; }
         finally { if (ReferenceEquals(_request, cancellation)) _request = null; }
+    }
+
+    private async Task<bool> ToggleBaselineAsync(IQuerySelectionKeySet baseline, string key, Func<bool> isCurrent)
+    {
+        // A new individual click replaces an unfinished range, but it must not
+        // discard other individual clicks whose membership reads are pending.
+        if (_request is not null) Cancel();
+        var version = _version;
+        using var cancellation = new CancellationTokenSource();
+        using var lease = baseline.Retain();
+        _additiveRequests.Add(cancellation);
+        try
+        {
+            var membership = await lease.ReadMembershipAsync([key], cancellation.Token);
+            cancellation.Token.ThrowIfCancellationRequested();
+            if (_disposed || version != _version || !ReferenceEquals(baseline, selection.Baseline) || !isCurrent()) return false;
+            var member = membership.Contains(key);
+            // Compute the toggle against current state, not a pre-await copy.
+            // Two rapid clicks on the same row therefore still cancel out.
+            selection.SetResolvedMembership(key, !selection.ContainsResolvedMembership(key, member), member);
+            return true;
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { return false; }
+        finally { _additiveRequests.Remove(cancellation); }
     }
 
     public void Dispose() { if (_disposed) return; _disposed = true; Cancel(); }

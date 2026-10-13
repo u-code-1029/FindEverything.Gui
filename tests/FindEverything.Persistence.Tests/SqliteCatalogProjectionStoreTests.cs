@@ -8,6 +8,35 @@ namespace FindEverything.Persistence.Tests;
 
 public sealed class SqliteCatalogProjectionStoreTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Default_path_paging_walks_the_primary_key_without_a_temporary_sort(bool descending)
+    {
+        using var workspace = new Workspace();
+        using var store = new SqliteCatalogProjectionStore(workspace.Database);
+        var snapshot = Publish(store, workspace.Scope, [Field("name")], Enumerable.Range(0, 48)
+            .Reverse().Select(index => workspace.Item($"item-{index:D3}", new() { ["name"] = index.ToString() })).ToArray());
+        await using var query = store.OpenQuery(snapshot, new(Descending: descending));
+        var page = await query.ReadRangeAsync(11, 5);
+        var expected = Enumerable.Range(0, 48).Select(index => $"item-{index:D3}");
+        if (descending) expected = expected.Reverse();
+        Assert.Equal(expected.Skip(11).Take(5), page.Items.Select(row => row.RelativePath));
+        // Inspect the actual query builder, not a second SQL statement that could
+        // accidentally stay fast while production reintroduces a full sort.
+        using var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={workspace.Database};Pooling=false");
+        connection.Open();
+        using var transaction = connection.BeginTransaction(deferred: true);
+        var builder = query.GetType().GetMethod("BuildCommand", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        using var command = (Microsoft.Data.Sqlite.SqliteCommand)builder.Invoke(query, [connection, transaction, "user_inputs", null, 11, 5])!;
+        command.CommandText = "EXPLAIN QUERY PLAN SELECT r.full_path " + command.CommandText;
+        using var reader = command.ExecuteReader();
+        var plans = new List<string>();
+        while (reader.Read()) plans.Add(reader.GetString(3));
+        Assert.Contains(plans, value => value.Contains("PRIMARY KEY", StringComparison.Ordinal));
+        Assert.DoesNotContain(plans, value => value.Contains("TEMP B-TREE", StringComparison.Ordinal));
+    }
+
     [Fact]
     public async Task CacheRequiresExactProfileFingerprintCultureAndIndexGeneration()
     {

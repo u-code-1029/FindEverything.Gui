@@ -1068,6 +1068,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
     [RelayCommand(CanExecute = nameof(CanValidateAndSave))]
     private async Task ValidateDraftAsync()
     {
+        var revision = _editorSession.Revision;
         ClearDefinitionValidationIssues();
         if (HasNumericValidationError)
         {
@@ -1078,7 +1079,6 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
         try
         {
             var manifest = BuildManifest();
-            var revision = _editorSession.Revision;
             IsEditorBusy = true;
             var review = await Task.Run(() => _authoringService.Validate(manifest)).ConfigureAwait(true);
             if (_disposed || revision != _editorSession.Revision) return;
@@ -1090,6 +1090,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
         }
         catch (InvalidOperationException exception)
         {
+            if (_disposed || revision != _editorSession.Revision) return;
             _logger.LogWarning(exception, "Could not validate the profile draft.");
             ApplyBuildValidationIssues(exception);
             SetEditorStatus(
@@ -1500,7 +1501,6 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
         RefreshAvailableSelectionFields();
         _savedRuleDefinition = JsonSerializer.Serialize(BuildManifest());
         _hasUserChanges = false;
-        RefreshNumericValidation();
         OpenSavedProfileInPlaygroundCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(CanOpenSavedProfileInPlayground));
     }
@@ -1533,12 +1533,14 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
 
     private async Task RefreshEditableProfilesAsync(string? preferredProfileId = null, CancellationToken cancellationToken = default)
     {
+        var version = ++_editableProfilesVersion;
         try
         {
             var profiles = await _authoringService.ListAsync(cancellationToken).ConfigureAwait(true);
             cancellationToken.ThrowIfCancellationRequested();
-            if (_disposed) return;
+            if (_disposed || version != _editableProfilesVersion) return;
             EditableProfiles = profiles;
+            _editableProfilesLoaded = true;
             var preferredId = preferredProfileId ?? SelectedEditableProfile?.Id;
             SelectedEditableProfile = profiles.FirstOrDefault(profile =>
                     string.Equals(profile.Id, preferredId, StringComparison.OrdinalIgnoreCase))
@@ -1547,6 +1549,8 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
         catch (Exception exception)
         {
+            if (_disposed || version != _editableProfilesVersion) return;
+            _editableProfilesLoaded = false;
             _logger.LogWarning(exception, "Could not enumerate editable profiles.");
             SetEditorStatus(
                 L(
@@ -1588,7 +1592,12 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
         {
             if (_disposed) return;
             _editableProfilesLoaded = false;
-            if (_isActive) ApplySnapshot(eventArgs.Current, SelectedProfile?.Id);
+            ++_editableProfilesVersion;
+            if (_isActive)
+            {
+                ApplySnapshot(eventArgs.Current, SelectedProfile?.Id);
+                _ = RefreshEditableProfilesAsync();
+            }
             else _profileSnapshotPending = true;
             OpenSavedProfileInPlaygroundCommand.NotifyCanExecuteChanged();
             OnPropertyChanged(nameof(CanOpenSavedProfileInPlayground));

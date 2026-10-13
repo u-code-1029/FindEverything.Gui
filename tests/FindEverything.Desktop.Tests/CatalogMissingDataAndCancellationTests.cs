@@ -34,6 +34,8 @@ public sealed class CatalogMissingDataAndCancellationTests
         var firstRow = Assert.Single(fixture.ViewModel.Items.Cast<CatalogItemViewModel>());
         await fixture.ViewModel.SelectRowAsync(firstRow, additive: true, range: false);
         Assert.True(firstRow.IsSelected);
+        Assert.True(fixture.ViewModel.CopySelectionCommand.CanExecute(null));
+        Assert.True(fixture.ViewModel.ExportSelectionCommand.CanExecute(null));
         Assert.True(fixture.ViewModel.CancelCommand.CanExecute(null));
         fixture.ViewModel.CancelCommand.Execute(null);
         await load.WaitAsync(TimeSpan.FromSeconds(2));
@@ -44,6 +46,9 @@ public sealed class CatalogMissingDataAndCancellationTests
         Assert.True(fixture.ViewModel.HasLoadedItems);
         Assert.Same(firstRow, Assert.Single(fixture.ViewModel.Items.Cast<CatalogItemViewModel>()));
         Assert.False(fixture.ViewModel.IsResultCountPending);
+        Assert.False(fixture.ViewModel.SelectAllCommand.CanExecute(null));
+        Assert.True(fixture.ViewModel.LoadCommand.CanExecute(null));
+        Assert.DoesNotContain("전체 개수 확인 중", fixture.ViewModel.FilterSummary, StringComparison.Ordinal);
         Assert.Equal(0, fixture.Service.ScanCalls);
         Assert.Equal(0, fixture.Service.LoadCalls);
 
@@ -55,6 +60,42 @@ public sealed class CatalogMissingDataAndCancellationTests
         Assert.Same(firstRow, Assert.Single(fixture.ViewModel.Items.Cast<CatalogItemViewModel>()));
         Assert.True(firstRow.IsSelected);
         Assert.False(fixture.Query.IsDisposed); // The visible page still owns its query.
+    });
+
+    [Fact]
+    public Task Cancelled_count_can_be_retried_manually_without_rescanning_or_adopting_the_old_count() => OnStaAsync(async () =>
+    {
+        using var fixture = new Fixture(cacheExists: true, ignoreCountCancellation: true);
+        var initialLoad = fixture.ViewModel.LoadCommand.ExecuteAsync(null);
+        await fixture.Query.CountStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var initialRow = Assert.Single(fixture.ViewModel.Items.Cast<CatalogItemViewModel>());
+        fixture.ViewModel.CancelCommand.Execute(null);
+        await initialLoad.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.False(fixture.ViewModel.SelectAllCommand.CanExecute(null));
+
+        var retryQuery = new Query(ignoreCountCancellation: false, cacheCount: 1);
+        fixture.Store.ReplacementQuery = retryQuery;
+        await fixture.ViewModel.LoadCommand.ExecuteAsync(null).WaitAsync(TimeSpan.FromSeconds(5));
+        var retriedRow = Assert.Single(fixture.ViewModel.Items.Cast<CatalogItemViewModel>());
+        Assert.NotSame(initialRow, retriedRow);
+        Assert.True(fixture.Query.IsDisposed);
+        Assert.False(fixture.ViewModel.IsBusy);
+        Assert.False(fixture.ViewModel.IsResultCountPending);
+        Assert.True(fixture.ViewModel.SelectAllCommand.CanExecute(null));
+        Assert.Equal(2, fixture.Store.OpenQueryCalls);
+        Assert.Equal(0, fixture.Service.ScanCalls);
+        Assert.Equal(0, fixture.Service.LoadCalls);
+        fixture.ViewModel.SelectAllCommand.Execute(null);
+        Assert.Equal(1, fixture.ViewModel.SelectedCount);
+
+        // Completion of the abandoned, uncooperative count cannot overwrite
+        // this retry's rows, exact total, or selection.
+        fixture.Query.ReleaseCount.TrySetResult(99);
+        await Task.Delay(100);
+        Assert.Same(retriedRow, Assert.Single(fixture.ViewModel.Items.Cast<CatalogItemViewModel>()));
+        Assert.True(retriedRow.IsSelected);
+        Assert.Equal(1, fixture.ViewModel.SelectedCount);
+        Assert.False(fixture.ViewModel.IsResultCountPending);
     });
 
     [Fact]
@@ -285,6 +326,7 @@ public sealed class CatalogMissingDataAndCancellationTests
         public int FindCalls { get; private set; }
         public int OpenQueryCalls { get; private set; }
         public int BeginCalls { get; private set; }
+        public Query? ReplacementQuery { get; set; }
         public Task<CatalogProjectionSnapshot?> FindAsync(CatalogProjectionScope scope, CancellationToken cancellationToken = default)
         {
             FindCalls++;
@@ -295,7 +337,12 @@ public sealed class CatalogMissingDataAndCancellationTests
         public ICatalogProjectionWriter Begin(CatalogProjectionScope scope, IReadOnlyList<ProfileFieldDescriptor> fields)
         { BeginCalls++; return new Writer(scope, fields); }
         public IResultQuerySession<CatalogProjectionRow> OpenQuery(CatalogProjectionSnapshot snapshot, CatalogProjectionQuery definition)
-        { OpenQueryCalls++; query.Identity = snapshot.Generation; return query; }
+        {
+            OpenQueryCalls++;
+            var result = ReplacementQuery ?? query;
+            result.Identity = snapshot.Generation;
+            return result;
+        }
         public IResultQuerySession<CatalogProjectionRow> OpenBuildingQuery(ICatalogProjectionWriter writer, CatalogProjectionScope scope,
             IReadOnlyList<ProfileFieldDescriptor> fields, CatalogProjectionQuery definition) => throw new NotSupportedException();
         public Task<CatalogProjectionSnapshot> RefreshColumnAsync(CatalogProjectionSnapshot snapshot, string fieldId,
@@ -331,7 +378,7 @@ public sealed class CatalogMissingDataAndCancellationTests
         public Task<ResultPage<CatalogProjectionRow>> ReadRangeAsync(int offset, int limit, CancellationToken cancellationToken = default) =>
             Task.FromResult(new ResultPage<CatalogProjectionRow>(cacheCount == 0 ? [] :
                 [new(Path.Combine(Path.GetTempPath(), "sample"), "sample", "rule",
-                    new Dictionary<string, object?> { ["client"] = "Example" }, false)], offset, false));
+                    new Dictionary<string, object?> { ["client"] = "Example" }, false)], offset, ignoreCountCancellation));
         public async IAsyncEnumerable<CatalogProjectionRow> EnumerateSelectionAsync(QuerySelection selection,
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
         { await Task.CompletedTask; yield break; }

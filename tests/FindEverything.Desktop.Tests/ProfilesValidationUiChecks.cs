@@ -4,6 +4,7 @@ using System.Windows.Automation.Provider;
 using System.Windows.Media;
 using System.Windows.Threading;
 using FindEverything.Desktop.ViewModels;
+using FindEverything.Desktop.Views.Controls;
 using FindEverything.Desktop.Views.Pages;
 using Xunit;
 using Ui = Wpf.Ui.Controls;
@@ -15,17 +16,19 @@ internal static class ProfilesValidationUiChecks
 {
     public static void Verify(Action<FrameworkElement, string>? capture = null)
     {
-        var vm = ProfilesValidationTests.CreateForUi();
+        using var vm = ProfilesValidationTests.CreateForUi();
         var page = new ProfilesPage(vm);
         var host = new Ui.FluentWindow { Width = 1050, Height = 720, Content = page };
         try
         {
             host.Show(); Pump(); host.UpdateLayout();
-            var card = Assert.IsAssignableFrom<Ui.CardControl>(page.FindName("ProfileValidationIssuesCard"));
-            Assert.Equal(Visibility.Collapsed, card.Visibility);
+            Assert.False(vm.HasValidationIssues);
             vm.CurrentEditorStep = ProfileEditorStep.Review;
             vm.DraftMaxScanDepthText = "invalid";
             Pump(); host.UpdateLayout();
+            page.ActiveEditorList!.ScrollToSection("ValidationIssues");
+            Pump(); host.UpdateLayout(); Pump();
+            var card = Assert.IsAssignableFrom<Ui.CardControl>(page.FindEditorElement<FrameworkElement>("ProfileValidationIssuesCard"));
             Assert.True(card.IsVisible);
             var issue = Assert.Single(vm.ValidationIssues);
             var button = Assert.Single(Descendants(card).OfType<Ui.Button>());
@@ -44,7 +47,22 @@ internal static class ProfilesValidationUiChecks
             Assert.Equal(ProfileEditorStep.ScanOptions, vm.CurrentEditorStep);
             vm.DraftMaxScanDepthText = "256";
             Pump();
-            Assert.Equal(Visibility.Collapsed, card.Visibility);
+            Assert.False(vm.HasValidationIssues);
+
+            // Validation shares the editor's real scroll surface: many errors
+            // cannot consume an Auto row and starve all editable content.
+            host.Height = 640;
+            vm.ValidationIssues = Enumerable.Range(0, 12).Select(index => new ProfileValidationIssueViewModel(
+                "example-" + index, "A validation error that must remain reachable " + index,
+                ProfileEditorStep.ScanOptions, "Scan options")).ToArray();
+            Pump(); host.UpdateLayout(); Pump();
+            Assert.True(page.EditorScrollViewer!.ActualHeight > 100);
+            var list = Assert.IsType<ProfileEditorList>(page.ActiveEditorList);
+            var last = list.Items.Cast<ProfileEditorEntry>().Last();
+            list.ScrollIntoView(last);
+            Pump(); host.UpdateLayout(); Pump();
+            Assert.NotNull(list.ItemContainerGenerator.ContainerFromItem(last));
+            Assert.True(page.EditorScrollViewer.VerticalOffset > 0);
         }
         finally { host.Close(); }
     }

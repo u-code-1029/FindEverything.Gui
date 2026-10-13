@@ -1423,6 +1423,8 @@
     <sys:String x:Key="Loc.Workspace.ResultSource">Current result location, database, and update time</sys:String>
     <sys:String x:Key="Loc.Files.Results.Source">{0} · DB: {1} · Updated: {2}</sys:String>
     <sys:String x:Key="Loc.Files.Results.CountPending">{0:N0} loaded · Counting all results</sys:String>
+    <sys:String x:Key="Loc.Catalog.Query.CountIncomplete">{0:N0} loaded · Total count is unavailable. Load again to retry.</sys:String>
+    <sys:String x:Key="Loc.Files.Results.CountIncomplete">{0:N0} loaded · Total count is unavailable.</sys:String>
     <sys:String x:Key="Loc.Catalog.Column.TextPreview.Help">Lists show only the first 2,048 characters of long text. Search uses the complete content; copy and export include the full value.</sys:String>
     <sys:String x:Key="Loc.Catalog.Missing.Title">Create structured results?</sys:String>
     <sys:String x:Key="Loc.Catalog.Missing.WithIndex">There are no saved structured results for '{0}'. Build them from the existing index or scan again. Building from the index may also read files for text columns.</sys:String>

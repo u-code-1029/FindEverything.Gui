@@ -97,6 +97,11 @@ if (snapshot is null)
 catalogSetup.Stop();
 await using var catalogQuery = catalog.OpenQuery(snapshot, new());
 var catalogFirst = await Measure(async () => { _ = await catalogQuery.ReadRangeAsync(0, 500); });
+var deepOffset = Math.Max(0, Math.Min(catalogCount - 500, 100_000 - 500));
+var catalogPathDeep = await Measure(async () => { _ = await catalogQuery.ReadRangeAsync(deepOffset, 500); });
+await using var reversePath = catalog.OpenQuery(snapshot, new(Descending: true));
+var catalogPathDescendingFirst = await Measure(async () => { _ = await reversePath.ReadRangeAsync(0, 500); });
+var catalogPathDescendingDeep = await Measure(async () => { _ = await reversePath.ReadRangeAsync(deepOffset, 500); });
 var catalogSamples = new List<double>();
 for (var index = 0; index < 20; index++)
 {
@@ -134,6 +139,9 @@ Console.WriteLine(JsonSerializer.Serialize(new
     FileFirst500Milliseconds = fileFirst, FileSearchP95Milliseconds = Percentile(fileSamples),
     File20SequentialPagesMilliseconds = sequential.Elapsed.TotalMilliseconds, Exact3SelectedMilliseconds = exactSelected,
     CatalogFirst500Milliseconds = catalogFirst, CatalogSearchP95Milliseconds = Percentile(catalogSamples),
+    CatalogPathDeepOffset = deepOffset, CatalogPathDeep500Milliseconds = catalogPathDeep,
+    CatalogPathDescendingFirst500Milliseconds = catalogPathDescendingFirst,
+    CatalogPathDescendingDeep500Milliseconds = catalogPathDescendingDeep,
     CatalogNumericSortFirst500Milliseconds = catalogSorted, CatalogFilteredCountMilliseconds = catalogCountTime,
     StructuredColumns = fields.Length, TypedColumnFilters = columnFilterSamples,
     ManagedBytes = GC.GetTotalMemory(forceFullCollection: true), WorkingSetBytes = Environment.WorkingSet

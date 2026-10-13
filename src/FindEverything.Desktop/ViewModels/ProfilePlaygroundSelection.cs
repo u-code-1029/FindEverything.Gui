@@ -28,7 +28,8 @@ public partial class ProfilePlaygroundViewModel
     {
         if (SelectedSelectionRule is not { } rule || SelectedProfile is not { } profile) return;
         using var cancellation = new CancellationTokenSource(); _selectionTestCancellation = cancellation;
-        var revision = Volatile.Read(ref _evaluationGeneration); IsBusy = true;
+        var revision = Volatile.Read(ref _evaluationGeneration);
+        var busyOperation = BeginBusyOperation();
         try
         {
             var result = await ProfileSelectionPlayground.TestAsync(profile.Profile, _selectionSampleItem, rule,
@@ -52,7 +53,7 @@ public partial class ProfilePlaygroundViewModel
         finally
         {
             if (ReferenceEquals(_selectionTestCancellation, cancellation)) _selectionTestCancellation = null;
-            if (revision == Volatile.Read(ref _evaluationGeneration)) IsBusy = false;
+            CompleteBusyOperation(busyOperation);
         }
     }
 }

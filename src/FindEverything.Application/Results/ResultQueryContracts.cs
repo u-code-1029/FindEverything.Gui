@@ -73,6 +73,8 @@ public sealed class QuerySelection : IDisposable
     public IQuerySelectionKeySet? Baseline => _baseline;
     public bool Contains(string key) => !_unavailable.Contains(key)
         && (AllMatching ^ (_baseline?.Contains(key) ?? false) ^ _keys.Contains(key));
+    internal bool ContainsResolvedMembership(string key, bool baselineContains) => !_unavailable.Contains(key)
+        && (AllMatching ^ baselineContains ^ _keys.Contains(key));
     public long Count(long totalCount)
     {
         var selected = (_baseline?.Count ?? 0) - _baselineUnavailableCount + _keys.Count - 2 * _baselineExceptionCount;
@@ -81,6 +83,10 @@ public sealed class QuerySelection : IDisposable
     public void Set(string key, bool selected)
     {
         var baselineContains = _baseline?.Contains(key) ?? false;
+        SetResolvedMembership(key, selected, baselineContains);
+    }
+    internal void SetResolvedMembership(string key, bool selected, bool baselineContains)
+    {
         if (_unavailable.Remove(key) && baselineContains) _baselineUnavailableCount--;
         if (selected != (AllMatching ^ baselineContains))
         { if (_keys.Add(key) && baselineContains) _baselineExceptionCount++; }
@@ -99,10 +105,31 @@ public sealed class QuerySelection : IDisposable
     /// <summary>A single edited row left the fixed predicate universe. Preserve every other selection.</summary>
     public void RemoveUnavailableKey(string key)
     {
-        if (!_unavailable.Add(key)) return;
         var member = _baseline?.Contains(key) ?? false;
+        RemoveUnavailableKey(key, member);
+    }
+    private void RemoveUnavailableKey(string key, bool member)
+    {
+        if (!_unavailable.Add(key)) return;
         if (member) _baselineUnavailableCount++;
         if (_keys.Remove(key) && member) _baselineExceptionCount--;
+    }
+    /// <summary>Resolves membership off-thread, then applies to the caller-owned state.</summary>
+    public async Task RemoveUnavailableKeyAsync(string key, CancellationToken cancellationToken = default)
+    {
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var baseline = _baseline;
+            if (baseline is null) { RemoveUnavailableKey(key, false); return; }
+            using var lease = baseline.Retain();
+            var matches = await lease.ReadMembershipAsync([key], cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            // Selection may have been cleared/replaced while the storage read ran.
+            if (!ReferenceEquals(baseline, _baseline)) continue;
+            RemoveUnavailableKey(key, matches.Contains(key));
+            return;
+        }
     }
     public QuerySelection Capture()
     {

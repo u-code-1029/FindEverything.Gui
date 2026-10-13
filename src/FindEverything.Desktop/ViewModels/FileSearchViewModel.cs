@@ -315,6 +315,9 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
         ? IsResultCountPending
             ? F("Loc.Files.Results.CountPending", "{0:N0}개 로드됨 · 전체 개수 확인 중",
                 Items is VirtualResultCollection<FileSearchItemViewModel> pendingItems ? pendingItems.CachedItemCount : Items.Count)
+            : !_hasExactResultCount
+            ? F("Loc.Files.Results.CountIncomplete", "{0:N0}개 불러옴 · 전체 개수 확인이 중지되었습니다.",
+                Items is VirtualResultCollection<FileSearchItemViewModel> incompleteItems ? incompleteItems.CachedItemCount : Items.Count)
             : Items is VirtualResultCollection<FileSearchItemViewModel> virtualItems
             ? F("Loc.Files.Results.CachedSummary", "{0:N0}개 결과 · {1:N0}개 캐시됨", TotalCount, virtualItems.CachedItemCount)
             : F("Loc.Files.Results.Summary", "{0:N0}개 결과 · {1:N0}개 표시", TotalCount, Items.Count)
@@ -1585,7 +1588,7 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
                     OnPropertyChanged(nameof(ResultSourceDescription));
                     OnPropertyChanged(nameof(UsesQuerySelection));
                     OnPropertyChanged(nameof(ResultSummary));
-                    var total = await Task.Run(() => query.CountAsync(cancellationToken), cancellationToken);
+                    var total = await Task.Run(() => query.CountAsync(cancellationToken), cancellationToken).WaitAsync(cancellationToken);
                     if (version != Volatile.Read(ref _queryVersion)) return;
                     collection.SetCount(total);
                     TotalCount = total;

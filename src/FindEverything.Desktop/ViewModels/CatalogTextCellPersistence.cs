@@ -46,7 +46,7 @@ public partial class CatalogViewModel
                     var matches = await store.FindMatchingPathsAsync(updated, _displayedQueryDefinition,
                         [context.Row.FullPath], CancellationToken.None);
                     if (matches is not null && !matches.Contains(context.Row.FullPath))
-                        _querySelection.RemoveUnavailableKey(context.Row.SelectionKey);
+                        await _querySelection.RemoveUnavailableKeyAsync(context.Row.SelectionKey, CancellationToken.None);
                     await RefreshProjectionQueryAsync(preserveSelection: true, force: true, allowRevisionChange: true);
                 }
                 catch (Exception exception) { _logger.LogWarning(exception, "Could not display the saved file value."); return false; }

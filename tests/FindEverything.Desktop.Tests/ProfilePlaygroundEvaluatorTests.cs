@@ -151,6 +151,48 @@ public sealed class ProfilePlaygroundEvaluatorTests
     }
 
     [Fact]
+    public async Task An_old_evaluation_cannot_clear_a_new_operation_after_page_reentry()
+    {
+        var canonicalPath = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "FindEverything.Playground.Tests", "A"));
+        var profile = new RecordingLoadedProfile(canonicalPath);
+        using var first = new BlockingPlaygroundEvaluator(canonicalPath);
+        using var second = new BlockingPlaygroundEvaluator(canonicalPath);
+        using var viewModel = new ProfilePlaygroundViewModel(
+            new StubProfileCatalog(new([profile], [], DateTimeOffset.UtcNow)),
+            new SequencedPlaygroundEvaluator(first, second), new StubDesktopPickerService(),
+            new TestAppLocalizer(), NullLogger<ProfilePlaygroundViewModel>.Instance)
+        { InputPath = "first path" };
+        await viewModel.ActivateAsync();
+        var firstTask = viewModel.EvaluateCommand.ExecuteAsync(null);
+        await first.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Task? secondTask = null;
+        try
+        {
+            viewModel.Deactivate();
+            Assert.False(viewModel.IsBusy);
+            await viewModel.ActivateAsync();
+            viewModel.InputPath = "second path";
+            secondTask = viewModel.EvaluateCommand.ExecuteAsync(null);
+            await second.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            first.Release();
+            await firstTask.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.True(viewModel.IsBusy);
+            Assert.Empty(viewModel.Rows);
+            second.Release();
+            await secondTask.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.False(viewModel.IsBusy);
+            Assert.Single(viewModel.Rows);
+        }
+        finally
+        {
+            first.Release();
+            second.Release();
+            await firstTask.WaitAsync(TimeSpan.FromSeconds(5));
+            if (secondTask is not null) await secondTask.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+    }
+
+    [Fact]
     public async Task Re_evaluating_the_same_path_clears_external_input_results_for_the_old_sample()
     {
         var canonicalPath = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "FindEverything.Playground.Tests", "A"));
@@ -320,6 +362,14 @@ public sealed class ProfilePlaygroundEvaluatorTests
         public void Release() => _release.Set();
 
         public void Dispose() => _release.Dispose();
+    }
+
+    private sealed class SequencedPlaygroundEvaluator(
+        IProfilePlaygroundEvaluator first, IProfilePlaygroundEvaluator second) : IProfilePlaygroundEvaluator
+    {
+        private int _calls;
+        public ProfilePlaygroundEvaluation Evaluate(ILoadedProfile profile, string inputPath) =>
+            (Interlocked.Increment(ref _calls) == 1 ? first : second).Evaluate(profile, inputPath);
     }
 
     private sealed class StubDesktopPickerService : IDesktopPickerService

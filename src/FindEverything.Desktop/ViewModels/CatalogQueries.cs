@@ -450,6 +450,9 @@ public partial class CatalogViewModel
             {
                 _queryCancellation = null;
                 IsResultCountPending = false;
+                if (!_hasExactResultCount && _virtualItems is { } partial)
+                    FilterSummary = F("Loc.Catalog.Query.CountIncomplete",
+                        "{0:N0}개 불러옴 · 전체 개수 확인이 중지되었습니다. 불러오기로 다시 확인할 수 있습니다.", partial.CachedItemCount);
             }
             source.Dispose();
         }
@@ -619,13 +622,14 @@ public partial class CatalogViewModel
                 return;
             }
             var index = _virtualItems!.IndexOf(row);
-            CancelSelectionRequests();
+            _selectionRevision++;
             if (!await SelectionController.SelectAsync(query, row.SelectionKey, index, _selectionAnchor,
                 additive, range, item => item.StableKey ?? item.FullPath,
                 () => !_disposed && ReferenceEquals(query, _projectionQuery))) return;
+            _selectionRevision++;
             if (!range || _selectionAnchor < 0) _selectionAnchor = index;
             SelectedItem = row;
-            UpdateProjectionSelection(additive && !range ? [row] : null);
+            UpdateProjectionSelection(additive && !range && _querySelection.Baseline is null ? [row] : null);
         }
         catch (Exception exception) when (exception is OperationCanceledException
             or ResultQueryChangedException or ObjectDisposedException)
