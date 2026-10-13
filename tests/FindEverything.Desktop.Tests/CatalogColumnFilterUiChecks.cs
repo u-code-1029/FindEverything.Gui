@@ -397,7 +397,11 @@ internal static class CatalogColumnFilterUiChecks
         try
         {
             using var store = new SqliteCatalogProjectionStore(System.IO.Path.Combine(directory, "catalog.db"));
-            using var owner = ActivatorUtilities.CreateInstance<CatalogViewModel>(services, store);
+            // This store implements both optional contracts. Bind both notes and
+            // projections instead of consuming the only argument as notes.
+            using var owner = ActivatorUtilities.CreateInstance<CatalogViewModel>(services, store, store);
+            Assert.Same(store, typeof(CatalogViewModel).GetField("_projectionStore",
+                BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(owner));
             var fields = new[] { Field("text", ProfileFieldValueKind.String) with { SourceKind = ProfileFieldSourceKind.TextFileContent } };
             owner.Fields = fields;
             var scope = new CatalogProjectionScope("live-ui", "live-ui", directory, System.IO.Path.Combine(directory, "metadata.db"), "live-ui", owner.Localizer.Culture.Name, null);
