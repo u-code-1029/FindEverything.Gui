@@ -639,6 +639,9 @@ public sealed class DesktopCompositionSmokeTests
                         foreach (var item in sampleGrid.Items.OfType<FileSearchItemViewModel>()) item.IsSelected = true;
                         PumpDispatcherFor(window.Dispatcher, TimeSpan.FromMilliseconds(250));
                         PumpLayout(window, page);
+                        if (page is CatalogPage)
+                            Assert.Contains(sampleGrid.Columns, column =>
+                                Equals(DynamicProfileGrid.GetColumnHeaderContent(column), "Folder path"));
                     }
                     var name = $"{(page is CatalogPage ? "catalog" : "files")}-en-{(size.Width > 900 ? "wide" : "small")}";
                     SaveQaImage(Assert.IsAssignableFrom<FrameworkElement>(window.Content), name + ".png");
@@ -2499,6 +2502,7 @@ public sealed class DesktopCompositionSmokeTests
             }).ToArray();
         }
         public bool HasIndex => true;
+        public IAppLocalizer Localizer => _localizer;
         public bool HasLoadedItems => true;
         public bool HasSelection => true;
         public bool CanSearch => true;
