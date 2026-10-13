@@ -519,9 +519,21 @@ public sealed class DesktopCompositionSmokeTests
             Capture(playground, new PlaygroundLayoutFixture(input, ProfileRegexDebugBuilder.Build(input, rules)), "playground-light.png");
             Capture(outputFormats, null, "output-formats-light.png");
             Capture(settings, null, "settings-light.png");
+            // Exercise longer English action words on the same App dispatcher.
+            // Production language changes restart; this resource swap is QA-only.
+            LocalizationBootstrapper.Apply(System.Windows.Application.Current,
+                new LocalizationOptions { CultureName = LocalizationOptions.EnglishCultureName });
+            Capture(files, new WorkspaceLayoutFixture(isCatalog: false), "files-en-wide.png");
+            Capture(catalog, new WorkspaceLayoutFixture(isCatalog: true), "catalog-en-wide.png");
+            window.Width = 760; window.Height = 640;
+            Capture(files, new WorkspaceLayoutFixture(isCatalog: false), "files-en-small.png");
+            Capture(catalog, new WorkspaceLayoutFixture(isCatalog: true), "catalog-en-small.png");
+            SaveQaImage(Assert.IsAssignableFrom<FrameworkElement>(window.Content), "catalog-en-small-200percent-render.png", 2);
         }
         finally
         {
+            LocalizationBootstrapper.Apply(System.Windows.Application.Current,
+                new LocalizationOptions { CultureName = LocalizationOptions.KoreanCultureName });
             appearance.Apply(window, new AppearanceOptions { Theme = ThemePreference.Light, Backdrop = BackdropPreference.None });
             window.Width = width;
             window.Height = height;
@@ -555,7 +567,7 @@ public sealed class DesktopCompositionSmokeTests
         }
     }
 
-    private static void SaveQaImage(FrameworkElement visual, string fileName)
+    private static void SaveQaImage(FrameworkElement visual, string fileName, double renderScale = 1)
     {
         var directory = Environment.GetEnvironmentVariable("FINDEVERYTHING_QA_DIR");
         if (string.IsNullOrWhiteSpace(directory)) return;
@@ -563,7 +575,8 @@ public sealed class DesktopCompositionSmokeTests
         visual.UpdateLayout();
         var width = Math.Max(1, checked((int)Math.Ceiling(visual.ActualWidth)));
         var height = Math.Max(1, checked((int)Math.Ceiling(visual.ActualHeight)));
-        var bitmap = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
+        var bitmap = new RenderTargetBitmap(checked((int)Math.Ceiling(width * renderScale)),
+            checked((int)Math.Ceiling(height * renderScale)), 96 * renderScale, 96 * renderScale, PixelFormats.Pbgra32);
         var background = visual.TryFindResource("ApplicationBackgroundBrush") as Brush
             ?? visual.TryFindResource("SolidBackgroundFillColorBaseBrush") as Brush
             ?? new SolidColorBrush(fileName.Contains("-dark", StringComparison.OrdinalIgnoreCase)
@@ -2158,9 +2171,11 @@ public sealed class DesktopCompositionSmokeTests
     private sealed class WorkspaceLayoutFixture
     {
         private readonly object _profile = new { Id = "layout-sample", DisplayName = "프로젝트 폴더" };
+        private readonly object _format = new { Id = "layout-output", DisplayName = "Full paths — quoted, comma separated" };
         public WorkspaceLayoutFixture(bool isCatalog)
         {
             SelectedProfile = _profile;
+            SelectedOutputFormat = _format;
             var fields = new ProfileFieldDescriptor[]
             {
                 new("client", "client", "고객", 0, true, ProfileFieldValueKind.String, false, null, null),
@@ -2226,7 +2241,7 @@ public sealed class DesktopCompositionSmokeTests
         public object[] DateFilterChoices => [];
         public object[] Items { get; }
         public ProfileFieldDescriptor[] Fields { get; }
-        public object[] OutputFormats => [];
+        public object[] OutputFormats => [_format];
     }
 
     private sealed class PlaygroundLayoutFixture

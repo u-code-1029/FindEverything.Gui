@@ -152,7 +152,7 @@
                 </DataGrid.ContextMenu>
             </DataGrid>
 
-            <controls:SectionCard x:Name="SelectionToolbar" Grid.Row="3" Margin="0,8,0,0" Padding="12,6"
+            <controls:SectionCard x:Name="SelectionToolbar" Grid.Row="3" Margin="0,8,0,0" Padding="12,4"
                 Style="{StaticResource FluentToolbarCardStyle}" SizeChanged="OnSelectionToolbarSizeChanged"
                 Visibility="{Binding HasSelection, Converter={StaticResource BooleanToVisibilityConverter}}">
                 <controls:SectionCard.Header>

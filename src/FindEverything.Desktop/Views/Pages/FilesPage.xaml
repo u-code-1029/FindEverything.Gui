@@ -115,9 +115,16 @@
                     </ContextMenu>
                 </DataGrid.ContextMenu>
                 <DataGrid.Columns>
-                    <DataGridTemplateColumn Width="52" MinWidth="52" CanUserReorder="False" CanUserResize="False" CanUserSort="False">
+                    <DataGridTemplateColumn Width="64" MinWidth="64" MaxWidth="64" CanUserReorder="False" CanUserResize="False" CanUserSort="False">
+                        <DataGridTemplateColumn.CellStyle>
+                            <Style TargetType="DataGridCell" BasedOn="{StaticResource DefaultDataGridCellStyle}">
+                                <Setter Property="Padding" Value="12,0" />
+                                <Setter Property="HorizontalContentAlignment" Value="Center" />
+                                <Setter Property="VerticalContentAlignment" Value="Center" />
+                            </Style>
+                        </DataGridTemplateColumn.CellStyle>
                         <DataGridTemplateColumn.Header><ui:Button Width="32" Height="28" Padding="0" Appearance="Transparent" Icon="{ui:SymbolIcon Symbol=CheckboxChecked20}" Command="{Binding DataContext.SelectAllCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" AutomationProperties.Name="{DynamicResource Loc.Selection.All}" ToolTip="{DynamicResource Loc.Selection.All.ToolTip}" /></DataGridTemplateColumn.Header>
-                        <DataGridTemplateColumn.CellTemplate><DataTemplate><CheckBox HorizontalAlignment="Center" VerticalAlignment="Center" IsChecked="{Binding IsSelected, Mode=OneWay}" AutomationProperties.Name="{DynamicResource Loc.Catalog.Selection.Item}" PreviewMouseLeftButtonDown="OnSelectionCheckBoxPreviewMouseLeftButtonDown" PreviewKeyDown="OnSelectionCheckBoxPreviewKeyDown" Checked="OnSelectionCheckBoxStateChanged" Unchecked="OnSelectionCheckBoxStateChanged" /></DataTemplate></DataGridTemplateColumn.CellTemplate>
+                        <DataGridTemplateColumn.CellTemplate><DataTemplate><CheckBox Width="24" Height="24" MinWidth="24" MinHeight="24" Padding="0" Margin="0" HorizontalAlignment="Center" VerticalAlignment="Center" IsChecked="{Binding IsSelected, Mode=OneWay}" AutomationProperties.Name="{DynamicResource Loc.Catalog.Selection.Item}" PreviewMouseLeftButtonDown="OnSelectionCheckBoxPreviewMouseLeftButtonDown" PreviewKeyDown="OnSelectionCheckBoxPreviewKeyDown" Checked="OnSelectionCheckBoxStateChanged" Unchecked="OnSelectionCheckBoxStateChanged" /></DataTemplate></DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
                     <DataGridTemplateColumn Width="180" MinWidth="160" Header="{DynamicResource Loc.Profiles.New.DefaultField}" SortMemberPath="Name">
                         <DataGridTemplateColumn.CellTemplate>
@@ -154,7 +161,7 @@
                 </DataGrid.Columns>
             </DataGrid>
 
-            <controls:SectionCard x:Name="SelectionToolbar" Grid.Row="2" Margin="0,8,0,0" Padding="12,6"
+            <controls:SectionCard x:Name="SelectionToolbar" Grid.Row="2" Margin="0,8,0,0" Padding="12,4"
                 Style="{StaticResource FluentToolbarCardStyle}" SizeChanged="OnSelectionToolbarSizeChanged"
                 Visibility="{Binding HasSelection, Converter={StaticResource BooleanToVisibilityConverter}}">
                 <controls:SectionCard.Header>
