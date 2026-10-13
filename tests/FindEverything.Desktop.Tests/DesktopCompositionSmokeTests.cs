@@ -1880,7 +1880,7 @@ public sealed class DesktopCompositionSmokeTests
         DynamicProfileGrid.SetFields(grid, new[] { field, userInputField });
         DynamicProfileGrid.SetLayoutStore(
             grid,
-            new StubGridLayoutStore(new GridColumnLayout("client", 1, 180)));
+            new StubGridLayoutStore(new GridColumnLayout("client", 1, 180, GridColumnWidthMode.Manual)));
         DynamicProfileGrid.SetProfileId(grid, "selection-test");
 
         var host = new Window
