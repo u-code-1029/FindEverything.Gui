@@ -49,11 +49,15 @@ internal static class CatalogColumnFilterUiChecks
         };
         DynamicProfileGrid.SetLocalizer(grid, owner.Localizer);
         DynamicProfileGrid.SetFields(grid, fields);
-        var window = new Window { Content = grid, Width = 1000, Height = 300, ShowInTaskbar = false };
+        var workspace = new Grid(); workspace.Children.Add(grid);
+        var window = new Window { Content = workspace, Width = 1000, Height = 300, ShowInTaskbar = false };
         try
         {
             window.Show(); grid.UpdateLayout();
             PumpUntil(() => grid.Columns[2].Header is StackPanel && grid.Columns[6].Header is StackPanel);
+            workspace.UpdateLayout();
+            var workspaceSize = workspace.RenderSize;
+            var gridSize = grid.RenderSize;
             var documentHeader = Assert.IsType<StackPanel>(DynamicProfileGrid.GetColumnHeaderContent(grid.Columns[6]));
             var documentRefresh = Assert.Single(documentHeader.Children.OfType<Ui.Button>());
             Assert.Same(owner.RefreshTextColumnCommand, documentRefresh.Command);
@@ -82,8 +86,15 @@ internal static class CatalogColumnFilterUiChecks
                     RaiseHeaderMouse(header, UIElement.PreviewMouseLeftButtonDownEvent);
                     Assert.True(RaiseHeaderMouse(header, UIElement.PreviewMouseLeftButtonUpEvent).Handled);
                 }
-                PumpUntil(() => flyout.IsOpen);
-                Assert.Same(header, Assert.IsType<Popup>(flyout.Template.FindName("PART_Popup", flyout)).PlacementTarget);
+                var popup = Assert.IsType<Popup>(flyout.Template.FindName("PART_Popup", flyout));
+                PumpUntil(() => flyout.IsLoaded && popup.IsLoaded && flyout.IsOpen && popup.IsOpen);
+                Assert.Same(header, popup.PlacementTarget);
+                Assert.Same(workspace, VisualTreeHelper.GetParent(flyout));
+                workspace.UpdateLayout();
+                Assert.Equal(workspaceSize, workspace.RenderSize);
+                Assert.Equal(gridSize, grid.RenderSize);
+                Assert.Equal(0, flyout.ActualWidth); Assert.Equal(0, flyout.ActualHeight);
+                Assert.True(flyout.IsHitTestVisible);
                 Assert.False(grid.Columns[columnIndex].CanUserSort);
                 Assert.Equal(0, nativeSorts);
             }
@@ -142,9 +153,19 @@ internal static class CatalogColumnFilterUiChecks
             Assert.False(RaiseHeaderMouse(resizeThumb, UIElement.PreviewMouseLeftButtonUpEvent).Handled);
             Assert.False(flyout.IsOpen);
             Assert.Equal(0, nativeSorts);
+            var hostCount = workspace.Children.Count;
+            grid.DataContext = null;
+            Assert.DoesNotContain(flyout, workspace.Children.Cast<UIElement>());
+            grid.DataContext = owner;
+            PumpUntil(() => flyout.IsLoaded);
+            Assert.Equal(hostCount, workspace.Children.Count);
+            Show(2);
+            flyout.Hide();
             VerifyLoadedSchemaReplacementWhilePaging(grid, owner, fields);
         }
         finally { window.Close(); }
+        PumpUntil(() => workspace.Children.Count == 1);
+        Assert.Same(grid, workspace.Children[0]);
         VerifyLiveFullText(services);
         VerifySupersededNumericRange(services);
     }
@@ -175,10 +196,17 @@ internal static class CatalogColumnFilterUiChecks
         var directory = Environment.GetEnvironmentVariable("FINDEVERYTHING_QA_DIR");
         if (string.IsNullOrWhiteSpace(directory)) return;
         var popup = Assert.IsType<Popup>(flyout.Template.FindName("PART_Popup", flyout));
+        grid.UpdateLayout();
+        // The template's IsOpen binding/native popup arrange can still be queued
+        // after Flyout.Show updates the owner's flag. Wait for the actual displayed
+        // surface, and fail boundedly if filtering unexpectedly closes it.
+        PumpUntil(() => flyout.IsLoaded && popup.IsLoaded && flyout.IsOpen && popup.IsOpen && popup.Child is FrameworkElement child
+            && child.IsMeasureValid && child.IsArrangeValid && child.ActualWidth > 0 && child.ActualHeight > 0);
         Assert.True(popup.IsOpen);
         var root = Assert.IsAssignableFrom<FrameworkElement>(popup.Child);
         root.UpdateLayout(); grid.UpdateLayout();
-        PumpUntil(() => root.IsArrangeValid && root.ActualWidth > 0 && root.ActualHeight > 0);
+        Assert.True(flyout.IsOpen && popup.IsOpen && root.IsMeasureValid && root.IsArrangeValid
+            && root.ActualWidth > 0 && root.ActualHeight > 0);
         var width = checked((int)Math.Ceiling(root.ActualWidth));
         var height = checked((int)Math.Ceiling(root.ActualHeight));
         var background = root.TryFindResource("ApplicationBackgroundBrush") as Brush
@@ -250,6 +278,9 @@ internal static class CatalogColumnFilterUiChecks
             }
             var first = Open();
             Assert.Single(store.Requests);
+            var nativePopup = Assert.IsType<Popup>(flyout.Template.FindName("PART_Popup", flyout));
+            PumpUntil(() => flyout.IsLoaded && nativePopup.IsLoaded && flyout.IsOpen && nativePopup.IsOpen);
+            Assert.Same(grid, window.Content);
             var body = Assert.IsType<StackPanel>(flyout.Content); var mode = body.Children.OfType<ComboBox>().Single();
             var oldSliders = body.Children.OfType<StackPanel>().SelectMany(panel => panel.Children.OfType<Slider>()).ToArray();
             mode.SelectedIndex = 0; mode.SelectedIndex = 1;

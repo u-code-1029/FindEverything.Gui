@@ -27,6 +27,8 @@ internal sealed class SelectableCatalogText : Grid
             TextWrapping = TextWrapping.NoWrap,
             Opacity = 0,
         };
+        TextBox.SetResourceReference(StyleProperty, "CatalogReadOnlyTextBoxStyle");
+        TextBox.PlaceholderEnabled = false;
         Highlight = new Wpf.Ui.Controls.TextBlock
         {
             VerticalAlignment = VerticalAlignment.Center,

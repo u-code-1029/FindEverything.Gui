@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Data;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
@@ -27,7 +28,13 @@ public static partial class DynamicProfileGrid
 
     private sealed class ColumnFiltersState
     {
-        public readonly Ui.Flyout Flyout = new() { Placement = PlacementMode.Bottom, Padding = new Thickness(16) };
+        public readonly Ui.Flyout Flyout = new()
+        {
+            Placement = PlacementMode.Bottom, Padding = new Thickness(16),
+            Width = 0, Height = 0, MinWidth = 0, MinHeight = 0,
+            HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
+            Focusable = false
+        };
         public CatalogViewModel? Owner;
         public EventHandler? Changed;
         public DataGridColumnHeader? PressedHeader;
@@ -35,6 +42,9 @@ public static partial class DynamicProfileGrid
         public bool Dragged;
         public CancellationTokenSource? EditorCancellation;
         public DispatcherOperation? HeaderPreparation;
+        public Panel? HostPanel;
+        public AdornerLayer? HostAdornerLayer;
+        public ColumnFlyoutAdorner? HostAdorner;
     }
 
     private static void InitializeColumnFilters(DataGrid grid)
@@ -46,10 +56,11 @@ public static partial class DynamicProfileGrid
         {
             if (!ReferenceEquals(state.Owner, grid.DataContext as CatalogViewModel))
             {
-                state.Flyout.Hide(); state.EditorCancellation?.Cancel(); state.PressedHeader = null;
+                DetachFlyoutHost(state);
             }
             if (state.Owner is not null) state.Owner.ColumnQueryChanged -= state.Changed;
             state.Owner = grid.DataContext as CatalogViewModel;
+            if (state.Owner is not null) EnsureFlyoutHost(grid, state);
             state.Changed = (_, _) => ScheduleFilterHeaders(grid, state);
             if (state.Owner is not null) state.Owner.ColumnQueryChanged += state.Changed;
             ScheduleFilterHeaders(grid, state);
@@ -60,8 +71,7 @@ public static partial class DynamicProfileGrid
         {
             if (state.Owner is not null) state.Owner.ColumnQueryChanged -= state.Changed;
             state.Owner = null;
-            state.Flyout.Hide();
-            state.EditorCancellation?.Cancel();
+            DetachFlyoutHost(state);
             state.HeaderPreparation?.Abort(); state.HeaderPreparation = null;
         };
         ((INotifyCollectionChanged)grid.Columns).CollectionChanged += (_, _) =>
@@ -104,6 +114,76 @@ public static partial class DynamicProfileGrid
             _ = OpenColumnFlyoutAsync(grid, state, owner, header, target);
         }), true);
     }
+
+    private static bool EnsureFlyoutHost(DataGrid grid, ColumnFiltersState state)
+    {
+        if (!grid.IsLoaded) return false;
+        if (state.HostPanel?.Children.Contains(state.Flyout) == true || state.HostAdorner is not null) return true;
+        state.Flyout.DataContext = state.Owner;
+        // A detached Flyout's template Popup has a visual parent but is never
+        // Loaded, so WPF coerces IsOpen back to false. Keep its zero-sized owner
+        // in the loaded tree; popup content still measures independently in its
+        // own HWND. Do not disable inherited hit testing on that owner.
+        for (var parent = VisualTreeHelper.GetParent(grid); parent is not null; parent = ParentOf(parent))
+        {
+            if (parent is not Panel { IsItemsHost: false } panel
+                || panel is not (Grid or Canvas or StackPanel or DockPanel)) continue;
+            // Insert first so a DockPanel's existing LastChildFill is unchanged.
+            panel.Children.Insert(0, state.Flyout);
+            state.HostPanel = panel;
+            return true;
+        }
+        if (AdornerLayer.GetAdornerLayer(grid) is not { } layer) return false;
+        var adorner = new ColumnFlyoutAdorner(grid, state.Flyout);
+        layer.Add(adorner);
+        state.HostAdorner = adorner; state.HostAdornerLayer = layer;
+        return true;
+    }
+
+    private static void DetachFlyoutHost(ColumnFiltersState state)
+    {
+        state.Flyout.Hide();
+        state.EditorCancellation?.Cancel(); state.EditorCancellation?.Dispose(); state.EditorCancellation = null;
+        state.PressedHeader = null;
+        state.Flyout.Content = null;
+        state.HostPanel?.Children.Remove(state.Flyout); state.HostPanel = null;
+        if (state.HostAdorner is { } adorner)
+        {
+            state.HostAdornerLayer?.Remove(adorner);
+            adorner.Detach();
+        }
+        state.HostAdorner = null; state.HostAdornerLayer = null;
+        state.Flyout.ClearValue(FrameworkElement.DataContextProperty);
+    }
+
+    private sealed class ColumnFlyoutAdorner : Adorner
+    {
+        private Ui.Flyout? _flyout;
+        public ColumnFlyoutAdorner(UIElement element, Ui.Flyout flyout) : base(element)
+        {
+            _flyout = flyout; AddVisualChild(flyout); AddLogicalChild(flyout);
+        }
+        protected override int VisualChildrenCount => _flyout is null ? 0 : 1;
+        protected override Visual GetVisualChild(int index) => index == 0 && _flyout is not null
+            ? _flyout : throw new ArgumentOutOfRangeException(nameof(index));
+        protected override Size MeasureOverride(Size constraint)
+        {
+            _flyout?.Measure(new Size()); return new Size();
+        }
+        protected override Size ArrangeOverride(Size finalSize)
+        {
+            _flyout?.Arrange(new Rect()); return finalSize;
+        }
+        protected override HitTestResult? HitTestCore(PointHitTestParameters hitTestParameters) => null;
+        public void Detach()
+        {
+            if (_flyout is not { } child) return;
+            RemoveVisualChild(child); RemoveLogicalChild(child); _flyout = null;
+        }
+    }
+
+    private static DependencyObject? ParentOf(DependencyObject element) =>
+        element is Visual or System.Windows.Media.Media3D.Visual3D ? VisualTreeHelper.GetParent(element) : LogicalTreeHelper.GetParent(element);
 
     private static bool IsNestedHeaderControl(DependencyObject? source, DataGridColumnHeader header) =>
         // DataGridColumnHeader itself inherits ButtonBase. Only its embedded
@@ -192,6 +272,7 @@ public static partial class DynamicProfileGrid
     private static async Task OpenColumnFlyoutAsync(DataGrid grid, ColumnFiltersState state, CatalogViewModel owner,
         DataGridColumnHeader header, CatalogColumnTarget target)
     {
+        if (!ReferenceEquals(state.Owner, owner) || !EnsureFlyoutHost(grid, state)) return;
         state.Flyout.Hide();
         state.EditorCancellation?.Cancel();
         state.EditorCancellation?.Dispose();

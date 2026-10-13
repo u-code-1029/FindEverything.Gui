@@ -187,6 +187,7 @@ public sealed class DesktopCompositionSmokeTests
             VerifyOperationInfoBar(provider, window);
             VerifyScanConsole(provider, window, catalogPage);
             VerifyProjectionQueries(provider, window);
+            ReadOnlyCellTemplateChecks.Verify();
             WorkspacePerformanceChecks.Verify(provider);
             CatalogColumnFilterUiChecks.Verify(provider);
             WorkspaceTransferBehaviorChecks.Verify();
