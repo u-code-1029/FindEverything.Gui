@@ -2066,7 +2066,7 @@ public sealed class DesktopCompositionSmokeTests
                 "en-US",
                 new Dictionary<string, string>
                 {
-                    ["Loc.Catalog.Column.Status"] = "Status",
+                    ["Loc.LiveBrowser.Title"] = "Live folder contents",
                     ["Loc.Catalog.Column.FolderPath"] = "Folder path",
                     ["Loc.Catalog.Selection.Item"] = "Select item",
                 }));
@@ -2100,7 +2100,12 @@ public sealed class DesktopCompositionSmokeTests
             Assert.Equal(64, selectionColumn.MinWidth);
             Assert.Equal(64, selectionColumn.MaxWidth);
             Assert.Equal(2, grid.FrozenColumnCount);
-            Assert.Contains(grid.Columns, column => Equals(DynamicProfileGrid.GetColumnHeaderContent(column), "Status"));
+            var folderColumn = grid.Columns[1];
+            var folderHeader = Assert.IsType<Wpf.Ui.Controls.SymbolIcon>(folderColumn.Header);
+            Assert.Equal("Live folder contents", folderHeader.ToolTip);
+            Assert.Equal(1, folderColumn.DisplayIndex);
+            Assert.False(folderColumn.CanUserReorder);
+            Assert.False(folderColumn.CanUserSort);
             Assert.Contains(grid.Columns, column => Equals(DynamicProfileGrid.GetColumnHeaderContent(column), "Folder path"));
             var clientColumn = Assert.Single(grid.Columns, column => Equals(DynamicProfileGrid.GetColumnHeaderContent(column), "고객"));
             Assert.Equal(2, clientColumn.DisplayIndex);

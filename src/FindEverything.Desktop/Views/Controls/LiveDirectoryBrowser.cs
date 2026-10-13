@@ -9,7 +9,7 @@ namespace FindEverything.Desktop.Views.Controls;
 /// <summary>A lazy, explicit view of the current disk, separate from indexed results.</summary>
 public sealed class LiveDirectoryBrowser : UserControl
 {
-    private sealed class NodeState(string path) { public string Path { get; } = path; public int Offset; public bool Loaded; public bool Loading; }
+    private sealed class NodeState(string path) { public string Path { get; } = path; public int Offset; public bool Loaded; public bool Loading; public TreeViewItem? Error; }
     private readonly ILiveDirectoryService _directories;
     private readonly IAppLocalizer _localizer;
     private readonly TreeView _tree = new() { MinHeight = 120, MaxHeight = 360, BorderThickness = new(0) };
@@ -67,15 +67,17 @@ public sealed class LiveDirectoryBrowser : UserControl
         await LoadAsync(node, _version, _cancellation.Token);
     }
 
-    private async Task LoadAsync(TreeViewItem node, int version, CancellationToken token)
+    private async Task<bool> LoadAsync(TreeViewItem node, int version, CancellationToken token)
     {
-        if (node.Tag is not NodeState state || state.Loading) return;
+        if (node.Tag is not NodeState state || state.Loading) return false;
         state.Loading = true;
         try
         {
             var page = await _directories.ReadPageAsync(state.Path, state.Offset, token);
-            if (token.IsCancellationRequested || version != _version) return;
+            if (token.IsCancellationRequested || version != _version) return false;
             if (state.Offset == 0) node.Items.Clear();
+            if (state.Error is { } previousError) node.Items.Remove(previousError);
+            state.Error = null;
             foreach (var entry in page.Entries)
             {
                 var child = new Ui.TreeViewItem { Header = Header(entry.Name, entry.IsDirectory), ToolTip = entry.FullPath };
@@ -92,21 +94,29 @@ public sealed class LiveDirectoryBrowser : UserControl
             if (page.HasMore)
             {
                 var more = new Ui.TreeViewItem();
-                more.Header = Button("Loc.LiveBrowser.More", "더 보기", Ui.SymbolRegular.ChevronDown20, async () =>
+                Ui.Button? moreButton = null;
+                moreButton = Button("Loc.LiveBrowser.More", "더 보기", Ui.SymbolRegular.ChevronDown20, async () =>
                 {
-                    if (version != _version || _cancellation is null) return;
-                    node.Items.Remove(more); await LoadAsync(node, version, _cancellation.Token);
+                    if (version != _version || _cancellation is null || state.Loading || moreButton is null) return;
+                    moreButton.IsEnabled = false;
+                    if (await LoadAsync(node, version, _cancellation.Token)) node.Items.Remove(more);
+                    else if (version == _version) moreButton.IsEnabled = true;
                 });
+                more.Header = moreButton;
                 node.Items.Add(more);
             }
             if (state.Offset == 0) node.Items.Add(new Ui.TreeViewItem { Header = L("Loc.LiveBrowser.Empty", "비어 있는 폴더"), IsEnabled = false });
+            return true;
         }
-        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { return false; }
         catch (Exception exception)
         {
-            if (version != _version || token.IsCancellationRequested) return;
+            if (version != _version || token.IsCancellationRequested) return false;
             if (state.Offset == 0) node.Items.Clear();
-            node.Items.Add(new Ui.TreeViewItem { Header = exception.Message, IsEnabled = false, ToolTip = exception.Message });
+            if (state.Error is { } previousError) node.Items.Remove(previousError);
+            state.Error = new Ui.TreeViewItem { Header = exception.Message, IsEnabled = false, ToolTip = exception.Message };
+            node.Items.Add(state.Error);
+            return false;
         }
         finally { state.Loading = false; }
     }

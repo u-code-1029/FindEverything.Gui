@@ -52,7 +52,8 @@ public sealed class CatalogFilteringTests
         Assert.True(item.Matches("2026-10-07"));
         Assert.True(item.Matches(displayedAmount));
         Assert.True(item.Matches("[Literal]"));
-        Assert.True(item.Matches("완료"));
+        // Completion is internal coverage metadata, not a visible/searchable column.
+        Assert.False(item.Matches("완료"));
         Assert.True(item.Matches("—"));
         Assert.True(item.Matches("Apollo 2026-10-07"));
         Assert.False(item.Matches("Apollo not-present"));

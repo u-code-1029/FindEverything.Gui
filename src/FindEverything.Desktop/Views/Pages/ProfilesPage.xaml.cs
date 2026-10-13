@@ -23,7 +23,7 @@ public partial class ProfilesPage
     {
         if (ProfileStepButtons is null || GuidedWorkspace is null || AssignmentPickerPanel is null) return;
         var compact = ProfilePageLayout.ActualWidth < 900;
-        ProfileStepButtons.Columns = compact ? 2 : 4;
+        ProfileStepButtons.Columns = compact ? 2 : 3;
         var showPicker = AssignmentPickerPanel.Visibility == System.Windows.Visibility.Visible;
         System.Windows.Controls.Grid.SetColumn(AssignmentPickerPanel, compact ? 0 : 2);
         System.Windows.Controls.Grid.SetRow(AssignmentPickerPanel, compact ? 1 : 0);

@@ -50,6 +50,12 @@ internal sealed class SelectableCatalogText : Grid
         SetBinding(ToolTipProperty, displayBinding);
         TextBox.GotKeyboardFocus += (_, _) => RefreshFocus();
         TextBox.LostKeyboardFocus += (_, _) => RefreshFocus();
+        // The collapsed idle text view must be laid out before the original
+        // native down event reaches TextEditorMouse/TextEditorTyping. Retain
+        // that event and its capture/drag behavior; never synthesize a replay.
+        TextBox.PreviewMouseLeftButtonDown += (_, _) => PreparePointerInput();
+        TextBox.PreviewStylusDown += (_, _) => PreparePointerInput();
+        TextBox.PreviewTouchDown += (_, _) => PreparePointerInput();
         DataContextChanged += (_, _) => TextBox.Select(0, 0);
         Unloaded += (_, _) => TextBox.Select(0, 0);
         // Recycled cells need a menu owner, but allocating four menu items for
@@ -64,6 +70,13 @@ internal sealed class SelectableCatalogText : Grid
     {
         TextBox.Opacity = TextBox.IsKeyboardFocusWithin ? 1 : 0;
         Highlight.Visibility = TextBox.IsKeyboardFocusWithin ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private void PreparePointerInput()
+    {
+        TextBox.Focus();
+        TextBox.ApplyTemplate();
+        TextBox.UpdateLayout();
     }
 
     internal void PrepareContextMenu()

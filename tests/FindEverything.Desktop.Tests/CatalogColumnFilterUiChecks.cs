@@ -377,9 +377,10 @@ internal static class CatalogColumnFilterUiChecks
                 grid.UpdateLayout();
             }
             PumpUntil(() => pageLoads > 0 && grid.Columns.Count == replacementFields.Length + 3
-                && grid.Columns.Skip(1).All(column => column.Header is StackPanel));
+                && grid.Columns.Skip(2).All(column => column.Header is StackPanel));
+            Assert.IsType<Ui.SymbolIcon>(grid.Columns[1].Header);
             Assert.Equal(replacementFields[0].Header, DynamicProfileGrid.GetColumnHeaderContent(grid.Columns[2]));
-            Assert.All(grid.Columns.Skip(1), column => Assert.False(column.CanUserSort));
+            Assert.All(grid.Columns.Skip(2), column => Assert.False(column.CanUserSort));
         }
         finally
         {
@@ -429,7 +430,7 @@ internal static class CatalogColumnFilterUiChecks
             var snapshot = writer.Publish(new(1, 1, 0, 0, 0, false, null, DateTimeOffset.UtcNow));
             typeof(CatalogViewModel).GetField("_projectionSnapshot", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(owner, snapshot);
             var refresh = (Task)typeof(CatalogViewModel).GetMethod("RefreshProjectionQueryAsync", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .Invoke(owner, [false, true, CancellationToken.None])!;
+                .Invoke(owner, [false, true, CancellationToken.None, false])!;
             PumpUntil(() => refresh.IsCompleted); refresh.GetAwaiter().GetResult();
             Assert.Equal(0, owner.Items.Count);
             Assert.True(owner.HasLoadedItems); // Empty filters must not hide the headers/search needed to clear them.

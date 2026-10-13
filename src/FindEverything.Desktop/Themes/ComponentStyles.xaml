@@ -14,7 +14,9 @@
     <!-- Read-only grid cells retain the real TextBox text editor/automation but
          do not need an editor card, icons, placeholder, buttons or scrollbars.
          Do not base this style on DefaultUiTextBoxStyle: its template triggers
-         would reinstate the wrapped editor template for selectable text. -->
+         would reinstate the wrapped editor template for selectable text.
+         The native hit/focus surface remains present, but its text view is not
+         measured while idle: the overlay TextBlock already renders that text. -->
     <Style x:Key="CatalogReadOnlyContentHostStyle" TargetType="ScrollViewer">
         <Setter Property="OverridesDefaultStyle" Value="True" />
         <Setter Property="Focusable" Value="False" />
@@ -34,6 +36,7 @@
     <Style x:Key="CatalogReadOnlyTextBoxStyle" TargetType="ui:TextBox">
         <Setter Property="OverridesDefaultStyle" Value="True" />
         <Setter Property="IsReadOnly" Value="True" />
+        <Setter Property="IsUndoEnabled" Value="False" />
         <Setter Property="IsTextSelectionEnabled" Value="True" />
         <Setter Property="PlaceholderEnabled" Value="False" />
         <Setter Property="ClearButtonEnabled" Value="False" />
@@ -53,10 +56,35 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ui:TextBox">
-                    <ScrollViewer x:Name="PART_ContentHost" Style="{StaticResource CatalogReadOnlyContentHostStyle}"
-                        CanContentScroll="True" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden"
-                        Focusable="False" IsTabStop="False" Background="{TemplateBinding Background}"
-                        TextElement.Foreground="{TemplateBinding Foreground}" />
+                    <!-- This drawing is the native editor's hit surface while
+                         its expensive text view is collapsed, not an editor card. -->
+                    <Border x:Name="PART_InputSurface" Background="{TemplateBinding Background}">
+                        <ScrollViewer x:Name="PART_ContentHost" Style="{StaticResource CatalogReadOnlyContentHostStyle}"
+                            CanContentScroll="True" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden"
+                            Visibility="Collapsed"
+                            Focusable="False" IsTabStop="False" Background="{TemplateBinding Background}"
+                            TextElement.Foreground="{TemplateBinding Foreground}" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="PART_ContentHost" Property="Visibility" Value="Visible" />
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                            <Setter TargetName="PART_ContentHost" Property="Visibility" Value="Visible" />
+                        </Trigger>
+                        <Trigger Property="IsMouseCaptured" Value="True">
+                            <Setter TargetName="PART_ContentHost" Property="Visibility" Value="Visible" />
+                        </Trigger>
+                        <Trigger Property="IsStylusOver" Value="True">
+                            <Setter TargetName="PART_ContentHost" Property="Visibility" Value="Visible" />
+                        </Trigger>
+                        <Trigger Property="AreAnyTouchesOver" Value="True">
+                            <Setter TargetName="PART_ContentHost" Property="Visibility" Value="Visible" />
+                        </Trigger>
+                        <Trigger Property="AreAnyTouchesCaptured" Value="True">
+                            <Setter TargetName="PART_ContentHost" Property="Visibility" Value="Visible" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
