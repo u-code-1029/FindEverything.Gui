@@ -10,7 +10,9 @@ public partial class CatalogViewModel
     public bool HasPublishedResults => _displayedProjectionSnapshot is not null || HasLoadedItems;
     public bool CanTypeSearch => !IsScanning && !IsShowingSelectedOnly;
     public string ScanActionText => HasPublishedResults
-        ? L("Loc.Ux.Results.Refresh", "결과 새로고침") : L("Loc.Workspace.Scan", "스캔 시작");
+        ? L("Loc.Ux.Results.Refresh", "다시 스캔") : L("Loc.Workspace.Scan", "스캔 시작");
+    public string BusyProgressCaption => IsScanning && _displayedProjectionSnapshot is not null
+        ? L("Loc.Ux.Results.PreviousRefreshing", "이전 결과 · 갱신 중") + " · " + ProgressMessage : ProgressMessage;
     public string ResultScopePath => _displayedProjectionSnapshot?.Scope.RootPath ?? string.Empty;
     public string ResultProvenance => _displayedProjectionSnapshot is { } snapshot
         ? ResultScopePath + " · " + F("Loc.Ux.Results.Source", "{0} · {1} 갱신", IsReadOnlyDataSource
@@ -58,6 +60,13 @@ public partial class CatalogViewModel
     protected override void OnPropertyChanged(PropertyChangedEventArgs e)
     {
         base.OnPropertyChanged(e);
+        if (e.PropertyName is nameof(ProgressMessage) or nameof(IsScanning) or nameof(ResultSourceDescription) or nameof(HasLoadedItems))
+            base.OnPropertyChanged(new PropertyChangedEventArgs(nameof(BusyProgressCaption)));
+        if (e.PropertyName is nameof(CanEditWorkspace) or nameof(WorkspaceTransfer))
+        {
+            base.OnPropertyChanged(new PropertyChangedEventArgs(nameof(CanImportProfile)));
+            ImportProfileCommand.NotifyCanExecuteChanged();
+        }
         if (e.PropertyName is nameof(IsBusy) or nameof(IsSearchPending) or nameof(IsPreservingSelection))
             base.OnPropertyChanged(new PropertyChangedEventArgs(nameof(ShowCancelAction)));
         if (e.PropertyName is nameof(ResultSourceDescription) or nameof(HasLoadedItems) or nameof(IsReadOnlyDataSource))

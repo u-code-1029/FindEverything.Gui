@@ -50,6 +50,36 @@ public interface ISelectionOutputFormatStore
     void Save(SelectionOutputFormatDefinition definition);
 
     bool Delete(string id);
+
+    Task SaveAsync(SelectionOutputFormatDefinition definition, CancellationToken cancellationToken = default) =>
+        Task.Run(() => { cancellationToken.ThrowIfCancellationRequested(); Save(definition); }, cancellationToken);
+
+    Task<bool> DeleteAsync(string id, CancellationToken cancellationToken = default) =>
+        Task.Run(() => { cancellationToken.ThrowIfCancellationRequested(); return Delete(id); }, cancellationToken);
+
+    Task ReplaceProfileFormatsAsync(string profileId, IReadOnlyList<SelectionOutputFormatDefinition> formats,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        foreach (var existing in GetAll().Where(format => !format.IsBuiltIn
+                     && string.Equals(format.ProfileId, profileId, StringComparison.OrdinalIgnoreCase)))
+            Delete(existing.Id);
+        foreach (var format in formats) Save(format);
+        return Task.CompletedTask;
+    }
+
+    async Task<bool> TryReplaceProfileFormatsAsync(string profileId,
+        IReadOnlyList<SelectionOutputFormatDefinition> expectedFormats,
+        IReadOnlyList<SelectionOutputFormatDefinition> replacementFormats,
+        CancellationToken cancellationToken = default)
+    {
+        var current = GetAll().Where(format => !format.IsBuiltIn
+            && string.Equals(format.ProfileId, profileId, StringComparison.OrdinalIgnoreCase));
+        if (!current.OrderBy(format => format.Id, StringComparer.OrdinalIgnoreCase).SequenceEqual(
+                expectedFormats.OrderBy(format => format.Id, StringComparer.OrdinalIgnoreCase))) return false;
+        await ReplaceProfileFormatsAsync(profileId, replacementFormats, cancellationToken).ConfigureAwait(false);
+        return true;
+    }
 }
 
 public sealed class SelectionOutputFormatStore : ISelectionOutputFormatStore
@@ -67,6 +97,7 @@ public sealed class SelectionOutputFormatStore : ISelectionOutputFormatStore
     private readonly IAppLocalizer? _localizer;
     private readonly SelectionOutputFormatDefinition _builtInFormat;
     private Dictionary<string, SelectionOutputFormatDefinition>? _customFormats;
+    private IReadOnlyList<SelectionOutputFormatDefinition> _snapshot = [];
 
     public SelectionOutputFormatStore(
         AppPaths paths,
@@ -77,35 +108,28 @@ public sealed class SelectionOutputFormatStore : ISelectionOutputFormatStore
         _logger = logger;
         _localizer = localizer;
         _builtInFormat = SelectionOutputFormatDefaults.CreateFullPathLines(localizer);
+        EnsureLoaded();
+        PublishSnapshot();
     }
 
     public event EventHandler? Changed;
 
-    public IReadOnlyList<SelectionOutputFormatDefinition> GetAll()
-    {
-        lock (_sync)
-        {
-            EnsureLoaded();
-            return CreateSnapshot(static _ => true);
-        }
-    }
+    public IReadOnlyList<SelectionOutputFormatDefinition> GetAll() => Volatile.Read(ref _snapshot);
 
     public IReadOnlyList<SelectionOutputFormatDefinition> GetApplicable(string? profileId)
     {
-        lock (_sync)
-        {
-            EnsureLoaded();
-            return CreateSnapshot(format =>
+        return Array.AsReadOnly(GetAll().Where(format =>
                 string.IsNullOrWhiteSpace(format.ProfileId)
                 || (!string.IsNullOrWhiteSpace(profileId)
                     && string.Equals(
                         format.ProfileId,
                         profileId,
-                        StringComparison.OrdinalIgnoreCase)));
-        }
+                        StringComparison.OrdinalIgnoreCase))).ToArray());
     }
 
-    public void Save(SelectionOutputFormatDefinition definition)
+    public void Save(SelectionOutputFormatDefinition definition) => SaveAsync(definition).GetAwaiter().GetResult();
+
+    public Task SaveAsync(SelectionOutputFormatDefinition definition, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(definition);
         var normalized = NormalizeAndValidate(definition);
@@ -116,34 +140,25 @@ public sealed class SelectionOutputFormatStore : ISelectionOutputFormatStore
                 "기본 출력 포맷은 수정할 수 없습니다."));
         }
 
-        lock (_sync)
+        return Task.Run(() =>
         {
-            EnsureLoaded();
-            var hadPrevious = _customFormats!.TryGetValue(normalized.Id, out var previous);
-            _customFormats[normalized.Id] = normalized;
-            try
+            lock (_sync)
             {
-                WriteAtomically();
+                cancellationToken.ThrowIfCancellationRequested();
+                var expectedBytes = ReloadForWrite();
+                var previous = _customFormats!;
+                _customFormats = new(previous, StringComparer.OrdinalIgnoreCase) { [normalized.Id] = normalized };
+                try { WriteAtomically(expectedBytes, compare: true, cancellationToken); }
+                catch { _customFormats = previous; throw; }
+                PublishSnapshot();
             }
-            catch
-            {
-                if (hadPrevious)
-                {
-                    _customFormats[normalized.Id] = previous!;
-                }
-                else
-                {
-                    _customFormats.Remove(normalized.Id);
-                }
-
-                throw;
-            }
-        }
-
-        RaiseChanged();
+            RaiseChanged();
+        }, cancellationToken);
     }
 
-    public bool Delete(string id)
+    public bool Delete(string id) => DeleteAsync(id).GetAwaiter().GetResult();
+
+    public Task<bool> DeleteAsync(string id, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
         if (string.Equals(
@@ -151,47 +166,120 @@ public sealed class SelectionOutputFormatStore : ISelectionOutputFormatStore
                 SelectionOutputFormatDefaults.FullPathLinesId,
                 StringComparison.OrdinalIgnoreCase))
         {
-            return false;
+            return Task.FromResult(false);
         }
 
-        var removed = false;
-        lock (_sync)
+        return Task.Run(() =>
         {
-            EnsureLoaded();
-            if (!_customFormats!.Remove(id.Trim(), out var previous))
+            lock (_sync)
             {
-                return false;
+                cancellationToken.ThrowIfCancellationRequested();
+                var expectedBytes = ReloadForWrite();
+                if (!_customFormats!.ContainsKey(id.Trim())) { PublishSnapshot(); return false; }
+                var previous = _customFormats;
+                _customFormats = new(previous, StringComparer.OrdinalIgnoreCase);
+                _customFormats.Remove(id.Trim());
+                try { WriteAtomically(expectedBytes, compare: true, cancellationToken); }
+                catch { _customFormats = previous; throw; }
+                PublishSnapshot();
             }
-
-            try
-            {
-                WriteAtomically();
-                removed = true;
-            }
-            catch
-            {
-                _customFormats[previous.Id] = previous;
-                throw;
-            }
-        }
-
-        if (removed)
-        {
             RaiseChanged();
-        }
-
-        return removed;
+            return true;
+        }, cancellationToken);
     }
 
-    private IReadOnlyList<SelectionOutputFormatDefinition> CreateSnapshot(
-        Func<SelectionOutputFormatDefinition, bool> predicate)
+    public Task ReplaceProfileFormatsAsync(string profileId,
+        IReadOnlyList<SelectionOutputFormatDefinition> formats, CancellationToken cancellationToken = default) =>
+        ReplaceProfileFormatsCoreAsync(profileId, null, formats, cancellationToken);
+
+    public Task<bool> TryReplaceProfileFormatsAsync(string profileId,
+        IReadOnlyList<SelectionOutputFormatDefinition> expectedFormats,
+        IReadOnlyList<SelectionOutputFormatDefinition> replacementFormats,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(expectedFormats);
+        return ReplaceProfileFormatsCoreAsync(profileId, expectedFormats, replacementFormats, cancellationToken);
+    }
+
+    private Task<bool> ReplaceProfileFormatsCoreAsync(string profileId,
+        IReadOnlyList<SelectionOutputFormatDefinition>? expectedFormats,
+        IReadOnlyList<SelectionOutputFormatDefinition> formats, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(profileId);
+        ArgumentNullException.ThrowIfNull(formats);
+        var normalized = formats.Select(NormalizeAndValidate).ToArray();
+        if (normalized.Any(format => format.IsBuiltIn
+                || !string.Equals(format.ProfileId, profileId, StringComparison.OrdinalIgnoreCase))
+            || normalized.Select(format => format.Id).Distinct(StringComparer.OrdinalIgnoreCase).Count() != normalized.Length)
+            throw new ArgumentException("Each custom format must have a unique ID and belong to the target profile.", nameof(formats));
+
+        return Task.Run(() =>
+        {
+            lock (_sync)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                // Read again so a conditional rollback cannot overwrite a later external edit.
+                var persistedBytes = ReloadForWrite();
+                var current = _customFormats!.Values.Where(format => string.Equals(
+                    format.ProfileId, profileId, StringComparison.OrdinalIgnoreCase)).ToArray();
+                if (expectedFormats is not null && !current.OrderBy(format => format.Id, StringComparer.OrdinalIgnoreCase)
+                        .SequenceEqual(expectedFormats.OrderBy(format => format.Id, StringComparer.OrdinalIgnoreCase)))
+                {
+                    PublishSnapshot();
+                    return false;
+                }
+                if (normalized.Any(format => _customFormats.TryGetValue(format.Id, out var existing)
+                        && !string.Equals(existing.ProfileId, profileId, StringComparison.OrdinalIgnoreCase)))
+                    throw new InvalidOperationException("An output format ID already belongs to another profile or a shared format.");
+                var previous = _customFormats;
+                _customFormats = previous.Where(pair => !string.Equals(pair.Value.ProfileId, profileId, StringComparison.OrdinalIgnoreCase))
+                    .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
+                foreach (var format in normalized) _customFormats.Add(format.Id, format);
+                try
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    WriteAtomically(persistedBytes, compare: true, cancellationToken);
+                }
+                catch { _customFormats = previous; throw; }
+                PublishSnapshot();
+            }
+
+            RaiseChanged();
+            return true;
+        }, cancellationToken);
+    }
+
+    private byte[]? ReloadForWrite()
+    {
+        var formats = new Dictionary<string, SelectionOutputFormatDefinition>(StringComparer.OrdinalIgnoreCase);
+        byte[]? bytes = null;
+        if (File.Exists(_paths.SelectionOutputFormatsFile))
+        {
+            using var stream = new FileStream(_paths.SelectionOutputFormatsFile, FileMode.Open, FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete);
+            using var buffer = new MemoryStream();
+            stream.CopyTo(buffer);
+            bytes = buffer.ToArray();
+            var document = JsonSerializer.Deserialize<SelectionOutputFormatDocument>(bytes, SerializerOptions);
+            if (document is null || document.Version != CurrentFileVersion)
+                throw new InvalidDataException("The output format document has an unsupported version.");
+            foreach (var definition in document.Formats ?? [])
+            {
+                var normalized = NormalizeAndValidate(definition);
+                if (!normalized.IsBuiltIn) formats[normalized.Id] = normalized;
+            }
+        }
+        _customFormats = formats;
+        return bytes;
+    }
+
+    private void PublishSnapshot()
     {
         var custom = _customFormats!.Values
-            .Where(predicate)
             .OrderBy(static format => format.DisplayName, StringComparer.CurrentCultureIgnoreCase);
-        return new[] { _builtInFormat }
+        Volatile.Write(ref _snapshot, Array.AsReadOnly(new[] { _builtInFormat }
             .Concat(custom)
-            .ToArray();
+            .ToArray()));
     }
 
     private void EnsureLoaded()
@@ -258,7 +346,7 @@ public sealed class SelectionOutputFormatStore : ISelectionOutputFormatStore
         }
     }
 
-    private void WriteAtomically()
+    private void WriteAtomically(byte[]? expectedBytes = null, bool compare = false, CancellationToken cancellationToken = default)
     {
         Directory.CreateDirectory(_paths.LocalDataDirectory);
         var temporaryPath = _paths.SelectionOutputFormatsFile + $".{Guid.NewGuid():N}.tmp";
@@ -281,6 +369,13 @@ public sealed class SelectionOutputFormatStore : ISelectionOutputFormatStore
                 stream.Flush(flushToDisk: true);
             }
 
+            cancellationToken.ThrowIfCancellationRequested();
+            if (compare)
+            {
+                var currentBytes = File.Exists(_paths.SelectionOutputFormatsFile) ? File.ReadAllBytes(_paths.SelectionOutputFormatsFile) : null;
+                if (expectedBytes is null ? currentBytes is not null : currentBytes is null || !expectedBytes.AsSpan().SequenceEqual(currentBytes))
+                    throw new IOException("Output formats changed while they were being saved. Please retry.");
+            }
             File.Move(temporaryPath, _paths.SelectionOutputFormatsFile, overwrite: true);
         }
         catch (Exception exception) when (

@@ -81,7 +81,7 @@
     <sys:String x:Key="Loc.Home.State.Ready.Title">구조화 스캔 설정 완료</sys:String>
     <sys:String x:Key="Loc.Home.State.Ready.Message">검색 위치와 프로필이 연결되었습니다. 구조화 보기에서 접근 상태를 확인한 뒤 스캔을 시작하세요.</sys:String>
     <sys:String x:Key="Loc.Home.State.Setup.Title">몇 가지만 준비하면 시작할 수 있어요</sys:String>
-    <sys:String x:Key="Loc.Home.State.Setup.Message">검색 위치와 프로필을 준비하세요. 파일 찾기는 프로필 없이도 사용할 수 있습니다.</sys:String>
+    <sys:String x:Key="Loc.Home.State.Setup.Message">검색 위치와 프로필을 준비하면 구조화 보기에서 필요한 정보를 모아볼 수 있습니다.</sys:String>
     <sys:String x:Key="Loc.Home.Operation.Scanning">디스크를 스캔하고 검색 DB를 갱신하고 있습니다.</sys:String>
     <sys:String x:Key="Loc.Home.Operation.Loading">저장된 검색 DB에서 결과를 불러오고 있습니다.</sys:String>
     <sys:String x:Key="Loc.Home.Operation.ProfileDiscovery">사용 가능한 프로필을 불러오고 있습니다.</sys:String>
@@ -1082,7 +1082,7 @@
     <sys:String x:Key="Loc.Transfer.Export.Package.Short">공유…</sys:String>
     <sys:String x:Key="Loc.Transfer.Export.Package.Help">이 루트의 파일 메타데이터와 구조화 결과를 프로필과 함께 내보냅니다.</sys:String>
     <sys:String x:Key="Loc.Transfer.Export.Profile">프로필 JSON 내보내기</sys:String>
-    <sys:String x:Key="Loc.Transfer.Export.Profile.Help">선택한 저장된 JSON 프로필을 파일로 내보냅니다. DLL 프로필은 지원하지 않습니다.</sys:String>
+    <sys:String x:Key="Loc.Transfer.Export.Profile.Help">저장된 프로필 규칙과 현재 출력 포맷·컬럼 표시 설정을 JSON 하나로 내보냅니다. DB와 이 PC의 경로는 포함하지 않으며 DLL 프로필은 지원하지 않습니다.</sys:String>
     <sys:String x:Key="Loc.Transfer.IncludeNotes">메모·사용자 입력값 포함</sys:String>
     <sys:String x:Key="Loc.Transfer.IncludeCatalog">구조화 결과 포함</sys:String>
     <sys:String x:Key="Loc.Transfer.Package.Privacy">선택한 루트의 확정된 결과만 포함합니다. 메모는 기본적으로 제외합니다.</sys:String>
@@ -1094,10 +1094,10 @@
     <sys:String x:Key="Loc.Transfer.Profile.Select">저장된 JSON 프로필을 선택하세요. DLL 프로필은 JSON으로 내보낼 수 없습니다.</sys:String>
     <sys:String x:Key="Loc.Transfer.Unsupported">프로필 JSON 또는 .fepkg 파일을 선택하세요.</sys:String>
     <sys:String x:Key="Loc.Transfer.Conflict.Title">같은 ID의 프로필이 있습니다</sys:String>
-    <sys:String x:Key="Loc.Transfer.Conflict.Message">새 프로필로 가져오면 기존 프로필과 데이터가 유지됩니다. 교체는 프로필 정의만 바꿉니다.</sys:String>
+    <sys:String x:Key="Loc.Transfer.Conflict.Message">새 프로필로 가져오면 기존 프로필과 데이터가 유지됩니다. 교체하면 프로필 규칙과, JSON에 포함된 출력 포맷·선택 포맷·컬럼 표시 설정을 바꿉니다. 기존 스캔 DB는 삭제하지 않습니다.</sys:String>
     <sys:String x:Key="Loc.Transfer.Conflict.New">새 프로필로 가져오기</sys:String>
     <sys:String x:Key="Loc.Transfer.Conflict.Replace">기존 프로필 교체</sys:String>
-    <sys:String x:Key="Loc.Transfer.Conflict.Confirm">기존 프로필 정의를 가져온 정의로 교체할까요?</sys:String>
+    <sys:String x:Key="Loc.Transfer.Conflict.Confirm">이 프로필의 규칙과 포함된 출력 포맷·선택 포맷·컬럼 표시 설정을 가져온 내용으로 교체할까요? 기존 스캔 DB는 유지됩니다.</sys:String>
     <sys:String x:Key="Loc.Transfer.Root.Title">원래 경로에 연결할 수 없습니다</sys:String>
     <sys:String x:Key="Loc.Transfer.Root.Help">이 PC의 해당 폴더를 연결하거나, 원본 파일 없이 저장된 데이터만 조회할 수 있습니다.</sys:String>
     <sys:String x:Key="Loc.Transfer.Root.Connect">다른 폴더 연결</sys:String>
@@ -1105,7 +1105,7 @@
     <sys:String x:Key="Loc.Transfer.Root.Offline">오프라인으로 조회</sys:String>
     <sys:String x:Key="Loc.Transfer.Root.Relinked">조회 경로를 다시 연결했습니다. 구조화 값은 변경하지 않았습니다.</sys:String>
     <sys:String x:Key="Loc.Transfer.Catalog.Missing">구조화 결과 미포함</sys:String>
-    <sys:String x:Key="Loc.Transfer.Catalog.Missing.Help">파일 찾기에서 메타데이터를 조회할 수 있습니다. 구조화 결과를 만들려면 로컬 결과로 전환한 뒤 직접 스캔하세요.</sys:String>
+    <sys:String x:Key="Loc.Transfer.Catalog.Missing.Help">구조화 결과가 없는 공유 데이터입니다. 구조화 결과가 포함된 파일을 받거나 로컬 결과로 전환한 뒤 직접 스캔하세요.</sys:String>
     <sys:String x:Key="Loc.Transfer.Working">공유 데이터를 처리하는 중…</sys:String>
     <sys:String x:Key="Loc.Transfer.Output.Missing">이 공유 데이터에 선택한 항목의 구조화 값이 포함되어 있지 않습니다.</sys:String>
     <sys:String x:Key="Loc.Transfer.Menu.Title">데이터 원본·공유</sys:String>
@@ -1301,7 +1301,7 @@
     <sys:String x:Key="Loc.Ux.Shell.Settings.Advanced.Help">일반적인 사용에는 기본값을 유지하세요. 각 항목의 의미를 확인한 뒤 필요한 값만 변경할 수 있습니다.</sys:String>
     <sys:String x:Key="Loc.Ux.Shell.Settings.Notifications.Help">일반 알림은 설정한 시간 뒤 닫힙니다. 마우스나 포커스가 있으면 유지되며 오류는 직접 닫을 때까지 표시됩니다. 최근 알림에서 다시 확인하고 복사할 수 있습니다.</sys:String>
     <sys:String x:Key="Loc.Ux.Shell.Language.Hint">언어를 선택한 뒤 지금 다시 시작하거나 나중에 적용할 수 있습니다.</sys:String>
-    <sys:String x:Key="Loc.Ux.Results.Refresh">결과 새로고침</sys:String>
+    <sys:String x:Key="Loc.Ux.Results.Refresh">다시 스캔</sys:String>
     <sys:String x:Key="Loc.Ux.Results.Source">{0} · {1} 갱신</sys:String>
     <sys:String x:Key="Loc.Ux.Results.Source.Shared">가져온 결과</sys:String>
     <sys:String x:Key="Loc.Ux.Results.Source.Saved">저장된 결과</sys:String>
@@ -1351,11 +1351,11 @@
     <sys:String x:Key="Loc.Ux.Home.Next.Shared">공유 결과를 확인하세요</sys:String>
     <sys:String x:Key="Loc.Ux.Home.Next.Location">검색할 위치를 먼저 선택하세요</sys:String>
     <sys:String x:Key="Loc.Ux.Home.Next.Files">파일 찾기를 바로 시작할 수 있어요</sys:String>
-    <sys:String x:Key="Loc.Ux.Home.Next.Ready">이 위치에서 파일을 찾으세요</sys:String>
+    <sys:String x:Key="Loc.Ux.Home.Next.Ready">프로필에 맞는 정보를 한눈에 확인하세요</sys:String>
     <sys:String x:Key="Loc.Ux.Home.Next.Shared.Help">가져온 인덱스는 읽기 전용입니다. 내 디스크를 스캔하려면 이 PC의 작업 환경으로 전환하세요.</sys:String>
-    <sys:String x:Key="Loc.Ux.Home.Next.Location.Help">드라이브나 폴더를 선택한 다음 파일 찾기에서 스캔하세요. 프로필은 없어도 됩니다.</sys:String>
+    <sys:String x:Key="Loc.Ux.Home.Next.Location.Help">드라이브나 폴더를 선택하고 프로필을 준비하면 구조화 보기에서 필요한 정보를 모아볼 수 있습니다.</sys:String>
     <sys:String x:Key="Loc.Ux.Home.Next.Files.Help">전체 파일은 파일 찾기에서 볼 수 있습니다. 폴더 경로의 정보를 컬럼으로 보려면 프로필을 만드세요.</sys:String>
-    <sys:String x:Key="Loc.Ux.Home.Next.Ready.Help">파일 찾기에서 전체 파일을 검색하거나, 구조화 보기에서 프로필에 맞는 정보를 확인하세요.</sys:String>
+    <sys:String x:Key="Loc.Ux.Home.Next.Ready.Help">구조화 보기에서 저장된 결과를 검색하거나, 선택한 위치를 스캔해 최신 정보를 확인하세요.</sys:String>
     <sys:String x:Key="Loc.Ux.Home.CreateProfile">프로필 만들기</sys:String>
     <sys:String x:Key="Loc.Ux.Home.CreateProfile.Help">예제 경로에서 필요한 조각을 선택해 이름, 날짜 같은 컬럼을 만듭니다.</sys:String>
     <sys:String x:Key="Loc.Ux.Home.SharedCatalog.Help">공유된 프로필의 구조화 보기를 엽니다.</sys:String>
@@ -1381,4 +1381,22 @@
     <sys:String x:Key="Loc.Ux.Results.SelectedOnly.Empty">선택한 항목이 없습니다</sys:String>
     <sys:String x:Key="Loc.Ux.Results.SelectedOnly.EmptyHelp">선택 항목 검토를 닫으면 기존 검색 결과에서 다시 선택할 수 있습니다.</sys:String>
     <sys:String x:Key="Loc.Ux.Results.SelectedOnly.Exit">선택 항목 검토 닫기</sys:String>
+    <sys:String x:Key="Loc.Ux.Home.Next.Profile">정보를 추출할 프로필을 준비하세요</sys:String>
+    <sys:String x:Key="Loc.Ux.Home.Next.Profile.Help">프로필에서 폴더 경로를 컬럼으로 나누는 규칙을 만들거나, 아래에서 받은 프로필을 가져오세요.</sys:String>
+    <sys:String x:Key="Loc.Ux.Catalog.ImportProfile">프로필 가져오기</sys:String>
+    <sys:String x:Key="Loc.Ux.Catalog.ImportProfile.Help">프로필 JSON을 이 PC에 저장하고 선택합니다. 포함된 출력 포맷·컬럼 표시 설정도 복원합니다. 같은 ID가 있으면 새 프로필로 가져오거나 기존 프로필을 교체할 수 있습니다.</sys:String>
+    <sys:String x:Key="Loc.Ux.Catalog.ImportProfile.JsonOnly">프로필 JSON 파일을 선택하세요.</sys:String>
+    <sys:String x:Key="Loc.Ux.Output.Preference.SaveFailed">복사 포맷 선택을 저장하지 못했습니다.</sys:String>
+    <sys:String x:Key="Loc.ProfileDiagnostic.workspace_invalid">프로필의 화면·출력 설정을 확인하세요. 출력 포맷과 컬럼 참조 및 너비 제한이 올바르지 않습니다.</sys:String>
+    <sys:String x:Key="Loc.Path.Open.Pending">이전 경로를 여는 중입니다. 잠시 후 다시 시도하세요.</sys:String>
+    <sys:String x:Key="Loc.Scan.CopyFailed">로그를 복사하지 못했습니다.</sys:String>
+    <sys:String x:Key="Loc.Scan.Resize">로그 높이 조절 · 위아래로 드래그하거나 방향키를 누르세요.</sys:String>
+    <sys:String x:Key="Loc.Ux.Results.PreviousRefreshing">이전 결과 · 갱신 중</sys:String>
+    <sys:String x:Key="Loc.Ux.Home.ImportProfile.Help">받은 프로필 JSON을 열어 규칙, 출력 포맷, 컬럼 설정을 함께 가져옵니다.</sys:String>
+    <sys:String x:Key="Loc.Transfer.Package.StructuredRequired">이 패키지에는 구조화 결과가 없어 현재 앱에서 조회할 수 없습니다. 보낸 사람에게 구조화 결과를 포함해 다시 내보내도록 요청하세요. 아직 설치하지 않았습니다.</sys:String>
+    <sys:String x:Key="Loc.Playground.Cancel.Help">테스트를 취소합니다. 운영체제의 파일·네트워크 응답은 즉시 중단되지 않을 수 있습니다.</sys:String>
+    <sys:String x:Key="Loc.Playground.Status.Cancelling">취소를 요청했습니다. 진행 중인 파일·네트워크 응답이 끝나면 새 테스트를 시작할 수 있습니다.</sys:String>
+    <sys:String x:Key="Loc.Ux.Authoring.Validate.Help">저장하지 않고 규칙을 확인합니다. 저장할 때도 자동으로 검증합니다.</sys:String>
+    <sys:String x:Key="Loc.Ux.Authoring.Save.Help">검증 후 저장합니다. 실제 경로 테스트는 나중에 실행할 수 있습니다.</sys:String>
+    <sys:String x:Key="Loc.Common.Save">저장</sys:String>
 </ResourceDictionary>

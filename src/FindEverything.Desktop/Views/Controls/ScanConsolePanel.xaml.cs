@@ -10,6 +10,7 @@ namespace FindEverything.Desktop.Views.Controls;
 
 public partial class ScanConsolePanel
 {
+    public static readonly RoutedUICommand CopyLogPathCommand = new("Copy log path", nameof(CopyLogPathCommand), typeof(ScanConsolePanel));
     private ScanConsoleViewModel? _viewModel;
     private bool _scrollScheduled;
     private ScrollViewer? _traceScrollViewer;
@@ -17,10 +18,14 @@ public partial class ScanConsolePanel
     private double _pausedFraction;
     private double _pausedHorizontalOffset;
     private long _attachmentVersion;
+    private bool? _compact;
 
     public ScanConsolePanel()
     {
         InitializeComponent();
+        TraceList.CommandBindings.Add(new CommandBinding(ApplicationCommands.Copy, OnCopyLogExecuted, OnCopyLogCanExecute));
+        TraceList.CommandBindings.Add(new CommandBinding(CopyLogPathCommand, OnCopyLogExecuted, OnCopyLogCanExecute));
+        TraceList.InputBindings.Add(new KeyBinding(CopyLogPathCommand, Key.C, ModifierKeys.Control | ModifierKeys.Shift));
         // Viewport anchors are logical rows, independently of display DPI/font.
         VirtualizingPanel.SetScrollUnit(TraceList, ScrollUnit.Item);
         Loaded += OnLoaded;
@@ -33,19 +38,43 @@ public partial class ScanConsolePanel
     private void OnPanelSizeChanged(object sender, SizeChangedEventArgs args)
     {
         var compact = args.NewSize.Width < 820;
-        SessionSummaryText.Visibility = LogLegendText.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        if (_compact == compact) return;
+        _compact = compact;
         if (compact)
         {
-            CopyAllLogsButton.Content = ClearLogsButton.Content = null;
+            CopyAllLogsButton.Content = SaveScanLogButton.Content = ClearLogsButton.Content = null;
         }
         else
         {
             CopyAllLogsButton.SetResourceReference(ContentControl.ContentProperty, "Loc.Scan.CopyAll");
+            SaveScanLogButton.SetResourceReference(ContentControl.ContentProperty, "Loc.View.ScanConsolePanel.Content.SaveLog");
             ClearLogsButton.SetResourceReference(ContentControl.ContentProperty, "Loc.Scan.Clear");
         }
-        CopyAllLogsButton.MinWidth = ClearLogsButton.MinWidth = compact ? 32 : 92;
-        CopyAllLogsButton.Width = ClearLogsButton.Width = compact ? 32 : double.NaN;
-        CopyAllLogsButton.Padding = ClearLogsButton.Padding = compact ? new Thickness(0) : new Thickness(10, 5, 10, 5);
+        foreach (var button in new[] { CopyAllLogsButton, SaveScanLogButton, ClearLogsButton })
+        {
+            button.MinWidth = compact ? 32 : 84;
+            button.Width = compact ? 32 : double.NaN;
+            button.Padding = compact ? new Thickness(0) : new Thickness(8, 4, 8, 4);
+        }
+    }
+
+    private void OnCopyLogCanExecute(object sender, CanExecuteRoutedEventArgs args)
+    {
+        var model = DataContext as ScanConsoleViewModel;
+        args.CanExecute = args.Command == CopyLogPathCommand
+            ? model?.CopySelectedPathCommand.CanExecute(null) == true
+            : model?.CopySelectedMessageCommand.CanExecute(null) == true;
+        args.Handled = true;
+    }
+
+    private void OnCopyLogExecuted(object sender, ExecutedRoutedEventArgs args)
+    {
+        if (DataContext is ScanConsoleViewModel model)
+        {
+            var command = args.Command == CopyLogPathCommand ? model.CopySelectedPathCommand : model.CopySelectedMessageCommand;
+            if (command.CanExecute(null)) command.Execute(null);
+        }
+        args.Handled = true;
     }
 
     private void OnLoaded(object sender, RoutedEventArgs eventArgs)

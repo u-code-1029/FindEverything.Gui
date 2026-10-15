@@ -16,7 +16,8 @@ namespace FindEverything.Desktop.ViewModels;
 
 public sealed record WorkspaceSourceChoice(string Id, string DisplayName, ImportedWorkspaceSource? Source);
 public sealed record WorkspaceExportContext(string RootPath, string MetadataDatabasePath,
-    string? ProfileId = null, string? CatalogDatabasePath = null, CatalogProjectionSnapshot? CatalogSnapshot = null);
+    string? ProfileId = null, string? CatalogDatabasePath = null, CatalogProjectionSnapshot? CatalogSnapshot = null,
+    bool RequireCatalog = false);
 public interface IWorkspaceExportSource
 {
     WorkspaceExportContext? CaptureWorkspaceExport();
@@ -40,11 +41,13 @@ public sealed partial class WorkspaceTransferViewModel : ObservableObject, IDisp
     private readonly string _selectionFile;
     private CancellationTokenSource? _cancellation;
     private readonly SemaphoreSlim _selectionSaveGate = new(1, 1);
+    private readonly SemaphoreSlim _rootProbeGate = new(1, 1);
     private bool _initialized;
     private bool _suppressSourceChange;
     private bool _disposed;
     private long _selectionRevision;
     private long _registryRevision;
+    private ProfileTransferResult? _pendingProfileActivation;
     private readonly TaskCompletionSource _initialization = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public WorkspaceTransferViewModel(IProfileTransferService profiles, IIndexedDatasetTransferService datasets,
@@ -65,6 +68,8 @@ public sealed partial class WorkspaceTransferViewModel : ObservableObject, IDisp
     }
 
     public event EventHandler? SourceChanged;
+    public event EventHandler<ProfileTransferResult>? ProfileImported;
+    public ProfileTransferResult? TakePendingProfileActivation() => Interlocked.Exchange(ref _pendingProfileActivation, null);
     public ObservableCollection<WorkspaceSourceChoice> Sources { get; }
     [ObservableProperty] private WorkspaceSourceChoice? _selectedSource;
     [ObservableProperty] private bool _isBusy;
@@ -186,32 +191,42 @@ public sealed partial class WorkspaceTransferViewModel : ObservableObject, IDisp
         if (path is not null) await OpenPathAsync(path);
     }
 
-    public async Task OpenPathAsync(string path)
+    public async Task<ProfileTransferResult?> OpenPathAsync(string path)
     {
-        if (!CanTransfer()) return;
-        if (!await _drafts.ConfirmAllAsync()) return;
+        if (!CanTransfer()) return null;
+        if (!await _drafts.ConfirmAllAsync()) return null;
+        ProfileTransferResult? importedProfile = null;
         await RunAsync(async token =>
         {
             if (Path.GetExtension(path).Equals(".json", StringComparison.OrdinalIgnoreCase))
             {
                 var inspection = await _profiles.InspectAsync(path, token);
-                var choice = await ChooseConflictAsync(inspection.HasIdConflict, token);
+                var choice = await ChooseConflictAsync(inspection.HasIdConflict, inspection.Manifest, token);
                 if (choice == ProfileImportConflictChoice.Cancel) return;
                 await _operations.RunAsync(ApplicationOperationKind.ProfileWrite,
-                    async ct => { await _profiles.ImportAsync(path, choice, ct); }, token);
-                Notify(L("Loc.Transfer.Profile.Imported", "프로필을 저장하고 적용했습니다."));
+                    async ct => { importedProfile = await _profiles.ImportManifestAsync(inspection.Manifest, choice, ct); }, token);
+                if (importedProfile is not null)
+                {
+                    // Every entry point (button, sharing menu, drop, Home) activates the same installed ID.
+                    _pendingProfileActivation = importedProfile;
+                    ProfileImported?.Invoke(this, importedProfile);
+                    Notify(L("Loc.Transfer.Profile.Imported", "프로필을 저장하고 적용했습니다."));
+                }
             }
             else if (Path.GetExtension(path).Equals(".fepkg", StringComparison.OrdinalIgnoreCase))
             {
-                var inspection = await _datasets.InspectAsync(path, token);
+                await using var prepared = await _datasets.PrepareImportAsync(path, token);
+                var inspection = prepared.Inspection;
+                if (!inspection.HasCatalog)
+                    throw new InvalidDataException(L("Loc.Transfer.Package.StructuredRequired", "이 패키지에는 구조화 결과가 없어 현재 앱에서 조회할 수 없습니다. 보낸 사람에게 구조화 결과를 포함해 다시 내보내도록 요청하세요. 아직 설치하지 않았습니다."));
                 var editable = await _authoring.ListAsync(token);
-                var choice = await ChooseConflictAsync(editable.Any(x => x.Id.Equals(inspection.Profile.Id, StringComparison.OrdinalIgnoreCase)), token);
+                var choice = await ChooseConflictAsync(editable.Any(x => x.Id.Equals(inspection.Profile.Id, StringComparison.OrdinalIgnoreCase)), inspection.Profile, token);
                 if (choice == ProfileImportConflictChoice.Cancel) return;
                 var linked = await ChooseRootAsync(inspection.OriginalRoot, token);
                 if (linked.Cancelled) return;
                 ImportedWorkspaceSource? installed = null;
                 await _operations.RunAsync(ApplicationOperationKind.ProfileWrite,
-                    async ct => installed = await _datasets.ImportAsync(path, choice, linked.Root, Progress(), ct), token);
+                    async ct => installed = await _datasets.ImportPreparedAsync(prepared, choice, linked.Root, Progress(), ct), token);
                 if (installed is null) return;
                 var choiceItem = ToChoice(installed);
                 var existing = Sources.FirstOrDefault(x => x.Id == installed.Id);
@@ -221,6 +236,7 @@ public sealed partial class WorkspaceTransferViewModel : ObservableObject, IDisp
             }
             else throw new InvalidDataException(L("Loc.Transfer.Unsupported", "프로필 JSON 또는 .fepkg 파일을 선택하세요."));
         });
+        return importedProfile;
     }
 
     [RelayCommand(CanExecute = nameof(CanTransfer))]
@@ -255,12 +271,19 @@ public sealed partial class WorkspaceTransferViewModel : ObservableObject, IDisp
         await RunAsync(async token =>
         {
             var profiles = await _authoring.ListAsync(token);
+            if (context.RequireCatalog)
+                profiles = profiles.Where(profile => string.Equals(profile.Id, context.ProfileId, StringComparison.OrdinalIgnoreCase)).ToArray();
             if (profiles.Count == 0) { Notify(L("Loc.Transfer.Profile.Select", "먼저 저장된 JSON 프로필을 선택하세요."), ControlAppearance.Caution); return; }
             var combo = new System.Windows.Controls.ComboBox { ItemsSource = profiles, DisplayMemberPath = "DisplayName", MinWidth = 280,
                 SelectedItem = profiles.FirstOrDefault(x => x.Id == context.ProfileId) ?? profiles[0] };
             var notes = new System.Windows.Controls.CheckBox { Content = L("Loc.Transfer.IncludeNotes", "메모·사용자 입력값 포함"), IsChecked = false, Margin = new(0, 12, 0, 0) };
             var catalog = new System.Windows.Controls.CheckBox { Content = L("Loc.Transfer.IncludeCatalog", "구조화 결과 포함"), Margin = new(0, 8, 0, 0) };
-            void UpdateCatalog() { catalog.IsEnabled = context.CatalogSnapshot is not null && (combo.SelectedItem as EditableProfileSummary)?.Id == context.ProfileId; catalog.IsChecked = catalog.IsEnabled; }
+            void UpdateCatalog()
+            {
+                var available = context.CatalogSnapshot is not null && (combo.SelectedItem as EditableProfileSummary)?.Id == context.ProfileId;
+                catalog.IsEnabled = available && !context.RequireCatalog;
+                catalog.IsChecked = available;
+            }
             combo.SelectionChanged += (_, _) => UpdateCatalog(); UpdateCatalog();
             var content = new System.Windows.Controls.StackPanel();
             content.Children.Add(new TextBlock { Text = L("Loc.Workspace.Profile.Label", "프로필"), Margin = new(0, 0, 0, 4) });
@@ -269,12 +292,16 @@ public sealed partial class WorkspaceTransferViewModel : ObservableObject, IDisp
             var response = await _dialogs.ShowAsync(new ContentDialog { Title = L("Loc.Transfer.Export.Package", "프로필·인덱스 묶음 내보내기"), Content = content,
                 PrimaryButtonText = L("Loc.Workspace.Selection.Export", "내보내기"), CloseButtonText = L("Loc.Common.Cancel", "취소"), DefaultButton = ContentDialogButton.Primary }, token);
             if (response != ContentDialogResult.Primary || combo.SelectedItem is not EditableProfileSummary selected) return;
+            if (context.RequireCatalog && (context.CatalogSnapshot is null || catalog.IsChecked != true))
+                throw new InvalidDataException(L("Loc.Transfer.Package.StructuredRequired", "구조화 결과를 포함한 패키지만 현재 앱에서 조회할 수 있습니다."));
             var manifest = await _authoring.LoadAsync(selected, token) ?? throw new InvalidDataException("Profile is unavailable.");
             var destination = _picker.PickWorkspaceExportPath(selected.Id, true);
             if (destination is null) return;
+            var canonicalRoot = await Task.Run(() => _canonicalizer.Canonicalize(context.RootPath), token);
+            token.ThrowIfCancellationRequested();
             var request = new WorkspacePackageExportRequest(manifest, context.MetadataDatabasePath, context.RootPath, destination)
             {
-                CanonicalRootPath = _canonicalizer.Canonicalize(context.RootPath),
+                CanonicalRootPath = canonicalRoot,
                 CatalogDatabasePath = catalog.IsChecked == true ? context.CatalogDatabasePath : null,
                 CatalogSnapshot = catalog.IsChecked == true ? context.CatalogSnapshot : null,
                 IncludeUserInputs = notes.IsChecked == true,
@@ -290,11 +317,13 @@ public sealed partial class WorkspaceTransferViewModel : ObservableObject, IDisp
     private async Task RelinkAsync()
     {
         if (CurrentSource is not { } source) return;
-        var root = _picker.PickRootDirectory(null);
-        if (root is null) return;
+        var root = await _picker.PickRootDirectoryAsync(null);
+        if (root is null || !CanRelink() || CurrentSource?.Id != source.Id) return;
         await RunAsync(async token =>
         {
-            var linked = await _datasets.RelinkAsync(source, _canonicalizer.Canonicalize(root), Progress(), token);
+            var canonicalRoot = await Task.Run(() => _canonicalizer.Canonicalize(root), token);
+            token.ThrowIfCancellationRequested();
+            var linked = await _datasets.RelinkAsync(source, canonicalRoot, Progress(), token);
             var current = Sources.FirstOrDefault(x => x.Id == linked.Id);
             if (current is not null) Sources.Remove(current);
             var choice = ToChoice(linked); Sources.Add(choice); SelectedSource = choice;
@@ -310,17 +339,19 @@ public sealed partial class WorkspaceTransferViewModel : ObservableObject, IDisp
     private void Cancel() => _cancellation?.Cancel();
     private bool CanCancel() => IsBusy;
 
-    private async Task<ProfileImportConflictChoice> ChooseConflictAsync(bool conflict, CancellationToken token)
+    private async Task<ProfileImportConflictChoice> ChooseConflictAsync(bool conflict, ProfileManifest profile, CancellationToken token)
     {
         if (!conflict) return ProfileImportConflictChoice.NewProfile;
         var result = await _dialogs.ShowAsync(new ContentDialog { Title = L("Loc.Transfer.Conflict.Title", "같은 ID의 프로필이 있습니다"),
-            Content = L("Loc.Transfer.Conflict.Message", "새 프로필로 가져오면 기존 프로필과 데이터가 유지됩니다. 교체는 프로필 정의만 바꿉니다."),
+            Content = $"{profile.DisplayName} ({profile.Id})" + Environment.NewLine +
+                L("Loc.Transfer.Conflict.Message", "새 프로필로 가져오면 기존 프로필과 데이터가 유지됩니다. 교체하면 프로필 규칙과, JSON에 포함된 출력 포맷·선택 포맷·컬럼 표시 설정을 바꿉니다. 기존 스캔 DB는 삭제하지 않습니다."),
             PrimaryButtonText = L("Loc.Transfer.Conflict.New", "새 프로필로 가져오기"), SecondaryButtonText = L("Loc.Transfer.Conflict.Replace", "기존 프로필 교체"),
             CloseButtonText = L("Loc.Common.Cancel", "취소"), DefaultButton = ContentDialogButton.Primary }, token);
         if (result == ContentDialogResult.Secondary)
         {
             var confirm = await _dialogs.ShowAsync(new ContentDialog { Title = L("Loc.Transfer.Conflict.Replace", "기존 프로필 교체"),
-                Content = L("Loc.Transfer.Conflict.Confirm", "기존 프로필 정의를 가져온 정의로 교체할까요?"), PrimaryButtonText = L("Loc.Transfer.Conflict.Replace", "교체"),
+                Content = $"{profile.DisplayName} ({profile.Id})" + Environment.NewLine +
+                    L("Loc.Transfer.Conflict.Confirm", "이 프로필의 규칙과 포함된 출력 포맷·선택 포맷·컬럼 표시 설정을 가져온 내용으로 교체할까요? 기존 스캔 DB는 유지됩니다."), PrimaryButtonText = L("Loc.Transfer.Conflict.Replace", "교체"),
                 CloseButtonText = L("Loc.Common.Cancel", "취소"), DefaultButton = ContentDialogButton.Close }, token);
             return confirm == ContentDialogResult.Primary ? ProfileImportConflictChoice.Replace : ProfileImportConflictChoice.Cancel;
         }
@@ -330,7 +361,21 @@ public sealed partial class WorkspaceTransferViewModel : ObservableObject, IDisp
     private async Task<(bool Cancelled, string? Root)> ChooseRootAsync(string original, CancellationToken token)
     {
         bool reachable;
-        try { reachable = await Task.Run(() => Directory.Exists(original), token).WaitAsync(TimeSpan.FromSeconds(10), token); }
+        try
+        {
+            reachable = false;
+            if (await _rootProbeGate.WaitAsync(0, token))
+            {
+                // An abandoned native network probe retains this gate until it actually
+                // finishes, so repeated imports cannot accumulate blocked workers.
+                var probe = Task.Run(() =>
+                {
+                    try { return Directory.Exists(original); }
+                    finally { _rootProbeGate.Release(); }
+                });
+                reachable = await probe.WaitAsync(TimeSpan.FromSeconds(10), token);
+            }
+        }
         catch (TimeoutException) { reachable = false; }
         if (reachable) return (false, original);
         var result = await _dialogs.ShowAsync(new ContentDialog { Title = L("Loc.Transfer.Root.Title", "원래 경로에 연결할 수 없습니다"),
@@ -339,8 +384,12 @@ public sealed partial class WorkspaceTransferViewModel : ObservableObject, IDisp
             CloseButtonText = L("Loc.Common.Cancel", "취소"), DefaultButton = ContentDialogButton.Secondary }, token);
         if (result == ContentDialogResult.Secondary) return (false, null);
         if (result != ContentDialogResult.Primary) return (true, null);
-        var root = _picker.PickRootDirectory(null);
-        return root is null ? (true, null) : (false, _canonicalizer.Canonicalize(root));
+        var root = await _picker.PickRootDirectoryAsync(null, token);
+        token.ThrowIfCancellationRequested();
+        if (root is null) return (true, null);
+        var canonicalRoot = await Task.Run(() => _canonicalizer.Canonicalize(root), token);
+        token.ThrowIfCancellationRequested();
+        return (false, canonicalRoot);
     }
 
     private IProgress<WorkspaceTransferProgress> Progress() => new Progress<WorkspaceTransferProgress>(progress =>

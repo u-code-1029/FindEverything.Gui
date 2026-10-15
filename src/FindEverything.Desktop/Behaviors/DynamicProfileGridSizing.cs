@@ -49,6 +49,9 @@ public static partial class DynamicProfileGrid
         public bool IsObservingSource;
         public IProfilePresentationStore? Store;
         public EventHandler<ProfilePresentationChangedEventArgs>? StoreHandler;
+        public IGridLayoutStore? LayoutStore;
+        public EventHandler<GridLayoutChangedEventArgs>? LayoutHandler;
+        public long LayoutRevision;
     }
 
     private sealed class MeasurementWork(CatalogItemViewModel[] rows, DataGridColumn[] columns,
@@ -84,6 +87,7 @@ public static partial class DynamicProfileGrid
                 state.SourceDescriptor!.AddValueChanged(grid, state.SourceChangedHandler!);
                 state.IsObservingSource = true;
             }
+            AttachLayoutStore(grid); ApplyLayout(grid);
             AttachPresentation(grid); ObserveSource(grid); ScheduleSizing(grid);
         };
         grid.Unloaded += (_, _) =>
@@ -91,6 +95,8 @@ public static partial class DynamicProfileGrid
             var state = GetSizing(grid);
             if (state.Store is not null) state.Store.Changed -= state.StoreHandler;
             state.Store = null;
+            if (state.LayoutStore is not null) state.LayoutStore.Changed -= state.LayoutHandler;
+            state.LayoutStore = null;
             if (state.Source is not null && state.SourceHandler is not null) CollectionChangedEventManager.RemoveHandler(state.Source, state.SourceHandler);
             state.Source = null;
             if (state.IsObservingSource)
@@ -106,6 +112,28 @@ public static partial class DynamicProfileGrid
         var initial = GetSizing(grid);
         initial.SourceDescriptor = DependencyPropertyDescriptor.FromProperty(ItemsControl.ItemsSourceProperty, typeof(DataGrid))!;
         initial.SourceChangedHandler = (_, _) => ObserveSource(grid);
+    }
+
+    private static void AttachLayoutStore(DataGrid grid)
+    {
+        var state = GetSizing(grid);
+        var store = grid.IsLoaded ? GetLayoutStore(grid) : null;
+        if (ReferenceEquals(state.LayoutStore, store)) return;
+        if (state.LayoutStore is not null) state.LayoutStore.Changed -= state.LayoutHandler;
+        state.LayoutStore = store;
+        state.LayoutHandler = (_, change) =>
+        {
+            // Revision-aware saves also protect the gap before this UI callback runs.
+            _ = grid.Dispatcher.InvokeAsync(() =>
+            {
+                if (!grid.IsLoaded || !ReferenceEquals(GetLayoutStore(grid), store) ||
+                    !string.Equals(change.ProfileId, GetProfileId(grid), StringComparison.OrdinalIgnoreCase)) return;
+                state.MeasuredWidths.Clear(); state.HasMeasured = false; state.Measurement = null;
+                ApplyLayout(grid);
+                UpdateFrozenColumns(grid);
+            }, DispatcherPriority.Send);
+        };
+        if (store is not null) store.Changed += state.LayoutHandler;
     }
 
     private static void OnPresentationStoreChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -217,6 +245,12 @@ public static partial class DynamicProfileGrid
         foreach (var column in grid.Columns.Skip(SelectionColumnOffset))
         {
             var (min, max) = Bounds((string)column.GetValue(FieldIdProperty), fields, state);
+            if ((bool)column.GetValue(IsManualWidthProperty) && column.Width.IsAbsolute)
+            {
+                // Imported explicit widths are intent, not an auto-sizing suggestion.
+                min = Math.Min(min, column.Width.Value);
+                max = Math.Max(max, column.Width.Value);
+            }
             column.MinWidth = min;
             column.MaxWidth = max;
         }

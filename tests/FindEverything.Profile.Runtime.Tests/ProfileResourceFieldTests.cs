@@ -8,6 +8,17 @@ namespace FindEverything.Profile.Runtime.Tests;
 
 public sealed class ProfileResourceFieldTests
 {
+    [Fact]
+    public void Cancelled_mapping_is_reported_as_cancellation_not_a_resource_or_model_error()
+    {
+        var manifest = Definition();
+        manifest.TextFileFields = [new() { FieldId = "notes", FileNamePattern = "notes\\.txt" }];
+        var profile = Compile(manifest);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        Assert.Throws<OperationCanceledException>(() => profile.Map(
+            new ProfilePathCandidate(Path.Combine(Path.GetTempPath(), "must-not-probe")), cancellation.Token));
+    }
     [Theory]
     [InlineData(2)]
     [InlineData(3)]

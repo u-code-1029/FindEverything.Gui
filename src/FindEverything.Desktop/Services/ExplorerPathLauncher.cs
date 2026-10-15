@@ -7,6 +7,23 @@ namespace FindEverything.Desktop.Services;
 public sealed class ExplorerPathLauncher : IPathLauncher
 {
     private readonly IAppLocalizer? _localizer;
+    private readonly SemaphoreSlim _launchGate = new(1, 1);
+
+    public Task OpenDirectoryAsync(string path, CancellationToken cancellationToken = default) =>
+        RunAsync(() => OpenDirectory(path), cancellationToken);
+    public Task OpenPathAsync(string path, CancellationToken cancellationToken = default) =>
+        RunAsync(() => OpenPath(path), cancellationToken);
+    public Task ShowInFolderAsync(string path, CancellationToken cancellationToken = default) =>
+        RunAsync(() => ShowInFolder(path), cancellationToken);
+
+    private async Task RunAsync(Action launch, CancellationToken cancellationToken)
+    {
+        if (!await _launchGate.WaitAsync(0, cancellationToken))
+            throw new InvalidOperationException(_localizer?.Get("Loc.Path.Open.Pending", "이전 경로를 여는 중입니다. 잠시 후 다시 시도하세요.")
+                ?? "이전 경로를 여는 중입니다. 잠시 후 다시 시도하세요.");
+        try { await Task.Run(launch, cancellationToken); }
+        finally { _launchGate.Release(); }
+    }
 
     public ExplorerPathLauncher(IAppLocalizer? localizer = null) =>
         _localizer = localizer;

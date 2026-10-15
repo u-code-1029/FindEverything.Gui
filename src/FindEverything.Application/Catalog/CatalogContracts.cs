@@ -168,4 +168,13 @@ public interface IPathLauncher
     void OpenPath(string path);
 
     void ShowInFolder(string path);
+
+    Task OpenDirectoryAsync(string path, CancellationToken cancellationToken = default) =>
+        Task.Run(() => OpenDirectory(path), cancellationToken);
+
+    Task OpenPathAsync(string path, CancellationToken cancellationToken = default) =>
+        Task.Run(() => OpenPath(path), cancellationToken);
+
+    Task ShowInFolderAsync(string path, CancellationToken cancellationToken = default) =>
+        Task.Run(() => ShowInFolder(path), cancellationToken);
 }

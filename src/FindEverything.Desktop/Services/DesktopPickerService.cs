@@ -9,17 +9,67 @@ public interface IDesktopPickerService
 
     string? PickDatabasePath(string? currentPath);
 
+    Task<string?> PickRootDirectoryAsync(string? initialDirectory, CancellationToken cancellationToken = default) =>
+        Task.FromResult(PickRootDirectory(initialDirectory));
+
+    Task<string?> PickDatabasePathAsync(string? currentPath, CancellationToken cancellationToken = default) =>
+        Task.FromResult(PickDatabasePath(currentPath));
+
     string? PickScanLogPath(string suggestedFileName);
 
     CatalogSelectionExportDestination? PickCatalogExportPath(string suggestedFileName);
 
     string? PickWorkspaceImportPath() => null;
 
+    string? PickProfileImportPath() => PickWorkspaceImportPath();
+
     string? PickWorkspaceExportPath(string suggestedFileName, bool package) => null;
 }
 
-public sealed class DesktopPickerService(IAppLocalizer localizer) : IDesktopPickerService
+public sealed class DesktopPickerService(IAppLocalizer localizer, Func<string, bool>? directoryExists = null) : IDesktopPickerService
 {
+    private readonly SemaphoreSlim _initialDirectoryProbe = new(1, 1);
+
+    // A disconnected mapped drive may block Exists for minutes. Never probe on
+    // the dispatcher, and retain the gate until the actual OS call returns.
+    internal async Task<string?> ResolveInitialDirectoryAsync(string? path, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(path) || !await _initialDirectoryProbe.WaitAsync(0, cancellationToken)) return null;
+        var probe = Task.Run(() =>
+        {
+            try { return (directoryExists ?? Directory.Exists)(path) ? path : null; }
+            finally { _initialDirectoryProbe.Release(); }
+        });
+        try { return await probe.WaitAsync(TimeSpan.FromMilliseconds(200), cancellationToken); }
+        catch (TimeoutException) { return null; }
+    }
+
+    public async Task<string?> PickRootDirectoryAsync(string? initialDirectory, CancellationToken cancellationToken = default)
+    {
+        var initial = await ResolveInitialDirectoryAsync(initialDirectory, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        return PickRootDirectoryCore(initial);
+    }
+
+    public async Task<string?> PickDatabasePathAsync(string? currentPath, CancellationToken cancellationToken = default)
+    {
+        var initial = await ResolveInitialDirectoryAsync(string.IsNullOrWhiteSpace(currentPath) ? null : Path.GetDirectoryName(currentPath), cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        return PickDatabasePathCore(currentPath, initial);
+    }
+    public string? PickProfileImportPath()
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = localizer.Get("Loc.Ux.Catalog.ImportProfile", "프로필 가져오기"),
+            Filter = "JSON (*.json)|*.json",
+            DefaultExt = ".json",
+            Multiselect = false,
+            CheckFileExists = true,
+        };
+        return dialog.ShowDialog(System.Windows.Application.Current.MainWindow) == true ? dialog.FileName : null;
+    }
+
     public string? PickWorkspaceImportPath()
     {
         var dialog = new OpenFileDialog
@@ -48,7 +98,9 @@ public sealed class DesktopPickerService(IAppLocalizer localizer) : IDesktopPick
         return dialog.ShowDialog(System.Windows.Application.Current.MainWindow) == true ? dialog.FileName : null;
     }
 
-    public string? PickRootDirectory(string? initialDirectory)
+    public string? PickRootDirectory(string? initialDirectory) => PickRootDirectoryCore(null);
+
+    private string? PickRootDirectoryCore(string? initialDirectory)
     {
         var dialog = new OpenFolderDialog
         {
@@ -58,7 +110,7 @@ public sealed class DesktopPickerService(IAppLocalizer localizer) : IDesktopPick
             Multiselect = false,
         };
 
-        if (!string.IsNullOrWhiteSpace(initialDirectory) && Directory.Exists(initialDirectory))
+        if (!string.IsNullOrWhiteSpace(initialDirectory))
         {
             dialog.InitialDirectory = initialDirectory;
         }
@@ -68,7 +120,9 @@ public sealed class DesktopPickerService(IAppLocalizer localizer) : IDesktopPick
             : null;
     }
 
-    public string? PickDatabasePath(string? currentPath)
+    public string? PickDatabasePath(string? currentPath) => PickDatabasePathCore(currentPath, null);
+
+    private string? PickDatabasePathCore(string? currentPath, string? directory)
     {
         var dialog = new SaveFileDialog
         {
@@ -87,10 +141,7 @@ public sealed class DesktopPickerService(IAppLocalizer localizer) : IDesktopPick
                 : Path.GetFileName(currentPath),
         };
 
-        var directory = string.IsNullOrWhiteSpace(currentPath)
-            ? null
-            : Path.GetDirectoryName(currentPath);
-        if (!string.IsNullOrWhiteSpace(directory) && Directory.Exists(directory))
+        if (!string.IsNullOrWhiteSpace(directory))
         {
             dialog.InitialDirectory = directory;
         }

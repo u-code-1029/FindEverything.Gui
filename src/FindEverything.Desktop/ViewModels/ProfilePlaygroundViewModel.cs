@@ -58,6 +58,7 @@ public partial class ProfilePlaygroundViewModel : ObservableObject, IPageSession
     private volatile bool _disposed;
     private ProfileCatalogSnapshot? _pendingCatalog;
     private int _catalogRefreshScheduled;
+    private CancellationTokenSource? _evaluationCancellation;
 
     [ObservableProperty]
     private IReadOnlyList<ProfilePlaygroundProfileViewModel> _profiles = [];
@@ -193,10 +194,10 @@ public partial class ProfilePlaygroundViewModel : ObservableObject, IPageSession
         return true;
     }
 
-    [RelayCommand]
-    private void BrowsePath()
+    [RelayCommand(CanExecute = nameof(CanBrowsePath))]
+    private async Task BrowsePathAsync()
     {
-        var selected = _pickerService.PickRootDirectory(InputPath);
+        var selected = await _pickerService.PickRootDirectoryAsync(InputPath).ConfigureAwait(true);
         if (!string.IsNullOrWhiteSpace(selected))
         {
             InputPath = selected;
@@ -207,12 +208,14 @@ public partial class ProfilePlaygroundViewModel : ObservableObject, IPageSession
     private async Task EvaluateAsync()
     {
         var selectedProfile = SelectedProfile;
-        if (selectedProfile is null)
+        if (_disposed || IsBusy || selectedProfile is null)
         {
             return;
         }
 
         var inputPath = InputPath;
+        using var cancellation = new CancellationTokenSource();
+        _evaluationCancellation = cancellation;
         var evaluationGeneration = Interlocked.Increment(ref _evaluationGeneration);
         // Re-checking the same path can change its file/folder values. A previous
         // input-rule preview belongs to the old sample even when InputPath is unchanged.
@@ -224,9 +227,9 @@ public partial class ProfilePlaygroundViewModel : ObservableObject, IPageSession
         SummarySeverity = InfoBarSeverity.Informational;
         try
         {
-            var evaluation = await _evaluator.EvaluateAsync(selectedProfile.Profile, inputPath).ConfigureAwait(true);
+            var evaluation = await _evaluator.EvaluateAsync(selectedProfile.Profile, inputPath, cancellation.Token).ConfigureAwait(true);
 
-            if (evaluationGeneration != Volatile.Read(ref _evaluationGeneration))
+            if (_disposed || cancellation.IsCancellationRequested || evaluationGeneration != Volatile.Read(ref _evaluationGeneration))
             {
                 return;
             }
@@ -244,6 +247,7 @@ public partial class ProfilePlaygroundViewModel : ObservableObject, IPageSession
             Summary = evaluation.Summary;
             SummarySeverity = evaluation.Severity;
         }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
         catch (Exception exception) when (
             exception is ArgumentException or IOException or NotSupportedException)
         {
@@ -275,8 +279,26 @@ public partial class ProfilePlaygroundViewModel : ObservableObject, IPageSession
         }
         finally
         {
+            if (ReferenceEquals(_evaluationCancellation, cancellation)) _evaluationCancellation = null;
             CompleteBusyOperation(busyOperation);
         }
+    }
+
+    private bool CanBrowsePath() => !_disposed && IsReady;
+
+    private bool CanCancel() => IsBusy &&
+        (_evaluationCancellation is { IsCancellationRequested: false } ||
+         _selectionTestCancellation is { IsCancellationRequested: false });
+
+    [RelayCommand(CanExecute = nameof(CanCancel))]
+    private void Cancel()
+    {
+        Interlocked.Increment(ref _evaluationGeneration);
+        _evaluationCancellation?.Cancel();
+        _selectionTestCancellation?.Cancel();
+        ClearResults(L("Loc.Playground.Status.Cancelling",
+            "취소를 요청했습니다. 진행 중인 파일·네트워크 응답이 끝나면 새 테스트를 시작할 수 있습니다."));
+        CancelCommand.NotifyCanExecuteChanged();
     }
 
     private long BeginBusyOperation()
@@ -288,8 +310,8 @@ public partial class ProfilePlaygroundViewModel : ObservableObject, IPageSession
 
     private void CompleteBusyOperation(long version)
     {
-        // Editing inputs invalidates results, not the outstanding operation's
-        // ownership of IsBusy. Leaving/re-entering can instead start a new owner.
+        // Keep the slot occupied until the real worker returns, including after
+        // navigation/cancellation of an uninterruptible filesystem operation.
         if (version == Volatile.Read(ref _busyOperationVersion)) IsBusy = false;
     }
 
@@ -298,11 +320,12 @@ public partial class ProfilePlaygroundViewModel : ObservableObject, IPageSession
         InfoBarSeverity severity = InfoBarSeverity.Informational)
     {
         _ = Interlocked.Increment(ref _evaluationGeneration);
+        _evaluationCancellation?.Cancel();
         ClearResults(message, severity);
     }
 
     private bool CanEvaluate() =>
-        !IsBusy
+        !_disposed && !IsBusy
         && SelectedProfile is not null
         && !string.IsNullOrWhiteSpace(InputPath);
 
@@ -342,9 +365,9 @@ public partial class ProfilePlaygroundViewModel : ObservableObject, IPageSession
     {
         _isActive = false;
         Interlocked.Increment(ref _evaluationGeneration);
-        Interlocked.Increment(ref _busyOperationVersion);
+        _evaluationCancellation?.Cancel();
         _selectionTestCancellation?.Cancel();
-        IsBusy = false;
+        CancelCommand.NotifyCanExecuteChanged();
     }
 
     public void Dispose()

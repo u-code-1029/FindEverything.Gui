@@ -85,6 +85,8 @@ public sealed class DesktopCompositionSmokeTests
             ComboBoxContentSizingChecks.Verify();
             GridSizingRegressionChecks.Verify();
             ScanConsoleUiRegressionChecks.Verify();
+            ScanConsoleCompactUiChecks.Verify();
+            GridLayoutImportUiChecks.Verify();
 
             var configuration = new ConfigurationManager();
             configuration.AddInMemoryCollection(new Dictionary<string, string?>
@@ -174,7 +176,8 @@ public sealed class DesktopCompositionSmokeTests
                 profilesPage, profilePlaygroundPage, outputFormatsPage, settingsPage);
             Assert.True(navigation.Navigate(typeof(HomePage)));
             Assert.NotNull(homePage.FindName("HomeScrollViewer"));
-            Assert.IsType<CardAction>(homePage.FindName("FilesActionCard"));
+            Assert.Equal(Visibility.Collapsed, Assert.IsType<CardAction>(homePage.FindName("FilesActionCard")).Visibility);
+            Assert.Equal(Visibility.Collapsed, Assert.IsType<NavigationViewItem>(window.FindName("FilesNavigationItem")).Visibility);
             Assert.IsType<CardAction>(homePage.FindName("CatalogActionCard"));
             Assert.IsAssignableFrom<CardControl>(homePage.FindName("WorkspaceOverviewCard"));
             Assert.True(navigation.Navigate(typeof(FilesPage)));
@@ -184,6 +187,7 @@ public sealed class DesktopCompositionSmokeTests
             VerifyCoreWorkspaceBounds(provider, window);
             WorkspaceTransferUiChecks.Verify(provider, window, (visual, name) => SaveQaImage(visual, name));
             ResultPaneUiChecks.Verify(provider, window);
+            CatalogSearchLayoutChecks.Verify(provider, (visual, name) => SaveQaImage(visual, name));
             Assert.True(navigation.Navigate(typeof(CatalogPage)));
             Assert.True(navigation.Navigate(typeof(ProfilesPage)));
             VerifyProfilesScrolling(window, profilesPage);
@@ -854,12 +858,14 @@ public sealed class DesktopCompositionSmokeTests
         Assert.InRange(Math.Abs(navigationHeight - navigation.ActualHeight), 0d, 1d);
         Assert.InRange(Math.Abs(pageLayoutHeight - pageLayout.ActualHeight), 0d, 1d);
         Assert.True(pageContent.ActualHeight < pageContentHeight);
-        Assert.InRange(panel.ActualHeight / pageLayout.ActualHeight, 0.25, 0.45);
+        Assert.InRange(panel.ActualHeight, 164, Math.Max(164, pageLayout.ActualHeight - 240));
         var traceList = Assert.IsType<ListBox>(panel.FindName("TraceList"));
         var saveLogButton = Assert.IsType<Wpf.Ui.Controls.Button>(
             panel.FindName("SaveScanLogButton"));
         Assert.Same(viewModel.SaveLogCommand, saveLogButton.Command);
-        Assert.Equal("로그 저장", saveLogButton.Content);
+        if (panel.ActualWidth >= 820) Assert.Equal("로그 저장", saveLogButton.Content);
+        else Assert.Null(saveLogButton.Content);
+        Assert.False(string.IsNullOrWhiteSpace(System.Windows.Automation.AutomationProperties.GetName(saveLogButton)));
         Assert.True(VirtualizingPanel.GetIsVirtualizing(traceList));
         Assert.Equal(VirtualizationMode.Recycling, VirtualizingPanel.GetVirtualizationMode(traceList));
         var contextMenu = Assert.IsType<System.Windows.Controls.ContextMenu>(

@@ -31,6 +31,7 @@ internal static class DesktopFeatureRegistration
         services.AddSingleton<IProfileAuthoringService>(static provider => new ProfileAuthoringService(
             provider.GetRequiredService<IProfileAuthoringWorkflow>()));
         services.AddSingleton<ProfileTransferService>();
+        services.AddSingleton<IProfileWorkspaceSettingsService, ProfileWorkspaceSettingsService>();
         services.AddSingleton<IProfileTransferService>(provider => provider.GetRequiredService<ProfileTransferService>());
         services.AddSingleton<IndexedDatasetTransferService>();
         services.AddSingleton<IIndexedDatasetTransferService>(provider => provider.GetRequiredService<IndexedDatasetTransferService>());

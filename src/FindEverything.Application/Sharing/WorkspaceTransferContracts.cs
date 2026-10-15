@@ -23,6 +23,20 @@ public sealed record WorkspacePackageInspection(ProfileManifest Profile, string 
     string StoredRoot, Guid? IndexScanId, bool HasCatalog, bool IncludesUserInputs, long EntryCount,
     long CatalogRowCount, bool HasPendingScopes);
 
+/// <summary>An owned, validated package snapshot. Dispose when confirmation is cancelled.</summary>
+public interface IPreparedWorkspacePackage : IAsyncDisposable
+{
+    WorkspacePackageInspection Inspection { get; }
+}
+
+// Compatibility adapter for external implementations; the desktop service supplies an immutable staged snapshot.
+public sealed class DeferredWorkspacePackage(string path, WorkspacePackageInspection inspection) : IPreparedWorkspacePackage
+{
+    public string Path { get; } = path;
+    public WorkspacePackageInspection Inspection { get; } = inspection;
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+}
+
 public sealed record WorkspacePackageExportRequest(ProfileManifest Profile, string MetadataDatabasePath,
     string RootPath, string DestinationPath)
 {
@@ -56,6 +70,13 @@ public interface IImportedWorkspaceRegistry
 public interface IIndexedDatasetTransferService
 {
     Task<WorkspacePackageInspection> InspectAsync(string path, CancellationToken cancellationToken = default);
+    async Task<IPreparedWorkspacePackage> PrepareImportAsync(string path, CancellationToken cancellationToken = default) =>
+        new DeferredWorkspacePackage(path, await InspectAsync(path, cancellationToken).ConfigureAwait(false));
+    Task<ImportedWorkspaceSource?> ImportPreparedAsync(IPreparedWorkspacePackage package, ProfileImportConflictChoice choice,
+        string? effectiveRoot = null, IProgress<WorkspaceTransferProgress>? progress = null,
+        CancellationToken cancellationToken = default) => package is DeferredWorkspacePackage deferred
+            ? ImportAsync(deferred.Path, choice, effectiveRoot, progress, cancellationToken)
+            : throw new ArgumentException("This prepared package belongs to a different service.", nameof(package));
     Task ExportAsync(WorkspacePackageExportRequest request, IProgress<WorkspaceTransferProgress>? progress = null,
         CancellationToken cancellationToken = default);
     Task<ImportedWorkspaceSource?> ImportAsync(string path, ProfileImportConflictChoice choice,

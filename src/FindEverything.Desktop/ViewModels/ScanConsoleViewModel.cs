@@ -407,11 +407,13 @@ public partial class ScanConsoleViewModel : ObservableObject, ICatalogScanTraceS
         {
             _setClipboardText(text);
         }
-        catch (Exception)
+        catch (Exception exception)
         {
             // The clipboard can be temporarily locked or unavailable. Diagnostics
             // are observational, so a failed copy must not close the panel or stop
             // the active file-system scan. The user can retry from the same row.
+            _showSnackbar(L("Loc.Scan.CopyFailed", "로그를 복사하지 못했습니다."),
+                exception.Message, ControlAppearance.Secondary);
         }
     }
 

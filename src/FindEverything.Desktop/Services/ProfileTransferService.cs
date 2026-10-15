@@ -3,12 +3,14 @@ using System.Text;
 using System.Security.Cryptography;
 using FindEverything.Application.Sharing;
 using FindEverything.Application.Catalog;
+using FindEverything.Desktop.Localization;
 using FindEverything.Profile.Runtime;
 
 namespace FindEverything.Desktop.Services;
 
 /// <summary>Reads external manifests without weakening the editor's LocalAppData containment boundary.</summary>
-public sealed class ProfileTransferService(IProfileAuthoringService authoring, IProfileCatalog catalog, IProfileCatalogPublisher publisher)
+public sealed class ProfileTransferService(IProfileAuthoringService authoring, IProfileCatalog catalog, IProfileCatalogPublisher publisher,
+    IProfileWorkspaceSettingsService? workspaceSettings = null, IAppLocalizer? localizer = null)
     : IProfileTransferService
 {
     internal static readonly JsonSerializerOptions ReadOptions = new()
@@ -17,7 +19,10 @@ public sealed class ProfileTransferService(IProfileAuthoringService authoring, I
     { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, WriteIndented = true };
     private readonly SemaphoreSlim _gate = new(1, 1);
     private sealed record Installation(ProfileTransferResult Result, byte[]? PreviousBytes,
-        byte[] InstalledBytes, ProfileCatalogSnapshot PriorCatalog);
+        byte[] InstalledBytes, ProfileCatalogSnapshot PriorCatalog)
+    {
+        public ProfileWorkspaceInstallation? Workspace { get; init; }
+    }
 
     public async Task<ProfileTransferInspection> InspectAsync(string path, CancellationToken cancellationToken = default)
     {
@@ -110,6 +115,8 @@ public sealed class ProfileTransferService(IProfileAuthoringService authoring, I
             var result = await authoring.SaveAndApplyAsync(manifest, replaceId, ct).ConfigureAwait(false);
             if (!result.FileSaved || !result.Applied)
                 throw new InvalidDataException(string.Join(Environment.NewLine, result.Review.Diagnostics.Select(d => d.Message)));
+            if (workspaceSettings is not null)
+                installation = installation with { Workspace = await workspaceSettings.InstallAsync(manifest, ct).ConfigureAwait(false) };
             return installation;
         }
         catch (Exception failure)
@@ -134,6 +141,21 @@ public sealed class ProfileTransferService(IProfileAuthoringService authoring, I
     }
 
     private async Task<bool> RollbackAsync(Installation installation)
+    {
+        var failures = new List<Exception>();
+        var restored = true;
+        if (installation.Workspace is not null)
+        {
+            try { restored = await installation.Workspace.RollbackAsync().ConfigureAwait(false); }
+            catch (Exception failure) { failures.Add(failure); }
+        }
+        try { restored &= await RollbackProfileAsync(installation).ConfigureAwait(false); }
+        catch (Exception failure) { failures.Add(failure); }
+        if (failures.Count > 0) throw new AggregateException("Some imported profile state could not be restored.", failures);
+        return restored;
+    }
+
+    private async Task<bool> RollbackProfileAsync(Installation installation)
     {
         var result = installation.Result;
         // Respect the same cross-process authoring lock while comparing and restoring our own bytes.
@@ -192,6 +214,11 @@ public sealed class ProfileTransferService(IProfileAuthoringService authoring, I
 
     public async Task ExportAsync(ProfileManifest manifest, string destination, CancellationToken cancellationToken = default)
     {
+        // Embedded settings may be an older snapshot than the live stores (for example after
+        // repairing a renamed field's output format). Validate the refreshed snapshot below.
+        Validate(manifest, validatePortableFormats: false);
+        if (workspaceSettings is not null)
+            manifest = await workspaceSettings.CreateExportSnapshotAsync(manifest, cancellationToken).ConfigureAwait(false);
         Validate(manifest);
         var bytes = JsonSerializer.SerializeToUtf8Bytes(manifest, WriteOptions);
         if (bytes.LongLength > ProfileManifestLimits.MaximumLengthBytes) throw new InvalidDataException("Profile JSON exceeds 1 MiB.");
@@ -210,16 +237,17 @@ public sealed class ProfileTransferService(IProfileAuthoringService authoring, I
     private bool HasConflict(string id) => catalog.Current.Profiles.Any(p => string.Equals(p.Descriptor.Id, id, StringComparison.OrdinalIgnoreCase))
         || File.Exists(Path.Combine(authoring.UserProfilesDirectory, id, "profile.json"));
 
-    private void Validate(ProfileManifest manifest)
+    private void Validate(ProfileManifest manifest, bool validatePortableFormats = true)
     {
         if (manifest.Kind != ProfileKind.Declarative) throw new InvalidDataException("Only declarative JSON profiles can be transferred; executable assemblies are not imported.");
         var review = authoring.Validate(manifest);
-        if (!review.IsValid) throw new InvalidDataException(string.Join(Environment.NewLine, review.Diagnostics.Select(d => d.Message)));
+        if (!review.IsValid) throw new InvalidDataException(string.Join(Environment.NewLine, review.Diagnostics.Select(d => ProfileDiagnosticLocalizer.Translate(localizer, d))));
+        if (validatePortableFormats) workspaceSettings?.Validate(manifest);
     }
 
     internal string GetProjectionFingerprint(ProfileManifest manifest)
     {
-        Validate(manifest);
+        Validate(manifest, validatePortableFormats: false);
         var profile = authoring.Validate(manifest).Profile!;
         return CatalogDataFingerprint.Create(profile.Descriptor, profile.CacheIdentity);
     }

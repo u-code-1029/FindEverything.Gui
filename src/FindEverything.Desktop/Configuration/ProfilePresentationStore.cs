@@ -13,6 +13,16 @@ public interface IProfilePresentationStore
     event EventHandler<ProfilePresentationChangedEventArgs>? Changed;
     Task<IReadOnlyDictionary<string, ColumnWidthPreset>> LoadAsync(string profileId, CancellationToken cancellationToken = default);
     Task SaveAsync(string profileId, IReadOnlyDictionary<string, ColumnWidthPreset> fields, CancellationToken cancellationToken = default);
+    async Task<bool> TryReplaceAsync(string profileId, IReadOnlyDictionary<string, ColumnWidthPreset> expectedFields,
+        IReadOnlyDictionary<string, ColumnWidthPreset> replacementFields, CancellationToken cancellationToken = default,
+        bool resetManualWidths = false)
+    {
+        var current = await LoadAsync(profileId, cancellationToken).ConfigureAwait(false);
+        if (current.Count != expectedFields.Count || current.Any(pair =>
+                !expectedFields.TryGetValue(pair.Key, out var expected) || expected != pair.Value)) return false;
+        await SaveAsync(profileId, replacementFields, cancellationToken).ConfigureAwait(false);
+        return true;
+    }
 }
 
 public sealed class ProfilePresentationStore(AppPaths paths, IGridLayoutStore layoutStore,
@@ -34,9 +44,10 @@ public sealed class ProfilePresentationStore(AppPaths paths, IGridLayoutStore la
         finally { _gate.Release(); }
     }
 
-    private async Task<IReadOnlyDictionary<string, ColumnWidthPreset>> LoadCoreAsync(string profileId, string file, CancellationToken ct)
+    private async Task<IReadOnlyDictionary<string, ColumnWidthPreset>> LoadCoreAsync(string profileId, string file, CancellationToken ct,
+        bool fresh = false)
     {
-        if (_cache.TryGetValue(profileId, out var cached)) return cached;
+        if (!fresh && _cache.TryGetValue(profileId, out var cached)) return cached;
         var fields = new Dictionary<string, ColumnWidthPreset>(StringComparer.OrdinalIgnoreCase);
         try
         {
@@ -47,12 +58,24 @@ public sealed class ProfilePresentationStore(AppPaths paths, IGridLayoutStore la
                     if (!string.IsNullOrWhiteSpace(id) && Enum.IsDefined(preset)) fields[id] = preset;
             }
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        catch (Exception ex) when (!fresh && (ex is IOException or UnauthorizedAccessException or JsonException))
         { logger.LogWarning(ex, "Could not read profile presentation {File}.", file); }
         return _cache[profileId] = fields;
     }
 
-    public async Task SaveAsync(string profileId, IReadOnlyDictionary<string, ColumnWidthPreset> fields, CancellationToken cancellationToken = default)
+    public Task SaveAsync(string profileId, IReadOnlyDictionary<string, ColumnWidthPreset> fields, CancellationToken cancellationToken = default) =>
+        SaveCoreAsync(profileId, null, fields, resetManualWidths: true, cancellationToken);
+
+    public Task<bool> TryReplaceAsync(string profileId, IReadOnlyDictionary<string, ColumnWidthPreset> expectedFields,
+        IReadOnlyDictionary<string, ColumnWidthPreset> replacementFields, CancellationToken cancellationToken = default,
+        bool resetManualWidths = false)
+    {
+        ArgumentNullException.ThrowIfNull(expectedFields);
+        return SaveCoreAsync(profileId, expectedFields, replacementFields, resetManualWidths, cancellationToken);
+    }
+
+    private async Task<bool> SaveCoreAsync(string profileId, IReadOnlyDictionary<string, ColumnWidthPreset>? expected,
+        IReadOnlyDictionary<string, ColumnWidthPreset> fields, bool resetManualWidths, CancellationToken cancellationToken)
     {
         var file = GetPath(profileId);
         ArgumentNullException.ThrowIfNull(fields);
@@ -62,7 +85,10 @@ public sealed class ProfilePresentationStore(AppPaths paths, IGridLayoutStore la
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var old = await LoadCoreAsync(profileId, file, cancellationToken).ConfigureAwait(false);
+            var previousBytes = File.Exists(file) ? await File.ReadAllBytesAsync(file, cancellationToken).ConfigureAwait(false) : null;
+            var old = await LoadCoreAsync(profileId, file, cancellationToken, fresh: true).ConfigureAwait(false);
+            if (expected is not null && (old.Count != expected.Count
+                    || old.Any(pair => !expected.TryGetValue(pair.Key, out var value) || pair.Value != value))) return false;
             changed = old.Keys.Concat(snapshot.Keys).Distinct(StringComparer.OrdinalIgnoreCase)
                 .Where(id => old.GetValueOrDefault(id) != snapshot.GetValueOrDefault(id)).ToArray();
             Directory.CreateDirectory(Path.GetDirectoryName(file)!);
@@ -71,12 +97,15 @@ public sealed class ProfilePresentationStore(AppPaths paths, IGridLayoutStore la
             {
                 await File.WriteAllTextAsync(temporaryFile, JsonSerializer.Serialize(snapshot, JsonOptions), cancellationToken).ConfigureAwait(false);
                 cancellationToken.ThrowIfCancellationRequested();
+                var currentBytes = File.Exists(file) ? await File.ReadAllBytesAsync(file, cancellationToken).ConfigureAwait(false) : null;
+                if (previousBytes is null ? currentBytes is not null : currentBytes is null || !previousBytes.AsSpan().SequenceEqual(currentBytes))
+                    throw new IOException("Profile presentation changed while it was being saved. Please retry.");
                 File.Move(temporaryFile, file, overwrite: true);
             }
             finally { if (File.Exists(temporaryFile)) File.Delete(temporaryFile); }
             _cache[profileId] = snapshot;
             // A changed preset supersedes only that field's manual resize.
-            if (changed.Length > 0)
+            if (resetManualWidths && changed.Length > 0)
             {
                 var layout = layoutStore.Get(profileId).Values.Select(column => changed.Contains(column.FieldId, StringComparer.OrdinalIgnoreCase)
                     ? column with { WidthMode = GridColumnWidthMode.Auto } : column).ToArray();
@@ -84,7 +113,15 @@ public sealed class ProfilePresentationStore(AppPaths paths, IGridLayoutStore la
             }
         }
         finally { _gate.Release(); }
-        if (changed.Length > 0) Changed?.Invoke(this, new(profileId, changed));
+        if (changed.Length > 0)
+        {
+            var handlers = Changed;
+            if (handlers is not null)
+                foreach (EventHandler<ProfilePresentationChangedEventArgs> handler in handlers.GetInvocationList())
+                    try { handler(this, new(profileId, changed)); }
+                    catch (Exception exception) { logger.LogError(exception, "A profile presentation subscriber failed."); }
+        }
+        return true;
     }
 
     private string GetPath(string profileId)

@@ -20,13 +20,18 @@ public partial class ProfilePlaygroundViewModel
     { ClearSelectionTest(); PreviewSelectionRuleCommand.NotifyCanExecuteChanged(); }
     partial void OnSelectionInputTextChanged(string value)
     { ClearSelectionTest(); PreviewSelectionRuleCommand.NotifyCanExecuteChanged(); }
-    partial void OnIsBusyChanged(bool value) => PreviewSelectionRuleCommand.NotifyCanExecuteChanged();
+    partial void OnIsBusyChanged(bool value)
+    {
+        PreviewSelectionRuleCommand.NotifyCanExecuteChanged();
+        CancelCommand.NotifyCanExecuteChanged();
+        BrowsePathCommand.NotifyCanExecuteChanged();
+    }
     private void ClearSelectionTest()
     { _selectionTestCancellation?.Cancel(); SelectionPreviewRows = []; SelectionTestSummary = string.Empty; }
     [RelayCommand(CanExecute = nameof(CanPreviewSelectionRule))]
     private async Task PreviewSelectionRuleAsync()
     {
-        if (SelectedSelectionRule is not { } rule || SelectedProfile is not { } profile) return;
+        if (_disposed || IsBusy || SelectedSelectionRule is not { } rule || SelectedProfile is not { } profile) return;
         using var cancellation = new CancellationTokenSource(); _selectionTestCancellation = cancellation;
         var revision = Volatile.Read(ref _evaluationGeneration);
         var busyOperation = BeginBusyOperation();

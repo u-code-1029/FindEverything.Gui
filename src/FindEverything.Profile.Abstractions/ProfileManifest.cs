@@ -62,6 +62,10 @@ public sealed class ProfileManifest
 
     public string? DisplayName { get; set; }
 
+    /// <summary>Optional portable desktop settings. Never part of parsing or result-cache identity.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ProfileWorkspaceManifest? Workspace { get; set; }
+
     /// <summary>
     /// Reads the removed v1 path-input switch only so the validator can reject it
     /// explicitly. Contract v2 always supplies an absolute path; silently ignoring

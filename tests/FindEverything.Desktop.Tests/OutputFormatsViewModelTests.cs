@@ -10,6 +10,30 @@ namespace FindEverything.Desktop.Tests;
 public sealed class OutputFormatsViewModelTests
 {
     [Fact]
+    public async Task Async_save_keeps_the_editor_disabled_and_preserves_the_draft_when_persistence_fails()
+    {
+        var store = new DeferredFormatStore();
+        using var vm = Create(DraftLeaveDecision.Discard, store: store);
+        await vm.NewFormatCommand.ExecuteAsync(null);
+        vm.DraftTemplate = "unsaved {Name}";
+        var save = vm.SaveChangesAsync();
+        await store.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.True(vm.IsSaving);
+        Assert.False(vm.IsEditorReady);
+        Assert.False(vm.SaveCommand.CanExecute(null));
+        Assert.False(vm.NewFormatCommand.CanExecute(null));
+        Assert.False(save.IsCompleted);
+        store.Finish.TrySetException(new System.IO.IOException("disk busy"));
+
+        Assert.False(await save);
+        Assert.False(vm.IsSaving);
+        Assert.True(vm.IsEditorReady);
+        Assert.True(vm.HasUnsavedChanges);
+        Assert.Equal("unsaved {Name}", vm.DraftTemplate);
+        Assert.Contains("disk busy", vm.StatusMessage);
+    }
+    [Fact]
     public async Task Cancelled_new_format_keeps_the_unsaved_template()
     {
         var vm = Create(DraftLeaveDecision.Cancel);
@@ -286,7 +310,7 @@ public sealed class OutputFormatsViewModelTests
     }
 
     private static OutputFormatsViewModel Create(DraftLeaveDecision decision,
-        IProfileCatalog? profiles = null, MemoryFormatStore? store = null,
+        IProfileCatalog? profiles = null, ISelectionOutputFormatStore? store = null,
         OutputPreviewSampleStore? samples = null) => new(
         store ?? new MemoryFormatStore(), new SelectionOutputFormatter(), profiles ?? new EmptyProfileCatalog(),
         new SettingsViewModelTests.NoopSnackbar(), null!, new TestAppLocalizer(),
@@ -335,5 +359,18 @@ public sealed class OutputFormatsViewModelTests
             Changed?.Invoke(this, EventArgs.Empty);
         }
         public bool Delete(string id) => _formats.RemoveAll(format => format.Id == id) > 0;
+    }
+
+    private sealed class DeferredFormatStore : ISelectionOutputFormatStore
+    {
+        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Finish { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public event EventHandler? Changed { add { } remove { } }
+        public IReadOnlyList<SelectionOutputFormatDefinition> GetAll() => [SelectionOutputFormatDefaults.FullPathLines];
+        public IReadOnlyList<SelectionOutputFormatDefinition> GetApplicable(string? profileId) => GetAll();
+        public void Save(SelectionOutputFormatDefinition definition) => throw new InvalidOperationException("Synchronous save must not run on the UI thread.");
+        public Task SaveAsync(SelectionOutputFormatDefinition definition, CancellationToken cancellationToken = default)
+        { Started.TrySetResult(); return Finish.Task; }
+        public bool Delete(string id) => false;
     }
 }

@@ -303,6 +303,15 @@ public interface ILoadedProfile
 
     ProfileMapResult Map(ProfilePathCandidate candidate);
 
+    /// <summary>Cooperative cancellation; legacy plug-ins can only be checked before and after their call.</summary>
+    ProfileMapResult Map(ProfilePathCandidate candidate, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var result = Map(candidate);
+        cancellationToken.ThrowIfCancellationRequested();
+        return result;
+    }
+
     /// <summary>
     /// Reads only the requested immediate text-file field. It must not remap the
     /// path, evaluate other columns, or visit descendant folders.

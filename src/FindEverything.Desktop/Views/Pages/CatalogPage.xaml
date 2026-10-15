@@ -17,15 +17,17 @@
     Unloaded="OnPageUnloaded"
     mc:Ignorable="d">
     <Grid x:Name="CatalogPageLayout" SizeChanged="OnWorkspaceSizeChanged">
-        <Grid.RowDefinitions><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+        <Grid.RowDefinitions><RowDefinition Height="*" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
         <controls:WorkspacePageFrame x:Name="CatalogPageContent" Grid.Row="0" Margin="{DynamicResource CatalogPagePadding}">
             <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
-            <controls:CommandStrip Grid.Row="0" AutomationProperties.HelpText="{StaticResource Loc.Workspace.Catalog.Description}">
-                <StackPanel>
-                    <Grid>
+            <controls:CommandStrip x:Name="CatalogCommandStrip" Grid.Row="0" Padding="12,8" AutomationProperties.HelpText="{StaticResource Loc.Workspace.Catalog.Description}">
+                <Grid x:Name="CatalogCommandRows">
+                    <Grid.RowDefinitions><RowDefinition Height="44" /><RowDefinition Height="40" /></Grid.RowDefinitions>
+                    <Grid x:Name="CatalogSearchRow">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                        <ui:TextBox x:Name="SearchBox" MinHeight="36" Padding="12,6" FontSize="15"
+                        <ui:TextBox x:Name="SearchBox" MinHeight="44" Padding="14,8" FontSize="17"
                             VerticalContentAlignment="Center" Margin="0,0,12,0" ClearButtonEnabled="True" Icon="{ui:SymbolIcon Symbol=Search20}"
+                            BorderBrush="{DynamicResource AccentFillColorDefaultBrush}"
                             AutomationProperties.Name="{StaticResource Loc.View.Catalog.AutomationName.FilterAllResultColumns}"
                             PlaceholderText="{StaticResource Loc.View.Catalog.PlaceholderText.SearchAllColumnsAndFolderPaths}"
                             Text="{Binding FilterText, UpdateSourceTrigger=PropertyChanged}">
@@ -34,64 +36,87 @@
                             <Style.Triggers><DataTrigger Binding="{Binding IsShowingSelectedOnly}" Value="True"><Setter Property="IsEnabled" Value="False" /></DataTrigger></Style.Triggers>
                         </Style></ui:TextBox.Style>
                     </ui:TextBox>
-                        <StackPanel Grid.Column="1" Orientation="Horizontal">
-                            <ui:Button MinWidth="104" Margin="0,0,8,0" Command="{Binding ScanCommand}" Content="{Binding ScanActionText, FallbackValue={StaticResource Loc.Workspace.Scan}}"
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                            <ui:Button x:Name="CatalogScanButton" MinWidth="104" Margin="0,0,8,0" Command="{Binding ScanCommand}" Content="{Binding ScanActionText, FallbackValue={StaticResource Loc.Workspace.Scan}}"
                                 Icon="{ui:SymbolIcon Symbol=ArrowSync20}" ToolTip="{StaticResource Loc.Workspace.Scan.Catalog.Help}" ToolTipService.ShowOnDisabled="True">
                                 <ui:Button.Style><Style TargetType="ui:Button" BasedOn="{StaticResource {x:Type ui:Button}}">
                                     <Setter Property="Appearance" Value="Secondary" /><Style.Triggers><DataTrigger Binding="{Binding HasPublishedResults}" Value="False"><Setter Property="Appearance" Value="Primary" /></DataTrigger></Style.Triggers>
                                 </Style></ui:Button.Style>
                             </ui:Button>
-                            <ui:Button x:Name="CatalogDataManagementButton" Appearance="Transparent" Command="{Binding ToggleDetailsCommand}" Content="{StaticResource Loc.Ux.Results.DataManagement}" ToolTip="{StaticResource Loc.Ux.Results.DataManagement.Help}" />
-                            <ui:Button Margin="8,0,0,0" Command="{Binding CancelCommand}" Content="{StaticResource Loc.Workspace.Cancel}" Visibility="{Binding ShowCancelAction, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            <ui:Button x:Name="CatalogDataManagementButton" Appearance="Transparent" Padding="8,6" Command="{Binding ToggleDetailsCommand}" Icon="{ui:SymbolIcon Symbol=MoreHorizontal20}" AutomationProperties.Name="{StaticResource Loc.Ux.Results.DataManagement}" ToolTip="{StaticResource Loc.Ux.Results.DataManagement.Help}">
+                                <ui:Button.Content><ui:TextBlock x:Name="CatalogDataManagementLabel" Text="{StaticResource Loc.Ux.Results.DataManagement}" /></ui:Button.Content>
+                            </ui:Button>
+                            <ui:Button x:Name="CatalogCancelButton" Width="32" Height="32" MinWidth="0" Padding="4" Margin="4,0,0,0" Appearance="Transparent" Command="{Binding CancelCommand}" Icon="{ui:SymbolIcon Symbol=Dismiss20}" AutomationProperties.Name="{StaticResource Loc.Workspace.Cancel}" ToolTip="{StaticResource Loc.Workspace.Cancel}">
+                                <ui:Button.Style><Style TargetType="ui:Button" BasedOn="{StaticResource {x:Type ui:Button}}">
+                                    <Setter Property="Visibility" Value="Hidden" /><Style.Triggers><DataTrigger Binding="{Binding ShowCancelAction}" Value="True"><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers>
+                                </Style></ui:Button.Style>
+                            </ui:Button>
                         </StackPanel>
                     </Grid>
-                    <Grid Margin="0,8,0,0">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <Grid x:Name="CatalogContextRow" Grid.Row="1" Margin="0,8,0,0">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="1.1*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                         <Label x:Name="CatalogProfileLabel" Padding="0" Margin="0,0,8,0" VerticalAlignment="Center" Content="{StaticResource Loc.Workspace.Profile.Label}" Target="{Binding ElementName=CatalogProfileComboBox}" />
-                        <ComboBox Style="{StaticResource ContentAwareComboBoxStyle}" x:Name="CatalogProfileComboBox" Grid.Column="1" HorizontalAlignment="Stretch" AutomationProperties.Name="{StaticResource Loc.Workspace.Profile}" ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}" DisplayMemberPath="DisplayName" IsEnabled="{Binding CanEditWorkspace}" ToolTip="{StaticResource Loc.Workspace.Catalog.Profile.Help}" />
-                        <controls:WorkspaceTransferPanel x:Name="CatalogWorkspaceTransferPanel" Grid.Column="2" Margin="8,0,0,0" DataContext="{Binding WorkspaceTransfer}" ExportOwner="{Binding DataContext, RelativeSource={RelativeSource AncestorType=Page}}" />
+                        <!-- The star slot owns this selector's width. A measured label must not hold its old minimum when the window narrows. -->
+                        <ComboBox Style="{StaticResource ContentAwareComboBoxStyle}" x:Name="CatalogProfileComboBox" Grid.Column="1" MinWidth="96" HorizontalAlignment="Stretch" AutomationProperties.Name="{StaticResource Loc.Workspace.Profile}" ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}" DisplayMemberPath="DisplayName" IsEnabled="{Binding CanEditWorkspace}" ToolTip="{StaticResource Loc.Workspace.Catalog.Profile.Help}" />
+                        <ui:Button x:Name="ImportCatalogProfileButton" Grid.Column="2" Margin="4,0,8,0" Padding="8,4" Appearance="Transparent" Command="{Binding ImportProfileCommand}" Icon="{ui:SymbolIcon Symbol=FolderOpen20}" AutomationProperties.Name="{StaticResource Loc.Ux.Catalog.ImportProfile}" ToolTip="{StaticResource Loc.Ux.Catalog.ImportProfile.Help}" ToolTipService.ShowOnDisabled="True">
+                            <ui:Button.Content><ui:TextBlock x:Name="ImportCatalogProfileLabel" Text="{StaticResource Loc.Ux.Catalog.ImportProfile}" /></ui:Button.Content>
+                        </ui:Button>
+                        <ui:Button x:Name="CatalogLocationButton" Grid.Column="3" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Padding="8,4" Appearance="Transparent" Command="{Binding BrowseRootCommand}" Icon="{ui:SymbolIcon Symbol=FolderOpen20}" AutomationProperties.Name="{StaticResource Loc.Workspace.Location.Change}" ToolTipService.ShowOnDisabled="True">
+                            <ui:Button.Content><DockPanel>
+                                <ui:TextBlock DockPanel.Dock="Left" Margin="0,0,6,0" Text="{StaticResource Loc.Ux.Results.Location}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
+                                <ui:TextBlock Text="{Binding RootPath, TargetNullValue={StaticResource Loc.Catalog.Root.None}}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                            </DockPanel></ui:Button.Content>
+                            <ui:Button.ToolTip><StackPanel MaxWidth="480"><ui:TextBlock Text="{Binding RootPath}" TextWrapping="Wrap" /><ui:TextBlock Margin="0,4,0,0" Text="{StaticResource Loc.Workspace.Location.Change.Help}" TextWrapping="Wrap" /></StackPanel></ui:Button.ToolTip>
+                        </ui:Button>
+                        <controls:WorkspaceTransferPanel x:Name="CatalogWorkspaceTransferPanel" Grid.Column="4" Margin="8,0,0,0" DataContext="{Binding WorkspaceTransfer}" ExportOwner="{Binding DataContext, RelativeSource={RelativeSource AncestorType=Page}}" />
                     </Grid>
-                    <DockPanel Margin="0,4,0,0">
-                        <ui:Button DockPanel.Dock="Right" Padding="8,2" MinHeight="28" Appearance="Transparent" Command="{Binding BrowseRootCommand}" Content="{StaticResource Loc.Workspace.Location.Change}" Icon="{ui:SymbolIcon Symbol=FolderOpen20}" ToolTip="{StaticResource Loc.Workspace.Location.Change.Help}" ToolTipService.ShowOnDisabled="True" />
-                        <Label DockPanel.Dock="Left" Padding="0" Margin="0,0,8,0" VerticalAlignment="Center" Content="{StaticResource Loc.Ux.Results.Location}" />
-                        <ui:TextBlock VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding RootPath, TargetNullValue={StaticResource Loc.Catalog.Root.None}}" TextTrimming="CharacterEllipsis" ToolTip="{Binding RootPath}" />
-                    </DockPanel>
-                    <WrapPanel x:Name="CatalogFilterBar" Margin="0,8,0,0" IsEnabled="{Binding CanTypeSearch, FallbackValue=True}" Visibility="{Binding HasColumnFilters, Converter={StaticResource BooleanToVisibilityConverter}}">
-                        <ItemsControl ItemsSource="{Binding ActiveColumnFilters}">
-                            <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
-                            <ItemsControl.ItemTemplate><DataTemplate><StackPanel Orientation="Horizontal" Margin="0,0,8,4">
-                                <ui:Button Padding="8,4" Appearance="Transparent" Click="OnFilterChipClick" Content="{Binding Description}" ToolTip="{StaticResource Loc.Ux.Results.EditFilter}" />
-                                <ui:Button Width="28" Height="28" Padding="4" Appearance="Transparent" Command="{Binding RemoveCommand}" Icon="{ui:SymbolIcon Symbol=Dismiss12}" ToolTip="{StaticResource Loc.Ux.Results.RemoveFilter}" AutomationProperties.Name="{StaticResource Loc.Ux.Results.RemoveFilter}" />
-                            </StackPanel></DataTemplate></ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                        <ui:Button Margin="0,0,0,4" Padding="8,4" Appearance="Transparent" Command="{Binding ClearColumnFiltersCommand}" Content="{StaticResource Loc.Catalog.Filters.ClearAll}" />
-                    </WrapPanel>
-            <ui:TextBlock Margin="0,8,0,0" Style="{StaticResource CaptionTextStyle}" Text="{Binding SelectedOnlyDescription}" TextWrapping="Wrap" Visibility="{Binding IsShowingSelectedOnly, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                    <ui:TextBlock x:Name="ScanInteractionNotice" Margin="0,8,0,0" Style="{StaticResource CaptionTextStyle}" TextWrapping="Wrap" Text="{Binding ScanDisplayNotice}" Visibility="{Binding IsScanning, Converter={StaticResource BooleanToVisibilityConverter}, FallbackValue=Collapsed}" />
-                    <ui:TextBlock Margin="0,8,0,0" Style="{StaticResource CaptionTextStyle}" Text="{StaticResource Loc.Ux.Results.Preserving}" Visibility="{Binding IsPreservingSelection, Converter={StaticResource BooleanToVisibilityConverter}, FallbackValue=Collapsed}" />
-                </StackPanel>
+                </Grid>
             </controls:CommandStrip>
         <Grid x:Name="CatalogResultsWorkspace" Grid.Row="1">
             <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-            <Grid Margin="0,0,0,4">
-                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                <StackPanel Orientation="Horizontal">
-                    <ui:TextBlock Text="{Binding FilterSummary}" FontWeight="SemiBold" VerticalAlignment="Center" AutomationProperties.LiveSetting="Polite" />
-                    <StackPanel Orientation="Horizontal" Margin="8,0,0,0" Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}">
-                        <ui:ProgressRing Width="18" Height="18" Margin="0,0,8,0" IsIndeterminate="{Binding IsBusy}" ToolTip="{Binding ProgressMessage}" />
-                        <ui:TextBlock x:Name="CatalogProgressCaption" MaxWidth="240" VerticalAlignment="Center" Text="{Binding ProgressMessage}" Style="{StaticResource CaptionTextStyle}" TextTrimming="CharacterEllipsis" ToolTip="{Binding ProgressMessage}" />
-                    </StackPanel>
-                </StackPanel>
-                <ui:TextBlock Grid.Column="1" Margin="12,0" Text="{Binding ResultProvenance}" Style="{StaticResource CaptionTextStyle}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip="{Binding ResultSourceDescription}" />
-                <StackPanel Grid.Column="2" Orientation="Horizontal">
-                    <ui:TextBlock Text="{StaticResource Loc.Ux.Results.Applying}" Style="{StaticResource CaptionTextStyle}" VerticalAlignment="Center" Visibility="{Binding IsSearchPending, Converter={StaticResource BooleanToVisibilityConverter}, FallbackValue=Collapsed}" />
+            <StackPanel Margin="0,0,0,4">
+            <Grid x:Name="CatalogStatusRow" Height="32">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" MaxWidth="160" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <ui:TextBlock Text="{Binding FilterSummary}" TextTrimming="CharacterEllipsis" ToolTip="{Binding FilterSummary}" FontWeight="SemiBold" VerticalAlignment="Center" AutomationProperties.LiveSetting="Polite" />
+                <Grid x:Name="CatalogStatusSlot" Grid.Column="1" Margin="12,0">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="22" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                    <ui:ProgressRing Width="16" Height="16" HorizontalAlignment="Left" IsIndeterminate="{Binding IsBusy}" Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}" ToolTip="{Binding ProgressMessage}" />
+                    <ui:TextBlock x:Name="CatalogProgressCaption" Grid.Column="1" VerticalAlignment="Center" Text="{Binding BusyProgressCaption}" Style="{StaticResource CaptionTextStyle}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <ui:TextBlock.ToolTip><StackPanel MaxWidth="480"><ui:TextBlock Text="{Binding ProgressMessage}" TextWrapping="Wrap" /><ui:TextBlock x:Name="ScanInteractionNotice" Margin="0,8,0,0" Text="{Binding ScanDisplayNotice}" TextWrapping="Wrap" Visibility="{Binding IsScanning, Converter={StaticResource BooleanToVisibilityConverter}}" /></StackPanel></ui:TextBlock.ToolTip>
+                    </ui:TextBlock>
+                    <ui:TextBlock x:Name="CatalogStateCaption" Grid.Column="1" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap">
+                        <ui:TextBlock.Style><Style TargetType="ui:TextBlock" BasedOn="{StaticResource CaptionTextStyle}">
+                            <Setter Property="Text" Value="{Binding ResultProvenance}" /><Setter Property="ToolTip" Value="{Binding ResultSourceDescription}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsShowingSelectedOnly}" Value="True"><Setter Property="Text" Value="{Binding SelectedOnlyDescription}" /><Setter Property="ToolTip" Value="{Binding SelectedOnlyDescription}" /></DataTrigger>
+                                <DataTrigger Binding="{Binding IsSearchPending}" Value="True"><Setter Property="Text" Value="{StaticResource Loc.Ux.Results.Applying}" /><Setter Property="ToolTip" Value="{StaticResource Loc.Ux.Results.Applying}" /></DataTrigger>
+                                <DataTrigger Binding="{Binding IsPreservingSelection}" Value="True"><Setter Property="Text" Value="{StaticResource Loc.Ux.Results.Preserving}" /><Setter Property="ToolTip" Value="{StaticResource Loc.Ux.Results.Preserving}" /></DataTrigger>
+                                <DataTrigger Binding="{Binding IsBusy}" Value="True"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger>
+                            </Style.Triggers>
+                        </Style></ui:TextBlock.Style>
+                    </ui:TextBlock>
+                </Grid>
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                     <ToggleButton x:Name="SelectedOnlyButton" Style="{StaticResource SelectedOnlyToggleStyle}" />
-                    <ui:Button x:Name="SelectFromDataButton" Height="28" Margin="8,0,4,0" Padding="8,4" Appearance="Transparent" Content="{StaticResource Loc.SelectionImport.Open}"
+                    <ui:Button x:Name="SelectFromDataButton" Height="28" Margin="8,0,4,0" Padding="8,4" Appearance="Transparent"
                         Command="{Binding OpenSelectionImportCommand}" Icon="{ui:SymbolIcon Symbol=ClipboardTaskListLtr20}" AutomationProperties.Name="{StaticResource Loc.SelectionImport.Open}"
-                        ToolTip="{StaticResource Loc.SelectionImport.Open.Help}" ToolTipService.ShowOnDisabled="True" />
+                        ToolTip="{StaticResource Loc.SelectionImport.Open.Help}" ToolTipService.ShowOnDisabled="True"><ui:Button.Content><ui:TextBlock x:Name="SelectFromDataLabel" Text="{StaticResource Loc.SelectionImport.Open}" /></ui:Button.Content></ui:Button>
                     <ui:Button Width="28" Height="24" MinWidth="0" MinHeight="0" Padding="4" Appearance="Transparent" Icon="{ui:SymbolIcon Symbol=ColumnTriple20}" Click="OnColumnsMenuClick" IsEnabled="{Binding IsResultInteractionEnabled, FallbackValue=True}" ToolTip="{StaticResource Loc.Ux.Results.Columns}" AutomationProperties.Name="{StaticResource Loc.Ux.Results.Columns}" />
                 </StackPanel>
             </Grid>
+            <ui:DynamicScrollViewer x:Name="CatalogFilterScroller" Style="{StaticResource FluentGutteredScrollViewerStyle}" Height="44" Margin="0,4,0,0" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" CanContentScroll="False" Visibility="{Binding HasColumnFilters, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <WrapPanel x:Name="CatalogFilterBar" IsEnabled="{Binding CanTypeSearch, FallbackValue=True}" Visibility="{Binding HasColumnFilters, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <ItemsControl ItemsSource="{Binding ActiveColumnFilters}">
+                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate><DataTemplate><StackPanel Orientation="Horizontal" Margin="0,0,8,0">
+                            <ui:Button Padding="8,4" Appearance="Transparent" Click="OnFilterChipClick" Content="{Binding Description}" ToolTip="{StaticResource Loc.Ux.Results.EditFilter}" />
+                            <ui:Button Width="28" Height="28" Padding="4" Appearance="Transparent" Command="{Binding RemoveCommand}" Icon="{ui:SymbolIcon Symbol=Dismiss12}" ToolTip="{StaticResource Loc.Ux.Results.RemoveFilter}" AutomationProperties.Name="{StaticResource Loc.Ux.Results.RemoveFilter}" />
+                        </StackPanel></DataTemplate></ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <ui:Button Padding="8,4" Appearance="Transparent" Command="{Binding ClearColumnFiltersCommand}" Content="{StaticResource Loc.Catalog.Filters.ClearAll}" />
+                </WrapPanel>
+            </ui:DynamicScrollViewer>
+            </StackPanel>
             <ui:Flyout x:Name="LiveFolderFlyout" Width="0" Height="0" MinWidth="0" MinHeight="0" />
 
             <controls:SectionCard x:Name="CatalogResultsSurface" Grid.Row="1" Style="{StaticResource WorkspaceResultCardStyle}"
@@ -262,6 +287,12 @@
               </controls:SectionCard.Header>
             </controls:SectionCard>
         </controls:WorkspacePageFrame>
-        <controls:ScanConsolePanel x:Name="ScanConsolePanel" controls:FloatingNotificationChrome.IsBottomChrome="True" Grid.Row="1" Height="220" Margin="24,0,24,16" DataContext="{x:Null}" Visibility="{Binding IsPanelOpen, Converter={StaticResource BooleanToVisibilityConverter}}" />
+        <Thumb x:Name="ConsoleSplitter" Grid.Row="1" Height="8" Margin="24,0,24,0" Cursor="SizeNS" Focusable="True"
+            DragDelta="OnConsoleSplitterDragDelta" KeyDown="OnConsoleSplitterKeyDown"
+            Visibility="{Binding Visibility, ElementName=ScanConsolePanel}" AutomationProperties.Name="{StaticResource Loc.Scan.Resize}"
+            ToolTip="{StaticResource Loc.Scan.Resize}">
+            <Thumb.Template><ControlTemplate TargetType="Thumb"><Grid Background="Transparent"><Rectangle Width="44" Height="3" RadiusX="1.5" RadiusY="1.5" Fill="{DynamicResource ControlStrongFillColorDefaultBrush}" /></Grid></ControlTemplate></Thumb.Template>
+        </Thumb>
+        <controls:ScanConsolePanel x:Name="ScanConsolePanel" controls:FloatingNotificationChrome.IsBottomChrome="True" Grid.Row="2" Height="220" Margin="24,0,24,16" DataContext="{x:Null}" Visibility="{Binding IsPanelOpen, Converter={StaticResource BooleanToVisibilityConverter}}" />
     </Grid>
 </Page>

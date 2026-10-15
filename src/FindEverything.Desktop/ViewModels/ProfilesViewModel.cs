@@ -51,6 +51,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
     private readonly IUiScheduler _uiScheduler;
     private readonly IProfilePresentationStore? _presentationStore;
     private string? _savedRuleDefinition;
+    private ProfileWorkspaceManifest? _portableWorkspace;
 
     [ObservableProperty]
     private IReadOnlyList<ProfileSummaryViewModel> _profiles = [];
@@ -456,6 +457,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
             DetachRows();
             _originalProfileId = null;
             _savedRuleDefinition = null;
+            _portableWorkspace = null;
             CurrentEditorStep = ProfileEditorStep.Profile;
             _draftVersion = "1.0.0";
             CanEditDraftId = true;
@@ -579,14 +581,22 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
             return;
         }
 
-        var samplePath = SamplePath.Trim();
+        var expectedSampleInput = SamplePath;
+        var samplePath = expectedSampleInput.Trim();
+        var revision = _editorSession.Revision;
+        var mode = EditorMode;
+        bool IsCurrentAnalysis() => !_disposed && revision == _editorSession.Revision
+            && mode == EditorMode && string.Equals(SamplePath, expectedSampleInput, StringComparison.Ordinal);
         try
         {
-            samplePath = _pathCanonicalizer.Canonicalize(samplePath);
+            var input = samplePath;
+            samplePath = await Task.Run(() => _pathCanonicalizer.Canonicalize(input)).ConfigureAwait(true);
+            if (!IsCurrentAnalysis()) return;
         }
         catch (Exception exception) when (
             exception is ArgumentException or IOException or NotSupportedException)
         {
+            if (!IsCurrentAnalysis()) return;
             _logger.LogWarning(exception, "Could not canonicalize the profile authoring path.");
             TemplateStatusMessage = L(
                 "Loc.Profiles.Error.InvalidPath",
@@ -596,6 +606,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
         }
 
         SamplePath = samplePath;
+        expectedSampleInput = samplePath;
         var normalizedSamplePath = samplePath.Replace('\\', '/');
         if (HasAnalyzedPath
             && string.Equals(normalizedSamplePath, _analyzedNormalizedPath, StringComparison.Ordinal))
@@ -628,6 +639,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
             {
                 return;
             }
+            if (!IsCurrentAnalysis()) return;
         }
 
         var hadGuidedAssignments = DraftFields.Any(static field => field.HasGuidedAssignments);
@@ -1270,12 +1282,13 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
     }
 
     [RelayCommand]
-    private void OpenUserProfilesFolder()
+    private async Task OpenUserProfilesFolderAsync()
     {
         try
         {
-            Directory.CreateDirectory(_authoringService.UserProfilesDirectory);
-            _pathLauncher.OpenDirectory(_authoringService.UserProfilesDirectory);
+            var directory = _authoringService.UserProfilesDirectory;
+            await Task.Run(() => Directory.CreateDirectory(directory)).ConfigureAwait(true);
+            await _pathLauncher.OpenDirectoryAsync(directory).ConfigureAwait(true);
         }
         catch (Exception exception)
         {
@@ -1364,6 +1377,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
             Id = DraftId.Trim(),
             Version = _draftVersion,
             DisplayName = DraftDisplayName.Trim(),
+            Workspace = BuildPortableWorkspace(),
             CandidateKind = ProfileCandidateKind.Directory,
             Fields = fields,
             ChildDirectoryFields = DraftChildDirectoryFields.Count == 0 ? null : DraftChildDirectoryFields.Select(field => field.ToManifest()).ToList(),
@@ -1422,6 +1436,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
         {
             DetachRows();
             _originalProfileId = manifest.Id?.Trim();
+            _portableWorkspace = manifest.Workspace is null ? null : JsonSerializer.Deserialize<ProfileWorkspaceManifest>(JsonSerializer.Serialize(manifest.Workspace));
             CurrentEditorStep = ProfileEditorStep.Profile;
             _draftVersion = string.IsNullOrWhiteSpace(manifest.Version)
                 ? "1.0.0"

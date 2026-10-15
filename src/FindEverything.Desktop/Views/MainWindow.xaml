@@ -54,6 +54,8 @@
                     TargetPageType="{x:Type pages:HomePage}"
                     ToolTip="{StaticResource Loc.Home.Nav}" />
                 <ui:NavigationViewItem
+                    x:Name="FilesNavigationItem"
+                    Visibility="Collapsed"
                     AutomationProperties.Name="{StaticResource Loc.Shell.Nav.Files}"
                     Content="{StaticResource Loc.Shell.Nav.Files}"
                     Icon="{ui:SymbolIcon Symbol=Search24}"

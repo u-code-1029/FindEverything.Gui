@@ -189,6 +189,8 @@ public sealed partial class SqliteCatalogProjectionStore
         {
             ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
             ValidateRange(offset, limit);
+            if (_sortTarget.Kind != CatalogColumnTargetKind.FullPath)
+                return await ReadOrderedRangeAsync(null, offset, limit, token).ConfigureAwait(false);
             using var connection = _owner.OpenConnection(readOperation: true);
             using var interrupt = new SqliteReadCancellation(connection, token);
             return await ReadPageAsync(connection, "user_inputs", null, offset, limit,
@@ -202,25 +204,7 @@ public sealed partial class SqliteCatalogProjectionStore
             return await ExecuteReadAsync(async token =>
             {
                 ValidateRange(offset, limit);
-                using var connection = _owner.OpenConnection(readOperation: true);
-                using var interrupt = new SqliteReadCancellation(connection, token);
-                if (captured.Baseline is { } baseline)
-                {
-                    using var attach = connection.CreateCommand();
-                    attach.CommandText = "ATTACH DATABASE $path AS selection_source;";
-                    attach.Parameters.AddWithValue("$path", baseline.DatabasePath); attach.ExecuteNonQuery();
-                }
-                using var prepare = connection.CreateCommand();
-                prepare.CommandText = "CREATE TEMP TABLE selection_keys(path_key TEXT PRIMARY KEY COLLATE BINARY) WITHOUT ROWID; CREATE TEMP TABLE selection_unavailable(path_key TEXT PRIMARY KEY COLLATE BINARY) WITHOUT ROWID;";
-                prepare.ExecuteNonQuery();
-                foreach (var (table, keys) in new[] { ("selection_keys", captured.Keys), ("selection_unavailable", captured.UnavailableKeys) })
-                {
-                    prepare.CommandText = $"INSERT OR IGNORE INTO {table}(path_key) VALUES($key);";
-                    prepare.Parameters.Clear(); var parameter = prepare.Parameters.Add("$key", SqliteType.Text);
-                    foreach (var key in keys) { token.ThrowIfCancellationRequested(); parameter.Value = PathKey(key); prepare.ExecuteNonQuery(); }
-                }
-                return await ReadPageAsync(connection, "user_inputs", captured, offset, limit,
-                    checkPublication: true, previewCharacters: _query.TextPreviewCharacters, token).ConfigureAwait(false);
+                return await ReadOrderedRangeAsync(captured, offset, limit, token).ConfigureAwait(false);
             }, cancellationToken).ConfigureAwait(false);
         }
 
@@ -245,6 +229,7 @@ public sealed partial class SqliteCatalogProjectionStore
             {
                 using var connection = _owner.OpenConnection(readOperation: true);
                 using var interrupt = new SqliteReadCancellation(connection, cancellationToken);
+                ConfigureOrderedStorage(connection);
                 if (captured.Baseline is { } baseline)
                 {
                     using var attach = connection.CreateCommand();
@@ -285,11 +270,16 @@ public sealed partial class SqliteCatalogProjectionStore
                     }
                     transaction.Commit();
                 }
+                // Freeze the selected order once. Full-value pages remain byte-bounded,
+                // but no longer re-sort/re-skip the growing prefix on every iteration.
+                await MaterializeOrderedKeysAsync(connection, "captured_notes", captured,
+                    checkPublication: false, cancellationToken).ConfigureAwait(false);
                 var offset = 0;
                 while (true)
                 {
                     var page = await SqliteReadCancellation.RunAsync(token => ReadPageAsync(connection, "captured_notes", captured,
-                        offset, BatchSize, checkPublication: false, previewCharacters: 0, token), cancellationToken).ConfigureAwait(false);
+                        offset, BatchSize, checkPublication: false, previewCharacters: 0, token,
+                        orderedKeys: true), cancellationToken).ConfigureAwait(false);
                     foreach (var row in page.Items)
                     {
                         cancellationToken.ThrowIfCancellationRequested();
@@ -304,7 +294,7 @@ public sealed partial class SqliteCatalogProjectionStore
 
         private async Task<ResultPage<CatalogProjectionRow>> ReadPageAsync(SqliteConnection connection,
             string notesTable, QuerySelection? selection, int offset, int limit,
-            bool checkPublication, int previewCharacters, CancellationToken cancellationToken)
+            bool checkPublication, int previewCharacters, CancellationToken cancellationToken, bool orderedKeys = false)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var rows = new List<CatalogProjectionRow>(limit + 1);
@@ -313,7 +303,8 @@ public sealed partial class SqliteCatalogProjectionStore
             using (var transaction = connection.BeginTransaction(deferred: true))
             {
                 EnsureGeneration(connection, transaction, checkPublication);
-                using var command = BuildCommand(connection, transaction, notesTable, selection, offset, limit);
+                using var command = orderedKeys ? BuildOrderedPageCommand(connection, transaction, offset, limit)
+                    : BuildCommand(connection, transaction, notesTable, selection, offset, limit);
                 var (valuesJson, previewFields) = PreviewSql(command, previewCharacters);
                 var rowBytes = previewCharacters == 0 ? FullRowBytesSql(valuesJson, previewFields, notesTable) : "0";
                 var resources = _owner.HasResourceColumn ? "r.resources_json" : "'{}'";
@@ -438,7 +429,6 @@ public sealed partial class SqliteCatalogProjectionStore
             command.Parameters.AddWithValue("$generation", _generation);
             command.Parameters.AddWithValue("$profile", ProfileKey(_scope.ProfileId));
             var joins = string.Empty;
-            var order = _sortTarget.Kind == CatalogColumnTargetKind.Coverage ? "r.coverage" : "r.path_key COLLATE BINARY";
             if (_sortField is not null)
             {
                 joins = $"""
@@ -446,14 +436,6 @@ public sealed partial class SqliteCatalogProjectionStore
                     LEFT JOIN {notesTable} sn ON s.is_user_input=1 AND sn.profile_key=$profile AND sn.path_key=r.path_key AND sn.field_id=s.field_id
                     """;
                 command.Parameters.AddWithValue("$sortField", _sortField.FieldId.ToLowerInvariant());
-                order = _sortField.SourceKind == ProfileFieldSourceKind.UserInput
-                    ? "COALESCE(sn.value_search, s.raw_sort) COLLATE BINARY"
-                    : _sortField.Kind switch
-                    {
-                        ProfileFieldValueKind.Int32 or ProfileFieldValueKind.Decimal or ProfileFieldValueKind.Boolean => "s.sort_numeric COLLATE BINARY",
-                        ProfileFieldValueKind.DateTime => "s.sort_ticks",
-                        _ => (_query.ShowOriginalValues ? "s.raw_sort" : "s.mapped_sort") + " COLLATE BINARY"
-                    };
             }
             var predicates = new List<string> { "r.generation=$generation" };
             AddColumnFilters(command, notesTable, predicates);
@@ -490,14 +472,28 @@ public sealed partial class SqliteCatalogProjectionStore
             {
                 // The path key is NOT NULL. A redundant IS NULL expression makes
                 // SQLite sort the entire generation instead of walking its PK.
-                var ordering = _sortTarget.Kind == CatalogColumnTargetKind.FullPath
-                    ? $"r.path_key COLLATE BINARY {(_query.Descending ? "DESC" : "ASC")}"
-                    : $"({order} IS NULL) ASC, {order} {(_query.Descending ? "DESC" : "ASC")}, r.path_key COLLATE BINARY ASC";
-                command.CommandText += $" ORDER BY {ordering} LIMIT $limit OFFSET $offset;";
+                command.CommandText += $" ORDER BY {BuildOrdering()} LIMIT $limit OFFSET $offset;";
                 command.Parameters.AddWithValue("$limit", limit.Value + 1);
                 command.Parameters.AddWithValue("$offset", offset.Value);
             }
             return command;
+        }
+
+        private string BuildOrdering()
+        {
+            var direction = _query.Descending ? "DESC" : "ASC";
+            if (_sortTarget.Kind == CatalogColumnTargetKind.FullPath) return $"r.path_key COLLATE BINARY {direction}";
+            var order = _sortTarget.Kind == CatalogColumnTargetKind.Coverage ? "r.coverage" : "r.path_key COLLATE BINARY";
+            if (_sortField is not null)
+                order = _sortField.SourceKind == ProfileFieldSourceKind.UserInput
+                    ? "COALESCE(sn.value_search, s.raw_sort) COLLATE BINARY"
+                    : _sortField.Kind switch
+                    {
+                        ProfileFieldValueKind.Int32 or ProfileFieldValueKind.Decimal or ProfileFieldValueKind.Boolean => "s.sort_numeric COLLATE BINARY",
+                        ProfileFieldValueKind.DateTime => "s.sort_ticks",
+                        _ => (_query.ShowOriginalValues ? "s.raw_sort" : "s.mapped_sort") + " COLLATE BINARY"
+                    };
+            return $"({order} IS NULL) ASC, {order} {direction}, r.path_key COLLATE BINARY ASC";
         }
 
         private void EnsureGeneration(SqliteConnection connection, SqliteTransaction transaction,
@@ -540,6 +536,8 @@ public sealed partial class SqliteCatalogProjectionStore
         {
             if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
             _lifetime.Cancel();
+            await _orderedPages.DisposeAsync().ConfigureAwait(false);
+            await _selectedPages.DisposeAsync().ConfigureAwait(false);
             ReleaseLease();
             if (!_owner._disposed)
             {

@@ -189,7 +189,7 @@ public sealed class ProfilePlaygroundEvaluatorTests
     }
 
     [Fact]
-    public async Task An_old_evaluation_cannot_clear_a_new_operation_after_page_reentry()
+    public async Task Page_reentry_cannot_start_another_worker_until_cancelled_OS_work_actually_returns()
     {
         var canonicalPath = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "FindEverything.Playground.Tests", "A"));
         var profile = new RecordingLoadedProfile(canonicalPath);
@@ -207,15 +207,20 @@ public sealed class ProfilePlaygroundEvaluatorTests
         try
         {
             viewModel.Deactivate();
-            Assert.False(viewModel.IsBusy);
+            Assert.True(viewModel.IsBusy);
             await viewModel.ActivateAsync();
             viewModel.InputPath = "second path";
+            Assert.False(viewModel.EvaluateCommand.CanExecute(null));
             secondTask = viewModel.EvaluateCommand.ExecuteAsync(null);
-            await second.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await secondTask;
+            Assert.False(second.Started.Task.IsCompleted);
             first.Release();
             await firstTask.WaitAsync(TimeSpan.FromSeconds(5));
-            Assert.True(viewModel.IsBusy);
+            Assert.False(viewModel.IsBusy);
             Assert.Empty(viewModel.Rows);
+            secondTask = viewModel.EvaluateCommand.ExecuteAsync(null);
+            await second.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.True(viewModel.IsBusy);
             second.Release();
             await secondTask.WaitAsync(TimeSpan.FromSeconds(5));
             Assert.False(viewModel.IsBusy);
@@ -228,6 +233,36 @@ public sealed class ProfilePlaygroundEvaluatorTests
             await firstTask.WaitAsync(TimeSpan.FromSeconds(5));
             if (secondTask is not null) await secondTask.WaitAsync(TimeSpan.FromSeconds(5));
         }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Explicit_cancel_and_dispose_keep_the_evaluation_slot_until_the_real_worker_returns(bool dispose)
+    {
+        var canonicalPath = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "PlaygroundCancelled"));
+        var profile = new RecordingLoadedProfile(canonicalPath);
+        using var evaluator = new DeferredPlaygroundEvaluator(canonicalPath);
+        using var vm = new ProfilePlaygroundViewModel(new StubProfileCatalog(new([profile], [], DateTimeOffset.UtcNow)),
+            evaluator, new StubDesktopPickerService(), new TestAppLocalizer(), NullLogger<ProfilePlaygroundViewModel>.Instance)
+        { InputPath = canonicalPath };
+        var evaluation = vm.EvaluateCommand.ExecuteAsync(null);
+        await evaluator.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        try
+        {
+            Assert.True(vm.CancelCommand.CanExecute(null));
+            if (dispose) vm.Dispose(); else vm.CancelCommand.Execute(null);
+            Assert.True(vm.IsBusy);
+            Assert.False(vm.EvaluateCommand.CanExecute(null));
+            Assert.False(vm.CancelCommand.CanExecute(null));
+            await vm.EvaluateCommand.ExecuteAsync(null);
+            Assert.False(evaluation.IsCompleted);
+        }
+        finally { evaluator.Release(); }
+        await evaluation.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.False(vm.IsBusy);
+        Assert.Empty(vm.Rows);
+        Assert.Equal(!dispose, vm.EvaluateCommand.CanExecute(null));
     }
 
     [Fact]

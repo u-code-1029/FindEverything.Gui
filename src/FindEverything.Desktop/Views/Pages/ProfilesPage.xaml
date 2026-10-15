@@ -1715,15 +1715,19 @@
                                     Orientation="Horizontal"
                                     Visibility="{Binding IsReviewStep, Converter={StaticResource BooleanToVisibilityConverter}}">
                                     <ui:Button
-                                        MinWidth="96"
+                                        Width="36"
+                                        Padding="0"
                                         Margin="0,0,8,0"
+                                        Appearance="Transparent"
                                         Command="{Binding ValidateDraftCommand}"
-                                        Content="{StaticResource Loc.View.Profiles.Content.Validate}"
+                                        AutomationProperties.Name="{StaticResource Loc.View.Profiles.Content.Validate}"
+                                        ToolTip="{StaticResource Loc.Ux.Authoring.Validate.Help}"
                                         Icon="{ui:SymbolIcon Symbol=CheckmarkCircle20}" />
                                     <ui:Button
                                         MinWidth="120"
                                         Command="{Binding SaveDraftCommand}"
-                                        Content="{StaticResource Loc.View.Profiles.Content.ValidateAndSave}"
+                                        Content="{StaticResource Loc.Common.Save}"
+                                        ToolTip="{StaticResource Loc.Ux.Authoring.Save.Help}"
                                         Icon="{ui:SymbolIcon Symbol=Save16}" />
                                     <ui:Button
                                         MinWidth="120"

@@ -1,7 +1,11 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
+using System.Reflection;
+using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
 using FindEverything.Application.Catalog;
+using FindEverything.Application.Results;
 using FindEverything.Infrastructure.Persistence;
 using FindEverything.Profile.Runtime;
 using Engine = FindEverything.Engine;
@@ -97,7 +101,7 @@ if (snapshot is null)
 catalogSetup.Stop();
 await using var catalogQuery = catalog.OpenQuery(snapshot, new());
 var catalogFirst = await Measure(async () => { _ = await catalogQuery.ReadRangeAsync(0, 500); });
-var deepOffset = Math.Max(0, Math.Min(catalogCount - 500, 100_000 - 500));
+var deepOffset = checked((int)Math.Max(0, snapshot.Summary.MatchedCount - 500));
 var catalogPathDeep = await Measure(async () => { _ = await catalogQuery.ReadRangeAsync(deepOffset, 500); });
 await using var reversePath = catalog.OpenQuery(snapshot, new(Descending: true));
 var catalogPathDescendingFirst = await Measure(async () => { _ = await reversePath.ReadRangeAsync(0, 500); });
@@ -110,6 +114,31 @@ for (var index = 0; index < 20; index++)
 }
 await using var sorted = catalog.OpenQuery(snapshot, new(SortFieldId: "number", Descending: true));
 var catalogSorted = await Measure(async () => { _ = await sorted.ReadRangeAsync(0, 500); });
+var catalogSortedDeep = await Measure(async () => { _ = await sorted.ReadRangeAsync(deepOffset, 500); });
+var sortedTraversal = await Measure(async () =>
+{
+    for (var page = 0; page < 20; page++)
+        _ = await sorted.ReadRangeAsync((int)((long)deepOffset * page / 19), 500);
+});
+var sortDetails = new List<object>();
+foreach (var field in new[] { "date", "text" })
+{
+    await using var ordered = catalog.OpenQuery(snapshot, new(SortFieldId: field, Descending: true));
+    var first = await Measure(async () => { _ = await ordered.ReadRangeAsync(0, 500); });
+    var deep = await Measure(async () => { _ = await ordered.ReadRangeAsync(deepOffset, 500); });
+    sortDetails.Add(new { Field = field, First500Milliseconds = first, Deep500Milliseconds = deep });
+}
+long exportedRows = 0;
+using var exportSelection = new QuerySelection(true);
+var sortedExport = await Measure(async () =>
+{
+    await foreach (var row in sorted.EnumerateSelectionAsync(exportSelection))
+    {
+        if (row.Values.Count == 0) throw new InvalidDataException("An exported benchmark row has no values.");
+        exportedRows++;
+    }
+});
+if (exportedRows != snapshot.Summary.MatchedCount) throw new InvalidDataException("Sorted export skipped rows.");
 await using var noteQuery = catalog.OpenQuery(snapshot, new("Alice"));
 var catalogCountTime = await Measure(async () => { _ = await noteQuery.CountAsync(); });
 var columnFilterSamples = new List<object>();
@@ -134,6 +163,7 @@ foreach (var conditionCount in new[] { 1, 3, 7 })
 Console.WriteLine(JsonSerializer.Serialize(new
 {
     Directory = directory, Runtime = Environment.Version.ToString(), OS = Environment.OSVersion.ToString(),
+    Environment = CaptureEnvironment(),
     Files = status.EntryCount, StructuredRows = snapshot.Summary.MatchedCount,
     SetupMilliseconds = setup.Elapsed.TotalMilliseconds, CatalogSetupMilliseconds = catalogSetup.Elapsed.TotalMilliseconds,
     FileFirst500Milliseconds = fileFirst, FileSearchP95Milliseconds = Percentile(fileSamples),
@@ -143,9 +173,29 @@ Console.WriteLine(JsonSerializer.Serialize(new
     CatalogPathDescendingFirst500Milliseconds = catalogPathDescendingFirst,
     CatalogPathDescendingDeep500Milliseconds = catalogPathDescendingDeep,
     CatalogNumericSortFirst500Milliseconds = catalogSorted, CatalogFilteredCountMilliseconds = catalogCountTime,
+    CatalogNumericSortDeep500Milliseconds = catalogSortedDeep,
+    CatalogNumericSort20DistributedPagesMilliseconds = sortedTraversal,
+    CatalogAdditionalSorts = sortDetails,
+    CatalogNumericSortedFullExportMilliseconds = sortedExport, CatalogNumericSortedExportRows = exportedRows,
     StructuredColumns = fields.Length, TypedColumnFilters = columnFilterSamples,
     ManagedBytes = GC.GetTotalMemory(forceFullCollection: true), WorkingSetBytes = Environment.WorkingSet
 }, new JsonSerializerOptions { WriteIndented = true }));
+
+static object CaptureEnvironment()
+{
+    var version = typeof(SqliteCatalogProjectionStore).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+    var sha = version is null ? null : Regex.Match(version, @"(?<![0-9a-fA-F])[0-9a-fA-F]{40}(?![0-9a-fA-F])").Value;
+    return new
+    {
+        CommitSha = string.IsNullOrEmpty(sha) ? null : sha,
+        AssemblyInformationalVersion = version,
+        WorkingTreeStatus = Environment.GetEnvironmentVariable("FINDEVERYTHING_PERF_WORKTREE") ?? "not-recorded",
+        CapturedUtc = DateTimeOffset.UtcNow,
+        Runtime = RuntimeInformation.FrameworkDescription, OS = RuntimeInformation.OSDescription,
+        Architecture = RuntimeInformation.ProcessArchitecture.ToString(), LogicalProcessors = Environment.ProcessorCount,
+        Workload = "SQLite data layer only; no WPF render/input latency measurement",
+    };
+}
 
 string? ReadArgument(string name)
 {

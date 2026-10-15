@@ -148,32 +148,48 @@ public sealed class ImportedCatalogProjectionStore : IImportedCatalogProjectionS
 {
     private readonly SqliteCatalogProjectionStore _inner;
     private readonly ImportedWorkspaceSource _source;
+    private IDisposable? _generationLease;
     public ImportedCatalogProjectionStore(ImportedWorkspaceSource source)
     {
         if (!source.HasCatalog) throw new InvalidOperationException("This package has no structured results.");
         _source = source;
-        _inner = new(source.CatalogDatabasePath!, readOnly: true);
+        _generationLease = ImportedGenerationLease.Acquire(source.CatalogDatabasePath!);
+        try { _inner = new(source.CatalogDatabasePath!, readOnly: true); }
+        catch { _generationLease.Dispose(); throw; }
     }
     public Task<CatalogProjectionSnapshot?> FindAsync(CatalogProjectionScope scope, CancellationToken cancellationToken = default)
         => Task.FromResult<CatalogProjectionSnapshot?>(_source.CatalogSnapshot);
     public IResultQuerySession<CatalogProjectionRow> OpenImportedQuery(CatalogProjectionQuery query)
-        => new ImportedQuery(_inner.OpenQuery(_source.CatalogSnapshot!, query), _source);
+    {
+        var lease = ImportedGenerationLease.Acquire(_source.CatalogDatabasePath!);
+        try { return new ImportedQuery(_inner.OpenQuery(_source.CatalogSnapshot!, query), _source, lease); }
+        catch { lease.Dispose(); throw; }
+    }
     public IResultQuerySession<CatalogProjectionRow> OpenQuery(CatalogProjectionSnapshot snapshot, CatalogProjectionQuery query)
         => OpenImportedQuery(query);
-    public Task<CatalogNumericRange?> ReadNumericRangeAsync(CatalogProjectionSnapshot snapshot, string fieldId,
-        CancellationToken cancellationToken = default) => _inner.ReadNumericRangeAsync(_source.CatalogSnapshot!, fieldId, cancellationToken);
+    public async Task<CatalogNumericRange?> ReadNumericRangeAsync(CatalogProjectionSnapshot snapshot, string fieldId,
+        CancellationToken cancellationToken = default)
+    {
+        using var lease = ImportedGenerationLease.Acquire(_source.CatalogDatabasePath!);
+        return await _inner.ReadNumericRangeAsync(_source.CatalogSnapshot!, fieldId, cancellationToken).ConfigureAwait(false);
+    }
     public ICatalogProjectionWriter Begin(CatalogProjectionScope scope, IReadOnlyList<ProfileFieldDescriptor> fields) => throw ReadOnly();
     public IResultQuerySession<CatalogProjectionRow> OpenBuildingQuery(ICatalogProjectionWriter writer, CatalogProjectionScope scope,
         IReadOnlyList<ProfileFieldDescriptor> fields, CatalogProjectionQuery query) => throw ReadOnly();
     public Task<CatalogProjectionSnapshot> RefreshColumnAsync(CatalogProjectionSnapshot snapshot, string fieldId,
         Func<string, CancellationToken, Task<TextColumnReadResult>> readValue, IProgress<TextColumnRefreshProgress>? progress = null,
         CancellationToken cancellationToken = default) => throw ReadOnly();
-    public void Dispose() => _inner.Dispose();
+    public void Dispose()
+    {
+        try { _inner.Dispose(); }
+        finally { Interlocked.Exchange(ref _generationLease, null)?.Dispose(); }
+    }
     private static InvalidOperationException ReadOnly() => new("Imported workspace data is read-only. Start an explicit local scan to create a new result.");
 
-    private sealed class ImportedQuery(IResultQuerySession<CatalogProjectionRow> inner, ImportedWorkspaceSource source)
+    private sealed class ImportedQuery(IResultQuerySession<CatalogProjectionRow> inner, ImportedWorkspaceSource source, IDisposable generationLease)
         : IResultQuerySession<CatalogProjectionRow>, ICatalogSelectionMatchQuery, IResultSelectionKeyReader
     {
+        private IDisposable? _generationLease = generationLease;
         public string Identity => source.Id + ":" + source.LinkRevision + ":" + inner.Identity;
         public Task<long> CountAsync(CancellationToken cancellationToken = default) => inner.CountAsync(cancellationToken);
         public async Task<long> CountSelectionAsync(QuerySelection selection, CancellationToken cancellationToken = default)
@@ -226,6 +242,10 @@ public sealed class ImportedCatalogProjectionStore : IImportedCatalogProjectionS
             var original = WorkspacePathMapping.ToOriginal(source, row.FullPath);
             return row with { StableKey = original, OriginalFullPath = original };
         }
-        public ValueTask DisposeAsync() => inner.DisposeAsync();
+        public async ValueTask DisposeAsync()
+        {
+            try { await inner.DisposeAsync().ConfigureAwait(false); }
+            finally { Interlocked.Exchange(ref _generationLease, null)?.Dispose(); }
+        }
     }
 }

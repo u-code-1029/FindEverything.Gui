@@ -25,6 +25,17 @@ public interface IProfilePlaygroundEvaluator
     /// <summary>Runs synchronous profile/file evaluation away from the caller's UI context.</summary>
     Task<ProfilePlaygroundEvaluation> EvaluateAsync(ILoadedProfile profile, string inputPath) =>
         Task.Run(() => Evaluate(profile, inputPath));
+
+    async Task<ProfilePlaygroundEvaluation> EvaluateAsync(ILoadedProfile profile, string inputPath,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        // Do not abandon the actual worker via WaitAsync: an uninterruptible OS
+        // call must still occupy the single evaluation slot until it returns.
+        var result = await EvaluateAsync(profile, inputPath).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        return result;
+    }
 }
 
 /// <summary>
@@ -37,12 +48,19 @@ public sealed class ProfilePlaygroundEvaluator(
     IAppLocalizer localizer,
     IProfileSampleEvaluator? sampleEvaluator = null) : IProfilePlaygroundEvaluator
 {
-    public ProfilePlaygroundEvaluation Evaluate(ILoadedProfile profile, string inputPath)
+    public ProfilePlaygroundEvaluation Evaluate(ILoadedProfile profile, string inputPath) =>
+        EvaluateCore(profile, inputPath, CancellationToken.None);
+
+    public Task<ProfilePlaygroundEvaluation> EvaluateAsync(ILoadedProfile profile, string inputPath,
+        CancellationToken cancellationToken) => Task.Run(() => EvaluateCore(profile, inputPath, cancellationToken), cancellationToken);
+
+    private ProfilePlaygroundEvaluation EvaluateCore(ILoadedProfile profile, string inputPath, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(profile);
         ArgumentException.ThrowIfNullOrWhiteSpace(inputPath);
 
-        var sample = (sampleEvaluator ?? new ProfileSampleEvaluator(pathCanonicalizer)).Evaluate(profile, inputPath);
+        var sample = (sampleEvaluator ?? new ProfileSampleEvaluator(pathCanonicalizer)).Evaluate(profile, inputPath, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
         var canonicalPath = sample.CanonicalPath;
         var descriptor = profile.Descriptor;
         var pathRules = descriptor.Rules
@@ -58,6 +76,7 @@ public sealed class ProfilePlaygroundEvaluator(
             })
             .ToArray();
         var regexDebugRules = ProfileRegexDebugBuilder.Build(canonicalPath, pathRules);
+        cancellationToken.ThrowIfCancellationRequested();
 
         var leafName = sample.LeafName;
         var exclusionRules = descriptor.ExcludedDirectoryNameRules
@@ -79,6 +98,7 @@ public sealed class ProfilePlaygroundEvaluator(
             profile,
             localizer,
             sample.DirectoryExclusion);
+        cancellationToken.ThrowIfCancellationRequested();
 
         var mapping = sample.Mapping;
         IReadOnlyList<ProfileTestResultViewModel> rows;

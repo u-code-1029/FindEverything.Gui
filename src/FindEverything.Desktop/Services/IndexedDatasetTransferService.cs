@@ -9,12 +9,14 @@ using FindEverything.Infrastructure.FindEverything;
 using FindEverything.Infrastructure.Persistence;
 using FindEverything.Profile.Runtime;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Logging;
 
 namespace FindEverything.Desktop.Services;
 
 /// <summary>Portable, declarative, read-only datasets. Archive databases are never opened for writing.</summary>
 public sealed class IndexedDatasetTransferService(AppPaths paths, ProfileTransferService profiles,
-    IProfilePresentationStore presentations, IOptions<LocalizationOptions>? localization = null) : IIndexedDatasetTransferService, IImportedWorkspaceRegistry
+    IProfilePresentationStore presentations, IOptions<LocalizationOptions>? localization = null,
+    ILogger<IndexedDatasetTransferService>? logger = null) : IIndexedDatasetTransferService, IImportedWorkspaceRegistry, IDisposable
 {
     private string ReceiverCultureName => localization?.Value.CultureName ?? System.Globalization.CultureInfo.CurrentCulture.Name;
     public Task<ImportedWorkspaceSource> EnsureCultureAsync(ImportedWorkspaceSource source,
@@ -25,6 +27,7 @@ public sealed class IndexedDatasetTransferService(AppPaths paths, ProfileTransfe
     private static readonly HashSet<string> AllowedFiles = new(StringComparer.Ordinal)
     { "manifest.json", "profile.json", "metadata.db", "catalog.db", "presentation.json" };
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly ImportedGenerationCleanup _generationCleanup = new(paths, logger);
     private string ImportsDirectory => Path.Combine(paths.LocalDataDirectory, "Imports");
     public event EventHandler? Changed;
 
@@ -32,6 +35,26 @@ public sealed class IndexedDatasetTransferService(AppPaths paths, ProfileTransfe
     private sealed record PackageManifest(int FormatVersion, string Format, string OriginalRoot, string StoredRoot,
         Guid? IndexScanId, bool IncludesUserInputs, long EntryCount, long CatalogRowCount,
         bool HasPendingScopes, IReadOnlyList<PackageFile> Files);
+
+    private sealed class PreparedPackage(IndexedDatasetTransferService owner, string stage, PackageManifest manifest,
+        ProfileManifest profile, CatalogProjectionSnapshot? snapshot) : IPreparedWorkspacePackage
+    {
+        private string? _stage = stage;
+        public IndexedDatasetTransferService Owner { get; } = owner;
+        public PackageManifest Manifest { get; } = manifest;
+        public ProfileManifest Profile { get; } = profile;
+        public CatalogProjectionSnapshot? Snapshot { get; } = snapshot;
+        // Do not expose the mutable profile used for installation to confirmation UI/callers.
+        public WorkspacePackageInspection Inspection => ToInspection(Manifest,
+            JsonSerializer.Deserialize<ProfileManifest>(JsonSerializer.SerializeToUtf8Bytes(Profile, ProfileTransferService.WriteOptions), ProfileTransferService.ReadOptions)!);
+        public string TakeStage() => Interlocked.Exchange(ref _stage, null)
+            ?? throw new InvalidOperationException("The prepared package was already installed or disposed.");
+        public ValueTask DisposeAsync()
+        {
+            DeleteStage(Interlocked.Exchange(ref _stage, null));
+            return ValueTask.CompletedTask;
+        }
+    }
 
     public async Task<IReadOnlyList<ImportedWorkspaceSource>> ListAsync(CancellationToken cancellationToken = default)
     {
@@ -56,18 +79,28 @@ public sealed class IndexedDatasetTransferService(AppPaths paths, ProfileTransfe
             }
             catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException) { /* One damaged registry entry does not hide other imports. */ }
         }
+        foreach (var source in result) _generationCleanup.Request(source.Id);
         return result.OrderByDescending(s => s.ImportedUtc).ToArray();
     }
 
     public async Task<WorkspacePackageInspection> InspectAsync(string path, CancellationToken cancellationToken = default)
     {
+        await using var prepared = await PrepareImportAsync(path, cancellationToken).ConfigureAwait(false);
+        return prepared.Inspection;
+    }
+
+    public async Task<IPreparedWorkspacePackage> PrepareImportAsync(string path, CancellationToken cancellationToken = default)
+    {
         var stage = CreateStage();
         try
         {
-            var (manifest, profile, _) = await ReadPackageAsync(path, stage, cancellationToken).ConfigureAwait(false);
-            return ToInspection(manifest, profile);
+            var archive = Path.Combine(stage, "archive");
+            Directory.CreateDirectory(archive);
+            var (manifest, profile, snapshot) = await ReadPackageAsync(path, archive, cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            return new PreparedPackage(this, stage, manifest, profile, snapshot);
         }
-        finally { DeleteStage(stage); }
+        catch { DeleteStage(stage); throw; }
     }
 
     public async Task ExportAsync(WorkspacePackageExportRequest request, IProgress<WorkspaceTransferProgress>? progress = null,
@@ -151,14 +184,27 @@ public sealed class IndexedDatasetTransferService(AppPaths paths, ProfileTransfe
     {
         if (!Enum.IsDefined(choice)) throw new ArgumentOutOfRangeException(nameof(choice));
         if (choice == ProfileImportConflictChoice.Cancel) return null;
+        await using var prepared = await PrepareImportAsync(path, cancellationToken).ConfigureAwait(false);
+        return await ImportPreparedAsync(prepared, choice, effectiveRoot, progress, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<ImportedWorkspaceSource?> ImportPreparedAsync(IPreparedWorkspacePackage package, ProfileImportConflictChoice choice,
+        string? effectiveRoot = null, IProgress<WorkspaceTransferProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!Enum.IsDefined(choice)) throw new ArgumentOutOfRangeException(nameof(choice));
+        if (choice == ProfileImportConflictChoice.Cancel) return null;
+        if (package is not PreparedPackage prepared || !ReferenceEquals(prepared.Owner, this))
+            throw new ArgumentException("This prepared package belongs to a different service.", nameof(package));
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         string? stage = null;
         try
         {
-            stage = CreateStage();
+            stage = prepared.TakeStage();
             var archive = Path.Combine(stage, "archive");
-            Directory.CreateDirectory(archive);
-            var (manifest, profile, snapshot) = await ReadPackageAsync(path, archive, cancellationToken).ConfigureAwait(false);
+            var manifest = prepared.Manifest;
+            var profile = prepared.Profile;
+            var snapshot = prepared.Snapshot;
             var root = WorkspacePathMapping.NormalizeRoot(effectiveRoot ?? manifest.OriginalRoot);
             var id = Guid.NewGuid().ToString("N");
             var installedDirectory = Path.Combine(ImportsDirectory, id);
@@ -174,17 +220,22 @@ public sealed class IndexedDatasetTransferService(AppPaths paths, ProfileTransfe
                     DateTimeOffset.UtcNow, 0, profile);
                 await WriteSourceAsync(Path.Combine(stage, "source.json"), source, cancellationToken).ConfigureAwait(false);
                 var presentationFile = Path.Combine(archive, "presentation.json");
-                var oldPresentation = await presentations.LoadAsync(result.ProfileId, cancellationToken).ConfigureAwait(false);
+                // New packages carry one authoritative embedded snapshot. The legacy sidecar
+                // is only a fallback; applying it again would reset imported manual widths.
+                var applyLegacyPresentation = profile.Workspace is null && File.Exists(presentationFile);
+                var oldPresentation = applyLegacyPresentation
+                    ? await presentations.LoadAsync(result.ProfileId, cancellationToken).ConfigureAwait(false) : null;
                 try
                 {
-                    if (File.Exists(presentationFile))
+                    if (applyLegacyPresentation)
                         await presentations.SaveAsync(result.ProfileId, await ReadPresentationAsync(presentationFile, cancellationToken).ConfigureAwait(false), cancellationToken).ConfigureAwait(false);
                     cancellationToken.ThrowIfCancellationRequested();
                     Directory.Move(stage, installedDirectory);
                 }
                 catch
                 {
-                    await presentations.SaveAsync(result.ProfileId, oldPresentation, CancellationToken.None).ConfigureAwait(false);
+                    if (oldPresentation is not null)
+                        await presentations.SaveAsync(result.ProfileId, oldPresentation, CancellationToken.None).ConfigureAwait(false);
                     throw;
                 }
                 RaiseChanged();
@@ -206,6 +257,14 @@ public sealed class IndexedDatasetTransferService(AppPaths paths, ProfileTransfe
             var installed = Path.Combine(ImportsDirectory, source.Id);
             if (!Guid.TryParseExact(source.Id, "N", out _) || !Directory.Exists(installed))
                 throw new InvalidDataException("The imported workspace is not installed.");
+            // Keep revisions monotonic across application processes, including if an
+            // obsolete directory was already reclaimed while a slow relink was building.
+            using var publicationLease = new FileStream(Path.Combine(installed, "source.write.lock"),
+                FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+            var registered = JsonSerializer.Deserialize<ImportedWorkspaceSource>(
+                await File.ReadAllTextAsync(Path.Combine(installed, "source.json"), cancellationToken).ConfigureAwait(false), ProfileTransferService.ReadOptions);
+            if (registered is null || registered.Id != source.Id || registered.LinkRevision != source.LinkRevision)
+                throw new InvalidOperationException("The imported workspace was reconnected elsewhere. Reload its current source before reconnecting again.");
             var archive = Path.Combine(installed, "archive");
             var manifest = await ReadManifestAsync(Path.Combine(archive, "manifest.json"), cancellationToken).ConfigureAwait(false);
             var snapshot = File.Exists(Path.Combine(archive, "catalog.db")) ? await Task.Run(() => SqliteCatalogProjectionStore.ValidateTransferredSnapshot(Path.Combine(archive, "catalog.db"), cancellationToken), cancellationToken).ConfigureAwait(false) : null;
@@ -221,19 +280,24 @@ public sealed class IndexedDatasetTransferService(AppPaths paths, ProfileTransfe
             Directory.Move(stage, final);
             try { await WriteSourceAsync(Path.Combine(installed, "source.json"), updated, cancellationToken).ConfigureAwait(false); }
             catch { Directory.Delete(final, true); throw; }
-            // Older linked generations can still be leased by a query. Keep them until an explicit cleanup workflow.
             RaiseChanged();
+            _generationCleanup.Request(updated.Id);
             return updated;
         }
         finally { try { DeleteStage(stage); } finally { _gate.Release(); } }
     }
 
     public ICatalogProjectionStore OpenCatalogStore(ImportedWorkspaceSource source) => new ImportedCatalogProjectionStore(source);
+    internal Task CleanupRetiredGenerationsAsync(ImportedWorkspaceSource source, CancellationToken cancellationToken = default) =>
+        _generationCleanup.CleanupAsync(source.Id, cancellationToken);
+    public void Dispose() => _generationCleanup.Dispose();
 
     private async Task<(string Metadata, string? Catalog, CatalogProjectionSnapshot? Snapshot)> BuildDerivedAsync(
         string archive, string stage, string installed, string linkName, string root, string profileId,
         PackageManifest manifest, CatalogProjectionSnapshot? snapshot, IProgress<WorkspaceTransferProgress>? progress, CancellationToken ct)
     {
+        await File.WriteAllTextAsync(Path.Combine(stage, ImportedGenerationLease.MarkerFileName),
+            ImportedGenerationLease.MarkerContent, ct).ConfigureAwait(false);
         var metadata = Path.Combine(installed, linkName, "metadata.db");
         await Task.Run(() => MetadataSnapshotTransfer.CopyAsync(Path.Combine(archive, "metadata.db"), manifest.StoredRoot,
             Path.Combine(stage, "metadata.db"), root, progress, ct), ct).ConfigureAwait(false);

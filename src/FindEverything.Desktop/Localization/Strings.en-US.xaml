@@ -81,7 +81,7 @@
     <sys:String x:Key="Loc.Home.State.Ready.Title">Structured scan is configured</sys:String>
     <sys:String x:Key="Loc.Home.State.Ready.Message">The search location and profile are connected. Open Structured view to verify access and start the scan.</sys:String>
     <sys:String x:Key="Loc.Home.State.Setup.Title">A couple of steps and you’re ready</sys:String>
-    <sys:String x:Key="Loc.Home.State.Setup.Message">Set a search location and profile. File search works even without a profile.</sys:String>
+    <sys:String x:Key="Loc.Home.State.Setup.Message">Prepare a search location and profile to collect the information you need in Structured view.</sys:String>
     <sys:String x:Key="Loc.Home.Operation.Scanning">Scanning the disk and updating the search database.</sys:String>
     <sys:String x:Key="Loc.Home.Operation.Loading">Loading results from the saved search database.</sys:String>
     <sys:String x:Key="Loc.Home.Operation.ProfileDiscovery">Loading available profiles.</sys:String>
@@ -1520,7 +1520,7 @@
     <sys:String x:Key="Loc.Transfer.Export.Package.Short">Share…</sys:String>
     <sys:String x:Key="Loc.Transfer.Export.Package.Help">Export this root's metadata and structured results with a profile.</sys:String>
     <sys:String x:Key="Loc.Transfer.Export.Profile">Export profile JSON</sys:String>
-    <sys:String x:Key="Loc.Transfer.Export.Profile.Help">Export the selected saved JSON profile. DLL profiles are not supported.</sys:String>
+    <sys:String x:Key="Loc.Transfer.Export.Profile.Help">Export the saved profile rules with current output formats and column display settings in one JSON file. Databases and PC-specific paths are excluded. DLL profiles are not supported.</sys:String>
     <sys:String x:Key="Loc.Transfer.IncludeNotes">Include notes and user-entered values</sys:String>
     <sys:String x:Key="Loc.Transfer.IncludeCatalog">Include structured results</sys:String>
     <sys:String x:Key="Loc.Transfer.Package.Privacy">Only published data for the selected root is included. Notes are excluded by default.</sys:String>
@@ -1532,10 +1532,10 @@
     <sys:String x:Key="Loc.Transfer.Profile.Select">Select a saved JSON profile. DLL profiles cannot be exported as JSON.</sys:String>
     <sys:String x:Key="Loc.Transfer.Unsupported">Select a profile JSON or .fepkg file.</sys:String>
     <sys:String x:Key="Loc.Transfer.Conflict.Title">A profile with the same ID already exists</sys:String>
-    <sys:String x:Key="Loc.Transfer.Conflict.Message">Import as a new profile to keep existing profiles and data. Replace changes only the profile definition.</sys:String>
+    <sys:String x:Key="Loc.Transfer.Conflict.Message">Importing as a new profile keeps your existing profile and data. Replacing changes the profile rules and any output formats, selected format, and column display settings included in the JSON. Existing scan databases are not deleted.</sys:String>
     <sys:String x:Key="Loc.Transfer.Conflict.New">Import as new profile</sys:String>
     <sys:String x:Key="Loc.Transfer.Conflict.Replace">Replace existing profile</sys:String>
-    <sys:String x:Key="Loc.Transfer.Conflict.Confirm">Replace the existing profile definition with the imported one?</sys:String>
+    <sys:String x:Key="Loc.Transfer.Conflict.Confirm">Replace this profile’s rules and included output formats, selected format, and column display settings? Existing scan databases will be kept.</sys:String>
     <sys:String x:Key="Loc.Transfer.Root.Title">Cannot connect to the original path</sys:String>
     <sys:String x:Key="Loc.Transfer.Root.Help">Connect the corresponding folder on this PC or browse stored data without the original files.</sys:String>
     <sys:String x:Key="Loc.Transfer.Root.Connect">Connect another folder</sys:String>
@@ -1543,7 +1543,7 @@
     <sys:String x:Key="Loc.Transfer.Root.Offline">Browse offline</sys:String>
     <sys:String x:Key="Loc.Transfer.Root.Relinked">Paths reconnected. Structured values were not changed.</sys:String>
     <sys:String x:Key="Loc.Transfer.Catalog.Missing">No structured results included</sys:String>
-    <sys:String x:Key="Loc.Transfer.Catalog.Missing.Help">Browse metadata in File search. To create structured results, switch to local results and explicitly scan.</sys:String>
+    <sys:String x:Key="Loc.Transfer.Catalog.Missing.Help">This shared data has no structured results. Request a package with structured results, or switch to local results and scan.</sys:String>
     <sys:String x:Key="Loc.Transfer.Working">Processing shared data…</sys:String>
     <sys:String x:Key="Loc.Transfer.Output.Missing">This shared dataset does not include structured values for the selected item.</sys:String>
     <sys:String x:Key="Loc.Transfer.Menu.Title">Data source and sharing</sys:String>
@@ -1739,7 +1739,7 @@
     <sys:String x:Key="Loc.Ux.Shell.Settings.Advanced.Help">Keep the defaults for normal use. Review each setting before changing values for your workload.</sys:String>
     <sys:String x:Key="Loc.Ux.Shell.Settings.Notifications.Help">Ordinary notices close after the configured duration, pausing while hovered or focused. Errors stay until dismissed. Review and copy details in Recent notifications.</sys:String>
     <sys:String x:Key="Loc.Ux.Shell.Language.Hint">Choose a language, then restart now or save it for later.</sys:String>
-    <sys:String x:Key="Loc.Ux.Results.Refresh">Refresh results</sys:String>
+    <sys:String x:Key="Loc.Ux.Results.Refresh">Scan again</sys:String>
     <sys:String x:Key="Loc.Ux.Results.Source">{0} · Updated {1}</sys:String>
     <sys:String x:Key="Loc.Ux.Results.Source.Shared">Imported results</sys:String>
     <sys:String x:Key="Loc.Ux.Results.Source.Saved">Saved results</sys:String>
@@ -1789,11 +1789,11 @@
     <sys:String x:Key="Loc.Ux.Home.Next.Shared">Explore the shared results</sys:String>
     <sys:String x:Key="Loc.Ux.Home.Next.Location">Choose where to search first</sys:String>
     <sys:String x:Key="Loc.Ux.Home.Next.Files">You can start finding files now</sys:String>
-    <sys:String x:Key="Loc.Ux.Home.Next.Ready">Find files in this location</sys:String>
+    <sys:String x:Key="Loc.Ux.Home.Next.Ready">See the information in your profile at a glance</sys:String>
     <sys:String x:Key="Loc.Ux.Home.Next.Shared.Help">Imported indexes are read-only. Switch to this PC's workspace to scan your own disk.</sys:String>
-    <sys:String x:Key="Loc.Ux.Home.Next.Location.Help">Choose a drive or folder, then scan in Find files. No profile is required.</sys:String>
+    <sys:String x:Key="Loc.Ux.Home.Next.Location.Help">Choose a drive or folder and prepare a profile to bring the information you need into Structured view.</sys:String>
     <sys:String x:Key="Loc.Ux.Home.Next.Files.Help">Use Find files to browse all files. Create a profile to turn information in folder paths into columns.</sys:String>
-    <sys:String x:Key="Loc.Ux.Home.Next.Ready.Help">Search all files in Find files, or use Structured view to see information matched by your profile.</sys:String>
+    <sys:String x:Key="Loc.Ux.Home.Next.Ready.Help">Search saved results in Structured view, or scan the selected location for the latest information.</sys:String>
     <sys:String x:Key="Loc.Ux.Home.CreateProfile">Create a profile</sys:String>
     <sys:String x:Key="Loc.Ux.Home.CreateProfile.Help">Choose parts of a sample path to create columns such as names and dates.</sys:String>
     <sys:String x:Key="Loc.Ux.Home.SharedCatalog.Help">Open Structured view for the shared profile.</sys:String>
@@ -1819,4 +1819,22 @@
     <sys:String x:Key="Loc.Ux.Results.SelectedOnly.Empty">No checked items</sys:String>
     <sys:String x:Key="Loc.Ux.Results.SelectedOnly.EmptyHelp">Leave checked-item review to select items from your previous search results.</sys:String>
     <sys:String x:Key="Loc.Ux.Results.SelectedOnly.Exit">Back to search</sys:String>
+    <sys:String x:Key="Loc.Ux.Home.Next.Profile">Prepare a profile to extract your information</sys:String>
+    <sys:String x:Key="Loc.Ux.Home.Next.Profile.Help">Define how folder paths become columns, or import a shared profile below.</sys:String>
+    <sys:String x:Key="Loc.Ux.Catalog.ImportProfile">Import profile</sys:String>
+    <sys:String x:Key="Loc.Ux.Catalog.ImportProfile.Help">Save a profile JSON on this PC, restore its included output formats and column settings, and select it. If its ID already exists, import a new copy or replace the existing profile.</sys:String>
+    <sys:String x:Key="Loc.Ux.Catalog.ImportProfile.JsonOnly">Choose a profile JSON file.</sys:String>
+    <sys:String x:Key="Loc.Ux.Output.Preference.SaveFailed">Could not save the selected copy format.</sys:String>
+    <sys:String x:Key="Loc.ProfileDiagnostic.workspace_invalid">The portable profile settings are invalid. Check output format IDs, the selected format, column references, and width limits.</sys:String>
+    <sys:String x:Key="Loc.Path.Open.Pending">The previous path is still opening. Please try again shortly.</sys:String>
+    <sys:String x:Key="Loc.Scan.CopyFailed">Could not copy the log.</sys:String>
+    <sys:String x:Key="Loc.Scan.Resize">Resize log panel · drag or use the Up and Down arrow keys.</sys:String>
+    <sys:String x:Key="Loc.Ux.Results.PreviousRefreshing">Previous results · refreshing</sys:String>
+    <sys:String x:Key="Loc.Ux.Home.ImportProfile.Help">Open a shared profile JSON to import its rules, output formats, and column settings.</sys:String>
+    <sys:String x:Key="Loc.Transfer.Package.StructuredRequired">This package has no structured results and cannot be viewed in this app. Ask the sender to export it again with structured results included. Nothing has been installed.</sys:String>
+    <sys:String x:Key="Loc.Playground.Cancel.Help">Cancel the test. An operating system file or network call may take time to return.</sys:String>
+    <sys:String x:Key="Loc.Playground.Status.Cancelling">Cancellation requested. You can start another test after the pending file or network call returns.</sys:String>
+    <sys:String x:Key="Loc.Ux.Authoring.Validate.Help">Check the rules without saving. Saving also validates automatically.</sys:String>
+    <sys:String x:Key="Loc.Ux.Authoring.Save.Help">Validate and save. You can test a real path later.</sys:String>
+    <sys:String x:Key="Loc.Common.Save">Save</sys:String>
 </ResourceDictionary>

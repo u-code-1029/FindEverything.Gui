@@ -197,6 +197,7 @@ internal sealed class ProfileManifestValidator
         int supportedContractMajor)
     {
         var diagnostics = new List<ProfileDiagnostic>();
+        diagnostics.AddRange(ProfileWorkspaceManifestValidator.Validate(manifest));
         var id = NormalizeRequired(manifest.Id);
         var version = NormalizeRequired(manifest.Version);
         var displayName = NormalizeRequired(manifest.DisplayName);

@@ -123,6 +123,7 @@
     <controls:WorkspacePageFrame>
         <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
         <controls:CommandStrip Grid.Row="0" Padding="16" Margin="0,0,0,12" AutomationProperties.HelpText="{StaticResource Loc.Workspace.Playground.Description}">
+            <StackPanel>
             <Grid x:Name="PlaygroundInputPanel" IsEnabled="{Binding IsReady}">
                 <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                 <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
@@ -141,6 +142,11 @@
                     <ui:Button Grid.Column="2" Margin="8,0,0,0" Appearance="Primary" Command="{Binding EvaluateCommand}" Content="{StaticResource Loc.Workspace.Playground.Run}" Icon="{ui:SymbolIcon Symbol=Play20}" ToolTip="{StaticResource Loc.Workspace.Playground.Run.Help}" ToolTipService.ShowOnDisabled="True" />
                 </Grid>
             </Grid>
+            <ui:Button x:Name="CancelPlaygroundButton" Margin="0,8,0,0" HorizontalAlignment="Right"
+                Command="{Binding CancelCommand}" Content="{StaticResource Loc.Common.Cancel}"
+                Icon="{ui:SymbolIcon Symbol=Dismiss20}" ToolTip="{StaticResource Loc.Playground.Cancel.Help}"
+                Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}" />
+            </StackPanel>
         </controls:CommandStrip>
         <TabControl Grid.Row="1" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
         <TabItem Header="{StaticResource Loc.Profiles.Features.Playground.PathTab}">

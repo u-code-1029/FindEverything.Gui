@@ -31,7 +31,9 @@
                 </controls:SectionCard.Header>
             </controls:SectionCard>
             <WrapPanel x:Name="PrimaryCardsHost">
-                <ui:CardAction x:Name="FilesActionCard" Command="{Binding OpenFilesCommand}" Margin="0,0,12,12" Padding="20" MinHeight="124"
+                <!-- Keep the file workspace available for a future release, but
+                     do not advertise an entry point while it is hidden. -->
+                <ui:CardAction x:Name="FilesActionCard" Visibility="Collapsed" Command="{Binding OpenFilesCommand}" Margin="0,0,12,12" Padding="20" MinHeight="124"
                     AutomationProperties.Name="{DynamicResource Loc.Home.Files.Title}" ToolTip="{DynamicResource Loc.Home.Files.Description}">
                     <StackPanel><ui:TextBlock FontSize="20" FontWeight="SemiBold" Text="{DynamicResource Loc.Home.Files.Title}" />
                         <ui:TextBlock Margin="0,8,0,0" TextWrapping="Wrap" Text="{DynamicResource Loc.Ux.Shell.Home.Files}" />
@@ -41,6 +43,12 @@
                     AutomationProperties.Name="{Binding StructuredActionTitle}" ToolTip="{Binding StructuredActionDescription}">
                     <StackPanel><ui:TextBlock FontSize="20" FontWeight="SemiBold" Text="{Binding StructuredActionTitle}" />
                         <ui:TextBlock Margin="0,8,0,0" TextWrapping="Wrap" Text="{Binding StructuredActionDescription}" />
+                    </StackPanel>
+                </ui:CardAction>
+                <ui:CardAction x:Name="ImportProfileActionCard" Command="{Binding ImportProfileCommand}" Margin="0,0,12,12" Padding="20" MinHeight="124"
+                    AutomationProperties.Name="{DynamicResource Loc.Ux.Catalog.ImportProfile}" ToolTip="{DynamicResource Loc.Ux.Home.ImportProfile.Help}" ToolTipService.ShowOnDisabled="True">
+                    <StackPanel><ui:TextBlock FontSize="20" FontWeight="SemiBold" Text="{DynamicResource Loc.Ux.Catalog.ImportProfile}" />
+                        <ui:TextBlock Margin="0,8,0,0" TextWrapping="Wrap" Text="{DynamicResource Loc.Ux.Home.ImportProfile.Help}" />
                     </StackPanel>
                 </ui:CardAction>
             </WrapPanel>
@@ -64,8 +72,6 @@
             </controls:SectionCard>
             <ui:CardExpander Margin="0,0,12,0" Header="{DynamicResource Loc.Ux.Shell.Home.Storage}" IsExpanded="False">
                 <StackPanel>
-                    <ui:TextBlock Text="{DynamicResource Loc.Home.Workspace.FileDatabase}" FontWeight="SemiBold" />
-                    <ui:TextBlock Text="{Binding FileDatabasePath}" Margin="0,4,0,12" TextWrapping="Wrap" Style="{StaticResource CaptionTextStyle}" />
                     <ui:TextBlock Text="{DynamicResource Loc.Home.Workspace.ProfileDatabase}" FontWeight="SemiBold" />
                     <ui:TextBlock Text="{Binding ProfileDatabasePath}" Margin="0,4,0,0" TextWrapping="Wrap" Style="{StaticResource CaptionTextStyle}" />
                 </StackPanel>

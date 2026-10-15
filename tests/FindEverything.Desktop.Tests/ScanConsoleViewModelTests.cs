@@ -448,8 +448,11 @@ public sealed class ScanConsoleViewModelTests
     [Fact]
     public void Clipboard_failure_does_not_escape_the_copy_commands()
     {
+        var feedback = new List<(string Title, string Message, ControlAppearance Appearance)>();
         var viewModel = new ScanConsoleViewModel(
-            static _ => throw new InvalidOperationException("Clipboard is busy."))
+            static _ => throw new InvalidOperationException("Clipboard is busy."),
+            static _ => null, static (_, _, _) => Task.CompletedTask,
+            (title, message, appearance) => feedback.Add((title, message, appearance)))
         {
             SelectedLine = ScanConsoleViewModel.CreateLine(CreateEvent(
                 CatalogScanTraceKind.DirectoryVisited,
@@ -464,6 +467,13 @@ public sealed class ScanConsoleViewModelTests
 
         Assert.Null(messageException);
         Assert.Null(pathException);
+        Assert.Equal(2, feedback.Count);
+        Assert.All(feedback, message =>
+        {
+            Assert.Equal("로그를 복사하지 못했습니다.", message.Title);
+            Assert.Equal("Clipboard is busy.", message.Message);
+            Assert.Equal(ControlAppearance.Secondary, message.Appearance);
+        });
     }
 
     [Fact]

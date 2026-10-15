@@ -137,10 +137,11 @@
         </ui:DynamicScrollViewer>
         <controls:CommandStrip controls:FloatingNotificationChrome.IsBottomChrome="True" Grid.Row="1" Margin="0,12,0,0" Padding="12">
             <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,12,0">
+                <Grid VerticalAlignment="Center" Margin="0,0,12,0">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                     <ui:ProgressRing Width="18" Height="18" Margin="0,0,8,0" IsIndeterminate="{Binding IsSaving}" Visibility="{Binding IsSaving, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                    <ui:TextBlock Text="{Binding StatusMessage}" TextTrimming="CharacterEllipsis" ToolTip="{Binding StatusMessage}" AutomationProperties.LiveSetting="Polite" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                </StackPanel>
+                    <ui:TextBlock Grid.Column="1" Text="{Binding StatusMessage}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" ToolTip="{Binding StatusMessage}" AutomationProperties.LiveSetting="Polite" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                </Grid>
                 <StackPanel Grid.Column="1" Orientation="Horizontal">
                     <ui:Button MinWidth="104" Margin="0,0,8,0" Command="{Binding ResetCommand}" Content="{DynamicResource Loc.Workspace.Settings.Reset}" ToolTip="{DynamicResource Loc.Workspace.Settings.Reset.Help}" ToolTipService.ShowOnDisabled="True" />
                     <ui:Button MinWidth="104" Appearance="Primary" Command="{Binding SaveCommand}" Content="{DynamicResource Loc.Workspace.Settings.Save}" ToolTip="{DynamicResource Loc.Workspace.Settings.Save.Help}" ToolTipService.ShowOnDisabled="True" Icon="{ui:SymbolIcon Symbol=Save16}" />

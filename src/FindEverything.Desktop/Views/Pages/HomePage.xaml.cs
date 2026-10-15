@@ -4,7 +4,6 @@ namespace FindEverything.Desktop.Views.Pages;
 
 public partial class HomePage
 {
-    private const double TwoColumnBreakpoint = 600;
     private const double CardGap = 12;
 
     public HomePage(HomeViewModel viewModel)
@@ -18,11 +17,7 @@ public partial class HomePage
         System.Windows.SizeChangedEventArgs eventArgs)
     {
         var availableWidth = Math.Max(0, eventArgs.NewSize.Width);
-        var cardWidth = availableWidth >= TwoColumnBreakpoint
-            ? Math.Max(280, (availableWidth - (CardGap * 2)) / 2)
-            : Math.Max(0, availableWidth - CardGap);
-
-        FilesActionCard.Width = cardWidth;
-        CatalogActionCard.Width = cardWidth;
+        CatalogActionCard.Width = ImportProfileActionCard.Width = Math.Max(0,
+            availableWidth >= 700 ? (availableWidth - CardGap * 2) / 2 : availableWidth - CardGap);
     }
 }

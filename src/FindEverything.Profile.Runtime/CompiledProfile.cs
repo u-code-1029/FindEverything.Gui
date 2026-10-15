@@ -95,13 +95,17 @@ internal sealed class CompiledProfile : ILoadedProfile
         return ProfileDirectoryNameExclusionResult.NotExcluded();
     }
 
-    public ProfileMapResult Map(ProfilePathCandidate candidate)
+    public ProfileMapResult Map(ProfilePathCandidate candidate) => Map(candidate, CancellationToken.None);
+
+    public ProfileMapResult Map(ProfilePathCandidate candidate, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(candidate);
+        cancellationToken.ThrowIfCancellationRequested();
         var input = candidate.AbsolutePath;
 
         foreach (var rule in _rules)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             Match match;
             try
             {
@@ -132,7 +136,7 @@ internal sealed class CompiledProfile : ILoadedProfile
             var shouldPruneDescendants = rule.StopTraversalGroupNumbers.Length > 0
                 && rule.StopTraversalGroupNumbers.All(groupNumber =>
                     HasCapturedValue(match, groupNumber));
-            return MapMatch(candidate, rule, match, shouldPruneDescendants);
+            return MapMatch(candidate, rule, match, shouldPruneDescendants, cancellationToken);
         }
 
         return ProfileMapResult.NoMatch();
@@ -142,13 +146,15 @@ internal sealed class CompiledProfile : ILoadedProfile
         ProfilePathCandidate candidate,
         CompiledRegexRule rule,
         Match match,
-        bool shouldPruneDescendants)
+        bool shouldPruneDescendants,
+        CancellationToken cancellationToken)
     {
         var parsedValues = new object?[_fields.Length];
         var issues = new List<ProfileMappingIssue>();
 
         for (var index = 0; index < _fields.Length; index++)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var field = _fields[index];
             var groupNumbers = rule.FieldGroupNumbers[index];
             var capturedValues = new string?[groupNumbers.Length];
@@ -234,7 +240,8 @@ internal sealed class CompiledProfile : ILoadedProfile
                 && !TryEnumerateImmediateFiles(
                     candidate.AbsolutePath,
                     out immediateFilePaths,
-                    out var enumerationError))
+                    out var enumerationError,
+                    cancellationToken))
             {
                 canReadTextFiles = false;
                 foreach (var textFileField in _textFileFields)
@@ -248,13 +255,14 @@ internal sealed class CompiledProfile : ILoadedProfile
 
             foreach (var textFileField in _textFileFields)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 var fieldIssues = new List<ProfileMappingIssue>();
                 ProfileFieldResourceInfo resource = new(ProfileFieldResourceState.Error);
                 var value = canReadTextFiles
                     ? ReadTextFileValue(
                         immediateFilePaths,
                         textFileField,
-                        fieldIssues, out resource)
+                        fieldIssues, out resource, cancellationToken)
                     : null;
                 if (!canReadTextFiles)
                 {
@@ -277,6 +285,7 @@ internal sealed class CompiledProfile : ILoadedProfile
                 {
                     foreach (var childPath in Directory.EnumerateDirectories(candidate.AbsolutePath, "*", SearchOption.TopDirectoryOnly))
                     {
+                        cancellationToken.ThrowIfCancellationRequested();
                         var childName = Path.GetFileName(Path.TrimEndingDirectorySeparator(childPath));
                         foreach (var definition in Descriptor.ChildDirectoryFields)
                         {
@@ -332,6 +341,7 @@ internal sealed class CompiledProfile : ILoadedProfile
                 displayValues = new ReadOnlyDictionary<string, object?>(mappedValues);
             }
 
+            cancellationToken.ThrowIfCancellationRequested();
             return ProfileMapResult.Success(
                 new MappedProfileItem(
                     Descriptor.Id,
@@ -346,6 +356,7 @@ internal sealed class CompiledProfile : ILoadedProfile
                 },
                 shouldPruneDescendants);
         }
+        catch (OperationCanceledException) { throw; }
         catch (Exception exception)
         {
             return ProfileMapResult.Invalid(
@@ -365,15 +376,21 @@ internal sealed class CompiledProfile : ILoadedProfile
         IReadOnlyList<string> immediateFilePaths,
         CompiledTextFileField field,
         ICollection<ProfileMappingIssue> issues,
-        out ProfileFieldResourceInfo resource)
+        out ProfileFieldResourceInfo resource,
+        CancellationToken cancellationToken = default)
     {
         resource = new(ProfileFieldResourceState.Error);
         string? selectedPath;
         try
         {
-            selectedPath = immediateFilePaths
-                .Where(path => field.FileNameRegex.IsMatch(Path.GetFileName(path)))
-                .FirstOrDefault();
+            selectedPath = null;
+            foreach (var path in immediateFilePaths)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!field.FileNameRegex.IsMatch(Path.GetFileName(path))) continue;
+                selectedPath = path;
+                break;
+            }
         }
         catch (RegexMatchTimeoutException exception)
         {
@@ -401,6 +418,7 @@ internal sealed class CompiledProfile : ILoadedProfile
 
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
             using var stream = new FileStream(
                 selectedPath,
                 FileMode.Open,
@@ -419,6 +437,7 @@ internal sealed class CompiledProfile : ILoadedProfile
             var remaining = field.MaxBytes + 1;
             while (remaining > 0)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 var read = stream.Read(
                     buffer,
                     0,
@@ -438,6 +457,7 @@ internal sealed class CompiledProfile : ILoadedProfile
                 return null;
             }
 
+            cancellationToken.ThrowIfCancellationRequested();
             var bytes = content.ToArray();
             var version = Convert.ToHexString(SHA256.HashData(bytes));
             content.Position = 0;
@@ -485,12 +505,14 @@ internal sealed class CompiledProfile : ILoadedProfile
     private static bool TryEnumerateImmediateFiles(
         string directoryPath,
         out IReadOnlyList<string> paths,
-        out string? error)
+        out string? error,
+        CancellationToken cancellationToken = default)
     {
         try
         {
             paths = Directory
                 .EnumerateFiles(directoryPath, "*", SearchOption.TopDirectoryOnly)
+                .Select(path => { cancellationToken.ThrowIfCancellationRequested(); return path; })
                 .OrderBy(static path => Path.GetFileName(path), StringComparer.OrdinalIgnoreCase)
                 .ThenBy(static path => Path.GetFileName(path), StringComparer.Ordinal)
                 .ThenBy(static path => path, StringComparer.Ordinal)

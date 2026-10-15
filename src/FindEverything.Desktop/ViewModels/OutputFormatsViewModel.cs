@@ -178,11 +178,11 @@ public partial class OutputFormatsViewModel : ObservableObject, IDraftParticipan
 
     public bool HasUnsavedChanges => _isDraftDirty;
 
-    public Task<bool> SaveChangesAsync()
+    public async Task<bool> SaveChangesAsync()
     {
-        if (IsSaving || !CanEdit) return Task.FromResult(false);
-        Save();
-        return Task.FromResult(!_isDraftDirty);
+        if (IsSaving || !CanEdit) return false;
+        await SaveAsync().ConfigureAwait(true);
+        return !_isDraftDirty;
     }
 
     public void DiscardChanges() => _isDraftDirty = false;
@@ -349,7 +349,7 @@ public partial class OutputFormatsViewModel : ObservableObject, IDraftParticipan
     }
 
     [RelayCommand(CanExecute = nameof(CanModify))]
-    private void Save()
+    private async Task SaveAsync()
     {
         if (IsSaving) return;
         IsSaving = true;
@@ -373,7 +373,7 @@ public partial class OutputFormatsViewModel : ObservableObject, IDraftParticipan
                 return;
             }
 
-            _formatStore.Save(definition);
+            await _formatStore.SaveAsync(definition).ConfigureAwait(true);
             _isDraftDirty = false;
             RefreshFormats(definition.Id);
             StatusSeverity = InfoBarSeverity.Success;
@@ -392,6 +392,7 @@ public partial class OutputFormatsViewModel : ObservableObject, IDraftParticipan
             exception is ArgumentException
                 or IOException
                 or UnauthorizedAccessException
+                or System.Text.Json.JsonException
                 or NotSupportedException)
         {
             _logger.LogError(exception, "Could not save selection output format {FormatId}.", _draftId);
@@ -431,9 +432,10 @@ public partial class OutputFormatsViewModel : ObservableObject, IDraftParticipan
             return;
         }
 
+        IsSaving = true;
         try
         {
-            if (_formatStore.Delete(selected.Definition.Id))
+            if (await _formatStore.DeleteAsync(selected.Definition.Id).ConfigureAwait(true))
             {
                 _isDraftDirty = false;
                 RefreshFormats(SelectionOutputFormatDefaults.FullPathLinesId);
@@ -447,6 +449,8 @@ public partial class OutputFormatsViewModel : ObservableObject, IDraftParticipan
         catch (Exception exception) when (
             exception is IOException
                 or UnauthorizedAccessException
+                or ArgumentException
+                or System.Text.Json.JsonException
                 or NotSupportedException)
         {
             _logger.LogError(
@@ -455,6 +459,7 @@ public partial class OutputFormatsViewModel : ObservableObject, IDraftParticipan
                 selected.Definition.Id);
             SetError(exception.Message);
         }
+        finally { IsSaving = false; }
     }
 
     private bool CanModify() => CanEdit && IsEditorReady;

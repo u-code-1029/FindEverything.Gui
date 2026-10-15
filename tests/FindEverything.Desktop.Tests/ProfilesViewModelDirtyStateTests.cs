@@ -12,6 +12,105 @@ namespace FindEverything.Desktop.Tests;
 
 public sealed class ProfilesViewModelDirtyStateTests
 {
+    [Theory]
+    [InlineData("sample", false)]
+    [InlineData("draft", false)]
+    [InlineData("new", false)]
+    [InlineData("draft", true)]
+    public async Task Path_analysis_runs_off_thread_and_discards_late_results_after_the_editor_changes(string change, bool fail)
+    {
+        using var canonicalizer = new BlockingCanonicalizer(fail);
+        using var vm = new ProfilesViewModel(new StubProfileCatalog(ProfileCatalogSnapshot.Empty),
+            new StubProfileAuthoringService(new ProfileManifest()), new ProfilePathTemplateCompiler(), canonicalizer,
+            null!, null!, null!, null!, null!, new TestAppLocalizer(), NullLogger<ProfilesViewModel>.Instance);
+        vm.SamplePath = @"Z:\SlowShare\First";
+        var analysis = vm.BuildTemplateFromSampleCommand.ExecuteAsync(null);
+        await canonicalizer.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        try
+        {
+            Assert.False(analysis.IsCompleted);
+            if (change == "sample") vm.SamplePath = @"D:\Newer\Input";
+            else if (change == "draft") vm.DraftFields[0].Header = "Newer field";
+            else await vm.NewDraftCommand.ExecuteAsync(null);
+            vm.TemplateStatusMessage = "newer editor status";
+            var sample = vm.SamplePath;
+            var template = vm.DraftPathTemplate;
+            canonicalizer.Release();
+            await analysis.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal(sample, vm.SamplePath);
+            Assert.Equal(template, vm.DraftPathTemplate);
+            Assert.Equal("newer editor status", vm.TemplateStatusMessage);
+        }
+        finally { canonicalizer.Release(); }
+    }
+
+    private sealed class BlockingCanonicalizer(bool fail) : IProfilePathCanonicalizer, IDisposable
+    {
+        private readonly ManualResetEventSlim _release = new();
+        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public string Canonicalize(string path)
+        {
+            Started.TrySetResult();
+            _release.Wait(TimeSpan.FromSeconds(5));
+            if (fail) throw new IOException("Old network failure");
+            return @"C:\Canonical\Old";
+        }
+        public void Release() => _release.Set();
+        public void Dispose() { Release(); _release.Dispose(); }
+    }
+    [Theory]
+    [InlineData(ProfileEditorStep.Profile, "1.")]
+    [InlineData(ProfileEditorStep.PathAndFields, "2.")]
+    [InlineData(ProfileEditorStep.Review, "3.")]
+    [InlineData(ProfileEditorStep.DataSources, "선택")]
+    [InlineData(ProfileEditorStep.SelectionRules, "선택")]
+    [InlineData(ProfileEditorStep.ScanOptions, "선택")]
+    public void Validation_links_use_the_same_three_step_and_optional_titles_as_the_wizard(ProfileEditorStep step, string prefix)
+    {
+        using var vm = CreateFreshDraft(DraftLeaveDecision.Discard);
+        vm.CurrentEditorStep = step;
+        var method = typeof(ProfilesViewModel).GetMethod("CreateValidationIssue",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        var issue = Assert.IsType<ProfileValidationIssueViewModel>(method.Invoke(vm, ["test", "Example error", step]));
+        Assert.StartsWith(prefix, vm.CurrentStepTitle);
+        Assert.Contains(vm.CurrentStepTitle, issue.NavigationText);
+    }
+    [Fact]
+    public async Task Editing_profile_rules_preserves_portable_settings_and_new_drafts_do_not_inherit_them()
+    {
+        var field = new ProfileFieldManifest { FieldId = "name", GroupName = "name", Header = "Name" };
+        var compiler = new ProfilePathTemplateCompiler();
+        var manifest = new ProfileManifest
+        {
+            Id = "saved-profile", DisplayName = "Saved profile", Fields = [field],
+            Rules = [new() { Id = "default", PathTemplate = "{name@name}", Pattern = compiler.Compile("{name@name}", [field]).Pattern }],
+            Workspace = new()
+            {
+                OutputFormats = [new() { Id = "name-lines", DisplayName = "Names", Template = "{name}", Prefix = "[", Suffix = "]" }],
+                SelectedOutputFormatId = "name-lines", Columns = [new() { FieldId = "name", WidthPreset = ProfileColumnWidthPreset.Wide }],
+            },
+        };
+        using var vm = new ProfilesViewModel(new StubProfileCatalog(ProfileCatalogSnapshot.Empty),
+            new StubProfileAuthoringService(manifest), compiler, new FixedPathCanonicalizer(@"C:\Example"),
+            null!, null!, null!, null!, null!, new TestAppLocalizer(), NullLogger<ProfilesViewModel>.Instance)
+        { SelectedEditableProfile = new("saved-profile", "Saved profile", "unused") };
+        await vm.LoadDraftCommand.ExecuteAsync(null);
+        vm.DraftDisplayName = "Edited name";
+        var method = typeof(ProfilesViewModel).GetMethod("BuildManifest", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        var edited = (ProfileManifest)method.Invoke(vm, null)!;
+        Assert.NotSame(manifest.Workspace, edited.Workspace);
+        Assert.Equal("name-lines", edited.Workspace!.SelectedOutputFormatId);
+        Assert.Equal("[", Assert.Single(edited.Workspace.OutputFormats!).Prefix);
+        Assert.Equal(ProfileColumnWidthPreset.Wide, Assert.Single(edited.Workspace.Columns!).WidthPreset);
+        vm.DraftFields[0].FieldId = "renamed";
+        var renamed = (ProfileManifest)method.Invoke(vm, null)!;
+        Assert.Empty(renamed.Workspace!.Columns!);
+        Assert.Single(renamed.Workspace.OutputFormats!); // Never silently delete a user's output definition.
+        // Reset directly avoids the interactive dirty-draft confirmation in this isolated view-model test.
+        typeof(ProfilesViewModel).GetMethod("NewDraftCore", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.Invoke(vm, null);
+        Assert.Null(((ProfileManifest)method.Invoke(vm, null)!).Workspace);
+    }
+
     [Fact]
     public void Optional_scan_summary_includes_guided_and_expert_traversal_stop_rules()
     {

@@ -102,15 +102,7 @@ public partial class ProfilesViewModel
 
     private ProfileValidationIssueViewModel CreateValidationIssue(string code, string message, ProfileEditorStep step)
     {
-        var label = step switch
-        {
-            ProfileEditorStep.Profile => L("Loc.View.Profiles.Content.1ProfileInformation", "1. 프로필"),
-            ProfileEditorStep.PathAndFields => L("Loc.View.Profiles.Content.2PathAndColumns", "2. 경로와 컬럼"),
-            ProfileEditorStep.DataSources => L("Loc.Profiles.Features.Step.DataSources", "3. 데이터 소스"),
-            ProfileEditorStep.SelectionRules => L("Loc.Profiles.Features.Step.SelectionRules", "4. 외부 데이터 선택"),
-            ProfileEditorStep.ScanOptions => L("Loc.View.Profiles.Content.3ScanOptions", "5. 탐색 옵션"),
-            _ => L("Loc.View.Profiles.Content.4ReviewAndSave", "6. 검토 및 저장"),
-        };
+        var label = GetEditorStepTitle(step);
         return new(code, message, step, F("Loc.Profiles.Validation.GoToStep", "{0} 이동", label));
     }
 

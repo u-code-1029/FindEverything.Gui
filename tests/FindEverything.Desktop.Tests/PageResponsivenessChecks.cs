@@ -94,6 +94,7 @@ internal static class PageResponsivenessChecks
             JsonSerializer.Serialize(new
             {
                 Label = label, Runtime = Environment.Version.ToString(), FieldCount = 20,
+                Environment = WorkspacePerformanceChecks.CaptureEnvironment(window),
                 Workload = "Production shell/navigation/profile cards; bound edits; no disk scan",
                 Phases = phases, StepVisualCounts = stepControlCounts,
             }, new JsonSerializerOptions { WriteIndented = true }));
@@ -109,22 +110,29 @@ internal static class PageResponsivenessChecks
                 samples.Add(Math.Max(0, Stopwatch.GetElapsedTime(previous, now).TotalMilliseconds - 8));
                 previous = now;
             };
-            var allocated = GC.GetAllocatedBytesForCurrentThread();
-            var started = Stopwatch.GetTimestamp();
             timer.Start();
             try
             {
+                // Arm the dispatcher timer before synchronous construction blocks the
+                // thread; otherwise its first tick can be scheduled only after work.
+                Pump(Task.Delay(20));
+                samples.Clear(); previous = Stopwatch.GetTimestamp();
+                var allocated = GC.GetAllocatedBytesForCurrentThread();
+                var started = Stopwatch.GetTimestamp();
                 action();
                 // Include layout/render dispatch, then drain input heartbeat. The fixed
                 // 20 ms floor is identical for both revisions and stated in the report.
                 window?.UpdateLayout();
                 Pump(Task.Delay(20));
+                var drainStarted = Stopwatch.GetTimestamp();
+                while (samples.Count == 0 && Stopwatch.GetElapsedTime(drainStarted) < TimeSpan.FromMilliseconds(250))
+                    Pump(Task.Delay(20));
                 samples.Sort();
                 phases.Add(new(name, Stopwatch.GetElapsedTime(started).TotalMilliseconds,
                     GC.GetAllocatedBytesForCurrentThread() - allocated,
                     samples.Count,
-                    samples.Count == 0 ? 0 : samples[(int)Math.Ceiling(samples.Count * .95) - 1],
-                    samples.Count == 0 ? 0 : samples[^1]));
+                    samples.Count == 0 ? null : samples[(int)Math.Ceiling(samples.Count * .95) - 1],
+                    samples.Count == 0 ? null : samples[^1]));
             }
             finally { timer.Stop(); }
         }
@@ -210,5 +218,9 @@ internal static class PageResponsivenessChecks
 
     private sealed record Measurement(string Scenario, double ElapsedMilliseconds,
         long UiAllocatedBytes, int HeartbeatSampleCount,
-        double HeartbeatDelayP95Milliseconds, double HeartbeatDelayMaximumMilliseconds);
+        double? HeartbeatDelayP95Milliseconds, double? HeartbeatDelayMaximumMilliseconds)
+    {
+        public string HeartbeatStatus => HeartbeatSampleCount == 0 ? "unmeasured"
+            : HeartbeatSampleCount < 20 ? "insufficient-samples" : "measured";
+    }
 }

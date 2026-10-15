@@ -74,7 +74,7 @@ public sealed class HomeViewModelTests
     }
 
     [Fact]
-    public void Next_actions_follow_workspace_readiness_without_requiring_a_profile_for_files()
+    public void Next_actions_prioritize_profiles_and_structured_browsing_without_advertising_hidden_files()
     {
         var workspace = new StubWorkspaceContext(new WorkspaceSnapshot(null, null, null));
         var catalog = new StubProfileCatalog(ProfileCatalogSnapshot.Empty);
@@ -89,6 +89,8 @@ public sealed class HomeViewModelTests
         Assert.False(vm.HasCurrentLocation);
         Assert.False(vm.ShowProfileTools);
         Assert.Contains("위치", vm.NextStepTitle);
+        Assert.DoesNotContain("파일 찾기", vm.NextStepMessage);
+        Assert.DoesNotContain("파일 찾기", vm.SetupMessage);
         Assert.Equal("프로필 만들기", vm.StructuredActionTitle);
         vm.OpenStructuredWorkspaceCommand.Execute(null);
         Assert.Equal(typeof(ProfilesPage), navigator.LastPageType);
@@ -96,13 +98,16 @@ public sealed class HomeViewModelTests
         workspace.Publish(workspace.Current with { RootPath = @"C:\Projects" });
         Assert.False(vm.NeedsLocation);
         Assert.True(vm.HasCurrentLocation);
-        Assert.Contains("파일 찾기", vm.NextStepTitle);
+        Assert.Contains("프로필", vm.NextStepTitle);
+        Assert.Contains("JSON", vm.NextStepMessage);
         Assert.False(vm.ShowProfileTools);
-        vm.OpenFilesCommand.Execute(null);
-        Assert.Equal(typeof(FilesPage), navigator.LastPageType);
+        vm.OpenStructuredWorkspaceCommand.Execute(null);
+        Assert.Equal(typeof(ProfilesPage), navigator.LastPageType);
 
         catalog.Publish(new ProfileCatalogSnapshot([new StubLoadedProfile("projects", "Projects")], [], DateTimeOffset.UtcNow));
         Assert.True(vm.ShowProfileTools);
+        Assert.DoesNotContain("파일 찾기", vm.NextStepTitle);
+        Assert.DoesNotContain("파일 찾기", vm.NextStepMessage);
         Assert.Equal("구조화 보기", vm.StructuredActionTitle);
         vm.OpenStructuredWorkspaceCommand.Execute(null);
         Assert.Equal(typeof(CatalogPage), navigator.LastPageType);

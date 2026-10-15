@@ -104,7 +104,11 @@ public partial class HomeViewModel : ObservableObject, IDisposable
         _transfer = transfer;
         _notifications = notifications;
         _playgroundNavigator = playgroundNavigator;
-        if (_transfer is not null) _transfer.SourceChanged += OnSourceChanged;
+        if (_transfer is not null)
+        {
+            _transfer.SourceChanged += OnSourceChanged;
+            _transfer.PropertyChanged += OnTransferPropertyChanged;
+        }
 
         _workspaceContext.Changed += OnWorkspaceChanged;
         _profileCatalog.Changed += OnProfileCatalogChanged;
@@ -152,15 +156,15 @@ public partial class HomeViewModel : ObservableObject, IDisposable
         : NeedsLocation
             ? L("Loc.Ux.Home.Next.Location", "검색할 위치를 먼저 선택하세요")
             : !HasProfile
-                ? L("Loc.Ux.Home.Next.Files", "파일 찾기를 바로 시작할 수 있어요")
-                : L("Loc.Ux.Home.Next.Ready", "이 위치에서 파일을 찾으세요");
+                ? L("Loc.Ux.Home.Next.Profile", "정보를 추출할 프로필을 준비하세요")
+                : L("Loc.Ux.Home.Next.Ready", "프로필에 맞는 정보를 한눈에 확인하세요");
     public string NextStepMessage => IsSharedSource
         ? L("Loc.Ux.Home.Next.Shared.Help", "가져온 인덱스는 읽기 전용입니다. 내 디스크를 스캔하려면 이 PC의 작업 환경으로 전환하세요.")
         : NeedsLocation
-            ? L("Loc.Ux.Home.Next.Location.Help", "드라이브나 폴더를 선택한 다음 파일 찾기에서 스캔하세요. 프로필은 없어도 됩니다.")
+            ? L("Loc.Ux.Home.Next.Location.Help", "드라이브나 폴더를 선택하고 프로필을 준비하면 구조화 보기에서 필요한 정보를 모아볼 수 있습니다.")
             : !HasProfile
-                ? L("Loc.Ux.Home.Next.Files.Help", "전체 파일은 파일 찾기에서 볼 수 있습니다. 폴더 경로의 정보를 컬럼으로 보려면 프로필을 만드세요.")
-                : L("Loc.Ux.Home.Next.Ready.Help", "파일 찾기에서 전체 파일을 검색하거나, 구조화 보기에서 프로필에 맞는 정보를 확인하세요.");
+                ? L("Loc.Ux.Home.Next.Profile.Help", "프로필에서 폴더 경로를 컬럼으로 나누는 규칙을 만들거나, 아래에서 받은 프로필을 가져오세요.")
+                : L("Loc.Ux.Home.Next.Ready.Help", "구조화 보기에서 저장된 결과를 검색하거나, 선택한 위치를 스캔해 최신 정보를 확인하세요.");
     public string StructuredActionTitle => HasProfile || IsSharedSource
         ? L("Loc.Home.Catalog.Title", "구조화 보기")
         : L("Loc.Ux.Home.CreateProfile", "프로필 만들기");
@@ -172,14 +176,39 @@ public partial class HomeViewModel : ObservableObject, IDisposable
     public string CurrentLocation => _transfer?.CurrentSource?.EffectiveRoot ?? RootPathText;
     public string CurrentSourceName => _transfer?.SelectedSource?.DisplayName
         ?? L("Loc.Ux.Shell.Home.Local", "이 PC의 작업 환경");
-    public bool CanChooseLocation => !IsOperationRunning && !IsSharedSource && _picker is not null;
+    public bool CanChooseLocation => !_disposed && !IsOperationRunning && !IsSharedSource && _picker is not null;
+    public bool CanImportProfile => !_disposed && !IsOperationRunning && _picker is not null && _transfer is { IsInitialized: true, IsBusy: false };
+
+    [RelayCommand(CanExecute = nameof(CanImportProfile))]
+    private async Task ImportProfileAsync()
+    {
+        if (!CanImportProfile) return;
+        try
+        {
+            var path = _picker!.PickProfileImportPath();
+            if (path is null || !CanImportProfile) return;
+            if (await _transfer!.OpenPathAsync(path) is not null && !_disposed)
+                _navigationService.Navigate(typeof(CatalogPage));
+        }
+        catch (Exception exception)
+        {
+            _notifications?.Show(L("Loc.Ux.Catalog.ImportProfile", "프로필 가져오기"), exception.Message,
+                Wpf.Ui.Controls.ControlAppearance.Secondary, null, TimeSpan.Zero);
+        }
+    }
+
+    private void OnTransferPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(WorkspaceTransferViewModel.IsInitialized) or nameof(WorkspaceTransferViewModel.IsBusy))
+            Dispatch(() => { OnPropertyChanged(nameof(CanImportProfile)); ImportProfileCommand.NotifyCanExecuteChanged(); });
+    }
     [RelayCommand(CanExecute = nameof(CanChooseLocation))]
     private async Task ChooseLocationAsync()
     {
         if (!CanChooseLocation) return;
         try
         {
-            var selected = _picker!.PickRootDirectory(_workspaceContext.Current.RootPath);
+            var selected = await _picker!.PickRootDirectoryAsync(_workspaceContext.Current.RootPath);
             if (selected is null || !CanChooseLocation) return;
             await _workspaceContext.UpdateAsync(current => current with { RootPath = selected }, CancellationToken.None);
         }
@@ -214,7 +243,11 @@ public partial class HomeViewModel : ObservableObject, IDisposable
         _workspaceContext.Changed -= OnWorkspaceChanged;
         _profileCatalog.Changed -= OnProfileCatalogChanged;
         _operationCoordinator.StateChanged -= OnOperationStateChanged;
-        if (_transfer is not null) _transfer.SourceChanged -= OnSourceChanged;
+        if (_transfer is not null)
+        {
+            _transfer.SourceChanged -= OnSourceChanged;
+            _transfer.PropertyChanged -= OnTransferPropertyChanged;
+        }
         GC.SuppressFinalize(this);
     }
 
@@ -291,7 +324,7 @@ public partial class HomeViewModel : ObservableObject, IDisposable
                 "검색 위치와 프로필이 연결되었습니다. 구조화 보기에서 접근 상태를 확인한 뒤 스캔을 시작하세요.")
             : L(
                 "Loc.Home.State.Setup.Message",
-                "검색 위치와 프로필을 준비하세요. 파일 찾기는 프로필 없이도 사용할 수 있습니다.");
+                "검색 위치와 프로필을 준비하면 구조화 보기에서 필요한 정보를 모아볼 수 있습니다.");
         LocationStepState = HasRoot
             ? L("Loc.Common.Completed", "완료")
             : L("Loc.Home.State.Required", "선택 필요");
@@ -307,6 +340,8 @@ public partial class HomeViewModel : ObservableObject, IDisposable
     private void ApplyOperationState(ApplicationOperationKind? operationKind)
     {
         IsOperationRunning = operationKind is not null;
+        OnPropertyChanged(nameof(CanImportProfile));
+        ImportProfileCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(CanChooseLocation));
         ChooseLocationCommand.NotifyCanExecuteChanged();
         OperationStatus = operationKind switch

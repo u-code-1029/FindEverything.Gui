@@ -20,6 +20,9 @@ public partial class CatalogPage
     private readonly LiveDirectoryBrowser _directoryBrowser;
     private CancellationTokenSource? _fileEditCancellation;
     private bool _fileEditorOpen;
+    private double _preferredConsoleHeight = 220;
+    private bool _consoleResized;
+    private System.Windows.UIElement? _lastFocusTarget;
 
     private sealed record PendingRowClick(CatalogItemViewModel Item, System.Windows.Point Start,
         bool Range, int ClickCount);
@@ -38,6 +41,11 @@ public partial class CatalogPage
         _playgroundNavigator = playgroundNavigator;
         DataContext = viewModel;
         InitializeComponent();
+        GotKeyboardFocus += (_, _) =>
+        {
+            if (ResultsGrid.IsKeyboardFocusWithin) _lastFocusTarget = ResultsGrid;
+            else if (Keyboard.FocusedElement is System.Windows.UIElement element) _lastFocusTarget = element;
+        };
         PageActivation.Attach(this);
         _dialogs = dialogs;
         _textFiles = textFiles ?? new TextFileEditingService();
@@ -121,10 +129,17 @@ public partial class CatalogPage
     private void ApplyWorkspaceLayout()
     {
         if (ScanConsolePanel is null || CatalogResultsWorkspace is null) return;
-        CatalogProgressCaption.Visibility = CatalogPageContent.ActualWidth >= 900
+        // Keep the search and profile/location rows intact at every supported
+        // width. Secondary labels shorten to accessible icon buttons instead of
+        // wrapping the toolbar or making progress push the result grid around.
+        var labelVisibility = CatalogPageContent.ActualWidth >= 950
             ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
-        ScanConsolePanel.Height = Math.Max(120, CatalogPageLayout.ActualHeight * 0.3);
-        ScanConsolePanel.MaxHeight = Math.Max(120, CatalogPageLayout.ActualHeight * 0.45);
+        CatalogDataManagementLabel.Visibility = SelectFromDataLabel.Visibility = labelVisibility;
+        var maximumConsoleHeight = Math.Max(164, CatalogPageLayout.ActualHeight - 264);
+        ScanConsolePanel.MaxHeight = maximumConsoleHeight;
+        var desiredConsoleHeight = _consoleResized ? _preferredConsoleHeight
+            : Math.Min(_preferredConsoleHeight, CatalogPageLayout.ActualHeight * 0.3);
+        ScanConsolePanel.Height = Math.Clamp(desiredConsoleHeight, 164, maximumConsoleHeight);
         var reserveDetails = _viewModel.IsDetailsOpen && CatalogPageContent.ActualWidth >= 900;
         CatalogResultsWorkspace.Margin = new System.Windows.Thickness(0, 0, reserveDetails ? 348 : 0, 0);
         CatalogDetailsPanel.Width = Math.Min(340, Math.Max(200, CatalogPageContent.ActualWidth));
@@ -132,6 +147,21 @@ public partial class CatalogPage
     }
 
     private void OnSelectionToolbarSizeChanged(object sender, System.Windows.SizeChangedEventArgs e) => ApplySelectionToolbarLayout();
+
+    private void OnConsoleSplitterDragDelta(object sender, DragDeltaEventArgs e)
+    {
+        _consoleResized = true;
+        _preferredConsoleHeight = Math.Clamp(ScanConsolePanel.ActualHeight - e.VerticalChange, 164, ScanConsolePanel.MaxHeight);
+        ApplyWorkspaceLayout();
+    }
+
+    private void OnConsoleSplitterKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key is not (Key.Up or Key.Down)) return;
+        _consoleResized = true;
+        _preferredConsoleHeight = Math.Clamp(ScanConsolePanel.ActualHeight + (e.Key == Key.Up ? 20 : -20), 164, ScanConsolePanel.MaxHeight);
+        ApplyWorkspaceLayout(); e.Handled = true;
+    }
 
     private void ApplySelectionToolbarLayout()
     {
@@ -173,6 +203,8 @@ public partial class CatalogPage
 
     private async void OnPagePreviewKeyDown(object sender, KeyEventArgs e)
     {
+        if (e.Handled) return;
+        var selectionScope = ResultsGrid.IsKeyboardFocusWithin || SelectionToolbar.IsKeyboardFocusWithin;
         if (CopySelectionButton.IsKeyboardFocusWithin && (e.Key == Key.F4
             || e.SystemKey == Key.Down && Keyboard.Modifiers.HasFlag(ModifierKeys.Alt))
             && CopySelectionButton.Flyout is System.Windows.Controls.ContextMenu formatMenu)
@@ -188,6 +220,7 @@ public partial class CatalogPage
             return;
         }
         if (e.Key == Key.V && Keyboard.Modifiers.HasFlag(ModifierKeys.Control)
+            && selectionScope
             && Keyboard.FocusedElement is not TextBoxBase && Keyboard.FocusedElement is not System.Windows.Controls.PasswordBox
             && _viewModel.CanOpenSelectionImport)
         {
@@ -222,12 +255,14 @@ public partial class CatalogPage
             }
         }
         if (e.Key == Key.A && Keyboard.Modifiers.HasFlag(ModifierKeys.Control)
+            && selectionScope
             && Keyboard.FocusedElement is not TextBoxBase && Keyboard.FocusedElement is not System.Windows.Controls.PasswordBox)
         {
             _viewModel.SelectAllCommand.Execute(null);
             e.Handled = true;
         }
         else if (e.Key == Key.C
+            && selectionScope
             && Keyboard.Modifiers.HasFlag(ModifierKeys.Control)
             && Keyboard.FocusedElement is not TextBoxBase
             && Keyboard.FocusedElement is not System.Windows.Controls.PasswordBox
@@ -246,7 +281,16 @@ public partial class CatalogPage
         }
     }
 
-    private void OnPageLoaded(object sender, System.Windows.RoutedEventArgs e) { }
+    private void OnPageLoaded(object sender, System.Windows.RoutedEventArgs e)
+    {
+        ApplyWorkspaceLayout();
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, new Action(() =>
+        {
+            if (!IsLoaded || !IsVisible || IsKeyboardFocusWithin) return;
+            var target = _lastFocusTarget is { IsVisible: true, IsEnabled: true } previous ? previous : SearchBox;
+            if (target.IsEnabled) target.Focus();
+        }));
+    }
 
     private void OnPageUnloaded(object sender, System.Windows.RoutedEventArgs e)
     {

@@ -28,7 +28,6 @@
                                 <DataTrigger Binding="{Binding ShowSourceSelector, ElementName=TransferPanel}" Value="False">
                                     <Setter Property="Text" Value="{DynamicResource Loc.Transfer.Menu.Profiles}"/>
                                 </DataTrigger>
-                                <DataTrigger Binding="{Binding IsBusy}" Value="True"><Setter Property="Text" Value="{Binding ProgressText}"/></DataTrigger>
                             </Style.Triggers>
                         </Style>
                     </ui:TextBlock.Style>

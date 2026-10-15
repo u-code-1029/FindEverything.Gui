@@ -134,7 +134,7 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
     private InfoBarSeverity _statusSeverity = InfoBarSeverity.Informational;
 
     public bool CanEditWorkspace => !IsBusy && !IsPreservingSelection && !IsReadOnlyDataSource && WorkspaceTransfer?.IsBusy != true && WorkspaceTransfer?.IsInitialized != false;
-    public bool IsResultInteractionEnabled => !IsScanning && !IsPreservingSelection && !(IsShowingSelectedOnly && IsSearchPending);
+    public bool IsResultInteractionEnabled => !IsScanning && !IsPreservingSelection && WorkspaceTransfer?.IsBusy != true && !(IsShowingSelectedOnly && IsSearchPending);
 
     public string DetailsButtonText => IsDetailsOpen
         ? L("Loc.Common.Compact", "간단히")
@@ -166,7 +166,8 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
         ICatalogMissingDataPrompt? missingDataPrompt = null,
         IValidatedSettingsState<IndexingOptions>? indexingSettings = null,
         Dispatcher? dispatcher = null,
-        CatalogActivityState? activityState = null)
+        CatalogActivityState? activityState = null,
+        IProfileOutputPreferenceStore? outputPreferences = null)
     {
         _catalogService = catalogService;
         _profileCatalog = profileCatalog;
@@ -178,6 +179,7 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
         _scanCompletionNotifier = scanCompletionNotifier;
         _snackbarService = snackbarService;
         _outputFormatStore = outputFormatStore;
+        _outputPreferences = outputPreferences;
         _outputFormatter = outputFormatter;
         _selectionExporter = selectionExporter;
         _clipboardService = clipboardService;
@@ -371,7 +373,7 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
         HasLoadedItems = false;
         FilterSummary = F("Loc.Catalog.Filter.Empty", "{0:N0}개 항목", 0);
         SetSelection([]);
-        RefreshOutputFormats();
+        RefreshOutputFormats(preferSaved: true);
         RefreshEffectiveDatabasePath(_workspaceContext.Current);
         ScanCommand.NotifyCanExecuteChanged();
         LoadCommand.NotifyCanExecuteChanged();
@@ -567,8 +569,8 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
     private async Task BrowseRootAsync()
     {
         if (!CanEditWorkspace) return;
-        var selected = _pickerService.PickRootDirectory(RootPath);
-        if (selected is not null)
+        var selected = await _pickerService.PickRootDirectoryAsync(RootPath);
+        if (selected is not null && CanEditWorkspace)
         {
             RootPath = selected;
             await CommitWorkspaceAsync().ConfigureAwait(true);
@@ -579,8 +581,8 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
     private async Task BrowseDatabaseAsync()
     {
         if (!CanEditWorkspace) return;
-        var selected = _pickerService.PickDatabasePath(DatabasePath);
-        if (selected is not null)
+        var selected = await _pickerService.PickDatabasePathAsync(DatabasePath);
+        if (selected is not null && CanEditWorkspace)
         {
             DatabasePath = selected;
             await CommitWorkspaceAsync().ConfigureAwait(true);
@@ -712,16 +714,16 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
     }
 
     [RelayCommand(CanExecute = nameof(CanOpenSelected))]
-    private void OpenSelected()
+    private async Task OpenSelectedAsync()
     {
         if (SelectedItem is not null)
         {
-            OpenItem(SelectedItem);
+            await OpenItemAsync(SelectedItem);
         }
     }
 
     [RelayCommand]
-    private void OpenItem(CatalogItemViewModel? item)
+    private async Task OpenItemAsync(CatalogItemViewModel? item)
     {
         if (item?.IsPlaceholder == true) return;
         if (item is null)
@@ -731,7 +733,7 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
 
         try
         {
-            _pathLauncher.OpenDirectory(item.FullPath);
+            await _pathLauncher.OpenDirectoryAsync(item.FullPath);
         }
         catch (Exception exception)
         {
@@ -744,11 +746,11 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
     }
 
     [RelayCommand(CanExecute = nameof(CanOpenSelected))]
-    private void OpenSelectedFolder()
+    private async Task OpenSelectedFolderAsync()
     {
         if (SelectedItem is not null)
         {
-            OpenItem(SelectedItem);
+            await OpenItemAsync(SelectedItem);
         }
     }
 
@@ -938,14 +940,25 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
 
     private bool CanCopySelection() => !_disposed && IsResultInteractionEnabled && SelectedCount > 0;
 
-    private void RefreshOutputFormats()
+    private void RefreshOutputFormats() => RefreshOutputFormats(preferSaved: false);
+
+    private void RefreshOutputFormats(bool preferSaved)
     {
-        var selectedId = SelectedOutputFormat?.Id;
+        var profileId = SelectedProfile?.Id;
+        var savedId = profileId is null ? null
+            : _pendingOutputPreferences.GetValueOrDefault(profileId)?.FormatId ?? _outputPreferences?.Get(profileId);
+        var selectedId = preferSaved ? savedId : SelectedOutputFormat?.Id ?? savedId;
         OutputFormats = _outputFormatStore.GetApplicable(SelectedProfile?.Id);
-        SelectedOutputFormat = OutputFormats.FirstOrDefault(format =>
+        _refreshingOutputFormats = true;
+        try
+        {
+            SelectedOutputFormat = OutputFormats.FirstOrDefault(format =>
                 string.Equals(format.Id, selectedId, StringComparison.OrdinalIgnoreCase))
-            ?? OutputFormats.FirstOrDefault(format => format.IsBuiltIn)
-            ?? OutputFormats.FirstOrDefault();
+                ?? OutputFormats.FirstOrDefault(format => string.Equals(format.Id, savedId, StringComparison.OrdinalIgnoreCase))
+                ?? OutputFormats.FirstOrDefault(format => format.IsBuiltIn)
+                ?? OutputFormats.FirstOrDefault();
+        }
+        finally { _refreshingOutputFormats = false; }
     }
 
     private void OnOutputFormatsChanged(object? sender, EventArgs eventArgs)
@@ -1298,11 +1311,6 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
             return;
         }
 
-        if (!File.Exists(databasePath) && (_projectionStore is null || _missingDataPrompt is null))
-        {
-            return;
-        }
-
         var key = string.Join("|", SelectedProfile.Id, rootPath, databasePath);
         if (string.Equals(_lastAutomaticLoadKey, key, StringComparison.OrdinalIgnoreCase))
         {
@@ -1310,13 +1318,21 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
         }
 
         _lastAutomaticLoadKey = key;
-        _automaticLoadTask = RunAutomaticLoadAsync(key);
+        _automaticLoadTask = RunAutomaticLoadAsync(key, databasePath);
     }
 
-    private async Task RunAutomaticLoadAsync(string key)
+    private async Task RunAutomaticLoadAsync(string key, string databasePath)
     {
         await Dispatcher.Yield(DispatcherPriority.ContextIdle);
-        if (!_isActive
+        // Legacy hosts without the missing-data prompt still skip absent DBs,
+        // but never probe a disconnected custom DB path on the dispatcher.
+        if ((_projectionStore is null || _missingDataPrompt is null)
+            && !await Task.Run(() => File.Exists(databasePath)))
+        {
+            if (string.Equals(_lastAutomaticLoadKey, key, StringComparison.OrdinalIgnoreCase)) _lastAutomaticLoadKey = null;
+            return;
+        }
+        if (_disposed || _automaticLoadSuppressed || !_isActive
             || IsReadOnlyDataSource || WorkspaceTransfer?.IsBusy == true || WorkspaceTransfer?.IsInitialized == false
             || !string.Equals(_lastAutomaticLoadKey, key, StringComparison.OrdinalIgnoreCase))
         {

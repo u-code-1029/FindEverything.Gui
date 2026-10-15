@@ -231,6 +231,7 @@ public static partial class DynamicProfileGrid
         if (dependencyObject is DataGrid dataGrid)
         {
             InitializeSizing(dataGrid);
+            AttachLayoutStore(dataGrid);
             ApplyLayout(dataGrid);
             if (GetSizing(dataGrid).ProfileId != GetProfileId(dataGrid)) _ = LoadPresetsAsync(dataGrid);
         }
@@ -248,6 +249,7 @@ public static partial class DynamicProfileGrid
         dataGrid.SetValue(IsApplyingLayoutProperty, true);
         try
         {
+            GetSizing(dataGrid).LayoutRevision = store.GetRevision(profileId);
             var saved = store.Get(profileId);
             foreach (var column in dataGrid.Columns.Skip(SelectionColumnOffset))
             {
@@ -345,7 +347,14 @@ public static partial class DynamicProfileGrid
                 (bool)value.Column.GetValue(IsManualWidthProperty) ? GridColumnWidthMode.Manual : GridColumnWidthMode.Auto,
                 value.Column.Visibility != Visibility.Visible))
             .ToArray();
-        store.Save(profileId, columns);
+        var sizing = GetSizing(dataGrid);
+        if (!store.TrySave(profileId, columns, sizing.LayoutRevision))
+        {
+            // Import won the race. Never serialize stale visible widths over its new snapshot.
+            ApplyLayout(dataGrid);
+            return;
+        }
+        sizing.LayoutRevision++;
     }
 
     private static T? FindAncestor<T>(DependencyObject? source)

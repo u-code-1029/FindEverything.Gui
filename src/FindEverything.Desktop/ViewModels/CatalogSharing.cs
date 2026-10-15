@@ -22,9 +22,11 @@ public partial class CatalogViewModel : IWorkspaceExportSource
     {
         WorkspaceTransfer = transfer; _datasetTransfer = datasets;
         transfer.SourceChanged += OnSharedSourceChanged;
+        transfer.ProfileImported += OnProfileImported;
         transfer.PropertyChanged += OnTransferStateChanged;
         OnPropertyChanged(nameof(WorkspaceTransfer));
         if (transfer.IsImported) _ = ApplySharedSourceAsync();
+        if (transfer.TakePendingProfileActivation() is { } imported) OnProfileImported(transfer, imported);
     }
 
     private void OnSharedSourceChanged(object? sender, EventArgs e)
@@ -40,6 +42,7 @@ public partial class CatalogViewModel : IWorkspaceExportSource
             if (_disposed) return;
             ScanCommand.NotifyCanExecuteChanged(); LoadCommand.NotifyCanExecuteChanged();
             OnPropertyChanged(nameof(CanEditWorkspace));
+            OnPropertyChanged(nameof(IsResultInteractionEnabled));
             if (WorkspaceTransfer?.IsBusy == false && !IsReadOnlyDataSource) ScheduleAutomaticLoad();
         }));
     }
@@ -114,9 +117,17 @@ public partial class CatalogViewModel : IWorkspaceExportSource
                         InfoBarSeverity.Informational);
                 }
                 else SetStatus(L("Loc.Transfer.Catalog.Missing", "구조화 결과 미포함"),
-                    L("Loc.Transfer.Catalog.Missing.Help", "파일 찾기에서 메타데이터를 조회할 수 있습니다. 구조화 결과를 만들려면 로컬 결과로 전환한 뒤 직접 스캔하세요."), InfoBarSeverity.Informational);
+                    L("Loc.Transfer.Catalog.Missing.Help", "구조화 결과를 포함한 패키지를 받거나, 로컬 결과로 전환한 뒤 직접 스캔하세요."), InfoBarSeverity.Informational);
             }
-            else { _automaticLoadSuppressed = false; ScheduleAutomaticLoad(); }
+            else
+            {
+                if (_profileToActivateAfterSourceChange is { } imported)
+                {
+                    _profileToActivateAfterSourceChange = null;
+                    OnProfileImported(this, imported);
+                }
+                _automaticLoadSuppressed = false; ScheduleAutomaticLoad();
+            }
         }
         catch (OperationCanceledException) when (source.IsCancellationRequested) { }
         catch (Exception exception) { SetStatus(L("Loc.Catalog.Status.Error", "오류"), exception.Message, InfoBarSeverity.Error); }
@@ -133,7 +144,7 @@ public partial class CatalogViewModel : IWorkspaceExportSource
 
     public WorkspaceExportContext? CaptureWorkspaceExport() => IsBusy || IsReadOnlyDataSource || _projectionSnapshot is not { } snapshot
         ? null : new(snapshot.Scope.RootPath, snapshot.Scope.DatabasePath, snapshot.Scope.ProfileId,
-            (_projectionStore as FindEverything.Infrastructure.Persistence.SqliteCatalogProjectionStore)?.DatabasePath, snapshot);
+            (_projectionStore as FindEverything.Infrastructure.Persistence.SqliteCatalogProjectionStore)?.DatabasePath, snapshot, RequireCatalog: true);
 
     private void DetachWorkspaceTransfer()
     {
@@ -141,6 +152,7 @@ public partial class CatalogViewModel : IWorkspaceExportSource
         if (WorkspaceTransfer is not null)
         {
             WorkspaceTransfer.SourceChanged -= OnSharedSourceChanged;
+            WorkspaceTransfer.ProfileImported -= OnProfileImported;
             WorkspaceTransfer.PropertyChanged -= OnTransferStateChanged;
         }
         if (_importedProjectionStore is IDisposable store) store.Dispose();

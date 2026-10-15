@@ -21,8 +21,159 @@ using Xunit;
 
 namespace FindEverything.Desktop.Tests;
 
-public sealed class WorkspaceTransferServiceTests
+public sealed partial class WorkspaceTransferServiceTests
 {
+    [Fact]
+    public async Task PortableJsonExportsLatestSettingsAndImportsIndependentFormatOwnership()
+    {
+        using var fixture = new Fixture();
+        var authoring = fixture.Provider.GetRequiredService<IProfileAuthoringService>();
+        var profile = Manifest();
+        Assert.True((await authoring.SaveAndApplyAsync(profile, null)).Applied);
+        var formats = fixture.Provider.GetRequiredService<ISelectionOutputFormatStore>();
+        formats.Save(new("profile-format", "Name lines", "{name}", ", ", profile.Id, "[", "]"));
+        formats.Save(new("other-format", "Other", "{FullPath}", "\n", "another-profile"));
+        formats.Save(new("unselected-common", "Common", "{FullPath}", "\n", null));
+        await fixture.Provider.GetRequiredService<IProfileOutputPreferenceStore>().SaveAsync(profile.Id!, "profile-format");
+        await fixture.Provider.GetRequiredService<IProfilePresentationStore>().SaveAsync(profile.Id!, new Dictionary<string, ColumnWidthPreset> { ["name"] = ColumnWidthPreset.Wide });
+        await fixture.Provider.GetRequiredService<IGridLayoutStore>().SaveAsync(profile.Id!, [new("name", 0, 240, GridColumnWidthMode.Manual, true)]);
+        var transfer = fixture.Provider.GetRequiredService<ProfileTransferService>();
+        var beforeFingerprint = transfer.GetProjectionFingerprint(profile);
+        var path = Path.Combine(fixture.Root, "portable.json");
+        await transfer.ExportAsync(profile, path);
+        Assert.Null(profile.Workspace); // Export does not mutate the caller's definition.
+        var exported = (await transfer.InspectAsync(path)).Manifest;
+        var included = Assert.Single(exported.Workspace!.OutputFormats!);
+        Assert.Equal("profile-format", included.Id);
+        Assert.Equal("[", included.Prefix);
+        Assert.Equal(beforeFingerprint, transfer.GetProjectionFingerprint(exported));
+        var imported = (await transfer.ImportAsync(path))!;
+        Assert.NotEqual(profile.Id, imported.ProfileId);
+        var installedFormat = Assert.Single(formats.GetAll(), f => f.ProfileId == imported.ProfileId);
+        Assert.NotEqual(included.Id, installedFormat.Id);
+        Assert.Equal("[", installedFormat.Prefix);
+        Assert.Equal(installedFormat.Id, fixture.Provider.GetRequiredService<IProfileOutputPreferenceStore>().Get(imported.ProfileId));
+        var column = fixture.Provider.GetRequiredService<IGridLayoutStore>().Get(imported.ProfileId)["name"];
+        Assert.True(column.IsHidden); Assert.Equal(240, column.Width); Assert.Equal(GridColumnWidthMode.Manual, column.WidthMode);
+        Assert.Equal(ColumnWidthPreset.Wide, (await fixture.Provider.GetRequiredService<IProfilePresentationStore>().LoadAsync(imported.ProfileId))["name"]);
+        Assert.Contains(formats.GetAll(), f => f.Id == "profile-format" && f.ProfileId == profile.Id);
+        Assert.Contains(formats.GetAll(), f => f.Id == "other-format");
+        Assert.Contains(formats.GetAll(), f => f.Id == "unselected-common");
+        var roundTrip = Path.Combine(fixture.Root, "portable-again.json");
+        var saved = await authoring.LoadAsync((await authoring.ListAsync()).Single(p => p.Id == imported.ProfileId));
+        await transfer.ExportAsync(saved!, roundTrip);
+        var second = (await transfer.InspectAsync(roundTrip)).Manifest.Workspace!;
+        Assert.Equal(installedFormat.Id, second.SelectedOutputFormatId);
+        Assert.Equal(240, Assert.Single(second.Columns!).Width);
+    }
+
+    [Fact]
+    public async Task PortableSettingsCallbackFailureRestoresEveryStoreAndProfile()
+    {
+        using var fixture = new Fixture();
+        var authoring = fixture.Provider.GetRequiredService<IProfileAuthoringService>();
+        var original = Manifest(); original.DisplayName = "Original";
+        Assert.True((await authoring.SaveAndApplyAsync(original, null)).Applied);
+        var formats = fixture.Provider.GetRequiredService<ISelectionOutputFormatStore>();
+        var preference = fixture.Provider.GetRequiredService<IProfileOutputPreferenceStore>();
+        var presentation = fixture.Provider.GetRequiredService<IProfilePresentationStore>();
+        var layout = fixture.Provider.GetRequiredService<IGridLayoutStore>();
+        var originalFormat = new SelectionOutputFormatDefinition("old-format", "Old", "{FullPath}", "\n", original.Id);
+        formats.Save(originalFormat);
+        await preference.SaveAsync(original.Id!, originalFormat.Id);
+        await presentation.SaveAsync(original.Id!, new Dictionary<string, ColumnWidthPreset> { ["name"] = ColumnWidthPreset.Narrow });
+        var oldColumn = new GridColumnLayout("name", 0, 190, GridColumnWidthMode.Manual);
+        await layout.SaveAsync(original.Id!, [oldColumn]);
+        var incoming = Manifest(); incoming.DisplayName = "Incoming"; incoming.Workspace = PortableSettings();
+        var transfer = fixture.Provider.GetRequiredService<ProfileTransferService>();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => transfer.InstallAtomicallyAsync<bool>(incoming,
+            ProfileImportConflictChoice.Replace, _ => Task.FromException<bool>(new OperationCanceledException()), CancellationToken.None));
+        Assert.Equal(originalFormat, Assert.Single(formats.GetAll(), f => f.ProfileId == original.Id));
+        Assert.Equal(originalFormat.Id, preference.Get(original.Id!));
+        Assert.Equal(ColumnWidthPreset.Narrow, (await presentation.LoadAsync(original.Id!))["name"]);
+        Assert.Equal(oldColumn, layout.Get(original.Id!)["name"]);
+        Assert.Equal("Original", Assert.Single(fixture.Provider.GetRequiredService<IProfileCatalog>().Current.Profiles).Descriptor.DisplayName);
+    }
+
+    [Fact]
+    public async Task PortableRollbackPreservesLaterSettingsEditsButStillRestoresTheProfile()
+    {
+        using var fixture = new Fixture();
+        var original = Manifest(); original.DisplayName = "Original";
+        Assert.True((await fixture.Provider.GetRequiredService<IProfileAuthoringService>().SaveAndApplyAsync(original, null)).Applied);
+        var incoming = Manifest(); incoming.DisplayName = "Incoming"; incoming.Workspace = PortableSettings();
+        var preferences = fixture.Provider.GetRequiredService<IProfileOutputPreferenceStore>();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Provider.GetRequiredService<ProfileTransferService>()
+            .InstallAtomicallyAsync<bool>(incoming, ProfileImportConflictChoice.Replace, async result =>
+            {
+                await preferences.SaveAsync(result.ProfileId, "later-user-edit");
+                throw new OperationCanceledException();
+            }, CancellationToken.None));
+        Assert.Equal("later-user-edit", preferences.Get(original.Id!));
+        Assert.Equal("Original", Assert.Single(fixture.Provider.GetRequiredService<IProfileCatalog>().Current.Profiles).Descriptor.DisplayName);
+    }
+
+    [Fact]
+    public async Task PortableJsonRejectsInvalidFormatReferencesBeforeInstallingAnything()
+    {
+        using var fixture = new Fixture();
+        var manifest = Manifest(); manifest.Workspace = PortableSettings();
+        manifest.Workspace.OutputFormats![0].Template = "{not-a-column}";
+        await Assert.ThrowsAsync<InvalidDataException>(() => fixture.Provider.GetRequiredService<ProfileTransferService>()
+            .ImportManifestAsync(manifest, ProfileImportConflictChoice.NewProfile));
+        Assert.Empty(await fixture.Provider.GetRequiredService<IProfileAuthoringService>().ListAsync());
+        Assert.Single(fixture.Provider.GetRequiredService<ISelectionOutputFormatStore>().GetAll());
+    }
+
+    private static ProfileWorkspaceManifest PortableSettings() => new()
+    {
+        OutputFormats = [new() { Id = "names", DisplayName = "Names", Template = "{name}" }],
+        SelectedOutputFormatId = "names", Columns = [new() { FieldId = "name", WidthPreset = ProfileColumnWidthPreset.Wide,
+            DisplayIndex = 0, WidthMode = ProfileColumnWidthMode.Manual, Width = 240, IsHidden = true }],
+    };
+
+    [Fact]
+    public async Task PortableJsonIncludesOnlyTheSelectedCommonFormatDependency()
+    {
+        using var fixture = new Fixture();
+        var manifest = Manifest();
+        Assert.True((await fixture.Provider.GetRequiredService<IProfileAuthoringService>().SaveAndApplyAsync(manifest, null)).Applied);
+        var formats = fixture.Provider.GetRequiredService<ISelectionOutputFormatStore>();
+        formats.Save(new("selected-common", "Selected common", "{FullPath}", "\n", null));
+        formats.Save(new("other-common", "Other common", "{FullPath}", "\n", null));
+        await fixture.Provider.GetRequiredService<IProfileOutputPreferenceStore>().SaveAsync(manifest.Id!, "selected-common");
+        var snapshot = await fixture.Provider.GetRequiredService<IProfileWorkspaceSettingsService>().CreateExportSnapshotAsync(manifest);
+        Assert.Equal("selected-common", Assert.Single(snapshot.Workspace!.OutputFormats!).Id);
+        var result = (await fixture.Provider.GetRequiredService<ProfileTransferService>().ImportManifestAsync(snapshot, ProfileImportConflictChoice.NewProfile))!;
+        var scoped = Assert.Single(formats.GetAll(), f => f.ProfileId == result.ProfileId);
+        Assert.NotEqual("selected-common", scoped.Id);
+        Assert.Contains(formats.GetAll(), f => f.Id == "selected-common" && f.ProfileId is null);
+        Assert.Contains(formats.GetAll(), f => f.Id == "other-common" && f.ProfileId is null);
+    }
+
+    [Fact]
+    public async Task SettingsWriteFailureRollsBackEarlierSettingsAndProfileCommit()
+    {
+        using var fixture = new Fixture();
+        var original = Manifest(); original.DisplayName = "Original";
+        Assert.True((await fixture.Provider.GetRequiredService<IProfileAuthoringService>().SaveAndApplyAsync(original, null)).Applied);
+        var preference = fixture.Provider.GetRequiredService<IProfileOutputPreferenceStore>();
+        var layout = fixture.Provider.GetRequiredService<IGridLayoutStore>();
+        await preference.SaveAsync(original.Id!, SelectionOutputFormatDefaults.FullPathLinesId);
+        var oldColumn = new GridColumnLayout("name", 0, 180, GridColumnWidthMode.Manual);
+        await layout.SaveAsync(original.Id!, [oldColumn]);
+        // A destination directory forces the presentation's atomic file move to fail.
+        Directory.CreateDirectory(Path.Combine(fixture.Paths.UserProfilesDirectory, original.Id!, "presentation.json"));
+        var incoming = Manifest(); incoming.DisplayName = "Incoming"; incoming.Workspace = PortableSettings();
+        var failure = await Record.ExceptionAsync(() => fixture.Provider.GetRequiredService<ProfileTransferService>()
+            .ImportManifestAsync(incoming, ProfileImportConflictChoice.Replace));
+        Assert.True(failure is IOException or UnauthorizedAccessException, failure?.ToString());
+        Assert.Equal(SelectionOutputFormatDefaults.FullPathLinesId, preference.Get(original.Id!));
+        Assert.Equal(oldColumn, layout.Get(original.Id!)["name"]);
+        Assert.Single(fixture.Provider.GetRequiredService<ISelectionOutputFormatStore>().GetAll());
+        Assert.Equal("Original", Assert.Single(fixture.Provider.GetRequiredService<IProfileCatalog>().Current.Profiles).Descriptor.DisplayName);
+    }
+
     [Fact]
     public async Task JsonOpenInstallsValidatedLocalProfileWithoutChangingExternalFile()
     {
@@ -232,7 +383,7 @@ public sealed class WorkspaceTransferServiceTests
         }
         Directory.Delete(export.RootPath, recursive: true);
         Assert.False(Directory.Exists(receiverRoot));
-        var english = new IndexedDatasetTransferService(fixture.Paths,
+        using var english = new IndexedDatasetTransferService(fixture.Paths,
             fixture.Provider.GetRequiredService<ProfileTransferService>(), fixture.Provider.GetRequiredService<IProfilePresentationStore>(),
             Options.Create(new LocalizationOptions { CultureName = "en-US" }));
         var updated = await english.EnsureCultureAsync(source);
@@ -424,7 +575,13 @@ public sealed class WorkspaceTransferServiceTests
             services.AddSingleton<IProfileAuthoringService, ProfileAuthoringService>();
             services.AddSingleton<ProfileTransferService>();
             services.AddSingleton<IProfileTransferService>(p => p.GetRequiredService<ProfileTransferService>());
-            services.AddSingleton<IProfilePresentationStore, MemoryPresentation>();
+            services.AddSingleton<GridLayoutStore>();
+            services.AddSingleton<IGridLayoutStore>(p => p.GetRequiredService<GridLayoutStore>());
+            services.AddSingleton<IProfilePresentationStore, ProfilePresentationStore>();
+            services.AddSingleton<ISelectionOutputFormatStore, SelectionOutputFormatStore>();
+            services.AddSingleton<IProfileOutputPreferenceStore, ProfileOutputPreferenceStore>();
+            services.AddSingleton<ISelectionOutputFormatter, SelectionOutputFormatter>();
+            services.AddSingleton<IProfileWorkspaceSettingsService, ProfileWorkspaceSettingsService>();
             services.AddSingleton<IndexedDatasetTransferService>();
             services.AddSingleton<IIndexedDatasetTransferService>(p => p.GetRequiredService<IndexedDatasetTransferService>());
             services.AddSingleton<IImportedWorkspaceRegistry>(p => p.GetRequiredService<IndexedDatasetTransferService>());
@@ -456,7 +613,11 @@ public sealed class WorkspaceTransferServiceTests
             return new(profile, metadata, source, Path.Combine(Root, "shared.fepkg"))
             { CatalogDatabasePath = catalog, CatalogSnapshot = snapshot, IncludeUserInputs = notes };
         }
-        public void Dispose() { Provider.Dispose(); if (Directory.Exists(Root)) Directory.Delete(Root, true); }
+        public void Dispose()
+        {
+            Provider.GetRequiredService<GridLayoutStore>().StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+            Provider.Dispose(); if (Directory.Exists(Root)) Directory.Delete(Root, true);
+        }
     }
     private sealed class MemoryPresentation : IProfilePresentationStore
     {

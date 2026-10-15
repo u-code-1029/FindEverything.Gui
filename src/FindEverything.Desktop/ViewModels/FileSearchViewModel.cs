@@ -517,11 +517,11 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
     }
 
     [RelayCommand(CanExecute = nameof(CanBrowseRefreshScope))]
-    private void BrowseRefreshScope()
+    private async Task BrowseRefreshScopeAsync()
     {
-        var selected = _pickerService.PickRootDirectory(
-            Directory.Exists(RefreshScopePath) ? RefreshScopePath : RootPath);
-        if (selected is not null)
+        var selected = await _pickerService.PickRootDirectoryAsync(
+            string.IsNullOrWhiteSpace(RefreshScopePath) ? RootPath : RefreshScopePath);
+        if (selected is not null && CanBrowseRefreshScope())
         {
             RefreshScopePath = selected;
         }
@@ -546,8 +546,8 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
             return;
         }
 
-        var selected = _pickerService.PickRootDirectory(RootPath);
-        if (selected is null)
+        var selected = await _pickerService.PickRootDirectoryAsync(RootPath);
+        if (selected is null || _operationCoordinator.IsRunning)
         {
             return;
         }
@@ -585,8 +585,8 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
             return;
         }
 
-        var selected = _pickerService.PickDatabasePath(DatabasePath);
-        if (selected is null)
+        var selected = await _pickerService.PickDatabasePathAsync(DatabasePath);
+        if (selected is null || _operationCoordinator.IsRunning)
         {
             return;
         }
@@ -1032,31 +1032,31 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
         reset: false);
 
     [RelayCommand(CanExecute = nameof(CanUseSelected))]
-    private void OpenSelected()
+    private async Task OpenSelectedAsync()
     {
-        if (CanUseSelected()) OpenItemFolder(SelectedItem);
+        if (CanUseSelected()) await OpenItemFolderAsync(SelectedItem);
     }
 
     [RelayCommand]
-    private void OpenItem(FileSearchItemViewModel? item)
+    private async Task OpenItemAsync(FileSearchItemViewModel? item)
     {
         if (item is null || item.IsPlaceholder)
         {
             return;
         }
 
-        ExecutePathAction(
-            () => _pathLauncher.OpenPath(item.FullPath),
+        await ExecutePathActionAsync(
+            () => _pathLauncher.OpenPathAsync(item.FullPath),
             L("Loc.Files.Action.OpenFailed", "항목 열기 실패"));
     }
 
     [RelayCommand(CanExecute = nameof(CanUseSelected))]
-    private void ShowSelectedInFolder()
+    private async Task ShowSelectedInFolderAsync()
     {
         if (SelectedItem is { IsPlaceholder: false })
         {
-            ExecutePathAction(
-                () => _pathLauncher.ShowInFolder(SelectedItem.FullPath),
+            await ExecutePathActionAsync(
+                () => _pathLauncher.ShowInFolderAsync(SelectedItem.FullPath),
                 L("Loc.Files.Action.ShowInFolderFailed", "위치 열기 실패"));
         }
     }
@@ -1091,21 +1091,21 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
     }
 
     [RelayCommand(CanExecute = nameof(CanUseSelected))]
-    private void OpenSelectedFolder()
+    private async Task OpenSelectedFolderAsync()
     {
-        OpenItemFolder(SelectedItem);
+        await OpenItemFolderAsync(SelectedItem);
     }
 
     [RelayCommand]
-    private void OpenItemFolder(FileSearchItemViewModel? item)
+    private async Task OpenItemFolderAsync(FileSearchItemViewModel? item)
     {
         if (item is null || item.IsPlaceholder)
         {
             return;
         }
 
-        ExecutePathAction(
-            () => _pathLauncher.OpenDirectory(item.FolderPath),
+        await ExecutePathActionAsync(
+            () => _pathLauncher.OpenDirectoryAsync(item.FolderPath),
             L("Loc.Files.Action.OpenFolderFailed", "폴더 경로 열기 실패"));
     }
 
@@ -1163,8 +1163,8 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
                 {
                     // The output session owns its lifetime independently of a
                     // new filter, navigation, or the virtual list's eviction.
-                    var openedQuery = await _fileSearchService.OpenQueryAsync(scope, request, token).ConfigureAwait(false);
-                    await using var outputQuery = importedSource is null ? openedQuery : new ImportedFileQuerySession(openedQuery, importedSource);
+                    await using var outputQuery = await ImportedFileQuerySession.OpenAsync(
+                        () => _fileSearchService.OpenQueryAsync(scope, request, token), importedSource).ConfigureAwait(false);
                     using var importedCatalog = importedSource?.HasCatalog == true && profile is not null
                         ? WorkspaceTransfer!.OpenCatalogStore(importedSource) as IDisposable : null;
                     await using var structuredQuery = importedCatalog is FindEverything.Application.Sharing.IImportedCatalogProjectionStore store
@@ -1645,9 +1645,9 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
                 IResultQuerySession<IndexedPathEntry> query;
                 try
                 {
-                    query = await Task.Run(() => _fileSearchService.OpenQueryAsync(scope, request, cancellationToken), cancellationToken);
-                    if (WorkspaceTransfer?.CurrentSource is { } imported)
-                        query = new ImportedFileQuerySession(query, imported);
+                    var imported = WorkspaceTransfer?.CurrentSource;
+                    query = await Task.Run(() => ImportedFileQuerySession.OpenAsync(
+                        () => _fileSearchService.OpenQueryAsync(scope, request, cancellationToken), imported), cancellationToken);
                 }
                 catch (IndexSnapshotChangedException) when (attempt == 0)
                 {
@@ -2150,11 +2150,11 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
         Dispatch(Apply);
     }
 
-    private void ExecutePathAction(Action action, string title)
+    private async Task ExecutePathActionAsync(Func<Task> action, string title)
     {
         try
         {
-            action();
+            await action();
         }
         catch (Exception exception)
         {

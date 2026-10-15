@@ -4,10 +4,13 @@ using System.Diagnostics;
 using System.IO;
 using System.Reflection;
 using System.Text.Json;
+using System.Text.RegularExpressions;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Threading;
+using System.Windows.Media;
 using FindEverything.Application.Catalog;
 using FindEverything.Application.Indexing;
 using FindEverything.Application.Results;
@@ -219,6 +222,7 @@ internal static class WorkspacePerformanceChecks
             File.WriteAllText(Path.Combine(directory, $"performance-{label}.json"), JsonSerializer.Serialize(new
             {
                 Label = label,
+                Environment = CaptureEnvironment(window),
                 Rows = RowCount,
                 Fields = FieldCount,
                 Grid = new
@@ -267,8 +271,33 @@ internal static class WorkspacePerformanceChecks
     }
 
     private sealed record PhaseMeasurement(double ElapsedMilliseconds, long AllocatedBytes,
-        long UiAllocatedBytes, int HeartbeatSamples, double HeartbeatDelayP95Milliseconds,
-        double HeartbeatDelayMaximumMilliseconds);
+        long UiAllocatedBytes, int HeartbeatSamples, double? HeartbeatDelayP95Milliseconds,
+        double? HeartbeatDelayMaximumMilliseconds)
+    {
+        public string HeartbeatStatus => HeartbeatSamples == 0 ? "unmeasured"
+            : HeartbeatSamples < 20 ? "insufficient-samples" : "measured";
+    }
+
+    internal static object CaptureEnvironment(FrameworkElement? visual)
+    {
+        var version = typeof(CatalogViewModel).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        var sha = version is null ? null : Regex.Match(version, @"(?<![0-9a-fA-F])[0-9a-fA-F]{40}(?![0-9a-fA-F])").Value;
+        var dpi = visual is null ? new DpiScale(1, 1) : VisualTreeHelper.GetDpi(visual);
+        return new
+        {
+            CommitSha = string.IsNullOrEmpty(sha) ? null : sha,
+            AssemblyInformationalVersion = version,
+            WorkingTreeStatus = Environment.GetEnvironmentVariable("FINDEVERYTHING_PERF_WORKTREE") ?? "not-recorded",
+            CapturedUtc = DateTimeOffset.UtcNow,
+            Runtime = RuntimeInformation.FrameworkDescription,
+            OS = RuntimeInformation.OSDescription,
+            Architecture = RuntimeInformation.ProcessArchitecture.ToString(),
+            LogicalProcessors = Environment.ProcessorCount,
+            RunnerOS = Environment.GetEnvironmentVariable("RUNNER_OS"),
+            DpiX = dpi.PixelsPerInchX, DpiY = dpi.PixelsPerInchY,
+            ViewportWidth = visual?.ActualWidth, ViewportHeight = visual?.ActualHeight,
+        };
+    }
 
     private sealed class UiHeartbeat : IDisposable
     {
@@ -292,8 +321,8 @@ internal static class WorkspacePerformanceChecks
         {
             var samples = _delays.Order().ToArray();
             return new(elapsed.TotalMilliseconds, allocated, uiAllocated, samples.Length,
-                samples.Length == 0 ? 0 : samples[Math.Max(0, (int)Math.Ceiling(samples.Length * 0.95) - 1)],
-                samples.Length == 0 ? 0 : samples[^1]);
+                samples.Length == 0 ? null : samples[Math.Max(0, (int)Math.Ceiling(samples.Length * 0.95) - 1)],
+                samples.Length == 0 ? null : samples[^1]);
         }
 
         public void Dispose() => _timer.Stop();

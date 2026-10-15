@@ -8,7 +8,9 @@ public partial class ProfilesViewModel
     [ObservableProperty]
     private ProfileFieldDraftViewModel? _selectedGuidedField;
 
-    public string CurrentStepTitle => CurrentEditorStep switch
+    public string CurrentStepTitle => GetEditorStepTitle(CurrentEditorStep);
+
+    private string GetEditorStepTitle(ProfileEditorStep step) => step switch
     {
         ProfileEditorStep.Profile => L("Loc.Ux.Authoring.Step.Info", "1. 기본 정보"),
         ProfileEditorStep.PathAndFields => L("Loc.Ux.Authoring.Step.Path", "2. 경로와 컬럼"),

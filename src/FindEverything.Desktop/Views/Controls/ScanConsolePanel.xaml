@@ -17,15 +17,14 @@
         BorderBrush="{DynamicResource SurfaceStrokeColorDefaultBrush}"
         BorderThickness="1"
         CornerRadius="8"><controls:SectionCard.Header>
-        <Grid>
+        <Grid x:Name="ScanConsoleLayout">
             <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
+                <RowDefinition Height="44" />
                 <RowDefinition Height="*" />
-                <RowDefinition Height="Auto" />
+                <RowDefinition Height="28" />
             </Grid.RowDefinitions>
 
-            <Grid Margin="12,8">
+            <Grid Margin="12,6">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
@@ -38,58 +37,25 @@
                     Margin="0,0,8,0"
                     VerticalAlignment="Center"
                     Symbol="WindowConsole20" />
-                <ui:TextBlock
-                    Grid.Column="1"
-                    VerticalAlignment="Center"
-                    FontSize="14"
-                    FontWeight="SemiBold"
-                    Text="{StaticResource Loc.View.ScanConsolePanel.Text.ScanLog}" />
-                <ui:Button
-                    Grid.Column="2"
-                    MinWidth="64"
-                    Padding="10,4"
-                    AutomationProperties.Name="{StaticResource Loc.View.ScanConsolePanel.Name.CloseScanLog}"
-                    Appearance="Transparent"
-                    Command="{Binding ClosePanelCommand}"
-                    Content="{StaticResource Loc.View.ScanConsolePanel.Content.Close}"
-                    ToolTip="{StaticResource Loc.Scan.Panel.Close}" />
-            </Grid>
-
-            <Grid
-                Grid.Row="1"
-                Margin="12,8"
-                Background="{DynamicResource ControlFillColorSecondaryBrush}">
-                <Grid>
+                <Grid Grid.Column="1" Margin="0,0,12,0">
                     <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-
-                    <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
-                        <Ellipse
-                            Width="8"
-                            Height="8"
-                            Margin="0,0,8,0"
-                            Fill="{Binding StatusBrush}" />
-                        <ui:TextBlock
-                            VerticalAlignment="Center"
-                            FontWeight="SemiBold"
-                            Text="{Binding StatusText}" />
+                    <ui:TextBlock VerticalAlignment="Center" FontSize="14" FontWeight="SemiBold"
+                        Text="{StaticResource Loc.View.ScanConsolePanel.Text.ScanLog}" />
                         <ui:TextBlock
                             x:Name="SessionSummaryText"
+                            Grid.Column="1"
                             Margin="12,0,0,0"
                             VerticalAlignment="Center"
                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                             Text="{Binding SessionSummary}"
-                            TextTrimming="CharacterEllipsis" />
-                    </StackPanel>
-
+                            TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" ToolTip="{Binding SessionSummary}" />
+                </Grid>
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                     <ui:ToggleSwitch
-                        Grid.Column="1"
-                        Margin="12,0"
+                        Margin="0,0,12,0"
                         VerticalAlignment="Center"
                         AutomationProperties.Name="{StaticResource Loc.View.ScanConsolePanel.Name.AutomaticallyScrollToNewLogEntries}"
                         IsChecked="{Binding AutoScroll}"
@@ -97,36 +63,37 @@
                         OnContent="{StaticResource Loc.View.ScanConsolePanel.OnContent.AutoScroll}" />
                     <ui:Button
                         x:Name="CopyAllLogsButton"
-                        Grid.Column="2"
-                        MinWidth="92"
-                        Margin="0,0,8,0"
+                        MinWidth="84" Height="32" Padding="8,4" Margin="0,0,4,0"
+                        AutomationProperties.Name="{StaticResource Loc.Scan.CopyAll}"
                         Command="{Binding CopyAllCommand}"
                         Icon="{ui:SymbolIcon Symbol=Copy20}"
                         ToolTip="{StaticResource Loc.Scan.CopyAll}"
                         Content="{StaticResource Loc.Scan.CopyAll}" />
                     <ui:Button
-                        Grid.Column="3"
                         x:Name="SaveScanLogButton"
-                        MinWidth="112"
-                        Margin="0,0,8,0"
-                        AutomationProperties.Name="{StaticResource Loc.Scan.Save.Help}"
+                        MinWidth="84" Height="32" Padding="8,4" Margin="0,0,4,0"
+                        AutomationProperties.Name="{StaticResource Loc.View.ScanConsolePanel.Content.SaveLog}"
                         Command="{Binding SaveLogCommand}"
                         Content="{StaticResource Loc.View.ScanConsolePanel.Content.SaveLog}"
                         Icon="{ui:SymbolIcon Symbol=Save16}"
                         ToolTip="{StaticResource Loc.Scan.Save.Help}" />
                     <ui:Button
                         x:Name="ClearLogsButton"
-                        Grid.Column="4"
-                        MinWidth="92"
+                        MinWidth="84" Height="32" Padding="8,4" Margin="0,0,4,0"
+                        AutomationProperties.Name="{StaticResource Loc.Scan.Clear}"
                         Appearance="Secondary"
                         Command="{Binding ClearCommand}"
                         Icon="{ui:SymbolIcon Symbol=Delete20}"
                         ToolTip="{StaticResource Loc.Scan.Clear}"
                         Content="{StaticResource Loc.Scan.Clear}" />
-                </Grid>
+                    <ui:Button Width="32" Height="32" MinWidth="0" Padding="0" Appearance="Transparent"
+                        Icon="{ui:SymbolIcon Symbol=Dismiss16}"
+                        AutomationProperties.Name="{StaticResource Loc.View.ScanConsolePanel.Name.CloseScanLog}"
+                        Command="{Binding ClosePanelCommand}" ToolTip="{StaticResource Loc.Scan.Panel.Close}" />
+                </StackPanel>
             </Grid>
 
-            <Grid Grid.Row="2" Background="#1E1E1E">
+            <Grid Grid.Row="1" Background="#1E1E1E">
                 <ListBox
                     x:Name="TraceList"
                     Padding="8,6"
@@ -148,10 +115,12 @@
                             <ui:MenuItem
                                 AutomationProperties.Name="{StaticResource Loc.View.ScanConsolePanel.Name.CopyTheCompleteSelectedLogMessage}"
                                 Command="{Binding CopySelectedMessageCommand}"
+                                InputGestureText="Ctrl+C"
                                 Header="{StaticResource Loc.View.ScanConsolePanel.Header.CopyFullMessage}" />
                             <ui:MenuItem
                                 AutomationProperties.Name="{StaticResource Loc.View.ScanConsolePanel.Name.CopyOnlyTheSelectedLogPath}"
                                 Command="{Binding CopySelectedPathCommand}"
+                                InputGestureText="Ctrl+Shift+C"
                                 Header="{StaticResource Loc.View.ScanConsolePanel.Header.CopyPathOnly}" />
                         </ContextMenu>
                     </ListBox.ContextMenu>
@@ -196,16 +165,28 @@
             </Grid>
 
             <Grid
-                Grid.Row="3"
-                Margin="12,8"
+                Grid.Row="2"
+                Margin="12,0"
                 Background="{DynamicResource CardBackgroundFillColorDefaultBrush}">
-                <Grid>
                     <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <StackPanel>
-                        <ui:TextBlock Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextWrapping="Wrap">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,12,0">
+                        <Ellipse Width="8" Height="8" Margin="0,0,6,0" Fill="{Binding StatusBrush}" />
+                        <ui:TextBlock MaxWidth="120" Text="{Binding StatusText}" ToolTip="{Binding StatusText}"
+                            TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                        <ui:TextBlock Grid.Column="1" x:Name="LogCountersText" VerticalAlignment="Center"
+                            Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis">
+                            <ui:TextBlock.ToolTip>
+                                <StackPanel MaxWidth="520">
+                                    <ui:TextBlock Text="{Binding PlacementTarget.Text, RelativeSource={RelativeSource AncestorType=ToolTip}}" TextWrapping="Wrap" />
+                                    <ui:TextBlock x:Name="LogLegendText" Margin="0,4,0,0" TextWrapping="Wrap"
+                                        Text="{StaticResource Loc.View.ScanConsolePanel.Text.MATCHMatchedNOMATCHOutsideRulesINVALIDConversion}" />
+                                </StackPanel>
+                            </ui:TextBlock.ToolTip>
                             <Run Text="{StaticResource Loc.View.ScanConsolePanel.Text.Visited}" />
                             <Run FontWeight="SemiBold" Text="{Binding VisitedCount}" />
                             <Run Text="{StaticResource Loc.View.ScanConsolePanel.Text.Matched}" />
@@ -217,20 +198,12 @@
                             <Run Text="{StaticResource Loc.View.ScanConsolePanel.Text.Pruned}" />
                             <Run FontWeight="SemiBold" Text="{Binding PrunedCount}" />
                         </ui:TextBlock>
-                        <ui:TextBlock
-                            x:Name="LogLegendText"
-                            Margin="0,4,0,0"
-                            FontSize="11"
-                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                            Text="{StaticResource Loc.View.ScanConsolePanel.Text.MATCHMatchedNOMATCHOutsideRulesINVALIDConversion}" TextTrimming="CharacterEllipsis" />
-                    </StackPanel>
                     <ui:TextBlock
-                        Grid.Column="1"
-                        Margin="16,0,0,0"
-                        VerticalAlignment="Top"
+                        Grid.Column="2"
+                        Margin="12,0,0,0" MaxWidth="210"
+                        VerticalAlignment="Center" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                        Text="{Binding RetentionSummary}" />
-                </Grid>
+                        Text="{Binding RetentionSummary}" ToolTip="{Binding RetentionSummary}" />
             </Grid>
         </Grid>
     </controls:SectionCard.Header></controls:SectionCard>
