@@ -1,7 +1,7 @@
 <Page x:Class="FindEverything.Desktop.Views.Pages.OutputFormatsPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="clr-namespace:FindEverything.Desktop.Views.Controls" xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
-    Title="{DynamicResource Loc.Shell.Nav.OutputFormats}" Background="Transparent" Foreground="{DynamicResource TextFillColorPrimaryBrush}">
+    Title="{DynamicResource Loc.Shell.Nav.OutputFormats}" Background="Transparent" Foreground="{DynamicResource TextFillColorPrimaryBrush}" ScrollViewer.CanContentScroll="False">
     <Page.Resources>
         <Style x:Key="OutputEditorCardStyle" TargetType="ui:CardControl" BasedOn="{StaticResource FluentCardStyle}">
             <Setter Property="Margin" Value="0,0,0,12" />
@@ -89,10 +89,10 @@
                 </controls:SectionCard>
             </controls:SplitWorkspace.SecondaryContent>
         </controls:SplitWorkspace>
-        <controls:CommandStrip controls:FloatingNotificationChrome.IsBottomChrome="True" Grid.Row="3" Margin="0,12,0,0" Padding="12">
+        <controls:CommandStrip x:Name="OutputActionsFooter" controls:FloatingNotificationChrome.IsBottomChrome="True" Grid.Row="3" Margin="0,12,0,0" Padding="12">
             <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                 <ui:TextBlock Margin="0,0,12,0" VerticalAlignment="Center" Text="{Binding StatusMessage}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" ToolTip="{Binding StatusMessage}" AutomationProperties.LiveSetting="Polite" />
-                <ui:Button Grid.Column="1" MinWidth="112" Appearance="Primary" Command="{Binding SaveCommand}" Content="{DynamicResource Loc.Workspace.Output.Save}" ToolTip="{DynamicResource Loc.Workspace.Output.Save.Help}" ToolTipService.ShowOnDisabled="True" Icon="{ui:SymbolIcon Symbol=Save16}" />
+                <ui:Button x:Name="SaveFormatButton" Grid.Column="1" MinWidth="112" Appearance="Primary" Command="{Binding SaveCommand}" Content="{DynamicResource Loc.Workspace.Output.Save}" ToolTip="{DynamicResource Loc.Workspace.Output.Save.Help}" ToolTipService.ShowOnDisabled="True" Icon="{ui:SymbolIcon Symbol=Save16}" />
             </Grid>
         </controls:CommandStrip>
     </controls:WorkspacePageFrame>

@@ -188,6 +188,7 @@ public sealed class DesktopCompositionSmokeTests
             VerifyProfilePlaygroundLayout(window, profilePlaygroundPage);
             Assert.True(navigation.Navigate(typeof(OutputFormatsPage)));
             VerifyOutputFormatEditor(provider, window, outputFormatsPage);
+            OutputFormatsViewportChecks.Verify(window, outputFormatsPage);
             Assert.True(navigation.Navigate(typeof(SettingsPage)));
             VerifySettingsLayout(window, settingsPage);
             VerifyOperationInfoBar(provider, window);
