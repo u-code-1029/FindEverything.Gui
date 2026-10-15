@@ -159,7 +159,11 @@ internal static class ReadOnlyCellTemplateChecks
             {
                 DataContext = value, Width = 180, VerticalAlignment = VerticalAlignment.Center,
             };
-            panel.Children[0] = fresh; PumpInput(window);
+            // UIElementCollection's indexer does not detach the previous
+            // visual. Remove it first, then occupy the now-free visual slot.
+            panel.Children.RemoveAt(0);
+            panel.Children.Insert(0, fresh);
+            PumpInput(window);
             var freshEditor = Assert.Single(fresh.Children.OfType<Wpf.Ui.Controls.TextBox>());
             Assert.False(fresh.IsNativeEditorPrepared);
             Assert.Empty(Descendants<ScrollViewer>(fresh));
@@ -181,7 +185,9 @@ internal static class ReadOnlyCellTemplateChecks
             {
                 DataContext = value, Width = 180, VerticalAlignment = VerticalAlignment.Center,
             };
-            panel.Children[0] = keyboardCell; PumpInput(window);
+            panel.Children.RemoveAt(0);
+            panel.Children.Insert(0, keyboardCell);
+            PumpInput(window);
             Assert.False(keyboardCell.IsNativeEditorPrepared);
             Assert.True(other.MoveFocus(new TraversalRequest(FocusNavigationDirection.Previous)));
             PumpInput(window);
