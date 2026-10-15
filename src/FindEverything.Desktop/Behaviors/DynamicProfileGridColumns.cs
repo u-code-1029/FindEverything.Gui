@@ -13,13 +13,9 @@ public static partial class DynamicProfileGrid
 {
     private static void UpdateFrozenColumns(DataGrid grid)
     {
-        if (grid.Columns.Count <= SelectionColumnOffset) return;
-        var identity = grid.Columns[SelectionColumnOffset];
-        var identityWidth = identity.Width.IsAbsolute ? identity.Width.Value : identity.ActualWidth;
-        // A pinned identifying column must not consume the scrolling viewport.
-        // Restore it automatically as soon as a wider window permits it.
-        grid.FrozenColumnCount = identity.DisplayIndex == SelectionColumnOffset && grid.ActualWidth >= 112 + identityWidth + 160
-            ? SelectionColumnOffset + 1 : SelectionColumnOffset;
+        // Resizing, column reordering, imported layouts, and responsive sizing
+        // must never silently pin a profile data column again.
+        grid.FrozenColumnCount = Math.Min(SelectionColumnOffset, grid.Columns.Count);
     }
 
     public static void ShowColumnsMenu(DataGrid grid, FrameworkElement anchor)

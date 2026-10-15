@@ -634,11 +634,13 @@
                         <StackPanel Margin="0,8,0,0">
                             <ui:TextBlock Style="{StaticResource CaptionTextStyle}" Text="{StaticResource Loc.View.Profiles.Text.InternalKeyForThisValue}" />
                             <ui:TextBlock Margin="0,2,0,12" FontFamily="Consolas" Text="{Binding FieldId}" />
-                            <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Text.DisplayFormat}" />
-                            <ui:TextBox
-                                Margin="0,4,0,0"
-                                PlaceholderText="{StaticResource Loc.View.Profiles.PlaceholderText.ExampleYyyyMMDdOrN2}"
-                                Text="{Binding DisplayFormat, UpdateSourceTrigger=PropertyChanged}" />
+                            <StackPanel x:Name="GuidedDateDisplayFormatPanel" Visibility="{Binding IsDateTime, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Text.DisplayFormat}" />
+                                <ui:TextBox
+                                    Margin="0,4,0,0"
+                                    PlaceholderText="{StaticResource Loc.View.Profiles.PlaceholderText.ExampleDateDisplayFormat}"
+                                    Text="{Binding DisplayFormat, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
                         </StackPanel>
                     </ui:CardExpander>
                 </StackPanel>
@@ -681,7 +683,12 @@
                                         Style="{StaticResource CaptionTextStyle}"
                                         Text="{StaticResource Loc.View.Profiles.Text.ConnectResultColumnsDirectlyToRegularExpressions}"
                                         TextWrapping="Wrap" />
-            <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Text.ResultColumns}" />
+            <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <ui:TextBlock VerticalAlignment="Center" Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Text.ResultColumns}" />
+                <ui:Button x:Name="ExpertAddColumnButton" Grid.Column="1" Margin="8,0,0,0" Command="{Binding AddFieldCommand}"
+                    Content="{StaticResource Loc.View.Profiles.Content.AddColumn}" Icon="{ui:SymbolIcon Symbol=AddSquare20}" />
+            </Grid>
             </StackPanel></controls:SectionCard.Header></controls:SectionCard>
         </DataTemplate>
         <DataTemplate x:Key="ProfileEditor.Item.PathExpert.2">
@@ -692,11 +699,25 @@
             <StackPanel Width="240" Margin="0,0,16,12"><ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="Field ID *" />
             <ui:TextBox Text="{Binding FieldId, UpdateSourceTrigger=PropertyChanged}"  />
             </StackPanel>
-            <StackPanel Width="240" Margin="0,0,16,12"><ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Header.SingleGroup}" />
-            <ui:TextBox Text="{Binding GroupName, UpdateSourceTrigger=PropertyChanged}"  />
-            </StackPanel>
-            <StackPanel Width="240" Margin="0,0,16,12"><ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Header.CombinedGroupsCommaOrder}" />
-            <ui:TextBox Text="{Binding GroupNamesText, UpdateSourceTrigger=PropertyChanged}"  />
+            <StackPanel x:Name="ExpertGroupEditor" Width="240" Margin="0,0,16,12">
+                <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.Profiles.Groups.Mode.Label}" />
+                <WrapPanel Margin="0,0,0,8" ToolTip="{StaticResource Loc.Profiles.Groups.Mode.Help}">
+                    <RadioButton x:Name="ExpertSingleGroupRadio" Margin="0,0,20,0" Content="{StaticResource Loc.Profiles.Groups.Mode.Single}"
+                        IsChecked="{Binding UsesSingleCaptureGroup, Mode=OneWay}" Command="{Binding SelectSingleCaptureGroupCommand}" />
+                    <RadioButton x:Name="ExpertCombinedGroupsRadio" Content="{StaticResource Loc.Profiles.Groups.Mode.Combined}"
+                        IsChecked="{Binding UsesCombinedCaptureGroups, Mode=OneWay}" Command="{Binding SelectCombinedCaptureGroupsCommand}" />
+                </WrapPanel>
+                <StackPanel x:Name="ExpertSingleGroupInput" Visibility="{Binding UsesSingleCaptureGroup, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Header.SingleGroup}" />
+                    <ui:TextBox AutomationProperties.Name="{StaticResource Loc.View.Profiles.Header.SingleGroup}" Text="{Binding GroupName, UpdateSourceTrigger=PropertyChanged}" />
+                </StackPanel>
+                <StackPanel x:Name="ExpertCombinedGroupsInput" Visibility="{Binding UsesCombinedCaptureGroups, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <ui:TextBlock Style="{StaticResource FieldLabelStyle}" TextWrapping="Wrap" Text="{StaticResource Loc.View.Profiles.Header.CombinedGroupsCommaOrder}" />
+                    <ui:TextBox AutomationProperties.Name="{StaticResource Loc.View.Profiles.Header.CombinedGroupsCommaOrder}" Text="{Binding GroupNamesText, UpdateSourceTrigger=PropertyChanged}" />
+                </StackPanel>
+                <ui:TextBlock Margin="0,8,0,0" Style="{StaticResource CaptionTextStyle}" TextWrapping="Wrap"
+                    Text="{StaticResource Loc.Profiles.Groups.Mode.Conflict}"
+                    Visibility="{Binding HasConflictingGroupInputs, Converter={StaticResource BooleanToVisibilityConverter}}" />
             </StackPanel>
             <StackPanel MinWidth="240" Margin="0,0,16,12"><ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Header.ValueType}" />
             <ComboBox Style="{StaticResource ContentAwareComboBoxStyle}"
@@ -711,10 +732,10 @@
             <StackPanel MinWidth="240" Margin="0,0,16,12"><ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.Profiles.ColumnWidth.Label}" />
             <ContentControl Margin="4" Content="{Binding}" ContentTemplate="{StaticResource ColumnWidthChoiceTemplate}" HorizontalContentAlignment="Stretch" />
             </StackPanel>
-            <StackPanel Width="240" Margin="0,0,16,12"><ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Header.InputFormat}" />
+            <StackPanel x:Name="ExpertDateInputFormatPanel" Width="240" Margin="0,0,16,12" Visibility="{Binding IsDateTime, Converter={StaticResource BooleanToVisibilityConverter}}"><ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Header.InputFormat}" />
             <ui:TextBox Text="{Binding ParseFormat, UpdateSourceTrigger=PropertyChanged}"  />
             </StackPanel>
-            <StackPanel Width="240" Margin="0,0,16,12"><ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Text.DisplayFormat}" />
+            <StackPanel x:Name="ExpertDateDisplayFormatPanel" Width="240" Margin="0,0,16,12" Visibility="{Binding IsDateTime, Converter={StaticResource BooleanToVisibilityConverter}}"><ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Text.DisplayFormat}" />
             <ui:TextBox Text="{Binding DisplayFormat, UpdateSourceTrigger=PropertyChanged}"  />
             </StackPanel>
             <StackPanel Width="240" Margin="0,0,16,12"><ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Header.OrderDelete}" />
@@ -749,12 +770,6 @@
         </DataTemplate>
         <DataTemplate x:Key="ProfileEditor.Item.PathExpert.3">
             <controls:SectionCard Style="{StaticResource EditorSectionStyle}" IsEnabled="{Binding IsEditorReady}"><controls:SectionCard.Header><StackPanel>
-            <ui:Button
-                                        Margin="0,0,0,20"
-                                        HorizontalAlignment="Left"
-                                        Command="{Binding AddFieldCommand}"
-                                        Content="{StaticResource Loc.View.Profiles.Content.AddColumn}"
-                                        Icon="{ui:SymbolIcon Symbol=AddSquare20}" />
             <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Text.RegularExpressionRules}" />
             </StackPanel></controls:SectionCard.Header></controls:SectionCard>
         </DataTemplate>
@@ -1479,9 +1494,9 @@
             <controls:ProfileEditorList Loaded="OnEditorStepContentLoaded" IsEnabled="{Binding IsEditorReady}"
                 Style="{StaticResource ProfileEditorVirtualListStyle}">
                 <controls:ProfileEditorSection Template="{StaticResource ProfileEditor.ValidationIssues}" Id="ValidationIssues" />
-                <controls:ProfileEditorSection Template="{StaticResource ProfileEditor.Item.PathExpert.1}" />
+                <controls:ProfileEditorSection Template="{StaticResource ProfileEditor.Item.PathExpert.1}" Id="ExpertColumns" />
                 <controls:ProfileEditorSection Template="{StaticResource ProfileEditor.Item.PathExpert.2}" IsCollection="True" ItemsSource="{Binding DraftFields}" />
-                <controls:ProfileEditorSection Template="{StaticResource ProfileEditor.Item.PathExpert.3}" />
+                <controls:ProfileEditorSection Template="{StaticResource ProfileEditor.Item.PathExpert.3}" Id="ExpertRules" />
                 <controls:ProfileEditorSection Template="{StaticResource ProfileEditor.Item.PathExpert.4}" IsCollection="True" ItemsSource="{Binding DraftRules}" />
                 <controls:ProfileEditorSection Template="{StaticResource ProfileEditor.Item.PathExpert.5}" />
             </controls:ProfileEditorList>

@@ -139,7 +139,7 @@ public sealed class ProfileTextFileFieldManifest
     public string? FileNamePattern { get; set; }
 
     [JsonConverter(typeof(JsonStringEnumConverter<ProfileRegexMatchMode>))]
-    public ProfileRegexMatchMode MatchMode { get; set; } = ProfileRegexMatchMode.Full;
+    public ProfileRegexMatchMode MatchMode { get; set; } = ProfileRegexMatchMode.Partial;
 
     public bool IgnoreCase { get; set; } = true;
 
@@ -173,7 +173,7 @@ public sealed class ProfileDirectoryNameExclusionRuleManifest
     public string? Pattern { get; set; }
 
     [JsonConverter(typeof(JsonStringEnumConverter<ProfileRegexMatchMode>))]
-    public ProfileRegexMatchMode MatchMode { get; set; } = ProfileRegexMatchMode.Full;
+    public ProfileRegexMatchMode MatchMode { get; set; } = ProfileRegexMatchMode.Partial;
 
     public bool IgnoreCase { get; set; }
 
@@ -225,7 +225,7 @@ public sealed class ProfileRegexRuleManifest
     public string? Pattern { get; set; }
 
     [JsonConverter(typeof(JsonStringEnumConverter<ProfileRegexMatchMode>))]
-    public ProfileRegexMatchMode MatchMode { get; set; } = ProfileRegexMatchMode.Full;
+    public ProfileRegexMatchMode MatchMode { get; set; } = ProfileRegexMatchMode.Partial;
 
     public bool IgnoreCase { get; set; }
 

@@ -64,7 +64,7 @@ internal static class GridSizingRegressionChecks
         Flush();
         Assert.InRange(grid.Columns[3].Width.Value, 72, 180);
         VerifyHiddenColumnsAndRestore(grid, layout);
-        VerifyAdaptiveIdentityFreezing(grid, layout, presentation);
+        VerifyOnlyUtilityColumnsStayFrozen(grid, layout, presentation);
         }
         finally { host.Close(); }
     }
@@ -132,7 +132,7 @@ internal static class GridSizingRegressionChecks
         finally { grid.IsEnabled = true; menu.IsOpen = false; }
     }
 
-    private static void VerifyAdaptiveIdentityFreezing(DataGrid grid, MemoryLayoutStore layout, MemoryPresentationStore presentation)
+    private static void VerifyOnlyUtilityColumnsStayFrozen(DataGrid grid, MemoryLayoutStore layout, MemoryPresentationStore presentation)
     {
         presentation.Change("f0", ColumnWidthPreset.Wide);
         Flush();
@@ -145,13 +145,53 @@ internal static class GridSizingRegressionChecks
             grid.Width = width;
             grid.Measure(new Size(width, 400)); grid.Arrange(new Rect(0, 0, width, 400)); Flush();
             Assert.Equal(530, grid.Columns[2].Width.Value);
-            Assert.Equal(width < 900 ? 2 : 3, grid.FrozenColumnCount);
+            Assert.Equal(2, grid.FrozenColumnCount);
             Assert.Equal(64, grid.Columns[0].Width.Value);
             Assert.Equal(48, grid.Columns[1].Width.Value);
             var pinnedWidth = grid.Columns.OrderBy(column => column.DisplayIndex)
                 .Take(grid.FrozenColumnCount).Sum(column => column.Width.Value);
             Assert.True(grid.ActualWidth - pinnedWidth >= 160,
-                "Freezing the identifying field must leave usable horizontal space for the remaining columns.");
+                "Only utility columns may occupy the frozen horizontal viewport.");
+            VerifyFirstProfileFieldScrolls(grid);
+        }
+    }
+
+    private static void VerifyFirstProfileFieldScrolls(DataGrid grid)
+    {
+        grid.UpdateLayout();
+        var scroll = Assert.Single(FindVisualChildren<ScrollViewer>(grid), viewer => viewer.Name == "DG_ScrollViewer");
+        scroll.ScrollToHorizontalOffset(0);
+        Flush();
+        grid.UpdateLayout();
+        var row = Assert.IsType<DataGridRow>(grid.ItemContainerGenerator.ContainerFromIndex(0));
+        var cells = FindVisualChildren<DataGridCell>(row).ToArray();
+        var selection = Assert.Single(cells, cell => cell.Column == grid.Columns[0]);
+        var browser = Assert.Single(cells, cell => cell.Column == grid.Columns[1]);
+        var firstField = Assert.Single(cells, cell => cell.Column == grid.Columns[2]);
+        var selectionStart = selection.TranslatePoint(new Point(), grid).X;
+        var browserStart = browser.TranslatePoint(new Point(), grid).X;
+        var fieldStart = firstField.TranslatePoint(new Point(), grid).X;
+
+        Assert.True(scroll.ScrollableWidth > 0);
+        scroll.ScrollToHorizontalOffset(Math.Min(160, scroll.ScrollableWidth));
+        Flush();
+        grid.UpdateLayout();
+        Assert.True(scroll.HorizontalOffset > 0);
+        Assert.InRange(Math.Abs(selection.TranslatePoint(new Point(), grid).X - selectionStart), 0, 0.1);
+        Assert.InRange(Math.Abs(browser.TranslatePoint(new Point(), grid).X - browserStart), 0, 0.1);
+        Assert.True(firstField.TranslatePoint(new Point(), grid).X < fieldStart - 1,
+            "Horizontal scrolling must move the first profile field, not start at the second data column.");
+        scroll.ScrollToHorizontalOffset(0);
+        Flush();
+    }
+
+    private static IEnumerable<T> FindVisualChildren<T>(DependencyObject parent) where T : DependencyObject
+    {
+        for (var index = 0; index < System.Windows.Media.VisualTreeHelper.GetChildrenCount(parent); index++)
+        {
+            var child = System.Windows.Media.VisualTreeHelper.GetChild(parent, index);
+            if (child is T match) yield return match;
+            foreach (var descendant in FindVisualChildren<T>(child)) yield return descendant;
         }
     }
 

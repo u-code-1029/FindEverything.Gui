@@ -12,6 +12,56 @@ namespace FindEverything.Desktop.Tests;
 
 public sealed class ProfilesViewModelDirtyStateTests
 {
+    [Fact]
+    public void New_profile_and_added_regex_rules_use_partial_matching()
+    {
+        using var vm = CreateFreshDraft(DraftLeaveDecision.Discard);
+        Assert.Equal(ProfileRegexMatchMode.Partial, Assert.Single(vm.DraftRules).MatchMode);
+        var build = typeof(ProfilesViewModel).GetMethod("BuildManifest",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        Assert.Equal(ProfileRegexMatchMode.Partial,
+            Assert.Single(((ProfileManifest)build.Invoke(vm, null)!).Rules!).MatchMode);
+        vm.UseExpertModeCommand.Execute(null);
+        Assert.Equal(ProfileRegexMatchMode.Partial, Assert.Single(vm.DraftRules).MatchMode);
+        vm.AddRuleCommand.Execute(null);
+        vm.AddDirectoryExclusionRuleCommand.Execute(null);
+        vm.AddTextFileFieldCommand.Execute(null);
+        Assert.All(vm.DraftRules, rule => Assert.Equal(ProfileRegexMatchMode.Partial, rule.MatchMode));
+        Assert.Equal(ProfileRegexMatchMode.Partial, Assert.Single(vm.DraftExcludedDirectoryNameRules).MatchMode);
+        Assert.Equal(ProfileRegexMatchMode.Partial, Assert.Single(vm.DraftTextFileFields).MatchMode);
+    }
+
+    [Theory]
+    [InlineData(ProfileRegexMatchMode.Full)]
+    [InlineData(ProfileRegexMatchMode.Partial)]
+    public async Task Guided_editor_preserves_explicit_matching_mode_when_loading_and_switching_modes(ProfileRegexMatchMode matchMode)
+    {
+        var field = new ProfileFieldManifest { FieldId = "name", GroupName = "name", Header = "Name" };
+        var compiler = new ProfilePathTemplateCompiler();
+        const string template = @"C:\{name@name}";
+        var manifest = new ProfileManifest
+        {
+            Id = "saved-profile", DisplayName = "Saved profile", Fields = [field],
+            Rules = [new() { Id = "default", PathTemplate = template, Pattern = compiler.Compile(template, [field]).Pattern,
+                MatchMode = matchMode, IgnoreCase = true }],
+        };
+        using var vm = new ProfilesViewModel(new StubProfileCatalog(ProfileCatalogSnapshot.Empty),
+            new StubProfileAuthoringService(manifest), compiler, new FixedPathCanonicalizer(@"C:\Example"),
+            null!, null!, null!, null!, null!, new TestAppLocalizer(), NullLogger<ProfilesViewModel>.Instance)
+        { SelectedEditableProfile = new("saved-profile", "Saved profile", "unused") };
+        await vm.LoadDraftCommand.ExecuteAsync(null);
+        Assert.True(vm.IsGuidedMode);
+        var build = typeof(ProfilesViewModel).GetMethod("BuildManifest",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        Assert.Equal(matchMode, Assert.Single(((ProfileManifest)build.Invoke(vm, null)!).Rules!).MatchMode);
+        vm.UseExpertModeCommand.Execute(null);
+        Assert.Equal(matchMode, Assert.Single(vm.DraftRules).MatchMode);
+        Assert.True(vm.CanUseGuidedMode);
+        vm.UseGuidedModeCommand.Execute(null);
+        Assert.True(vm.IsGuidedMode);
+        Assert.Equal(matchMode, Assert.Single(((ProfileManifest)build.Invoke(vm, null)!).Rules!).MatchMode);
+    }
+
     [Theory]
     [InlineData("sample", false)]
     [InlineData("draft", false)]

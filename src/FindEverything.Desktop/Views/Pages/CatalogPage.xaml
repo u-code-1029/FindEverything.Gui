@@ -97,6 +97,10 @@
                     </ui:TextBlock>
                 </Grid>
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <ui:TextBlock x:Name="CatalogScanElapsedCaption" Margin="0,0,12,0" VerticalAlignment="Center"
+                        Style="{StaticResource CaptionTextStyle}" TextWrapping="NoWrap"
+                        Text="{Binding LastCompletedScanElapsedText}" ToolTip="{Binding LastCompletedScanElapsedText}"
+                        Visibility="{Binding HasCompletedScanElapsed, Converter={StaticResource BooleanToVisibilityConverter}}" />
                     <ToggleButton x:Name="SelectedOnlyButton" Style="{StaticResource SelectedOnlyToggleStyle}" />
                     <ui:Button x:Name="SelectFromDataButton" Height="28" Margin="8,0,4,0" Padding="8,4" Appearance="Transparent"
                         Command="{Binding OpenSelectionImportCommand}" Icon="{ui:SymbolIcon Symbol=ClipboardTaskListLtr20}" AutomationProperties.Name="{StaticResource Loc.SelectionImport.Open}"

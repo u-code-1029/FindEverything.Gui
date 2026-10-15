@@ -22,7 +22,8 @@ public partial class CatalogViewModel
     private void EndSelectionPreservation() => IsPreservingSelection = --_selectionPreparationCount > 0;
 
     public bool? CurrentResultsSelectionState => _currentSelectionCount is null ? null
-        : _currentSelectionCount == 0 ? false : _hasExactResultCount && _currentSelectionCount == (UsesQuerySelection ? _matchingCount : Items.Count) ? true : null;
+        : _currentSelectionCount == 0 ? false : (!UsesQuerySelection || _hasExactResultCount)
+            && _currentSelectionCount == (UsesQuerySelection ? _matchingCount : Items.Count) ? true : null;
     public string SelectionSummary => _currentSelectionCount.HasValue
         ? F("Loc.Ux.Results.SelectionSummary", "총 {0:N0}개 선택 · 현재 결과 {1:N0}개", SelectedCount, _currentSelectionCount.Value)
         : _isCurrentSelectionCountPending

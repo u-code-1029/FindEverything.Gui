@@ -70,7 +70,8 @@ public partial class CatalogViewModel
     public bool UsesQuerySelection => _projectionQuery is not null;
     public string ResultSourceDescription => _displayedProjectionSnapshot is { } snapshot
         ? $"{snapshot.Scope.RootPath} · {snapshot.Scope.DatabasePath} · {snapshot.Summary.UpdatedUtc.ToLocalTime():g}"
-        : string.Empty;
+            + (HasCompletedScanElapsed ? " · " + LastCompletedScanElapsedText : string.Empty)
+        : LastCompletedScanElapsedText;
 
     private CatalogProjectionScope CreateProjectionScope(WorkspaceSelection workspace, Guid? scanId, ILoadedProfile profile)
     {
@@ -102,6 +103,7 @@ public partial class CatalogViewModel
         _activeOperationMode = mode;
         IsBusy = true;
         IsScanning = mode == CatalogOperationMode.Scan;
+        var startedTimestamp = System.Diagnostics.Stopwatch.GetTimestamp();
         ProgressMessage = F("Loc.Catalog.Operation.Started", "{0} 작업을 시작했습니다.", name);
         SetStatus(name, ProgressMessage, InfoBarSeverity.Informational);
         CatalogProjectionSnapshot? published = null;
@@ -240,7 +242,9 @@ public partial class CatalogViewModel
                     result.InvalidCount, result.NoMatchCount, result.ExcludedDirectoryCount,
                     result.HasPendingScopes || result.ScanReport?.Errors.Count > 0 ||
                     result.DirectoryExclusionIssueCount > 0,
-                    result.ScanReport?.Progress.Elapsed, DateTimeOffset.UtcNow) { FieldIssueRowCount = result.FieldIssueRowCount }, finalScope);
+                    result.ScanReport?.Progress.Elapsed ?? result.DiscoveryReport?.Progress.Elapsed
+                        ?? (mode == CatalogOperationMode.Scan ? System.Diagnostics.Stopwatch.GetElapsedTime(startedTimestamp) : null),
+                    DateTimeOffset.UtcNow) { FieldIssueRowCount = result.FieldIssueRowCount }, finalScope);
             }
             try
             {
@@ -411,6 +415,7 @@ public partial class CatalogViewModel
         _queryCancellation = source;
         var version = Interlocked.Increment(ref _queryVersion);
         IsSearchPending = true;
+        EnsureDefaultResultSort(snapshot.Fields);
         var definition = _queryDefinition with { Keyword = FilterText, ShowOriginalValues = false };
         _queryDefinition = definition;
         var selectedOnly = IsShowingSelectedOnly;
@@ -641,7 +646,6 @@ public partial class CatalogViewModel
 
     public void ApplySort(string fieldId, EntrySortDirection direction)
     {
-        if (_projectionSnapshot is null) return;
         if (fieldId.StartsWith("DisplayValues[", StringComparison.Ordinal))
             fieldId = fieldId["DisplayValues[".Length..].TrimEnd(']');
         if (fieldId.StartsWith("UserInputValues[", StringComparison.Ordinal))

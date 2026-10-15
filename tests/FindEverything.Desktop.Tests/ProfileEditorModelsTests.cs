@@ -7,6 +7,88 @@ namespace FindEverything.Desktop.Tests;
 public sealed class ProfileEditorModelsTests
 {
     [Fact]
+    public void Capture_mode_switches_clear_the_unused_input_and_stale_assignments()
+    {
+        var field = new ProfileFieldDraftViewModel { FieldId = "code", GroupName = "single" };
+        field.SetGuidedAssignment(GuidedSourcePart.Value, new(0, 0, 3, "ABC", "ABC", "ABC", true));
+        Assert.True(field.UsesSingleCaptureGroup);
+        field.SelectCombinedCaptureGroupsCommand.Execute(null);
+        Assert.True(field.UsesCombinedCaptureGroups);
+        Assert.Empty(field.GroupName);
+        Assert.Empty(field.GuidedAssignments);
+        field.GroupNamesText = "prefix, number";
+        Assert.Equal(["prefix", "number"], field.EffectiveGroupNames);
+
+        field.SelectSingleCaptureGroupCommand.Execute(null);
+        Assert.True(field.UsesSingleCaptureGroup);
+        Assert.Empty(field.GroupNamesText);
+        Assert.Empty(field.GroupName);
+        field.GroupName = "replacement";
+        var saved = ProfilesViewModel.BuildFieldManifest(field, 0);
+        Assert.Equal("replacement", saved.GroupName);
+        Assert.Null(saved.GroupNames);
+    }
+
+    [Fact]
+    public void Loaded_group_modes_preserve_names_order_and_invalid_conflicts_until_an_explicit_choice()
+    {
+        var single = new ProfileFieldDraftViewModel(new() { FieldId = "code", GroupName = "alias" });
+        Assert.True(single.UsesSingleCaptureGroup);
+        Assert.Equal("alias", single.GroupName);
+        var combined = new ProfileFieldDraftViewModel(new() { FieldId = "code", GroupNames = ["third", "first", "second"] });
+        Assert.True(combined.UsesCombinedCaptureGroups);
+        Assert.Equal(["third", "first", "second"], combined.EffectiveGroupNames);
+        Assert.Equal(["third", "first", "second"], ProfilesViewModel.BuildFieldManifest(combined, 0).GroupNames);
+        var conflict = new ProfileFieldDraftViewModel(new()
+        { FieldId = "code", GroupName = "legacy", GroupNames = ["prefix", "number"] });
+        Assert.True(conflict.HasConflictingGroupInputs);
+        Assert.Equal("legacy", conflict.GroupName);
+        conflict.SelectCombinedCaptureGroupsCommand.Execute(null);
+        Assert.False(conflict.HasConflictingGroupInputs);
+        Assert.Empty(conflict.GroupName);
+        Assert.Equal(["prefix", "number"], conflict.EffectiveGroupNames);
+    }
+
+    [Fact]
+    public void Guided_date_preset_transitions_keep_all_new_parts_and_only_reset_the_old_arrangement()
+    {
+        var field = new ProfileFieldDraftViewModel { FieldId = "takenOn", Kind = ProfileFieldValueKind.DateTime };
+        var year = new GuidedPathChoiceViewModel(0, 0, 4, "2026", "2026", "2026", true);
+        var monthDay = new GuidedPathChoiceViewModel(1, 5, 4, "0521", "0521", "0521", true);
+        field.EnsureDateDefaults();
+        field.SetGuidedAssignment(GuidedSourcePart.Value, year);
+        Assert.True(field.UsesSingleCaptureGroup);
+        field.DateSourcePreset = GuidedDateSourcePreset.YearAndMonthDay;
+        Assert.True(field.UsesCombinedCaptureGroups);
+        Assert.Empty(field.GuidedAssignments);
+        field.SetGuidedAssignment(GuidedSourcePart.Year, year);
+        field.SetGuidedAssignment(GuidedSourcePart.MonthDay, monthDay);
+        Assert.Equal(2, field.GuidedAssignments.Count);
+        Assert.Equal(["takenOnYear", "takenOnMonthDay"], field.EffectiveGroupNames);
+        field.DateSourcePreset = GuidedDateSourcePreset.SingleValue;
+        Assert.True(field.UsesSingleCaptureGroup);
+        Assert.Empty(field.GroupNamesText);
+        Assert.Empty(field.GuidedAssignments);
+        field.SetGuidedAssignment(GuidedSourcePart.Value, year);
+        Assert.Single(field.GuidedAssignments);
+        field.DateSourcePreset = GuidedDateSourcePreset.YearAndMonthDay;
+        field.SetGuidedAssignment(GuidedSourcePart.Year, year);
+        field.SetGuidedAssignment(GuidedSourcePart.MonthDay, monthDay);
+        Assert.Equal(2, field.GuidedAssignments.Count);
+        Assert.True(field.UsesCombinedCaptureGroups);
+    }
+
+    [Fact]
+    public void A_loaded_one_element_group_list_keeps_its_capture_name_when_used_in_guided_mode()
+    {
+        var field = new ProfileFieldDraftViewModel(new() { FieldId = "field", GroupNames = ["originalGroup"] });
+        Assert.True(field.UsesCombinedCaptureGroups);
+        field.SetGuidedAssignment(GuidedSourcePart.Value, new(0, 0, 1, "A", "A", "A", true));
+        Assert.Equal(["originalGroup"], field.EffectiveGroupNames);
+        Assert.True(field.UsesSingleCaptureGroup);
+        Assert.Single(field.GuidedAssignments);
+    }
+    [Fact]
     public void Regex_timeout_draft_preserves_invalid_text_until_it_is_corrected()
     {
         var row = new ProfileRuleDraftViewModel { TimeoutMilliseconds = 250 };

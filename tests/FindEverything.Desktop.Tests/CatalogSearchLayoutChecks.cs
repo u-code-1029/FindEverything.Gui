@@ -77,6 +77,11 @@ internal static class CatalogSearchLayoutChecks
                     Assert.Equal(resultsTop, Named<Grid>(page, "CatalogResultsWorkspace").TranslatePoint(new Point(), page).Y);
                     Assert.Equal(searchWidth, search.ActualWidth);
                     Assert.Equal(32, Named<Grid>(page, "CatalogStatusRow").ActualHeight);
+                    var elapsed = Named<Ui.TextBlock>(page, "CatalogScanElapsedCaption");
+                    Assert.Equal(fixture.LastCompletedScanElapsedText, elapsed.Text);
+                    Assert.Equal(TextWrapping.NoWrap, elapsed.TextWrapping);
+                    AssertInside(elapsed, page);
+                    Assert.Equal("LastCompletedScanElapsedText", BindingOperations.GetBinding(elapsed, TextBlock.TextProperty)?.Path.Path);
                     foreach (var name in new[] { "CatalogProgressCaption", "CatalogStateCaption" })
                     {
                         var caption = Named<Ui.TextBlock>(page, name);
@@ -177,6 +182,8 @@ internal static class CatalogSearchLayoutChecks
         public string SelectedOnlyDescription => "Showing every checked item, including checks outside the current search. " + new string('W', 200);
         public string ResultProvenance => "Saved results · 2026-10-16 14:32";
         public string ResultSourceDescription => "A complete, accessible source description.";
+        public bool HasCompletedScanElapsed => true;
+        public string LastCompletedScanElapsedText => "Scan duration 12:34:56";
         public object[] Profiles { get; } = [new { Id = "qa-long-profile", DisplayName = "An intentionally long structured profile name for narrow-window layout verification" }];
         public object? SelectedProfile { get; set; }
         public object WorkspaceTransfer { get; } = new

@@ -51,6 +51,12 @@ public enum ProfileEditorMode
     Expert,
 }
 
+public enum ProfileCaptureGroupMode
+{
+    Single,
+    Combined,
+}
+
 public enum GuidedDateSourcePreset
 {
     SingleValue,
@@ -174,6 +180,7 @@ public partial class ProfileFieldDraftViewModel : ObservableObject
     ];
 
     private bool _isInitializing;
+    private bool _isUpdatingCaptureGroupMode;
 
     [ObservableProperty]
     private string _header = string.Empty;
@@ -186,6 +193,9 @@ public partial class ProfileFieldDraftViewModel : ObservableObject
 
     [ObservableProperty]
     private string _groupNamesText = string.Empty;
+
+    [ObservableProperty]
+    private ProfileCaptureGroupMode _captureGroupMode;
 
     [ObservableProperty]
     private ProfileFieldValueKind _kind = ProfileFieldValueKind.String;
@@ -228,6 +238,13 @@ public partial class ProfileFieldDraftViewModel : ObservableObject
             Header);
 
     public bool IsDateTime => Kind == ProfileFieldValueKind.DateTime;
+
+    public bool UsesSingleCaptureGroup => CaptureGroupMode == ProfileCaptureGroupMode.Single;
+
+    public bool UsesCombinedCaptureGroups => CaptureGroupMode == ProfileCaptureGroupMode.Combined;
+
+    public bool HasConflictingGroupInputs => !string.IsNullOrWhiteSpace(GroupName)
+        && ParseGroupNames(GroupNamesText).Count > 0;
 
     public bool UsesSingleDateSource =>
         !IsDateTime || DateSourcePreset == GuidedDateSourcePreset.SingleValue;
@@ -371,6 +388,8 @@ public partial class ProfileFieldDraftViewModel : ObservableObject
             FieldId = field.FieldId ?? string.Empty;
             GroupName = field.GroupName ?? string.Empty;
             GroupNamesText = string.Join(", ", field.GroupNames ?? []);
+            CaptureGroupMode = ParseGroupNames(GroupNamesText).Count > 0
+                ? ProfileCaptureGroupMode.Combined : ProfileCaptureGroupMode.Single;
             Kind = field.Kind;
             Required = field.Required;
             ParseFormat = field.ParseFormat ?? string.Empty;
@@ -444,14 +463,57 @@ public partial class ProfileFieldDraftViewModel : ObservableObject
 
     partial void OnGroupNameChanged(string value)
     {
+        if (!_isInitializing && !_isUpdatingCaptureGroupMode && !string.IsNullOrWhiteSpace(value))
+            CaptureGroupMode = ProfileCaptureGroupMode.Single;
         NotifySourceStateChanged();
         NotifyValueMappingDescriptionChanged();
+        OnPropertyChanged(nameof(HasConflictingGroupInputs));
     }
 
     partial void OnGroupNamesTextChanged(string value)
     {
+        if (!_isInitializing && !_isUpdatingCaptureGroupMode && !string.IsNullOrWhiteSpace(value))
+            CaptureGroupMode = ProfileCaptureGroupMode.Combined;
         NotifySourceStateChanged();
         NotifyValueMappingDescriptionChanged();
+        OnPropertyChanged(nameof(HasConflictingGroupInputs));
+    }
+
+    partial void OnCaptureGroupModeChanged(ProfileCaptureGroupMode value)
+    {
+        if (!_isInitializing)
+        {
+            ClearInactiveGroupInput();
+            GuidedAssignments.Clear();
+            NotifySourceStateChanged();
+        }
+        OnPropertyChanged(nameof(UsesSingleCaptureGroup));
+        OnPropertyChanged(nameof(UsesCombinedCaptureGroups));
+    }
+
+    [RelayCommand]
+    private void SelectSingleCaptureGroup() => SelectCaptureGroupMode(ProfileCaptureGroupMode.Single);
+
+    [RelayCommand]
+    private void SelectCombinedCaptureGroups() => SelectCaptureGroupMode(ProfileCaptureGroupMode.Combined);
+
+    private void SelectCaptureGroupMode(ProfileCaptureGroupMode mode)
+    {
+        CaptureGroupMode = mode;
+        // An invalid imported draft can contain both sources. Selecting its
+        // already-active mode is still an explicit choice to clear the other.
+        ClearInactiveGroupInput();
+    }
+
+    private void ClearInactiveGroupInput()
+    {
+        _isUpdatingCaptureGroupMode = true;
+        try
+        {
+            if (UsesSingleCaptureGroup) GroupNamesText = string.Empty;
+            else GroupName = string.Empty;
+        }
+        finally { _isUpdatingCaptureGroupMode = false; }
     }
 
     [RelayCommand(CanExecute = nameof(CanAddValueMapping))]
@@ -718,8 +780,9 @@ public partial class ProfileFieldDraftViewModel : ObservableObject
     {
         if (!IsDateTime || DateSourcePreset == GuidedDateSourcePreset.SingleValue)
         {
+            var existingSingleGroups = ParseGroupNames(GroupNamesText);
             GroupName = string.IsNullOrWhiteSpace(GroupName)
-                ? CreateGroupName(FieldId, null)
+                ? existingSingleGroups.Count == 1 ? existingSingleGroups[0] : CreateGroupName(FieldId, null)
                 : GroupName.Trim();
             GroupNamesText = string.Empty;
             return;
@@ -916,7 +979,7 @@ public partial class ProfileRuleDraftViewModel : ObservableObject
     private string _id = string.Empty;
 
     [ObservableProperty]
-    private ProfileRegexMatchMode _matchMode = ProfileRegexMatchMode.Full;
+    private ProfileRegexMatchMode _matchMode = ProfileRegexMatchMode.Partial;
 
     [ObservableProperty]
     private bool _ignoreCase = true;
@@ -988,7 +1051,7 @@ public partial class ProfileDirectoryNameExclusionRuleDraftViewModel : Observabl
     private string _pattern = string.Empty;
 
     [ObservableProperty]
-    private ProfileRegexMatchMode _matchMode = ProfileRegexMatchMode.Full;
+    private ProfileRegexMatchMode _matchMode = ProfileRegexMatchMode.Partial;
 
     [ObservableProperty]
     private bool _ignoreCase = true;
@@ -1061,7 +1124,7 @@ public partial class ProfileTextFileFieldDraftViewModel : ObservableObject
     private string _fileNamePattern = string.Empty;
 
     [ObservableProperty]
-    private ProfileRegexMatchMode _matchMode = ProfileRegexMatchMode.Full;
+    private ProfileRegexMatchMode _matchMode = ProfileRegexMatchMode.Partial;
 
     [ObservableProperty]
     private bool _ignoreCase = true;

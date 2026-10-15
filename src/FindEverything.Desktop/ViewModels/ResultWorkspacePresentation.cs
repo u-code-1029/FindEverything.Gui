@@ -69,6 +69,7 @@ public partial class CatalogViewModel
         }
         if (e.PropertyName is nameof(IsBusy) or nameof(IsSearchPending) or nameof(IsPreservingSelection))
             base.OnPropertyChanged(new PropertyChangedEventArgs(nameof(ShowCancelAction)));
+        if (e.PropertyName is nameof(ResultSourceDescription)) NotifyCompletedScanElapsed();
         if (e.PropertyName is nameof(ResultSourceDescription) or nameof(HasLoadedItems) or nameof(IsReadOnlyDataSource))
             foreach (var change in SourcePresentationChanges) base.OnPropertyChanged(change);
         if (e.PropertyName is nameof(IsScanning) or nameof(IsShowingSelectedOnly)) base.OnPropertyChanged(CanTypeSearchChanged);

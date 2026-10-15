@@ -204,6 +204,7 @@ public sealed class DesktopCompositionSmokeTests
             LiveFileUiChecks.Verify();
             SelectionImportUiChecks.Verify();
             ProfilesValidationUiChecks.Verify((visual, name) => SaveQaImage(visual, name));
+            ProfileColumnEditorUiChecks.Verify((visual, name) => SaveQaImage(visual, name));
             UiRenderingLifetimeChecks.Verify();
             ReadOnlyCellTemplateChecks.Verify();
             WorkspacePerformanceChecks.Verify(provider);
@@ -1398,7 +1399,7 @@ public sealed class DesktopCompositionSmokeTests
 
             var header = Assert.IsType<System.Windows.Controls.CheckBox>(grid.Columns[0].Header);
             Assert.Same(viewModel.ToggleCurrentResultsSelectionCommand, header.Command);
-            header.Command!.Execute(null);
+            CatalogHeaderSelectionUiChecks.Verify(grid, viewModel, () => PumpLayout(host, page));
             Assert.Equal(1200, viewModel.SelectedCount);
             Assert.True(first.IsSelected);
             Assert.True(second.IsSelected);
@@ -1765,12 +1766,17 @@ public sealed class DesktopCompositionSmokeTests
         PumpDispatcherUntil(window.Dispatcher, () => viewModel.PendingPreview.IsCompleted, TimeSpan.FromSeconds(5));
         Assert.True(viewModel.CanUseGuidedMode);
 
+        var originalDateGroups = dateField.GroupNamesText;
         dateField.GroupName = "legacyDate";
+        Assert.True(dateField.UsesSingleCaptureGroup);
+        Assert.Empty(dateField.GroupNamesText);
         var validate = viewModel.ValidateDraftCommand.ExecuteAsync(null);
         PumpDispatcherUntil(window.Dispatcher, () => validate.IsCompleted, TimeSpan.FromSeconds(5));
         validate.GetAwaiter().GetResult();
-        Assert.Contains("동시에", viewModel.EditorStatusMessage);
-        dateField.GroupName = string.Empty;
+        Assert.True(viewModel.HasValidationIssues);
+        dateField.GroupNamesText = originalDateGroups;
+        Assert.True(dateField.UsesCombinedCaptureGroups);
+        Assert.Empty(dateField.GroupName);
         PumpDispatcherUntil(window.Dispatcher, () => viewModel.PendingPreview.IsCompleted, TimeSpan.FromSeconds(5));
         Assert.True(viewModel.CanUseGuidedMode);
 
@@ -1798,7 +1804,7 @@ public sealed class DesktopCompositionSmokeTests
         viewModel.AddDirectoryExclusionRuleCommand.Execute(null);
         var exclusion = Assert.Single(viewModel.DraftExcludedDirectoryNameRules);
         exclusion.Pattern = @"(?<excludedLeaf>0521_Project-A)";
-        Assert.Equal(ProfileRegexMatchMode.Full, exclusion.MatchMode);
+        Assert.Equal(ProfileRegexMatchMode.Partial, exclusion.MatchMode);
     }
 
     private static void VerifyProfilePlaygroundLayout(
@@ -2339,7 +2345,7 @@ public sealed class DesktopCompositionSmokeTests
             Assert.Equal(64, selectionColumn.Width.Value);
             Assert.Equal(64, selectionColumn.MinWidth);
             Assert.Equal(64, selectionColumn.MaxWidth);
-            Assert.Equal(3, grid.FrozenColumnCount);
+            Assert.Equal(2, grid.FrozenColumnCount);
             var folderColumn = grid.Columns[1];
             var folderHeader = Assert.IsType<Wpf.Ui.Controls.SymbolIcon>(folderColumn.Header);
             Assert.Equal("Live folder contents", folderHeader.ToolTip);

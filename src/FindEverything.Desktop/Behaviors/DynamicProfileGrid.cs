@@ -182,9 +182,9 @@ public static partial class DynamicProfileGrid
         PrepareFilterHeader(dataGrid, pathColumn);
         dataGrid.Columns.Add(pathColumn);
 
-        // Keep the leading identifying field alongside the selectors while
-        // horizontally exploring the remaining structured columns.
-        dataGrid.FrozenColumnCount = Math.Min(SelectionColumnOffset + 1, dataGrid.Columns.Count);
+        // Only selection and folder-navigation controls stay pinned. Every
+        // profile field, including the first identifying field, must scroll.
+        UpdateFrozenColumns(dataGrid);
 
         ApplyLayout(dataGrid);
         ScheduleSizing(dataGrid);
@@ -391,7 +391,10 @@ public static partial class DynamicProfileGrid
                 "항목 선택");
             var selectAll = new System.Windows.Controls.CheckBox
             {
-                IsThreeState = true, Width = 28, Height = 28, Padding = new Thickness(0),
+                Name = "CatalogSelectAllCheckBox",
+                // A partial selection may be displayed as indeterminate, but
+                // pointer/keyboard gestures only mean select-all or clear-all.
+                IsThreeState = false, Width = 28, Height = 28, Padding = new Thickness(0),
                 ToolTip = L(localizer, "Loc.Ux.Results.SelectCurrent", "현재 검색 결과 전체를 선택하거나 해제합니다. 다른 검색에서 체크한 항목은 유지됩니다."),
             };
             selectAll.SetBinding(System.Windows.Controls.Primitives.ToggleButton.IsCheckedProperty,

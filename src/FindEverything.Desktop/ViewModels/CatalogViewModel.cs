@@ -354,6 +354,7 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
         ReleaseProjectionQuery();
         _projectionSnapshot = null;
         _displayedProjectionSnapshot = null;
+        ResetResultPresentation();
         // Column identifiers belong to a single profile. Carrying the previous
         // profile's sort into this scope can make its first query invalid.
         _queryDefinition = new() { TextPreviewCharacters = 2048 };
@@ -1551,6 +1552,7 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
         {
             Fields = fields;
             HasValueMappings = Fields.Any(static field => field.HasValueMappings);
+            ApplyLiveResultSort(Items);
         }
         if (!ReferenceEquals(_activeResultSession, resultSession)
             || !ReferenceEquals(_loadedItems, resultSession.Items))
@@ -1575,6 +1577,11 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
         }
 
         _loadedItems = resultSession.Items;
+        _completedLegacyScanElapsed = result.ScanReport?.Progress.Elapsed
+            ?? result.DiscoveryReport?.Progress.Elapsed
+            ?? (mode == CatalogOperationMode.Scan ? System.Diagnostics.Stopwatch.GetElapsedTime(resultSession.StartedTimestamp) : null);
+        NotifyCompletedScanElapsed();
+        OnPropertyChanged(nameof(ResultSourceDescription));
         HasLoadedItems = _loadedItems.Count > 0;
         ApplyFilter(selectedPath);
         ProgressMessage = F(
@@ -1741,6 +1748,7 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
         {
             Filter = value => value is CatalogItemViewModel item && MatchesLiveItem(item),
         };
+        ApplyLiveResultSort(view);
         return view;
     }
 
@@ -2305,7 +2313,10 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
     private sealed record CatalogResultSession(
         long Version,
         List<CatalogItemViewModel> Items,
-        IReadOnlyList<ProfileFieldDescriptor> Fields);
+        IReadOnlyList<ProfileFieldDescriptor> Fields)
+    {
+        public long StartedTimestamp { get; } = System.Diagnostics.Stopwatch.GetTimestamp();
+    }
 
     private sealed class CatalogOperationProgressPump : IProgress<CatalogOperationProgress>
     {

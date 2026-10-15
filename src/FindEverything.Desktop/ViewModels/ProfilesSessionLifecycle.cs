@@ -76,7 +76,7 @@ public partial class ProfilesViewModel
                 token.ThrowIfCancellationRequested();
                 var rule = DraftRules.Count == 1 ? DraftRules[0] : null;
                 var eligible = rule is not null && !string.IsNullOrWhiteSpace(rule.PathTemplate)
-                    && rule.MatchMode == ProfileRegexMatchMode.Full && rule.IgnoreCase
+                    && Enum.IsDefined(rule.MatchMode) && rule.IgnoreCase
                     && rule.TimeoutMilliseconds == 100
                     && DraftFields.All(static field => field.SupportsGuidedAssignments)
                     && TryResolveGuidedTerminalField(rule, out _);

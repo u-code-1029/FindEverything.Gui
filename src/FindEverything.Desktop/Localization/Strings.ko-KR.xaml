@@ -389,7 +389,12 @@
     <sys:String x:Key="Loc.Profiles.Kind.Decimal">소수</sys:String>
     <sys:String x:Key="Loc.Profiles.Kind.DateTime">날짜/시간</sys:String>
     <sys:String x:Key="Loc.Profiles.Kind.Boolean">참/거짓</sys:String>
-    <sys:String x:Key="Loc.Profiles.Match.Full">전체 일치 (권장)</sys:String>
+    <sys:String x:Key="Loc.Profiles.Match.Full">전체 일치</sys:String>
+    <sys:String x:Key="Loc.Profiles.Groups.Mode.Label">값을 가져올 그룹</sys:String>
+    <sys:String x:Key="Loc.Profiles.Groups.Mode.Single">단일 그룹</sys:String>
+    <sys:String x:Key="Loc.Profiles.Groups.Mode.Combined">조합 그룹</sys:String>
+    <sys:String x:Key="Loc.Profiles.Groups.Mode.Help">선택한 방식의 그룹만 사용합니다. 방식을 바꾸면 사용하지 않는 그룹 입력은 초기화됩니다.</sys:String>
+    <sys:String x:Key="Loc.Profiles.Groups.Mode.Conflict">기존 정의에 단일 그룹과 조합 그룹이 함께 있습니다. 사용할 방식을 클릭하면 다른 입력을 초기화합니다.</sys:String>
     <sys:String x:Key="Loc.Profiles.Match.FullShort">전체 일치</sys:String>
     <sys:String x:Key="Loc.Profiles.Match.Partial">부분 일치</sys:String>
     <sys:String x:Key="Loc.Profiles.Match.FolderFull">폴더 이름 전체 일치</sys:String>
@@ -877,7 +882,7 @@
     <sys:String x:Key="Loc.View.Profiles.Header.AdvancedDisplaySettings">고급 표시 설정</sys:String>
     <sys:String x:Key="Loc.View.Profiles.Text.InternalKeyForThisValue">이 값의 내부 키</sys:String>
     <sys:String x:Key="Loc.View.Profiles.Text.DisplayFormat">표시 형식</sys:String>
-    <sys:String x:Key="Loc.View.Profiles.PlaceholderText.ExampleYyyyMMDdOrN2">예: yyyy-MM-dd 또는 N2</sys:String>
+    <sys:String x:Key="Loc.View.Profiles.PlaceholderText.ExampleDateDisplayFormat">예: yyyy-MM-dd 또는 yyyy년 MM월 dd일</sys:String>
     <sys:String x:Key="Loc.View.Profiles.Content.ContinueScanningDescendants">하위 폴더를 계속 탐색</sys:String>
     <sys:String x:Key="Loc.View.Profiles.Title.ReviewPathRule">경로 규칙 확인</sys:String>
     <sys:String x:Key="Loc.View.Profiles.Header.ExpertViewGeneratedRegularExpression">전문가용: 만들어진 정규식 보기</sys:String>
@@ -983,6 +988,7 @@
     <sys:String x:Key="Loc.Catalog.TextRefresh.Scope">필터와 선택에 관계없이 현재 프로필 결과 전체의 해당 컬럼만 다시 읽었습니다.</sys:String>
     <sys:String x:Key="Loc.Catalog.TextRefresh.Cancelled">취소했습니다. 이전 컬럼 값은 유지됩니다.</sys:String>
     <sys:String x:Key="Loc.Catalog.Result.LastScanElapsedSuffix"> · 마지막 스캔 {0}</sys:String>
+    <sys:String x:Key="Loc.Catalog.Result.PersistentScanElapsed">스캔 소요 {0}</sys:String>
     <sys:String x:Key="Loc.Files.Results.CachedSummary">{0:N0}개 결과 · {1:N0}개 캐시됨</sys:String>
     <sys:String x:Key="Loc.Workspace.ResultSource">현재 결과의 검색 위치와 DB 및 갱신 시각</sys:String>
     <sys:String x:Key="Loc.Files.Results.Source">{0} · DB: {1} · 갱신: {2}</sys:String>

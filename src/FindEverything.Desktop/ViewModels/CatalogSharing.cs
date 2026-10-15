@@ -75,6 +75,7 @@ public partial class CatalogViewModel : IWorkspaceExportSource
             if (_importedProjectionStore is IDisposable oldStore) oldStore.Dispose();
             _importedProjectionStore = null;
             _projectionSnapshot = null; _displayedProjectionSnapshot = null;
+            ResetResultPresentation();
             FilterText = string.Empty;
             _queryDefinition = new() { TextPreviewCharacters = 2048 };
             RebuildActiveColumnFilters();

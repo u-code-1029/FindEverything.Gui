@@ -194,8 +194,8 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
         ];
         MatchModeChoices =
         [
-            new(ProfileRegexMatchMode.Full, L("Loc.Profiles.Match.Full", "전체 일치 (권장)")),
             new(ProfileRegexMatchMode.Partial, L("Loc.Profiles.Match.Partial", "부분 일치")),
+            new(ProfileRegexMatchMode.Full, L("Loc.Profiles.Match.Full", "전체 일치")),
         ];
         DateSourcePresetChoices =
         [
@@ -486,7 +486,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
             AddRuleRow(new ProfileRuleDraftViewModel
             {
                 Id = "default",
-                MatchMode = ProfileRegexMatchMode.Full,
+                MatchMode = ProfileRegexMatchMode.Partial,
                 IgnoreCase = true,
                 TimeoutMilliseconds = 100,
                 Pattern = @"(?<name>[^\\/]+)",
@@ -923,7 +923,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
         AddRuleRow(new ProfileRuleDraftViewModel
         {
             Id = $"rule-{DraftRules.Count + 1}",
-            MatchMode = ProfileRegexMatchMode.Full,
+            MatchMode = ProfileRegexMatchMode.Partial,
             IgnoreCase = true,
             TimeoutMilliseconds = 100,
             Pattern = "^$",
@@ -956,7 +956,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
             new ProfileDirectoryNameExclusionRuleDraftViewModel
             {
                 Id = id,
-                MatchMode = ProfileRegexMatchMode.Full,
+                MatchMode = ProfileRegexMatchMode.Partial,
                 IgnoreCase = true,
                 TimeoutMilliseconds = 100,
             });
@@ -1005,7 +1005,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
             FieldId = fieldId,
             Order = nextOrder,
             FileNamePattern = @".*\.txt",
-            MatchMode = ProfileRegexMatchMode.Full,
+            MatchMode = ProfileRegexMatchMode.Partial,
             IgnoreCase = true,
             TimeoutMilliseconds = 100,
             MaxBytes = ProfileManifestLimits.DefaultTextFileMaximumBytes,
@@ -1348,7 +1348,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
                 {
                     Id = "default",
                     Pattern = compileResult.Pattern,
-                    MatchMode = ProfileRegexMatchMode.Full,
+                    MatchMode = DraftRules.FirstOrDefault()?.MatchMode ?? ProfileRegexMatchMode.Partial,
                     IgnoreCase = true,
                     TimeoutMilliseconds = 100,
                     PathTemplate = DraftPathTemplate,
@@ -1910,7 +1910,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
 
         var rule = DraftRules[0];
         if (string.IsNullOrWhiteSpace(rule.PathTemplate) ||
-            rule.MatchMode != ProfileRegexMatchMode.Full ||
+            !Enum.IsDefined(rule.MatchMode) ||
             !rule.IgnoreCase ||
             rule.TimeoutMilliseconds != 100 ||
             DraftFields.Any(static field => !field.SupportsGuidedAssignments) ||
@@ -1965,7 +1965,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
 
         var result = _pathTemplateCompiler.Compile(rule.PathTemplate, fields);
         return result.IsValid &&
-               rule.MatchMode == ProfileRegexMatchMode.Full &&
+               Enum.IsDefined(rule.MatchMode) &&
                rule.IgnoreCase &&
                rule.TimeoutMilliseconds == 100 &&
                string.Equals(result.Pattern, rule.Pattern, StringComparison.Ordinal)
@@ -1975,6 +1975,9 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
 
     private void ReplaceRulesWithGuidedRule(string pattern, string pathTemplate)
     {
+        // Preserve an explicitly chosen mode when round-tripping through the
+        // guided editor. Newly created rules use partial matching.
+        var matchMode = DraftRules.FirstOrDefault()?.MatchMode ?? ProfileRegexMatchMode.Partial;
         foreach (var rule in DraftRules)
         {
             rule.PropertyChanged -= OnDraftRowChanged;
@@ -1985,7 +1988,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
         {
             Id = "default",
             Pattern = pattern,
-            MatchMode = ProfileRegexMatchMode.Full,
+            MatchMode = matchMode,
             IgnoreCase = true,
             TimeoutMilliseconds = 100,
             PathTemplate = pathTemplate,

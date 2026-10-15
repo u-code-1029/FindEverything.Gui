@@ -389,7 +389,12 @@
     <sys:String x:Key="Loc.Profiles.Kind.Decimal">Decimal</sys:String>
     <sys:String x:Key="Loc.Profiles.Kind.DateTime">Date/time</sys:String>
     <sys:String x:Key="Loc.Profiles.Kind.Boolean">True/false</sys:String>
-    <sys:String x:Key="Loc.Profiles.Match.Full">Full match (recommended)</sys:String>
+    <sys:String x:Key="Loc.Profiles.Match.Full">Full match</sys:String>
+    <sys:String x:Key="Loc.Profiles.Groups.Mode.Label">Capture groups</sys:String>
+    <sys:String x:Key="Loc.Profiles.Groups.Mode.Single">Single group</sys:String>
+    <sys:String x:Key="Loc.Profiles.Groups.Mode.Combined">Combined groups</sys:String>
+    <sys:String x:Key="Loc.Profiles.Groups.Mode.Help">Only the selected group mode is used. Switching modes clears the other group input.</sys:String>
+    <sys:String x:Key="Loc.Profiles.Groups.Mode.Conflict">The existing definition contains both single and combined groups. Click the mode to keep; the other input will be cleared.</sys:String>
     <sys:String x:Key="Loc.Profiles.Match.FullShort">Full match</sys:String>
     <sys:String x:Key="Loc.Profiles.Match.Partial">Partial match</sys:String>
     <sys:String x:Key="Loc.Profiles.Match.FolderFull">Match entire folder name</sys:String>
@@ -1315,7 +1320,7 @@
     <sys:String x:Key="Loc.View.Profiles.Header.AdvancedDisplaySettings">Advanced display settings</sys:String>
     <sys:String x:Key="Loc.View.Profiles.Text.InternalKeyForThisValue">Internal key for this value</sys:String>
     <sys:String x:Key="Loc.View.Profiles.Text.DisplayFormat">Display format</sys:String>
-    <sys:String x:Key="Loc.View.Profiles.PlaceholderText.ExampleYyyyMMDdOrN2">Example: yyyy-MM-dd or N2</sys:String>
+    <sys:String x:Key="Loc.View.Profiles.PlaceholderText.ExampleDateDisplayFormat">Example: yyyy-MM-dd or MMM dd, yyyy</sys:String>
     <sys:String x:Key="Loc.View.Profiles.Content.ContinueScanningDescendants">Continue scanning descendants</sys:String>
     <sys:String x:Key="Loc.View.Profiles.Title.ReviewPathRule">Review path rule</sys:String>
     <sys:String x:Key="Loc.View.Profiles.Header.ExpertViewGeneratedRegularExpression">Expert: View generated regular expression</sys:String>
@@ -1421,6 +1426,7 @@
     <sys:String x:Key="Loc.Catalog.TextRefresh.Scope">Read this column again for all results of the current profile, regardless of filters and selection.</sys:String>
     <sys:String x:Key="Loc.Catalog.TextRefresh.Cancelled">Cancelled. Previous column values are preserved.</sys:String>
     <sys:String x:Key="Loc.Catalog.Result.LastScanElapsedSuffix"> · last scan {0}</sys:String>
+    <sys:String x:Key="Loc.Catalog.Result.PersistentScanElapsed">Scan duration {0}</sys:String>
     <sys:String x:Key="Loc.Files.Results.CachedSummary">{0:N0} results · {1:N0} cached</sys:String>
     <sys:String x:Key="Loc.Workspace.ResultSource">Current result location, database, and update time</sys:String>
     <sys:String x:Key="Loc.Files.Results.Source">{0} · DB: {1} · Updated: {2}</sys:String>

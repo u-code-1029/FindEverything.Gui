@@ -80,6 +80,43 @@ public sealed class CatalogRowSelectionTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public async Task Header_selects_all_from_partial_state_and_clears_all_from_checked_state(bool persisted)
+    {
+        using var fixture = new SelectionFixture(persisted);
+        var vm = fixture.ViewModel;
+        await vm.SelectRowAsync(fixture.Rows[0], additive: true, range: false);
+        Assert.Null(vm.CurrentResultsSelectionState);
+
+        vm.ToggleCurrentResultsSelectionCommand.Execute(null);
+        Assert.Equal(5, vm.SelectedCount);
+        Assert.True(vm.CurrentResultsSelectionState);
+        Assert.All(fixture.Rows, row => Assert.True(row.IsSelected));
+
+        vm.ToggleCurrentResultsSelectionCommand.Execute(null);
+        Assert.Equal(0, vm.SelectedCount);
+        Assert.False(vm.CurrentResultsSelectionState);
+        Assert.All(fixture.Rows, row => Assert.False(row.IsSelected));
+    }
+
+    [Fact]
+    public void Live_preview_header_clears_checked_rows_even_if_a_previous_database_count_was_incomplete()
+    {
+        using var fixture = new SelectionFixture(persisted: false);
+        typeof(CatalogViewModel).GetField("_hasExactResultCount", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(fixture.ViewModel, false);
+        var vm = fixture.ViewModel;
+        vm.ToggleCurrentResultsSelectionCommand.Execute(null);
+        Assert.Equal(5, vm.SelectedCount);
+        Assert.True(vm.CurrentResultsSelectionState);
+
+        vm.ToggleCurrentResultsSelectionCommand.Execute(null);
+        Assert.Equal(0, vm.SelectedCount);
+        Assert.All(fixture.Rows, row => Assert.False(row.IsSelected));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public async Task Placeholder_rows_are_never_selected(bool persisted)
     {
         using var fixture = new SelectionFixture(persisted);

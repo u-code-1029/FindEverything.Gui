@@ -454,19 +454,23 @@ public sealed partial class CatalogMissingDataAndCancellationTests
         public int LiveFilterCalls { get; private set; }
         public CatalogProjectionQuery? LastQuery { get; private set; }
         public Query? ReplacementQuery { get; set; }
+        public IReadOnlyList<ProfileFieldDescriptor>? CachedFields { get; set; }
+        public TimeSpan? CachedScanElapsed { get; set; }
+        public CatalogProjectionSnapshot? LastSnapshot { get; private set; }
         public Func<CatalogProjectionScope, IReadOnlyList<ProfileFieldDescriptor>, ICatalogProjectionWriter>? WriterFactory { get; set; }
         public Task<CatalogProjectionSnapshot?> FindAsync(CatalogProjectionScope scope, CancellationToken cancellationToken = default)
         {
             FindCalls++;
             return Task.FromResult<CatalogProjectionSnapshot?>(cacheExists
-                ? new("cached", scope, new(cacheCount, cacheCount, 0, 0, 0, false, null, DateTimeOffset.UtcNow),
-                    new SampleProfile().Descriptor.Fields) : null);
+                ? new("cached", scope, new(cacheCount, cacheCount, 0, 0, 0, false, CachedScanElapsed, DateTimeOffset.UtcNow),
+                    CachedFields ?? new SampleProfile().Descriptor.Fields) : null);
         }
         public ICatalogProjectionWriter Begin(CatalogProjectionScope scope, IReadOnlyList<ProfileFieldDescriptor> fields)
         { BeginCalls++; return WriterFactory?.Invoke(scope, fields) ?? new Writer(scope, fields); }
         public IResultQuerySession<CatalogProjectionRow> OpenQuery(CatalogProjectionSnapshot snapshot, CatalogProjectionQuery definition)
         {
             OpenQueryCalls++;
+            LastSnapshot = snapshot;
             LastQuery = definition;
             var result = ReplacementQuery ?? query;
             result.Identity = snapshot.Generation;

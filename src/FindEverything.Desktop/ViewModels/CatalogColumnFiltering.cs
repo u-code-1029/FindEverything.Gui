@@ -57,6 +57,7 @@ public partial class CatalogViewModel
     public void ApplyColumnSort(CatalogColumnTarget target, bool? descending)
     {
         if (!IsResultInteractionEnabled) return;
+        _hasExplicitResultSort = true;
         _queryDefinition = _queryDefinition with { SortTarget = descending.HasValue ? target : null,
             SortFieldId = null, Descending = descending ?? false };
         ColumnQueryChanged?.Invoke(this, EventArgs.Empty);

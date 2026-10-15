@@ -416,8 +416,8 @@ public partial class CatalogPage
 
     private void OnResultsGridSorting(object sender, System.Windows.Controls.DataGridSortingEventArgs e)
     {
-        if (!_viewModel.UsesQuerySelection) return;
         e.Handled = true;
+        if (!_viewModel.IsResultInteractionEnabled) return;
         var direction = e.Column.SortDirection == System.ComponentModel.ListSortDirection.Ascending
             ? FindEverything.Application.Indexing.EntrySortDirection.Descending
             : FindEverything.Application.Indexing.EntrySortDirection.Ascending;
