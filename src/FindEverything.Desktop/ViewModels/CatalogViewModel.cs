@@ -1044,6 +1044,15 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
             // Capture UI-bound values before the coordinator moves the operation
             // to its background scheduler.
             var workspace = ValidateWorkspace(requireExistingRoot: false);
+            // Reject an unavailable root before replacing completed results.
+            // A network path may take a long time to answer; keep the probe off
+            // the dispatcher and allow ScanAsync's preparation token to abandon it.
+            var rootExists = await Task.Run(() => Directory.Exists(workspace.RootPath), cancellationToken)
+                .WaitAsync(cancellationToken).ConfigureAwait(true);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!rootExists)
+                throw new DirectoryNotFoundException(F("Loc.Catalog.Error.RootNotFound",
+                    "루트 폴더를 찾을 수 없습니다: {0}", workspace.RootPath));
             CancelWorkspacePersistenceDebounce();
             var workspaceVersion = Interlocked.Increment(ref _workspaceDraftVersion);
             var operationWorkspaceAttempt = CreateWorkspaceSaveAttempt(
@@ -1065,8 +1074,6 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
                 try
                 {
                     operationToken.ThrowIfCancellationRequested();
-                    if (!Directory.Exists(workspace.RootPath))
-                        throw new DirectoryNotFoundException(workspace.RootPath);
                     if (mode == CatalogOperationMode.Scan)
                     {
                         EnsureDatabaseDirectory(workspace.DatabasePath);
