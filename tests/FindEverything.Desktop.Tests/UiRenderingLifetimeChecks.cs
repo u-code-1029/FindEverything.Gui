@@ -44,9 +44,18 @@ internal static class UiRenderingLifetimeChecks
         {
             DataContext = new { Value = "Accessible while idle" },
         };
+        // The display binding is created before Highlight joins the logical
+        // tree, and TextBox subscribes to that display DP through a second
+        // OneWay binding. Measuring alone does not drain their initial DataBind
+        // work; wait for the same dispatcher turn a displayed cell receives.
+        Pump();
         cell.Measure(new Size(300, 40)); cell.Arrange(new Rect(0, 0, 300, 40));
         var native = Assert.Single(cell.Children.OfType<Wpf.Ui.Controls.TextBox>());
         native.ApplyTemplate();
+        Pump();
+        Assert.Equal(BindingStatus.Active, cell.Highlight.GetBindingExpression(TextHighlighting.DisplayTextProperty)!.Status);
+        Assert.Equal(BindingStatus.Active, native.GetBindingExpression(TextBox.TextProperty)!.Status);
+        Assert.Equal("Accessible while idle", TextHighlighting.GetDisplayText(cell.Highlight));
         Assert.False(cell.IsNativeEditorPrepared);
         Assert.Empty(Descendants<ScrollViewer>(cell));
         Assert.Equal("Accessible while idle", native.Text);
