@@ -14,7 +14,7 @@
     mc:Ignorable="d">
     <Page.Resources>
         <DataTemplate x:Key="ColumnWidthChoiceTemplate">
-            <ComboBox MinWidth="120" HorizontalAlignment="Stretch"
+            <ComboBox Style="{StaticResource ContentAwareComboBoxStyle}" HorizontalAlignment="Stretch"
                 AutomationProperties.Name="{StaticResource Loc.Profiles.ColumnWidth.Label}"
                 ToolTip="{StaticResource Loc.Profiles.ColumnWidth.Help}"
                 DisplayMemberPath="DisplayName"
@@ -194,7 +194,7 @@
                             x:Name="EditableProfileLabel"
                             Style="{StaticResource FieldLabelStyle}"
                             Text="{StaticResource Loc.View.Profiles.AutomationName.ProfileToEdit}" />
-                        <ComboBox
+                        <ComboBox Style="{StaticResource ContentAwareComboBoxStyle}"
                             x:Name="EditableProfileComboBox"
                             Grid.Row="1"
                             AutomationProperties.Name="{StaticResource Loc.View.Profiles.AutomationName.ProfileToEdit}"
@@ -350,7 +350,7 @@
                     <ui:TextBlock FontWeight="SemiBold" Text="{StaticResource Loc.Ux.Authoring.ConnectTitle}" />
                     <Grid Margin="0,8,0,8">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                        <ComboBox x:Name="GuidedFieldPicker" ItemsSource="{Binding DraftFields}" SelectedItem="{Binding SelectedGuidedField}"
+                        <ComboBox Style="{StaticResource ContentAwareComboBoxStyle}" x:Name="GuidedFieldPicker" ItemsSource="{Binding DraftFields}" SelectedItem="{Binding SelectedGuidedField}"
                             DisplayMemberPath="Header" AutomationProperties.Name="{StaticResource Loc.Ux.Authoring.SelectField}" />
                         <ui:Button Grid.Column="1" Margin="8,0,0,0" Command="{Binding AddFieldCommand}" Content="{StaticResource Loc.View.Profiles.AutomationName.AddResultValue}" Icon="{ui:SymbolIcon Symbol=AddSquare20}" />
                     </Grid>
@@ -480,7 +480,7 @@
                         Text="{Binding Header, UpdateSourceTrigger=PropertyChanged}" />
 
                     <ui:TextBlock Margin="0,12,0,4" Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Text.ValueType}" />
-                    <ComboBox
+                    <ComboBox Style="{StaticResource ContentAwareComboBoxStyle}"
                         AutomationProperties.Name="{StaticResource Loc.View.Profiles.AutomationName.ResultValueType}"
                         DisplayMemberPath="DisplayName"
                         ItemsSource="{Binding DataContext.FieldKindChoices, RelativeSource={RelativeSource AncestorType={x:Type ItemsControl}}}"
@@ -500,7 +500,7 @@
                             </Style>
                         </StackPanel.Style>
                         <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Text.HowTheDateIsSplit}" />
-                        <ComboBox
+                        <ComboBox Style="{StaticResource ContentAwareComboBoxStyle}"
                             AutomationProperties.Name="{StaticResource Loc.View.Profiles.AutomationName.DateSourceArrangement}"
                             DisplayMemberPath="DisplayName"
                             ItemsSource="{Binding DataContext.DateSourcePresetChoices, RelativeSource={RelativeSource AncestorType={x:Type Page}}}"
@@ -511,7 +511,7 @@
                             Margin="0,12,0,4"
                             Style="{StaticResource FieldLabelStyle}"
                             Text="{StaticResource Loc.View.Profiles.Text.DateFormatInThePath}" />
-                        <ComboBox
+                        <ComboBox Style="{StaticResource ContentAwareComboBoxStyle}"
                             AutomationProperties.HelpText="{StaticResource Loc.View.Profiles.AutomationHelpText.ChooseAnExampleThatMatchesHowThe}"
                             AutomationProperties.Name="{StaticResource Loc.View.Profiles.AutomationName.DateInputFormat}"
                             DisplayMemberPath="DisplayName"
@@ -698,8 +698,8 @@
             <StackPanel Width="240" Margin="0,0,16,12"><ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Header.CombinedGroupsCommaOrder}" />
             <ui:TextBox Text="{Binding GroupNamesText, UpdateSourceTrigger=PropertyChanged}"  />
             </StackPanel>
-            <StackPanel Width="240" Margin="0,0,16,12"><ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Header.ValueType}" />
-            <ComboBox
+            <StackPanel MinWidth="240" Margin="0,0,16,12"><ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Header.ValueType}" />
+            <ComboBox Style="{StaticResource ContentAwareComboBoxStyle}"
                                                             DisplayMemberPath="DisplayName"
                                                             ItemsSource="{Binding DataContext.FieldKindChoices, RelativeSource={RelativeSource AncestorType={x:Type Page}}}"
                                                             SelectedValue="{Binding Kind, UpdateSourceTrigger=PropertyChanged}"
@@ -708,7 +708,7 @@
             <StackPanel Width="240" Margin="0,0,16,12"><ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Header.Required}" />
             <CheckBox MinHeight="32" IsChecked="{Binding Required, UpdateSourceTrigger=PropertyChanged}" />
             </StackPanel>
-            <StackPanel Width="240" Margin="0,0,16,12"><ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.Profiles.ColumnWidth.Label}" />
+            <StackPanel MinWidth="240" Margin="0,0,16,12"><ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.Profiles.ColumnWidth.Label}" />
             <ContentControl Margin="4" Content="{Binding}" ContentTemplate="{StaticResource ColumnWidthChoiceTemplate}" HorizontalContentAlignment="Stretch" />
             </StackPanel>
             <StackPanel Width="240" Margin="0,0,16,12"><ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Header.InputFormat}" />
@@ -763,8 +763,8 @@
             <StackPanel Width="240" Margin="0,0,16,12"><ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Header.RuleID}" />
             <ui:TextBox Text="{Binding Id, UpdateSourceTrigger=PropertyChanged}"  />
             </StackPanel>
-            <StackPanel Width="240" Margin="0,0,16,12"><ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Header.Matching}" />
-            <ComboBox
+            <StackPanel MinWidth="240" Margin="0,0,16,12"><ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Header.Matching}" />
+            <ComboBox Style="{StaticResource ContentAwareComboBoxStyle}"
                                                             DisplayMemberPath="DisplayName"
                                                             ItemsSource="{Binding DataContext.MatchModeChoices, RelativeSource={RelativeSource AncestorType={x:Type Page}}}"
                                                             SelectedValue="{Binding MatchMode, UpdateSourceTrigger=PropertyChanged}"
@@ -1010,7 +1010,7 @@
                         </Grid.ColumnDefinitions>
                         <StackPanel>
                             <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Text.FileNameMatchMode}" />
-                            <ComboBox
+                            <ComboBox Style="{StaticResource ContentAwareComboBoxStyle}"
                                 AutomationProperties.Name="{StaticResource Loc.View.Profiles.AutomationName.TextFileNameMatchMode}"
                                 DisplayMemberPath="DisplayName"
                                 ItemsSource="{Binding DataContext.MatchModeChoices, RelativeSource={RelativeSource AncestorType={x:Type Page}}}"
@@ -1201,7 +1201,7 @@
                         Command="{Binding DataContext.RemoveSelectionRuleCommand, RelativeSource={RelativeSource AncestorType=Page}}" CommandParameter="{Binding}" ToolTip="{StaticResource Loc.Profiles.Features.Remove}" />
                 </Grid>
                 <ui:TextBlock Margin="0,12,0,4" Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.Profiles.Features.Selection.InputKind}" />
-                <ComboBox ItemsSource="{Binding DataContext.SelectionInputChoices, RelativeSource={RelativeSource AncestorType=Page}}" DisplayMemberPath="DisplayName" SelectedValuePath="Value" SelectedValue="{Binding InputKind}" />
+                <ComboBox Style="{StaticResource ContentAwareComboBoxStyle}" ItemsSource="{Binding DataContext.SelectionInputChoices, RelativeSource={RelativeSource AncestorType=Page}}" DisplayMemberPath="DisplayName" SelectedValuePath="Value" SelectedValue="{Binding InputKind}" />
                 <StackPanel Visibility="{Binding IsTable, Converter={StaticResource BooleanToVisibilityConverter}}">
                     <CheckBox Margin="0,12,0,0" Content="{StaticResource Loc.Profiles.Features.Selection.Header}" IsChecked="{Binding HasHeaderRow}" />
                     <ui:TextBlock Margin="0,12,0,4" Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.Profiles.Features.Selection.Delimiter}" />
@@ -1223,7 +1223,7 @@
                 <ItemsControl Margin="0,12,0,0" ItemsSource="{Binding Columns}"><ItemsControl.ItemTemplate><DataTemplate>
                     <controls:SectionCard Style="{StaticResource FieldCardStyle}"><controls:SectionCard.Header><StackPanel>
                         <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.Profiles.Features.Selection.Target}" />
-                        <ComboBox ItemsSource="{Binding DataContext.AvailableSelectionFieldIds, RelativeSource={RelativeSource AncestorType=Page}}" SelectedItem="{Binding FieldId}" />
+                        <ComboBox Style="{StaticResource ContentAwareComboBoxStyle}" ItemsSource="{Binding DataContext.AvailableSelectionFieldIds, RelativeSource={RelativeSource AncestorType=Page}}" SelectedItem="{Binding FieldId}" />
                         <ui:TextBlock Margin="0,12,0,4" Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.Profiles.Features.Selection.Source}" />
                         <Grid Visibility="{Binding DataContext.IsTable, RelativeSource={RelativeSource AncestorType=ItemsControl}, Converter={StaticResource BooleanToVisibilityConverter}}"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="12" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                             <ui:TextBox Text="{Binding InputHeader, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="{StaticResource Loc.Profiles.Features.Selection.SourceHeader}" />
@@ -1234,8 +1234,8 @@
                         <ui:TextBlock Margin="0,4,0,8" Style="{StaticResource CaptionTextStyle}" TextWrapping="Wrap" Text="{StaticResource Loc.Profiles.Features.Selection.ColumnRegexHelp}" />
                         <ui:TextBox Text="{Binding RegexGroup, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="{StaticResource Loc.Profiles.Features.Selection.SourceGroup}" />
                         <ui:TextBlock Margin="0,12,0,4" Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.Profiles.Features.Selection.ValueBasis}" />
-                        <ComboBox ItemsSource="{Binding DataContext.SelectionValueSourceChoices, RelativeSource={RelativeSource AncestorType=Page}}" DisplayMemberPath="DisplayName" SelectedValuePath="Value" SelectedValue="{Binding ValueSource}" />
-                        <ComboBox Margin="0,8,0,0" ItemsSource="{Binding DataContext.SelectionDateComparisonChoices, RelativeSource={RelativeSource AncestorType=Page}}" DisplayMemberPath="DisplayName" SelectedValuePath="Value" SelectedValue="{Binding DateComparison}" />
+                        <ComboBox Style="{StaticResource ContentAwareComboBoxStyle}" ItemsSource="{Binding DataContext.SelectionValueSourceChoices, RelativeSource={RelativeSource AncestorType=Page}}" DisplayMemberPath="DisplayName" SelectedValuePath="Value" SelectedValue="{Binding ValueSource}" />
+                        <ComboBox Style="{StaticResource ContentAwareComboBoxStyle}" Margin="0,8,0,0" ItemsSource="{Binding DataContext.SelectionDateComparisonChoices, RelativeSource={RelativeSource AncestorType=Page}}" DisplayMemberPath="DisplayName" SelectedValuePath="Value" SelectedValue="{Binding DateComparison}" />
                         <ui:TextBox Margin="0,8,0,0" Text="{Binding DateFormat, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="{StaticResource Loc.Profiles.Features.Selection.DateFormat}" />
                         <ui:Button Margin="0,12,0,0" HorizontalAlignment="Right" Content="{StaticResource Loc.Profiles.Features.Remove}" Command="{Binding DataContext.RemoveSelectionColumnCommand, RelativeSource={RelativeSource AncestorType=Page}}" CommandParameter="{Binding}" />
                     </StackPanel></controls:SectionCard.Header></controls:SectionCard>
@@ -1343,7 +1343,7 @@
                         </Grid.ColumnDefinitions>
                         <StackPanel>
                             <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Text.MatchMode}" />
-                            <ComboBox
+                            <ComboBox Style="{StaticResource ContentAwareComboBoxStyle}"
                                 AutomationProperties.Name="{StaticResource Loc.View.Profiles.AutomationName.FolderNameExclusionMatchMode}"
                                 DisplayMemberPath="DisplayName"
                                 ItemsSource="{Binding DataContext.MatchModeChoices, RelativeSource={RelativeSource AncestorType={x:Type Page}}}"
@@ -1532,23 +1532,22 @@
 
     <controls:WorkspacePageFrame x:Name="ProfilePageLayout" SizeChanged="OnProfileWorkspaceSizeChanged">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <StackPanel>
-            <controls:PageHeader Title="{StaticResource Loc.Shell.Nav.Profiles}" Description="{StaticResource Loc.Workspace.Profiles.Description}">
-            <controls:WorkspaceTransferPanel x:Name="ProfilesWorkspaceTransferPanel" DataContext="{Binding WorkspaceTransfer}" ShowProfileExport="True" ShowPackageExport="False" ShowSourceSelector="False"
-                Profile="{Binding DataContext.ExportProfileCandidate, RelativeSource={RelativeSource AncestorType=Page}}"/>
-            </controls:PageHeader>
-        </StackPanel>
-
         <ui:TabView
             x:Name="ProfilesTabControl"
-            Grid.Row="1"
+            Grid.Row="0"
             HorizontalContentAlignment="Stretch"
             VerticalContentAlignment="Stretch">
-            <ui:TabViewItem Header="{StaticResource Loc.View.Profiles.Header.EditProfile}">
+            <ui:TabViewItem>
+                <ui:TabViewItem.Header>
+                    <StackPanel Orientation="Horizontal">
+                        <ui:TextBlock Text="{StaticResource Loc.View.Profiles.Header.EditProfile}" VerticalAlignment="Center" ToolTip="{StaticResource Loc.Workspace.Profiles.Description}" />
+                        <controls:WorkspaceTransferPanel x:Name="ProfilesWorkspaceTransferPanel" Margin="12,0,0,0" DataContext="{Binding WorkspaceTransfer}" ShowProfileExport="True" ShowPackageExport="False" ShowSourceSelector="False"
+                            Profile="{Binding DataContext.ExportProfileCandidate, RelativeSource={RelativeSource AncestorType=Page}}" />
+                    </StackPanel>
+                </ui:TabViewItem.Header>
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -1600,13 +1599,32 @@
                                 IsChecked="{Binding IsReviewStep, Mode=OneWay}" />
                         </UniformGrid>
                         <ui:Button x:Name="OptionalProfileStepsButton" Grid.Column="1" Margin="4" Padding="10,8" VerticalAlignment="Center"
-                            Appearance="Transparent" Content="{StaticResource Loc.Ux.Authoring.Optional}" Icon="{ui:SymbolIcon Symbol=ChevronDown16}"
-                            ToolTip="{StaticResource Loc.Ux.Authoring.Optional.Help}" Click="OnOptionalStepsClick">
+                            Content="{Binding OptionalStepsButtonText}" Icon="{ui:SymbolIcon Symbol=ChevronDown16}"
+                            AutomationProperties.ItemStatus="{Binding OptionalStepsSummary}" ToolTip="{Binding OptionalStepsSummary}" Click="OnOptionalStepsClick">
+                            <ui:Button.Style><Style TargetType="ui:Button" BasedOn="{StaticResource {x:Type ui:Button}}">
+                                <Setter Property="Appearance" Value="Transparent" />
+                                <Style.Triggers><DataTrigger Binding="{Binding IsOptionalEditorStep}" Value="True"><Setter Property="Appearance" Value="Primary" /></DataTrigger></Style.Triggers>
+                            </Style></ui:Button.Style>
                             <ui:Button.ContextMenu>
                                 <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
-                                    <ui:MenuItem Header="{StaticResource Loc.Ux.Authoring.Optional.Data}" Command="{Binding GoToEditorStepCommand}" CommandParameter="{x:Static viewModels:ProfileEditorStep.DataSources}" IsCheckable="True" IsChecked="{Binding IsDataSourcesStep, Mode=OneWay}" />
-                                    <ui:MenuItem Header="{StaticResource Loc.Ux.Authoring.Optional.Selection}" Command="{Binding GoToEditorStepCommand}" CommandParameter="{x:Static viewModels:ProfileEditorStep.SelectionRules}" IsCheckable="True" IsChecked="{Binding IsSelectionRulesStep, Mode=OneWay}" />
-                                    <ui:MenuItem Header="{StaticResource Loc.Ux.Authoring.Optional.Scan}" Command="{Binding GoToEditorStepCommand}" CommandParameter="{x:Static viewModels:ProfileEditorStep.ScanOptions}" IsCheckable="True" IsChecked="{Binding IsScanOptionsStep, Mode=OneWay}" />
+                                    <ui:MenuItem Command="{Binding GoToEditorStepCommand}" CommandParameter="{x:Static viewModels:ProfileEditorStep.DataSources}" IsCheckable="True" IsChecked="{Binding IsDataSourcesStep, Mode=OneWay}" AutomationProperties.Name="{StaticResource Loc.Ux.Authoring.Optional.Data}" AutomationProperties.HelpText="{Binding OptionalDataSummary}">
+                                        <ui:MenuItem.Header><StackPanel MaxWidth="360">
+                                            <ui:TextBlock Text="{StaticResource Loc.Ux.Authoring.Optional.Data}" FontWeight="SemiBold" />
+                                            <ui:TextBlock Margin="0,4,0,0" Text="{Binding OptionalDataSummary}" Style="{StaticResource CaptionTextStyle}" TextWrapping="Wrap" />
+                                        </StackPanel></ui:MenuItem.Header>
+                                    </ui:MenuItem>
+                                    <ui:MenuItem Command="{Binding GoToEditorStepCommand}" CommandParameter="{x:Static viewModels:ProfileEditorStep.SelectionRules}" IsCheckable="True" IsChecked="{Binding IsSelectionRulesStep, Mode=OneWay}" AutomationProperties.Name="{StaticResource Loc.Ux.Authoring.Optional.Selection}" AutomationProperties.HelpText="{Binding OptionalSelectionSummary}">
+                                        <ui:MenuItem.Header><StackPanel MaxWidth="360">
+                                            <ui:TextBlock Text="{StaticResource Loc.Ux.Authoring.Optional.Selection}" FontWeight="SemiBold" />
+                                            <ui:TextBlock Margin="0,4,0,0" Text="{Binding OptionalSelectionSummary}" Style="{StaticResource CaptionTextStyle}" TextWrapping="Wrap" />
+                                        </StackPanel></ui:MenuItem.Header>
+                                    </ui:MenuItem>
+                                    <ui:MenuItem Command="{Binding GoToEditorStepCommand}" CommandParameter="{x:Static viewModels:ProfileEditorStep.ScanOptions}" IsCheckable="True" IsChecked="{Binding IsScanOptionsStep, Mode=OneWay}" AutomationProperties.Name="{StaticResource Loc.Ux.Authoring.Optional.Scan}" AutomationProperties.HelpText="{Binding OptionalScanSummary}">
+                                        <ui:MenuItem.Header><StackPanel MaxWidth="360">
+                                            <ui:TextBlock Text="{StaticResource Loc.Ux.Authoring.Optional.Scan}" FontWeight="SemiBold" />
+                                            <ui:TextBlock Margin="0,4,0,0" Text="{Binding OptionalScanSummary}" Style="{StaticResource CaptionTextStyle}" TextWrapping="Wrap" />
+                                        </StackPanel></ui:MenuItem.Header>
+                                    </ui:MenuItem>
                                 </ContextMenu>
                             </ui:Button.ContextMenu>
                         </ui:Button>

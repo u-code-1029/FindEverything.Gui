@@ -88,6 +88,7 @@ public static class DependencyInjection
         services.AddSingleton<IUiScheduler, WpfUiScheduler>();
         services.AddSingleton<IDraftDecisionPrompt, ContentDialogDraftDecisionPrompt>();
         services.AddSingleton<IDraftProtectionService, DraftProtectionService>();
+        services.AddSingleton<LanguageRestartPolicy>();
         services.AddSingleton<ILanguageSelectionService, LanguageSelectionService>();
         services.AddSingleton<ILanguageRestartPrompt, ContentDialogLanguageRestartPrompt>();
         services.AddSingleton<IIndexDatabasePathResolver, IndexDatabasePathResolver>();

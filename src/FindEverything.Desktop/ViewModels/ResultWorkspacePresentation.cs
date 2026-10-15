@@ -8,7 +8,7 @@ public partial class CatalogViewModel
 {
     public bool ShowCancelAction => CanCancel();
     public bool HasPublishedResults => _displayedProjectionSnapshot is not null || HasLoadedItems;
-    public bool CanTypeSearch => !IsScanning;
+    public bool CanTypeSearch => !IsScanning && !IsShowingSelectedOnly;
     public string ScanActionText => HasPublishedResults
         ? L("Loc.Ux.Results.Refresh", "결과 새로고침") : L("Loc.Workspace.Scan", "스캔 시작");
     public string ResultScopePath => _displayedProjectionSnapshot?.Scope.RootPath ?? string.Empty;
@@ -21,14 +21,18 @@ public partial class CatalogViewModel
         ? L("Loc.Ux.Results.Scan.Previous", "새 결과를 수집 중입니다. 현재 표에는 이전 결과가 표시됩니다. 완료되면 검색과 선택을 다시 사용할 수 있습니다.")
         : L("Loc.Ux.Results.Scan.Preview", "폴더를 확인하고 있습니다. 완료되면 전체 결과를 검색하고 선택할 수 있습니다.");
     public bool IsCatalogEmptyVisible => !IsBusy && !IsSearchPending && (!HasLoadedItems || Items.IsEmpty);
-    public bool IsFilteredEmpty => HasLoadedItems && Items.IsEmpty;
-    public bool CanTestEmptyProfile => !IsBusy && SelectedProfile is not null && !IsFilteredEmpty;
-    public string EmptyResultTitle => IsFilteredEmpty
+    public bool IsFilteredEmpty => !IsShowingSelectedOnly && HasLoadedItems && Items.IsEmpty;
+    public bool CanTestEmptyProfile => !IsShowingSelectedOnly && !IsBusy && SelectedProfile is not null && !IsFilteredEmpty;
+    public string EmptyResultTitle => IsShowingSelectedOnly
+        ? L("Loc.Ux.Results.SelectedOnly.Empty", "선택한 항목이 없습니다")
+        : IsFilteredEmpty
         ? L("Loc.Ux.Results.Empty.Filtered", "검색 조건에 맞는 항목이 없습니다")
         : StatusSeverity == InfoBarSeverity.Error ? L("Loc.Ux.Results.Empty.Error", "결과를 불러오지 못했습니다")
         : HasPublishedResults ? L("Loc.Ux.Results.Empty.Profile", "프로필 규칙에 맞는 폴더가 없습니다")
         : L("Loc.View.Catalog.Text.NoStructuredResultsLoadedYet", "아직 불러온 구조화 결과가 없습니다");
-    public string EmptyResultHelp => IsFilteredEmpty
+    public string EmptyResultHelp => IsShowingSelectedOnly
+        ? L("Loc.Ux.Results.SelectedOnly.EmptyHelp", "선택 항목 검토를 닫으면 기존 검색 결과에서 다시 선택할 수 있습니다.")
+        : IsFilteredEmpty
         ? L("Loc.Ux.Results.Empty.FilteredHelp", "검색어를 줄이거나 필터를 초기화하세요. 체크해 둔 항목은 유지됩니다.")
         : StatusSeverity == InfoBarSeverity.Error ? StatusMessage
         : HasPublishedResults ? L("Loc.Ux.Results.Empty.ProfileHelp", "탐색 로그에서 방문한 경로를 확인하고, 프로필 테스트에서 어떤 값이 추출되는지 확인하세요.")
@@ -37,6 +41,7 @@ public partial class CatalogViewModel
     [RelayCommand]
     private void ResetResultFilters()
     {
+        if (!CanEditResultFilters) return;
         FilterText = string.Empty;
         ClearColumnFiltersCommand.Execute(null);
         ApplySearchImmediately();
@@ -57,9 +62,9 @@ public partial class CatalogViewModel
             base.OnPropertyChanged(new PropertyChangedEventArgs(nameof(ShowCancelAction)));
         if (e.PropertyName is nameof(ResultSourceDescription) or nameof(HasLoadedItems) or nameof(IsReadOnlyDataSource))
             foreach (var change in SourcePresentationChanges) base.OnPropertyChanged(change);
-        if (e.PropertyName is nameof(IsScanning)) base.OnPropertyChanged(CanTypeSearchChanged);
+        if (e.PropertyName is nameof(IsScanning) or nameof(IsShowingSelectedOnly)) base.OnPropertyChanged(CanTypeSearchChanged);
         if (e.PropertyName is nameof(HasLoadedItems) or nameof(IsBusy) or nameof(IsSearchPending)
-            or nameof(FilterSummary) or nameof(Items) or nameof(SelectedProfile) or nameof(ResultSourceDescription))
+            or nameof(FilterSummary) or nameof(Items) or nameof(SelectedProfile) or nameof(ResultSourceDescription) or nameof(IsShowingSelectedOnly))
             foreach (var change in EmptyPresentationChanges) base.OnPropertyChanged(change);
         else if (e.PropertyName is nameof(StatusSeverity) or nameof(StatusMessage))
         {
@@ -71,6 +76,12 @@ public partial class CatalogViewModel
 
 public partial class FileSearchViewModel
 {
+    public string EmptyResultTitle => IsShowingSelectedOnly
+        ? L("Loc.Ux.Results.SelectedOnly.Empty", "선택한 항목이 없습니다")
+        : L("Loc.View.Files.Text.NoMatchingItems", "검색 조건에 맞는 항목이 없습니다");
+    public string EmptyResultHelp => IsShowingSelectedOnly
+        ? L("Loc.Ux.Results.SelectedOnly.EmptyHelp", "선택 항목 검토를 닫으면 기존 검색 결과에서 다시 선택할 수 있습니다.")
+        : L("Loc.View.Files.Text.TryAShorterQueryOrClearThe", "검색어를 줄이거나 검색 조건을 초기화하세요.");
     public bool ShowCancelAction => CanCancel();
     public string ScanActionText => HasIndex ? L("Loc.Ux.Results.Refresh", "결과 새로고침") : L("Loc.Workspace.Scan", "스캔 시작");
     public string ResultScopePath => _fileQueryScope?.RootPath ?? string.Empty;
@@ -89,6 +100,23 @@ public partial class FileSearchViewModel
     protected override void OnPropertyChanged(PropertyChangedEventArgs e)
     {
         base.OnPropertyChanged(e);
+        if (e.PropertyName is nameof(IsResultInteractionEnabled) or nameof(IsShowingSelectedOnly))
+        {
+            base.OnPropertyChanged(new PropertyChangedEventArgs(nameof(CanEditFileFilters)));
+            ToggleFileFiltersCommand.NotifyCanExecuteChanged();
+            if (IsShowingSelectedOnly) IsFilterOpen = false;
+        }
+        if (e.PropertyName is nameof(IsShowingSelectedOnly))
+        {
+            base.OnPropertyChanged(new PropertyChangedEventArgs(nameof(EmptyResultTitle)));
+            base.OnPropertyChanged(new PropertyChangedEventArgs(nameof(EmptyResultHelp)));
+        }
+        if (e.PropertyName is nameof(SelectedKind) or nameof(MinimumSizeStep) or nameof(MaximumSizeStep)
+            or nameof(SelectedCreatedDateFilter) or nameof(SelectedModifiedDateFilter))
+        {
+            base.OnPropertyChanged(new PropertyChangedEventArgs(nameof(ActiveFileFilterCount)));
+            base.OnPropertyChanged(new PropertyChangedEventArgs(nameof(FilterButtonText)));
+        }
         if (e.PropertyName is nameof(IsBusy) or nameof(IsSearching) or nameof(IsResultCountPending) or nameof(IsPreservingSelection))
             base.OnPropertyChanged(new PropertyChangedEventArgs(nameof(ShowCancelAction)));
         if (e.PropertyName is nameof(ResultSourceDescription) or nameof(HasIndex) or nameof(IsBusy) or nameof(IsReadOnlyDataSource))

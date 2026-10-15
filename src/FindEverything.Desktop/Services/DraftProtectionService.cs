@@ -10,6 +10,7 @@ public interface IDraftParticipant
 {
     string DraftTitle { get; }
     bool HasUnsavedChanges { get; }
+    bool CanLeaveDraft => true;
     Task<bool> SaveChangesAsync();
     void DiscardChanges();
 }
@@ -76,16 +77,20 @@ public sealed class DraftProtectionService(
         await _gate.WaitAsync().ConfigureAwait(true);
         try
         {
+            if (participants.Any(participant => !participant.CanLeaveDraft)) return false;
             var discarded = new List<IDraftParticipant>();
             foreach (var participant in participants)
             {
                 if (!participant.HasUnsavedChanges) continue;
+                if (!participant.CanLeaveDraft) return false;
                 var decision = await prompt.ChooseAsync(participant.DraftTitle).ConfigureAwait(true);
+                if (participants.Any(candidate => !candidate.CanLeaveDraft)) return false;
                 if (decision == DraftLeaveDecision.Cancel) return false;
                 if (decision == DraftLeaveDecision.Save)
                 {
                     if (!await participant.SaveChangesAsync().ConfigureAwait(true)
-                        || participant.HasUnsavedChanges) return false;
+                        || participant.HasUnsavedChanges
+                        || participants.Any(candidate => !candidate.CanLeaveDraft)) return false;
                 }
                 else
                 {
@@ -95,6 +100,7 @@ public sealed class DraftProtectionService(
                 }
             }
 
+            if (participants.Any(participant => !participant.CanLeaveDraft)) return false;
             foreach (var participant in discarded) participant.DiscardChanges();
             return true;
         }

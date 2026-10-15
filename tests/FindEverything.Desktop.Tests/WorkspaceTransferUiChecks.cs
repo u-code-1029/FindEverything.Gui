@@ -38,7 +38,9 @@ internal static class WorkspaceTransferUiChecks
             Assert.Equal(!profileOnly, panel.ShowPackageExport);
             Assert.Equal(!profileOnly, panel.ShowSourceSelector);
             if (!profileOnly) Assert.Same(page.DataContext, panel.ExportOwner);
-            Assert.True(HasAncestor<PageHeader>(panel), "Sharing must fit in the existing header, not add a results toolbar row.");
+            Assert.False(HasAncestor<PageHeader>(panel), "Page titles must not be reintroduced just to host sharing.");
+            Assert.True(profileOnly ? HasAncestor<Ui.TabViewItem>(panel) : HasAncestor<CommandStrip>(panel),
+                "Sharing must remain in an existing tab strip or location controls, without a new page header row.");
             Assert.InRange(panel.ActualHeight, 1, 36);
             var button = Assert.IsType<Ui.Button>(panel.FindName("TransferMenuButton"));
             Assert.NotNull(button.ToolTip);

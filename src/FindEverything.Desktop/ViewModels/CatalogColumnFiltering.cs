@@ -21,7 +21,7 @@ public partial class CatalogViewModel
 
     public void ApplyColumnFilter(CatalogColumnFilter filter, bool debounce = false)
     {
-        if (!IsResultInteractionEnabled) return;
+        if (!CanEditResultFilters) return;
         CatalogColumnFilters.Validate(filter, Fields);
         var next = _queryDefinition.Filters.Where(existing => existing.Target != filter.Target).Append(filter)
             .OrderBy(existing => existing.Target.Kind).ThenBy(existing => existing.Target.FieldId, StringComparer.Ordinal).ToArray();
@@ -36,7 +36,7 @@ public partial class CatalogViewModel
 
     public void ClearColumnFilter(CatalogColumnTarget target)
     {
-        if (!IsResultInteractionEnabled) return;
+        if (!CanEditResultFilters) return;
         var next = _queryDefinition.Filters.Where(existing => existing.Target != target).ToArray();
         if (next.Length == _queryDefinition.Filters.Count) return;
         _queryDefinition = _queryDefinition with { Filters = next };
@@ -44,10 +44,10 @@ public partial class CatalogViewModel
         ApplyFilter();
     }
 
-    [RelayCommand(CanExecute = nameof(IsResultInteractionEnabled))]
+    [RelayCommand(CanExecute = nameof(CanEditResultFilters))]
     private void ClearColumnFilters()
     {
-        if (!IsResultInteractionEnabled) return;
+        if (!CanEditResultFilters) return;
         if (_queryDefinition.Filters.Count == 0) return;
         _queryDefinition = _queryDefinition with { Filters = [] };
         RebuildActiveColumnFilters();

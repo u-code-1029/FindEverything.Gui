@@ -28,7 +28,7 @@ public partial class CatalogViewModel
 
     private void ScheduleTextFilter()
     {
-        if (IsScanning) return;
+        if (IsScanning || IsShowingSelectedOnly) return;
         IsSearchPending = true;
         if (_projectionSnapshot is not null && ActiveProjectionStore is not null)
         {
@@ -70,6 +70,7 @@ public partial class CatalogViewModel
 
     private bool MatchesLiveItem(CatalogItemViewModel item)
     {
+        if (IsShowingSelectedOnly) return item.IsSelected;
         var live = Volatile.Read(ref _liveProjectionState);
         if (_liveMatchingPaths is not null && SameLiveGeneration(live, _liveAppliedState))
             return _liveMatchingPaths.Contains(item.FullPath);

@@ -15,7 +15,7 @@
      <ui:CardControl.Header>
      <StackPanel>
       <ui:TextBlock Text="{DynamicResource Loc.SelectionImport.Rule}" Margin="0,0,0,8"/>
-      <ComboBox ItemsSource="{Binding Rules}" SelectedItem="{Binding SelectedRule}" DisplayMemberPath="DisplayName" HorizontalAlignment="Stretch"/>
+      <ComboBox Style="{StaticResource ContentAwareComboBoxStyle}" ItemsSource="{Binding Rules}" SelectedItem="{Binding SelectedRule}" DisplayMemberPath="DisplayName" HorizontalAlignment="Stretch"/>
       <ui:TextBlock Text="{Binding MappingDescription}" TextWrapping="Wrap" Margin="0,8,0,0"/>
      </StackPanel>
      </ui:CardControl.Header>
@@ -33,7 +33,7 @@
        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="16"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
        <StackPanel Visibility="{Binding HasSheets, Converter={StaticResource BooleanToVisibilityConverter}}">
         <ui:TextBlock Text="{DynamicResource Loc.SelectionImport.Sheet}" Margin="0,0,0,8"/>
-        <ComboBox ItemsSource="{Binding Sheets}" SelectedItem="{Binding SelectedSheet}" HorizontalAlignment="Stretch"/>
+        <ComboBox Style="{StaticResource ContentAwareComboBoxStyle}" ItemsSource="{Binding Sheets}" SelectedItem="{Binding SelectedSheet}" HorizontalAlignment="Stretch"/>
        </StackPanel>
        <StackPanel Grid.Column="2">
         <ui:TextBlock Text="{DynamicResource Loc.SelectionImport.Table}" Margin="0,0,0,8"/>

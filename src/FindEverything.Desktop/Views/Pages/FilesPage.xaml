@@ -10,6 +10,7 @@
     Title="{StaticResource Loc.Home.Files.Title}"
     Background="Transparent"
     Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+    KeyDown="OnWorkspacePaneKeyDown"
     PreviewKeyDown="OnPagePreviewKeyDown"
     ScrollViewer.CanContentScroll="False"
     SizeChanged="OnWorkspaceSizeChanged"
@@ -23,18 +24,20 @@
         </Style>
     </Page.Resources>
     <controls:WorkspacePageFrame x:Name="FilePageLayout" Margin="24,0,24,8">
-        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-        <controls:PageHeader Title="{StaticResource Loc.Shell.Nav.Files}" Description="{StaticResource Loc.Workspace.Files.Description}">
-            <controls:WorkspaceTransferPanel x:Name="FilesWorkspaceTransferPanel" DataContext="{Binding WorkspaceTransfer}" ExportOwner="{Binding DataContext, RelativeSource={RelativeSource AncestorType=Page}}" />
-        </controls:PageHeader>
-        <controls:CommandStrip Grid.Row="1">
+        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+        <controls:CommandStrip Grid.Row="0" AutomationProperties.HelpText="{StaticResource Loc.Workspace.Files.Description}">
             <StackPanel>
             <Grid x:Name="FileCommandLayout">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                <ui:TextBox x:Name="SearchBox" Style="{StaticResource FluentSearchBoxStyle}" MinHeight="36" Padding="12,6" FontSize="15"
+                <ui:TextBox x:Name="SearchBox" MinHeight="36" Padding="12,6" FontSize="15"
                     AutomationProperties.Name="{StaticResource Loc.Workspace.Files.Search}" ClearButtonEnabled="True" Icon="{ui:SymbolIcon Symbol=Search20}"
                     PlaceholderText="{StaticResource Loc.Workspace.Files.Search}" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
-                    ToolTip="{StaticResource Loc.Workspace.Files.Search.Help}" IsEnabled="{Binding CanSearch}" />
+                    ToolTip="{StaticResource Loc.Workspace.Files.Search.Help}">
+                        <ui:TextBox.Style><Style TargetType="ui:TextBox" BasedOn="{StaticResource FluentSearchBoxStyle}">
+                            <Setter Property="IsEnabled" Value="{Binding CanSearch, FallbackValue=True}" />
+                            <Style.Triggers><DataTrigger Binding="{Binding IsShowingSelectedOnly}" Value="True"><Setter Property="IsEnabled" Value="False" /></DataTrigger></Style.Triggers>
+                        </Style></ui:TextBox.Style>
+                    </ui:TextBox>
                 <WrapPanel Grid.Column="1" Margin="8,0,0,0">
                     <ui:Button MinWidth="92" Margin="0,0,8,0" Command="{Binding RefreshIndexCommand}" Content="{Binding ScanActionText}" Icon="{ui:SymbolIcon Symbol=ArrowSync20}"
                         ToolTip="{StaticResource Loc.Workspace.Scan.Files.Help}" ToolTipService.ShowOnDisabled="True">
@@ -43,15 +46,17 @@
                             <Style.Triggers><DataTrigger Binding="{Binding HasIndex}" Value="False"><Setter Property="Appearance" Value="Primary" /></DataTrigger></Style.Triggers>
                         </Style></ui:Button.Style>
                     </ui:Button>
-                    <ui:Button Appearance="Transparent" Command="{Binding ToggleDetailsCommand}" Content="{StaticResource Loc.Ux.Results.DataManagement}" ToolTip="{StaticResource Loc.Ux.Results.DataManagementHelp}" />
+                    <ui:Button x:Name="FileDataManagementButton" Appearance="Transparent" Command="{Binding ToggleDetailsCommand}" Content="{StaticResource Loc.Ux.Results.DataManagement}" ToolTip="{StaticResource Loc.Ux.Results.DataManagementHelp}" />
                     <ui:Button Margin="8,0,0,0" Command="{Binding CancelCommand}" Content="{StaticResource Loc.Workspace.Cancel}" Visibility="{Binding ShowCancelAction, Converter={StaticResource BooleanToVisibilityConverter}}" />
                 </WrapPanel>
             </Grid>
             <DockPanel Margin="0,8,0,0">
+                <controls:WorkspaceTransferPanel x:Name="FilesWorkspaceTransferPanel" DockPanel.Dock="Right" Margin="8,0,0,0" DataContext="{Binding WorkspaceTransfer}" ExportOwner="{Binding DataContext, RelativeSource={RelativeSource AncestorType=Page}}" />
                 <ui:Button DockPanel.Dock="Right" Padding="8,2" Appearance="Transparent" Command="{Binding BrowseRootCommand}" Content="{StaticResource Loc.Workspace.Location.Change}" Icon="{ui:SymbolIcon Symbol=FolderOpen20}" />
                 <Label DockPanel.Dock="Left" Padding="0" Margin="0,0,8,0" VerticalAlignment="Center" Content="{StaticResource Loc.Ux.Results.Location}" />
                 <ui:TextBlock x:Name="FileRootPathText" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding RootPath, TargetNullValue={StaticResource Loc.Files.Root.None}}" TextTrimming="CharacterEllipsis" ToolTip="{Binding RootPath}" />
             </DockPanel>
+            <ui:TextBlock Margin="0,8,0,0" Style="{StaticResource CaptionTextStyle}" Text="{Binding SelectedOnlyDescription}" TextWrapping="Wrap" Visibility="{Binding IsShowingSelectedOnly, Converter={StaticResource BooleanToVisibilityConverter}}" />
             <ui:TextBlock x:Name="ScanInteractionNotice" Margin="0,8,0,0"
                 Style="{StaticResource CaptionTextStyle}" TextWrapping="Wrap"
                 Text="{Binding ScanDisplayNotice}"
@@ -59,7 +64,7 @@
             <ui:TextBlock Margin="0,8,0,0" Style="{StaticResource CaptionTextStyle}" Text="{StaticResource Loc.Ux.Results.PreservingSelection}" Visibility="{Binding IsPreservingSelection, Converter={StaticResource BooleanToVisibilityConverter}}" />
             </StackPanel>
         </controls:CommandStrip>
-        <Grid Grid.Row="2">
+        <Grid x:Name="FileResultsWorkspace" Grid.Row="1">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
@@ -76,8 +81,11 @@
                         AutomationProperties.Name="{StaticResource Loc.Files.Count.Retry}" ToolTip="{StaticResource Loc.Files.Count.Retry.Help}" />
                 </StackPanel>
                 <ui:TextBlock Grid.Column="1" Margin="12,0" VerticalAlignment="Center" Style="{StaticResource CaptionTextStyle}" Text="{Binding ResultProvenance}" TextTrimming="CharacterEllipsis" ToolTip="{Binding ResultSourceDescription}" />
-                <ui:TextBlock Grid.Column="2" VerticalAlignment="Center" Text="{StaticResource Loc.Ux.Results.SearchPending}" Style="{StaticResource CaptionTextStyle}"
-                    Visibility="{Binding IsSearching, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                <StackPanel Grid.Column="2" Orientation="Horizontal">
+                    <ui:TextBlock Margin="0,0,8,0" VerticalAlignment="Center" Text="{StaticResource Loc.Ux.Results.SearchPending}" Style="{StaticResource CaptionTextStyle}" Visibility="{Binding IsSearching, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <ToggleButton x:Name="SelectedOnlyButton" Style="{StaticResource SelectedOnlyToggleStyle}" />
+                    <ui:Button x:Name="FilterButton" Padding="8,4" Appearance="Transparent" Command="{Binding ToggleFileFiltersCommand}" Content="{Binding FilterButtonText, FallbackValue={StaticResource Loc.Ux.Files.Filters}}" Icon="{ui:SymbolIcon Symbol=Filter20}" ToolTip="{StaticResource Loc.Ux.Files.Filters.Help}" ToolTipService.ShowOnDisabled="True" />
+                </StackPanel>
             </Grid>
             <controls:SectionCard x:Name="FileResultsSurface" Grid.Row="1" Style="{StaticResource WorkspaceResultCardStyle}"
                 Visibility="{Binding HasIndex, Converter={StaticResource BooleanToVisibilityConverter}}">
@@ -211,8 +219,15 @@
                         </WrapPanel>
                         <WrapPanel x:Name="SelectionOutputGroup" VerticalAlignment="Center" HorizontalAlignment="Right">
                             <ui:SplitButton x:Name="CopySelectionButton" Margin="0,0,8,0" Padding="8,4" Appearance="Primary" Command="{Binding CopySelectionCommand}"
-                                Content="{StaticResource Loc.Workspace.Selection.Copy}" AutomationProperties.Name="{StaticResource Loc.Workspace.Selection.Copy}"
-                                ToolTip="{StaticResource Loc.Ux.Results.CopyFormatHelp}" Icon="{ui:SymbolIcon Symbol=Copy20}">
+                                Content="{Binding SelectedOutputFormat.DisplayName}" ContentTemplate="{StaticResource SelectionCopyContentTemplate}" AutomationProperties.Name="{StaticResource Loc.Workspace.Selection.Copy}"
+                                Icon="{ui:SymbolIcon Symbol=Copy20}">
+                                <ui:SplitButton.ToolTip>
+                                    <StackPanel MaxWidth="420">
+                                        <ui:TextBlock Text="{StaticResource Loc.Workspace.Output.Format.Label}" FontWeight="SemiBold" />
+                                        <ui:TextBlock Text="{Binding SelectedOutputFormat.DisplayName}" TextWrapping="Wrap" Margin="0,4,0,8" />
+                                        <ui:TextBlock Text="{StaticResource Loc.Ux.Results.CopyFormatHelp}" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </ui:SplitButton.ToolTip>
                                 <ui:SplitButton.Flyout>
                                     <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
                                         <ui:MenuItem StaysOpenOnClick="True">
@@ -220,7 +235,7 @@
                                                 <StackPanel Margin="4">
                                                     <Label x:Name="FilesOutputFormatLabel" Padding="0" Margin="0,0,0,8"
                                                         Content="{StaticResource Loc.Workspace.Output.Format.Label}" Target="{Binding ElementName=FilesOutputFormatComboBox}" />
-                                                    <ComboBox x:Name="FilesOutputFormatComboBox" Width="280" MinWidth="240"
+                                                    <ComboBox Style="{StaticResource ContentAwareComboBoxStyle}" x:Name="FilesOutputFormatComboBox"
                                                         AutomationProperties.Name="{StaticResource Loc.View.Files.AutomationName.SelectionOutputFormat}" DisplayMemberPath="DisplayName"
                                                         ItemsSource="{Binding OutputFormats}" SelectedItem="{Binding SelectedOutputFormat}" />
                                                     <ui:TextBlock Margin="0,8,0,0" Style="{StaticResource CaptionTextStyle}" Text="{StaticResource Loc.Ux.Results.CopyFormatHint}" />
@@ -300,25 +315,43 @@
                         Margin="0,16,0,0"
                         HorizontalAlignment="Center"
                         Style="{StaticResource SectionTitleTextStyle}"
-                        Text="{StaticResource Loc.View.Files.Text.NoMatchingItems}" />
+                        Text="{Binding EmptyResultTitle}" />
                     <ui:TextBlock
                         Margin="0,8,0,20"
                         HorizontalAlignment="Center"
                         Style="{StaticResource PageSubtitleTextStyle}"
-                        Text="{StaticResource Loc.View.Files.Text.TryAShorterQueryOrClearThe}"
+                        Text="{Binding EmptyResultHelp}"
                         TextAlignment="Center" />
-                    <ui:Button Command="{Binding ClearSearchAndFiltersCommand}" Content="{StaticResource Loc.View.Files.Content.ClearSearchAndFilters}" />
+                    <ui:Button Command="{Binding ClearSearchAndFiltersCommand}" Content="{StaticResource Loc.View.Files.Content.ClearSearchAndFilters}">
+                        <ui:Button.Style>
+                            <Style TargetType="ui:Button" BasedOn="{StaticResource {x:Type ui:Button}}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsShowingSelectedOnly}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ui:Button.Style>
+                    </ui:Button>
+                    <ui:Button Command="{Binding ToggleSelectedOnlyCommand}" Content="{StaticResource Loc.Ux.Results.SelectedOnly.Exit}" Visibility="{Binding IsShowingSelectedOnly, Converter={StaticResource BooleanToVisibilityConverter}}" />
                 </StackPanel>
             </controls:SectionCard.Header></controls:SectionCard>
 
 
         </Grid>
 
-        <controls:SectionCard x:Name="FileDetailsPanel" Grid.Row="2" Width="340" HorizontalAlignment="Right" VerticalAlignment="Stretch" Panel.ZIndex="8" Style="{StaticResource FluentSectionCardStyle}" Visibility="{Binding IsDetailsOpen, Converter={StaticResource BooleanToVisibilityConverter}}" IsEnabled="{Binding IsResultInteractionEnabled, FallbackValue=True}">
-          <controls:SectionCard.Header>
-            <ui:DynamicScrollViewer x:Name="FileDetailsScrollViewer" Style="{StaticResource FluentGutteredScrollViewerStyle}">
+<controls:SectionCard x:Name="FileDetailsPanel" Grid.Row="1" Width="340" HorizontalAlignment="Right" VerticalAlignment="Stretch" Panel.ZIndex="8" Style="{StaticResource FluentSectionCardStyle}" Visibility="{Binding IsDetailsOpen, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <controls:SectionCard.Header>
+                <Grid>
+                    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                    <DockPanel Margin="0,0,0,8">
+                        <ui:Button x:Name="CloseFileDetailsButton" Click="OnCloseDetailsClick" DockPanel.Dock="Right" Width="28" Height="28" Padding="4" Appearance="Transparent" Command="{Binding CloseDetailsCommand}" Icon="{ui:SymbolIcon Symbol=Dismiss20}" AutomationProperties.Name="{StaticResource Loc.Common.Close}" ToolTip="{StaticResource Loc.Ux.Pane.CloseHelp}" />
+                        <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" VerticalAlignment="Center" Text="{StaticResource Loc.Ux.Results.DataManagement}" />
+                    </DockPanel>
+
+                <ui:DynamicScrollViewer Grid.Row="1" x:Name="FileDetailsScrollViewer" Style="{StaticResource FluentGutteredScrollViewerStyle}">
                 <StackPanel>
-                    <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{StaticResource Loc.Ux.Results.DataManagement}" />
+                    <StackPanel IsEnabled="{Binding IsResultInteractionEnabled}">
                     <ui:TextBlock Margin="0,4,0,12" Style="{StaticResource CaptionTextStyle}" Text="{Binding ResultSourceDescription}" TextWrapping="Wrap" />
                     <WrapPanel>
                         <ui:Button Command="{Binding BrowseDatabaseCommand}" Content="{StaticResource Loc.Workspace.Database.Choose}" ToolTip="{Binding DatabasePath}" Margin="0,0,8,8" />
@@ -331,41 +364,31 @@
                         <ui:Button Command="{Binding BrowseRefreshScopeCommand}" Content="{StaticResource Loc.Workspace.Folder.Choose}" Margin="0,0,8,8" />
                         <ui:Button x:Name="PartialRefreshButton" Command="{Binding RefreshScopeCommand}" Content="{StaticResource Loc.Workspace.Partial.Refresh}" ToolTip="{StaticResource Loc.Workspace.Partial.Help}" ToolTipService.ShowOnDisabled="True" Margin="0,0,0,8" />
                     </WrapPanel>
-                    <Separator Margin="0,8" />
-                    <Label Padding="0" Margin="0,0,0,4" Content="{StaticResource Loc.Workspace.Kind}" Target="{Binding ElementName=FileKindComboBox}" />
-                    <ComboBox x:Name="FileKindComboBox" DisplayMemberPath="DisplayName" ItemsSource="{Binding KindChoices}" SelectedItem="{Binding SelectedKind}" AutomationProperties.Name="{StaticResource Loc.Workspace.Kind}" />
-                    <ToggleButton x:Name="FilterButton" Margin="0,8,0,0" Content="{StaticResource Loc.Workspace.Filters}" IsChecked="{Binding IsFilterOpen, Mode=TwoWay}" AutomationProperties.Name="{StaticResource Loc.Workspace.Filters}" />
-                    <Label Padding="0" Margin="0,8,0,4" Content="{StaticResource Loc.Workspace.Sort}" Target="{Binding ElementName=FileSortComboBox}" />
-                    <ComboBox x:Name="FileSortComboBox" DisplayMemberPath="DisplayName" ItemsSource="{Binding SortChoices}" SelectedItem="{Binding SelectedSort}" AutomationProperties.Name="{StaticResource Loc.Workspace.Sort}" />
-                    <ui:Button Margin="0,8,0,0" Command="{Binding ToggleSortDirectionCommand}" Content="{Binding SortDirectionText}" Icon="{ui:SymbolIcon Symbol=ArrowSort20}" ToolTip="{StaticResource Loc.Workspace.Sort.Direction.Help}" />
-            <Popup
-                x:Name="FilterPopup"
-                AllowsTransparency="True"
-                IsOpen="{Binding IsFilterOpen, Mode=TwoWay}"
-                Placement="Bottom"
-                PlacementTarget="{Binding ElementName=FilterButton}"
-                StaysOpen="False">
-                <controls:SectionCard
-                    Width="460"
-                    Margin="0,8,0,0"
-                    DataContext="{Binding DataContext, ElementName=FilterButton}"
-                    Style="{StaticResource FluentCardStyle}"><controls:SectionCard.Header>
-                    <ui:DynamicScrollViewer
-                        x:Name="FileFilterScrollViewer"
-                        MaxHeight="560"
-                        Style="{StaticResource FluentGutteredScrollViewerStyle}">
-                        <StackPanel>
-                            <DockPanel Margin="0,0,0,16">
-                                <ui:TextBlock
-                                    DockPanel.Dock="Left"
-                                    Style="{StaticResource SectionTitleTextStyle}"
-                                    Text="{StaticResource Loc.View.Files.Text.SearchFilters}" />
-                                <ui:Button
-                                    HorizontalAlignment="Right"
-                                    Command="{Binding ClearFiltersCommand}"
-                                    Content="{StaticResource Loc.View.Files.Content.ClearAll}" />
-                            </DockPanel>
+                    </StackPanel>
+                </StackPanel>
+                </ui:DynamicScrollViewer>
+                </Grid>
+            </controls:SectionCard.Header>
+        </controls:SectionCard>
+<controls:SectionCard x:Name="FileFiltersPanel" Grid.Row="1" Width="400" HorizontalAlignment="Right" VerticalAlignment="Stretch" Panel.ZIndex="8" Style="{StaticResource FluentSectionCardStyle}" Visibility="{Binding IsFilterOpen, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <controls:SectionCard.Header>
+                <Grid>
+                    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                    <DockPanel Margin="0,0,0,8">
+                        <ui:Button x:Name="CloseFileFiltersButton" Click="OnCloseFiltersClick" DockPanel.Dock="Right" Width="28" Height="28" Padding="4" Appearance="Transparent" Command="{Binding CloseFileFiltersCommand}" Icon="{ui:SymbolIcon Symbol=Dismiss20}" AutomationProperties.Name="{StaticResource Loc.Common.Close}" ToolTip="{StaticResource Loc.Ux.Pane.CloseHelp}" />
+                        <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" VerticalAlignment="Center" Text="{StaticResource Loc.Ux.Files.Filters}" />
+                    </DockPanel>
 
+                <ui:DynamicScrollViewer Grid.Row="1" x:Name="FileFilterScrollViewer" Style="{StaticResource FluentGutteredScrollViewerStyle}">
+                <StackPanel>
+                    <ui:TextBlock Margin="0,0,0,12" Text="{StaticResource Loc.Ux.Files.Filters.Help}" Style="{StaticResource CaptionTextStyle}" TextWrapping="Wrap" />
+                    <StackPanel IsEnabled="{Binding CanEditFileFilters}">
+                    <Label Padding="0" Margin="0,0,0,4" Content="{StaticResource Loc.Workspace.Kind}" Target="{Binding ElementName=FileKindComboBox}" />
+                    <ComboBox Style="{StaticResource ContentAwareComboBoxStyle}" x:Name="FileKindComboBox" DisplayMemberPath="DisplayName" ItemsSource="{Binding KindChoices}" SelectedItem="{Binding SelectedKind}" AutomationProperties.Name="{StaticResource Loc.Workspace.Kind}" />
+                    <Label Padding="0" Margin="0,8,0,4" Content="{StaticResource Loc.Workspace.Sort}" Target="{Binding ElementName=FileSortComboBox}" />
+                    <ComboBox Style="{StaticResource ContentAwareComboBoxStyle}" x:Name="FileSortComboBox" DisplayMemberPath="DisplayName" ItemsSource="{Binding SortChoices}" SelectedItem="{Binding SelectedSort}" AutomationProperties.Name="{StaticResource Loc.Workspace.Sort}" />
+                    <ui:Button Margin="0,8,0,0" Command="{Binding ToggleSortDirectionCommand}" Content="{Binding SortDirectionText}" Icon="{ui:SymbolIcon Symbol=ArrowSort20}" ToolTip="{StaticResource Loc.Workspace.Sort.Direction.Help}" />
+                    <ui:Button HorizontalAlignment="Left" Margin="0,12,0,12" Command="{Binding ClearFiltersCommand}" Content="{StaticResource Loc.View.Files.Content.ClearAll}" />
                             <ui:TextBlock FontWeight="SemiBold" Text="{StaticResource Loc.View.Files.Text.FileSize}" />
                             <ui:TextBlock
                                 Margin="0,2,0,8"
@@ -405,7 +428,7 @@
 
                             <Separator Margin="0,16" />
                             <ui:TextBlock FontWeight="SemiBold" Text="{StaticResource Loc.Files.Sort.Created}" />
-                            <ComboBox
+                            <ComboBox Style="{StaticResource ContentAwareComboBoxStyle}"
                                 Margin="0,8,0,0"
                                 AutomationProperties.Name="{StaticResource Loc.View.Files.AutomationName.CreatedDateFilter}"
                                 DisplayMemberPath="DisplayName"
@@ -422,7 +445,7 @@
                             </Grid>
 
                             <ui:TextBlock Margin="0,16,0,0" FontWeight="SemiBold" Text="{StaticResource Loc.Files.Sort.Modified}" />
-                            <ComboBox
+                            <ComboBox Style="{StaticResource ContentAwareComboBoxStyle}"
                                 Margin="0,8,0,0"
                                 AutomationProperties.Name="{StaticResource Loc.View.Files.AutomationName.ModifiedDateFilter}"
                                 DisplayMemberPath="DisplayName"
@@ -437,13 +460,11 @@
                                 <ui:CalendarDatePicker AutomationProperties.Name="{StaticResource Loc.View.Files.AutomationName.ModifiedStartDate}" Date="{Binding ModifiedFromDate}" Content="{Binding ModifiedFromDate, TargetNullValue={StaticResource Loc.Ux.Results.Date.Unbounded}}" ContentStringFormat="{}{0:d}" />
                                 <ui:CalendarDatePicker Grid.Column="2" AutomationProperties.Name="{StaticResource Loc.View.Files.AutomationName.ModifiedEndDate}" Date="{Binding ModifiedToDate}" Content="{Binding ModifiedToDate, TargetNullValue={StaticResource Loc.Ux.Results.Date.Unbounded}}" ContentStringFormat="{}{0:d}" />
                             </Grid>
-                        </StackPanel>
-                    </ui:DynamicScrollViewer>
-                </controls:SectionCard.Header></controls:SectionCard>
-            </Popup>
+                    </StackPanel>
                 </StackPanel>
-            </ui:DynamicScrollViewer>
-          </controls:SectionCard.Header>
+                </ui:DynamicScrollViewer>
+                </Grid>
+            </controls:SectionCard.Header>
         </controls:SectionCard>
     </controls:WorkspacePageFrame>
 </Page>

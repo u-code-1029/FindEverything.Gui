@@ -20,6 +20,8 @@ public partial class HomeViewModel : ObservableObject, IDisposable
     private readonly IDesktopPickerService? _picker;
     private readonly WorkspaceTransferViewModel? _transfer;
     private readonly Wpf.Ui.ISnackbarService? _notifications;
+    private readonly IProfilePlaygroundNavigator? _playgroundNavigator;
+    private string? _displayedLocalProfileId;
 
     [ObservableProperty]
     private bool _hasRoot;
@@ -88,7 +90,8 @@ public partial class HomeViewModel : ObservableObject, IDisposable
         IUiScheduler? uiScheduler = null,
         IDesktopPickerService? picker = null,
         WorkspaceTransferViewModel? transfer = null,
-        Wpf.Ui.ISnackbarService? notifications = null)
+        Wpf.Ui.ISnackbarService? notifications = null,
+        IProfilePlaygroundNavigator? playgroundNavigator = null)
     {
         _workspaceContext = workspaceContext;
         _profileCatalog = profileCatalog;
@@ -100,6 +103,7 @@ public partial class HomeViewModel : ObservableObject, IDisposable
         _picker = picker;
         _transfer = transfer;
         _notifications = notifications;
+        _playgroundNavigator = playgroundNavigator;
         if (_transfer is not null) _transfer.SourceChanged += OnSourceChanged;
 
         _workspaceContext.Changed += OnWorkspaceChanged;
@@ -116,15 +120,55 @@ public partial class HomeViewModel : ObservableObject, IDisposable
     private void OpenCatalog() => _navigationService.Navigate(typeof(CatalogPage));
 
     [RelayCommand]
+    private void OpenStructuredWorkspace() => _navigationService.Navigate(
+        HasProfile || IsSharedSource ? typeof(CatalogPage) : typeof(ProfilesPage));
+
+    [RelayCommand]
     private void OpenProfiles() => _navigationService.Navigate(typeof(ProfilesPage));
 
     [RelayCommand]
-    private void OpenPlayground() => _navigationService.Navigate(typeof(ProfilePlaygroundPage));
+    private void OpenPlayground()
+    {
+        // A shared source contains a frozen profile, not an editable local one.
+        // Never silently test an unrelated local profile from that workspace.
+        if (IsSharedSource) return;
+        if (_playgroundNavigator is not null && _displayedLocalProfileId is { } profileId)
+        {
+            _playgroundNavigator.Navigate(profileId);
+            return; // A removed profile must not fall back to a stale test selection.
+        }
+        _navigationService.Navigate(typeof(ProfilePlaygroundPage));
+    }
 
     [RelayCommand]
     private void OpenOutputFormats() => _navigationService.Navigate(typeof(OutputFormatsPage));
 
     public bool IsSharedSource => _transfer?.IsImported == true;
+    public bool NeedsLocation => !HasRoot && !IsSharedSource;
+    public bool HasCurrentLocation => HasRoot || IsSharedSource;
+    public bool ShowProfileTools => HasProfile && !IsSharedSource;
+    public string NextStepTitle => IsSharedSource
+        ? L("Loc.Ux.Home.Next.Shared", "공유 결과를 확인하세요")
+        : NeedsLocation
+            ? L("Loc.Ux.Home.Next.Location", "검색할 위치를 먼저 선택하세요")
+            : !HasProfile
+                ? L("Loc.Ux.Home.Next.Files", "파일 찾기를 바로 시작할 수 있어요")
+                : L("Loc.Ux.Home.Next.Ready", "이 위치에서 파일을 찾으세요");
+    public string NextStepMessage => IsSharedSource
+        ? L("Loc.Ux.Home.Next.Shared.Help", "가져온 인덱스는 읽기 전용입니다. 내 디스크를 스캔하려면 이 PC의 작업 환경으로 전환하세요.")
+        : NeedsLocation
+            ? L("Loc.Ux.Home.Next.Location.Help", "드라이브나 폴더를 선택한 다음 파일 찾기에서 스캔하세요. 프로필은 없어도 됩니다.")
+            : !HasProfile
+                ? L("Loc.Ux.Home.Next.Files.Help", "전체 파일은 파일 찾기에서 볼 수 있습니다. 폴더 경로의 정보를 컬럼으로 보려면 프로필을 만드세요.")
+                : L("Loc.Ux.Home.Next.Ready.Help", "파일 찾기에서 전체 파일을 검색하거나, 구조화 보기에서 프로필에 맞는 정보를 확인하세요.");
+    public string StructuredActionTitle => HasProfile || IsSharedSource
+        ? L("Loc.Home.Catalog.Title", "구조화 보기")
+        : L("Loc.Ux.Home.CreateProfile", "프로필 만들기");
+    public string StructuredActionDescription => IsSharedSource
+        ? L("Loc.Ux.Home.SharedCatalog.Help", "공유된 프로필의 구조화 보기를 엽니다.")
+        : HasProfile
+            ? L("Loc.Ux.Shell.Home.Catalog", "폴더 경로에서 정보를 추출해 컬럼으로 비교합니다.")
+            : L("Loc.Ux.Home.CreateProfile.Help", "예제 경로에서 필요한 조각을 선택해 이름, 날짜 같은 컬럼을 만듭니다.");
     public string CurrentLocation => _transfer?.CurrentSource?.EffectiveRoot ?? RootPathText;
     public string CurrentSourceName => _transfer?.SelectedSource?.DisplayName
         ?? L("Loc.Ux.Shell.Home.Local", "이 PC의 작업 환경");
@@ -152,6 +196,10 @@ public partial class HomeViewModel : ObservableObject, IDisposable
     {
         OnPropertyChanged(nameof(IsSharedSource)); OnPropertyChanged(nameof(CurrentLocation));
         OnPropertyChanged(nameof(CurrentSourceName)); OnPropertyChanged(nameof(CanChooseLocation));
+        OnPropertyChanged(nameof(NeedsLocation)); OnPropertyChanged(nameof(HasCurrentLocation));
+        OnPropertyChanged(nameof(ShowProfileTools)); OnPropertyChanged(nameof(NextStepTitle));
+        OnPropertyChanged(nameof(NextStepMessage)); OnPropertyChanged(nameof(StructuredActionTitle));
+        OnPropertyChanged(nameof(StructuredActionDescription));
         ChooseLocationCommand.NotifyCanExecuteChanged();
     }
 
@@ -201,6 +249,7 @@ public partial class HomeViewModel : ObservableObject, IDisposable
             : L("Loc.Home.State.Required", "선택 필요");
 
         var selectedProfile = ResolveSelectedProfile(workspace.SelectedProfileId, catalog);
+        _displayedLocalProfileId = selectedProfile?.Descriptor.Id;
         HasProfile = selectedProfile is not null;
         ProfileName = selectedProfile?.Descriptor.DisplayName
             ?? L("Loc.Home.State.Profile.Empty", "아직 사용할 프로필이 없습니다.");

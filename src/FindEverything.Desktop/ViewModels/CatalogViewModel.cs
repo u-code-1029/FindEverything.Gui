@@ -134,7 +134,7 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
     private InfoBarSeverity _statusSeverity = InfoBarSeverity.Informational;
 
     public bool CanEditWorkspace => !IsBusy && !IsPreservingSelection && !IsReadOnlyDataSource && WorkspaceTransfer?.IsBusy != true && WorkspaceTransfer?.IsInitialized != false;
-    public bool IsResultInteractionEnabled => !IsScanning && !IsPreservingSelection;
+    public bool IsResultInteractionEnabled => !IsScanning && !IsPreservingSelection && !(IsShowingSelectedOnly && IsSearchPending);
 
     public string DetailsButtonText => IsDetailsOpen
         ? L("Loc.Common.Compact", "간단히")
@@ -225,11 +225,17 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
     public void Activate()
     {
         _isActive = true;
+        if (_selectedReviewRefreshPending && IsShowingSelectedOnly && !IsScanning)
+        {
+            _automaticLoadTask = RefreshSelectedReviewAsync();
+            return;
+        }
         ScheduleAutomaticLoad();
     }
 
     partial void OnIsScanningChanged(bool value)
     {
+        NotifySelectedReviewAvailability();
         if (_activityState is not null) _activityState.IsScanning = value;
         SelectAllCommand.NotifyCanExecuteChanged();
         ToggleCurrentResultsSelectionCommand.NotifyCanExecuteChanged();
@@ -262,6 +268,11 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
     public void Deactivate()
     {
         _isActive = false;
+        if (IsShowingSelectedOnly && IsSearchPending && !IsScanning)
+        {
+            _selectedReviewRefreshPending = true;
+            _queryCancellation?.Cancel();
+        }
         _liveInputRequests.Cancel();
         if (!_isAutomaticIndexLoad
             || !IsLoadingExistingIndex)
@@ -331,6 +342,7 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
 
     partial void OnSelectedProfileChanged(ProfileChoiceViewModel? value)
     {
+        SetSelectedOnlyMode(false); _displayedSelectedOnly = false;
         NotifySelectionImportAvailability();
         ResetLiveFilters();
         if (!_applyingSharedSource && WorkspaceTransfer?.CurrentSource is { } shared
@@ -687,6 +699,7 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
     [RelayCommand(CanExecute = nameof(CanCancel))]
     private void Cancel()
     {
+        _liveInputRequests.Cancel();
         _bulkSelectionCancellation?.Cancel();
         _selectionCountCancellation?.Cancel();
         _sharedLoadCancellation?.Cancel();
@@ -906,6 +919,7 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
         foreach (var item in selected) item.IsSelected = true;
         _selectedItems = selected;
         SelectedCount = _selectedItems.Count;
+        ScheduleSelectedReviewRefresh();
         SetCurrentSelectionCount(_selectedItems.Count(item => Items.Contains(item)));
         CopySelectionCommand.NotifyCanExecuteChanged();
         ExportSelectionCommand.NotifyCanExecuteChanged();

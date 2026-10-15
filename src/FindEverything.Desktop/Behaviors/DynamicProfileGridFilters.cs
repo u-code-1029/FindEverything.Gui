@@ -410,19 +410,24 @@ public static partial class DynamicProfileGrid
             choices.Add(new(CatalogFilterOperator.IsMissing, T("Missing", "값 없음")));
             choices.Add(new(CatalogFilterOperator.HasValue, T("HasValue", "값 있음")));
         }
-        var mode = new ComboBox { ItemsSource = choices, DisplayMemberPath = nameof(FilterChoice.Label), MinWidth = 280,
+        var mode = new ComboBox { ItemsSource = choices, DisplayMemberPath = nameof(FilterChoice.Label),
             Margin = new Thickness(0, 0, 0, 12) };
+        mode.SetResourceReference(FrameworkElement.StyleProperty, "ContentAwareComboBoxStyle");
+        mode.SetBinding(UIElement.IsEnabledProperty, new Binding(nameof(CatalogViewModel.CanEditResultFilters)) { Source = owner });
         mode.SelectedItem = choices.FirstOrDefault(choice => choice.Operator == filter?.Operator && choice.Boolean == filter?.Boolean) ?? choices[0];
         body.Children.Add(mode);
         var editors = new StackPanel(); body.Children.Add(editors);
+        editors.SetBinding(UIElement.IsEnabledProperty, new Binding(nameof(CatalogViewModel.CanEditResultFilters)) { Source = owner });
         var error = new Ui.TextBlock { TextWrapping = TextWrapping.Wrap, Visibility = Visibility.Collapsed, Margin = new Thickness(0, 8, 0, 0) };
         error.SetResourceReference(Control.ForegroundProperty, "SystemFillColorCriticalBrush");
         body.Children.Add(error);
-        body.Children.Add(new Ui.TextBlock { Text = T("Automatic.Help", "입력을 멈추면 자동 적용됩니다. 여러 컬럼의 조건은 모두 만족해야 합니다."),
+        body.Children.Add(new Ui.TextBlock { Text = owner.IsShowingSelectedOnly
+            ? T("SelectedOnly", "선택 항목 검토 중에는 필터를 변경하지 않습니다. 검토를 닫으면 기존 검색 조건으로 돌아갑니다.")
+            : T("Automatic.Help", "입력을 멈추면 자동 적용됩니다. 여러 컬럼의 조건은 모두 만족해야 합니다."),
             TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 12, 0, 0), Opacity = 0.7 });
         void Apply(CatalogColumnFilter? value)
         {
-            if (token.IsCancellationRequested) return;
+            if (token.IsCancellationRequested || !owner.CanEditResultFilters) return;
             try
             {
                 if (value is null) owner.ClearColumnFilter(target); else owner.ApplyColumnFilter(value, debounce: true);
@@ -440,6 +445,7 @@ public static partial class DynamicProfileGrid
         {
             CloseActiveCalendar(state);
             editors.Children.Clear(); error.Visibility = Visibility.Collapsed;
+            if (owner.IsShowingSelectedOnly) return;
             var selected = (FilterChoice)mode.SelectedItem;
             if (selected.Operator is null) { Apply(null); return; }
             var draft = new CatalogColumnFilter(target, selected.Operator.Value) { Boolean = selected.Boolean };

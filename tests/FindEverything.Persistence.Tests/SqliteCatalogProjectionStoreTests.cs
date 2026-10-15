@@ -9,6 +9,27 @@ namespace FindEverything.Persistence.Tests;
 public sealed class SqliteCatalogProjectionStoreTests
 {
     [Fact]
+    public async Task Selected_range_pages_preserve_sort_and_baseline_overrides_without_full_row_enumeration()
+    {
+        using var workspace = new Workspace();
+        using var store = new SqliteCatalogProjectionStore(workspace.Database);
+        var rows = Enumerable.Range(0, 1500).Select(index => workspace.Item($"row-{index:D4}", new() { ["name"] = $"value-{index:D4}" })).ToArray();
+        var snapshot = Publish(store, workspace.Scope, [Field("name")], rows);
+        await using var original = store.OpenQuery(snapshot, new());
+        using var all = new QuerySelection(true);
+        using var keys = await SqliteSelectionSnapshot.CreateAsync(original, all, row => row.FullPath, row => row.FullPath);
+        using var selected = new QuerySelection(); selected.ReplaceBaseline(keys);
+        selected.Set(rows[1499].FullPath, false);
+        await using var review = store.OpenQuery(snapshot, new(Descending: true));
+        var first = await review.ReadSelectionRangeAsync(selected, 0, 2);
+        Assert.Equal(["row-1498", "row-1497"], first.Items.Select(row => row.RelativePath));
+        var deep = await review.ReadSelectionRangeAsync(selected, 1497, 10);
+        Assert.Equal(["row-0001", "row-0000"], deep.Items.Select(row => row.RelativePath));
+        Assert.False(deep.HasMore);
+        Assert.Equal(1499, await review.CountSelectionAsync(selected));
+    }
+
+    [Fact]
     public async Task Selection_count_uses_current_filter_without_losing_hidden_checked_items()
     {
         using var workspace = new Workspace();

@@ -13,6 +13,83 @@ namespace FindEverything.Desktop.Tests;
 public sealed class ProfilesViewModelDirtyStateTests
 {
     [Fact]
+    public void Optional_scan_summary_includes_guided_and_expert_traversal_stop_rules()
+    {
+        using var vm = CreateFreshDraft(DraftLeaveDecision.Discard);
+        Assert.Equal(0, vm.ConfiguredOptionalSectionCount);
+        vm.SelectTerminalFieldCommand.Execute(vm.DraftFields[0]);
+        Assert.Equal(1, vm.ConfiguredOptionalSectionCount);
+        Assert.Contains("탐색 중단 규칙 1", vm.OptionalScanSummary);
+        vm.ClearTerminalFieldCommand.Execute(null);
+        Assert.Equal(0, vm.ConfiguredOptionalSectionCount);
+        Assert.Contains("탐색 중단 규칙 0", vm.OptionalScanSummary);
+
+        vm.UseExpertModeCommand.Execute(null);
+        var rule = Assert.Single(vm.DraftRules);
+        rule.StopTraversalGroupsText = "name, optionalPart";
+        Assert.Equal(1, vm.ConfiguredOptionalSectionCount);
+        Assert.Contains("탐색 중단 규칙 1", vm.OptionalScanSummary); // Count rules, not comma-separated groups.
+        rule.StopTraversalGroupsText = "  ,  ";
+        Assert.Equal(0, vm.ConfiguredOptionalSectionCount);
+        Assert.Contains("탐색 중단 규칙 0", vm.OptionalScanSummary);
+    }
+
+    [Fact]
+    public async Task Optional_step_summaries_track_added_removed_and_reset_draft_configuration()
+    {
+        using var vm = CreateFreshDraft(DraftLeaveDecision.Discard);
+        Assert.Equal(0, vm.ConfiguredOptionalSectionCount);
+        Assert.Equal("선택 설정", vm.OptionalStepsButtonText);
+        Assert.Contains("제외 규칙 0", vm.OptionalScanSummary);
+        Assert.Contains("256", vm.OptionalScanSummary);
+
+        vm.AddTextFileFieldCommand.Execute(null);
+        vm.AddChildDirectoryFieldCommand.Execute(null);
+        vm.AddUserInputFieldCommand.Execute(null);
+        vm.DraftFields[0].AddValueMappingCommand.Execute(null);
+        Assert.Equal(1, vm.ConfiguredOptionalSectionCount);
+        Assert.Equal("텍스트 파일 1 · 하위 폴더 1 · 직접 입력 1 · 값 매핑 1", vm.OptionalDataSummary);
+        vm.AddSelectionRuleCommand.Execute(null);
+        Assert.Equal(2, vm.ConfiguredOptionalSectionCount);
+        Assert.Contains("선택 규칙 1", vm.OptionalSelectionSummary);
+        vm.AddDirectoryExclusionRuleCommand.Execute(null);
+        vm.AddDirectoryExclusionRuleCommand.Execute(null);
+        Assert.Equal(3, vm.ConfiguredOptionalSectionCount);
+        Assert.Equal("선택 설정 · 3", vm.OptionalStepsButtonText);
+        Assert.Contains("제외 규칙 2", vm.OptionalScanSummary);
+
+        vm.RemoveDirectoryExclusionRuleCommand.Execute(vm.DraftExcludedDirectoryNameRules[0]);
+        vm.RemoveDirectoryExclusionRuleCommand.Execute(vm.DraftExcludedDirectoryNameRules[0]);
+        Assert.Equal(2, vm.ConfiguredOptionalSectionCount);
+        vm.DraftMaxScanDepthText = "3";
+        Assert.Equal(3, vm.ConfiguredOptionalSectionCount);
+        Assert.Contains("최대 탐색 깊이 3", vm.OptionalScanSummary);
+
+        await vm.NewDraftCommand.ExecuteAsync(null);
+        Assert.Equal(0, vm.ConfiguredOptionalSectionCount);
+        Assert.Contains("텍스트 파일 0", vm.OptionalDataSummary);
+        Assert.Contains("선택 규칙 0", vm.OptionalSelectionSummary);
+        Assert.Contains("최대 탐색 깊이 256", vm.OptionalScanSummary);
+    }
+
+    [Fact]
+    public void Editing_values_does_not_renotify_unchanged_optional_counts_or_change_active_step()
+    {
+        using var vm = CreateFreshDraft(DraftLeaveDecision.Discard);
+        vm.GoToEditorStepCommand.Execute(ProfileEditorStep.DataSources);
+        vm.DraftFields[0].AddValueMappingCommand.Execute(null);
+        var changed = new List<string?>();
+        vm.PropertyChanged += (_, args) => changed.Add(args.PropertyName);
+        vm.DraftFields[0].ValueMappings[0].Source = "A";
+        vm.DraftFields[0].ValueMappings[0].Display = "Alex";
+        Assert.DoesNotContain(nameof(ProfilesViewModel.OptionalDataSummary), changed);
+        Assert.DoesNotContain(nameof(ProfilesViewModel.OptionalStepsSummary), changed);
+        Assert.True(vm.IsDataSourcesStep);
+        Assert.True(vm.IsOptionalEditorStep);
+        Assert.Equal(1, vm.ConfiguredOptionalSectionCount);
+    }
+
+    [Fact]
     public void Core_authoring_path_skips_optional_steps_but_keeps_them_directly_accessible()
     {
         using var vm = CreateFreshDraft(DraftLeaveDecision.Cancel);

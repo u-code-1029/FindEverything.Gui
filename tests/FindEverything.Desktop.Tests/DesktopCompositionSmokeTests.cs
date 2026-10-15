@@ -82,6 +82,7 @@ public sealed class DesktopCompositionSmokeTests
             CatalogFilteringTests.VerifyHighlightingRendering();
             SectionCardRegressionChecks.Verify();
             ModernVisualRegressionChecks.VerifySharedStyles();
+            ComboBoxContentSizingChecks.Verify();
             GridSizingRegressionChecks.Verify();
             ScanConsoleUiRegressionChecks.Verify();
 
@@ -168,6 +169,7 @@ public sealed class DesktopCompositionSmokeTests
             var navigation = provider.GetRequiredService<INavigationService>();
             Assert.Equal(Wpf.Ui.Animations.Transition.None,
                 Assert.IsType<NavigationView>(window.FindName("RootNavigation")).Transition);
+            VerifyHeaderlessPages(homePage, filesPage, catalogPage, profilesPage, profilePlaygroundPage, outputFormatsPage, settingsPage);
             CaptureOptionalQaScreenshots(provider, window, filesPage, catalogPage,
                 profilesPage, profilePlaygroundPage, outputFormatsPage, settingsPage);
             Assert.True(navigation.Navigate(typeof(HomePage)));
@@ -181,6 +183,7 @@ public sealed class DesktopCompositionSmokeTests
             ModernVisualRegressionChecks.VerifyResultInputs(filesPage, catalogPage);
             VerifyCoreWorkspaceBounds(provider, window);
             WorkspaceTransferUiChecks.Verify(provider, window, (visual, name) => SaveQaImage(visual, name));
+            ResultPaneUiChecks.Verify(provider, window);
             Assert.True(navigation.Navigate(typeof(CatalogPage)));
             Assert.True(navigation.Navigate(typeof(ProfilesPage)));
             VerifyProfilesScrolling(window, profilesPage);
@@ -357,8 +360,9 @@ public sealed class DesktopCompositionSmokeTests
                     Assert.True(toolbar.ActualHeight > 0);
                     var format = Assert.IsType<System.Windows.Controls.ComboBox>(page.FindName(
                         page is CatalogPage ? "CatalogOutputFormatComboBox" : "FilesOutputFormatComboBox"));
-                    Assert.Equal(280, format.Width);
-                    Assert.Equal(240, format.MinWidth);
+                    Assert.True(double.IsNaN(format.Width), "Output names must not be constrained to a fixed 280 DIP box.");
+                    Assert.True(ComboBoxContentSizing.GetIsEnabled(format));
+                    Assert.Same(format.FindResource("ContentAwareComboBoxStyle"), format.Style);
                     var copy = Assert.IsType<Wpf.Ui.Controls.SplitButton>(page.FindName("CopySelectionButton"));
                     Assert.IsType<ContextMenu>(copy.Flyout);
                     Assert.DoesNotContain(format, FindVisualChildren<System.Windows.Controls.ComboBox>(toolbar));
@@ -507,6 +511,57 @@ public sealed class DesktopCompositionSmokeTests
                 return channel <= 0.04045 ? channel / 12.92 : Math.Pow((channel + 0.055) / 1.055, 2.4);
             }
             return 0.2126 * Linear(color.R) + 0.7152 * Linear(color.G) + 0.0722 * Linear(color.B);
+        }
+    }
+
+    private static void VerifyHeaderlessPages(HomePage home, FilesPage files, CatalogPage catalog,
+        ProfilesPage profiles, ProfilePlaygroundPage playground, OutputFormatsPage output, SettingsPage settings)
+    {
+        foreach (var page in new Page[] { home, files, catalog, profiles, playground, output, settings })
+        {
+            // This check runs before all pages have been navigated to. The logical
+            // tree also covers controls whose templates have not been realized yet.
+            Assert.Empty(LogicalDescendants(page).OfType<PageHeader>());
+            Assert.False(string.IsNullOrWhiteSpace(page.Title));
+        }
+
+        VerifyRows(Assert.IsType<WorkspacePageFrame>(files.Content), 2, typeof(CommandStrip));
+        VerifyRows(Assert.IsType<WorkspacePageFrame>(catalog.FindName("CatalogPageContent")), 2, typeof(CommandStrip));
+        VerifyRows(Assert.IsType<WorkspacePageFrame>(profiles.Content), 1, typeof(TabView));
+        VerifyRows(Assert.IsType<WorkspacePageFrame>(playground.Content), 3, typeof(CommandStrip));
+        VerifyRows(Assert.IsType<WorkspacePageFrame>(output.Content), 3, typeof(Grid));
+        VerifyRows(Assert.IsType<WorkspacePageFrame>(settings.Content), 2, typeof(DynamicScrollViewer));
+
+        VerifyMovedAction(output, "NewOutputFormatButton", "NewFormatCommand");
+        VerifyMovedAction(playground, "EditTestProfileButton", "EditProfileCommand");
+        VerifyMovedAction(catalog, "SelectFromDataButton", "OpenSelectionImportCommand");
+        var progress = Assert.IsType<Wpf.Ui.Controls.TextBlock>(catalog.FindName("CatalogProgressCaption"));
+        Assert.Equal("ProgressMessage", BindingOperations.GetBinding(progress, System.Windows.Controls.TextBlock.TextProperty)?.Path.Path);
+
+        static void VerifyRows(WorkspacePageFrame frame, int count, Type firstControlType)
+        {
+            Assert.Equal(count, frame.RowDefinitions.Count);
+            Assert.Single(frame.RowDefinitions, static row => row.Height.IsStar);
+            var first = Assert.IsAssignableFrom<FrameworkElement>(frame.Children[0]);
+            Assert.Equal(firstControlType, first.GetType());
+            Assert.Equal(0, Grid.GetRow(first));
+            Assert.NotEqual(Visibility.Collapsed, first.Visibility);
+        }
+
+        static void VerifyMovedAction(Page page, string name, string commandPath)
+        {
+            var button = Assert.IsType<Wpf.Ui.Controls.Button>(page.FindName(name));
+            Assert.Equal(commandPath, BindingOperations.GetBinding(button, System.Windows.Controls.Primitives.ButtonBase.CommandProperty)?.Path.Path);
+            Assert.NotNull(button.ToolTip);
+        }
+
+        static IEnumerable<DependencyObject> LogicalDescendants(DependencyObject root)
+        {
+            foreach (var child in LogicalTreeHelper.GetChildren(root).OfType<DependencyObject>())
+            {
+                yield return child;
+                foreach (var descendant in LogicalDescendants(child)) yield return descendant;
+            }
         }
     }
 
@@ -1236,9 +1291,18 @@ public sealed class DesktopCompositionSmokeTests
         Assert.EndsWith("Item-1199", copied[0], StringComparison.Ordinal);
 
         viewModel.FilterText = "Item-0000";
-        PumpDispatcherUntil(window.Dispatcher, () => viewModel.Items.Count == 1, TimeSpan.FromSeconds(4));
-        Assert.Equal(0, viewModel.SelectedCount);
-        Assert.False(viewModel.CopySelectionCommand.CanExecute(null));
+        PumpDispatcherUntil(window.Dispatcher, () => viewModel.Items.Count == 1
+            && !viewModel.IsSearchPending && !viewModel.IsPreservingSelection
+            && viewModel.CurrentResultsSelectionState == true, TimeSpan.FromSeconds(4));
+        // Filtering changes what is visible, not the set the user checked.
+        Assert.Equal(1200, viewModel.SelectedCount);
+        Assert.True(viewModel.CopySelectionCommand.CanExecute(null));
+        Complete(viewModel.CopySelectionCommand.ExecuteAsync(null));
+        Assert.Equal(1200, clipboard.Text.Split(["\r\n", "\n"], StringSplitOptions.RemoveEmptyEntries).Length);
+        viewModel.ToggleCurrentResultsSelectionCommand.Execute(null);
+        PumpDispatcherUntil(window.Dispatcher, () => !viewModel.IsPreservingSelection
+            && viewModel.SelectedCount == 1199 && viewModel.CurrentResultsSelectionState == false, TimeSpan.FromSeconds(4));
+        Assert.Equal(1199, viewModel.SelectedCount);
         viewModel.FilterText = string.Empty;
         PumpDispatcherUntil(window.Dispatcher, () => viewModel.Items.Count == 1200, TimeSpan.FromSeconds(4));
 
@@ -1829,7 +1893,13 @@ public sealed class DesktopCompositionSmokeTests
         Assert.NotEmpty(inputs);
         foreach (var input in inputs)
         {
-            Assert.Equal(double.PositiveInfinity, input.MaxWidth);
+            if (input is ComboBox combo)
+            {
+                Assert.True(ComboBoxContentSizing.GetIsEnabled(combo));
+                Assert.True(double.IsNaN(combo.Width));
+                Assert.True(combo.ActualWidth <= combo.MaxWidth + 1, "Content sizing must stay inside the assigned settings column.");
+            }
+            else Assert.Equal(double.PositiveInfinity, input.MaxWidth);
             Assert.Equal(HorizontalAlignment.Stretch, input.HorizontalAlignment);
         }
 

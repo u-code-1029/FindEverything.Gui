@@ -31,6 +31,7 @@ public partial class CatalogViewModel
 
     public void ApplySearchImmediately()
     {
+        if (IsShowingSelectedOnly) return;
         _liveInputRequests.Cancel();
         if (_projectionSnapshot is not null && ActiveProjectionStore is not null) _ = RefreshProjectionQueryAsync();
         else { ApplyFilter(); IsSearchPending = false; }
@@ -38,6 +39,7 @@ public partial class CatalogViewModel
 
     partial void OnIsSearchPendingChanged(bool value)
     {
+        NotifySelectedReviewAvailability();
         CancelCommand.NotifyCanExecuteChanged();
         SelectAllCommand.NotifyCanExecuteChanged();
         InvertSelectionCommand.NotifyCanExecuteChanged();
@@ -47,6 +49,7 @@ public partial class CatalogViewModel
 
     partial void OnSelectedCountChanged(int value)
     {
+        NotifySelectedReviewAvailability();
         OnPropertyChanged(nameof(SelectionSummary));
         OpenSelectedCommand.NotifyCanExecuteChanged();
         OpenSelectedFolderCommand.NotifyCanExecuteChanged();
@@ -79,7 +82,8 @@ public partial class CatalogViewModel
     {
         if (_displayedProjectionSnapshot?.Generation != snapshot.Generation
             || _displayedProjectionSnapshot.Scope != snapshot.Scope) return;
-        if (_displayedQueryDefinition.HasSamePredicates(definition)) return;
+        if (_displayedQueryDefinition.HasSamePredicates(definition) && _displayedSelectedOnly == IsShowingSelectedOnly
+            && !(IsShowingSelectedOnly && _querySelection.AllMatching)) return;
         if (_querySelection.Count(long.MaxValue) == 0) return;
         if (_querySelection.AllMatching && _projectionQuery is { } previous)
         {
@@ -104,7 +108,7 @@ public partial class CatalogViewModel
         _selectionCountCancellation = null;
         _isCurrentSelectionCountPending = false;
         if (_projectionQuery is not { } query || SelectedCount == 0) { SetCurrentSelectionCount(0); return; }
-        if (!_selectionSpansFilters) { SetCurrentSelectionCount(SelectedCount); return; }
+        if (!_selectionSpansFilters || IsShowingSelectedOnly) { SetCurrentSelectionCount(SelectedCount); return; }
         using var cancellation = new CancellationTokenSource();
         _selectionCountCancellation = cancellation;
         _isCurrentSelectionCountPending = true;
@@ -134,7 +138,7 @@ public partial class CatalogViewModel
         if (CurrentResultsSelectionState == true)
         {
             if (!UsesQuerySelection) { SetSelection(_selectedItems.Where(item => !Items.Contains(item)).ToArray()); return; }
-            if (_selectionSpansFilters) _ = ChangeCurrentSelectionAsync(SqliteSelectionSnapshot.SetOperation.Except);
+            if (_selectionSpansFilters || IsShowingSelectedOnly) _ = ChangeCurrentSelectionAsync(SqliteSelectionSnapshot.SetOperation.Except);
             else ClearSelection();
         }
         else SelectAll();
@@ -160,6 +164,7 @@ public partial class CatalogViewModel
             _querySelection.ReplaceBaseline(merged);
             UpdateProjectionSelection();
             await RefreshCurrentSelectionCountAsync();
+            ScheduleSelectedReviewRefresh();
         }
         catch (OperationCanceledException) { }
         catch (Exception exception) { SetStatus(L("Loc.Common.Error", "오류"), exception.Message, Wpf.Ui.Controls.InfoBarSeverity.Error); }

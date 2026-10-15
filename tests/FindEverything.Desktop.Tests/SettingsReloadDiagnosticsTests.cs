@@ -4,6 +4,7 @@ using FindEverything.Desktop.Appearance;
 using FindEverything.Desktop.Configuration;
 using FindEverything.Desktop.Hosting;
 using FindEverything.Desktop.Localization;
+using FindEverything.Desktop.Services;
 using Microsoft.Extensions.Logging.Abstractions;
 using Wpf.Ui.Controls;
 using Xunit;
@@ -12,6 +13,214 @@ namespace FindEverything.Desktop.Tests;
 
 public sealed class SettingsReloadDiagnosticsTests
 {
+    [Theory]
+    [InlineData(LanguageRestartDecision.Later, 0)]
+    [InlineData(LanguageRestartDecision.RestartNow, 1)]
+    public async Task Watcher_does_not_override_the_in_app_restart_decision_even_before_the_write_returns(
+        LanguageRestartDecision decision, int expectedRestarts)
+    {
+        using var directory = new TemporaryDirectory();
+        var paths = new AppPaths(directory.Path, Path.Combine(directory.Path, "appsettings.user.json"));
+        var localization = new RecordingValidatedSettings<LocalizationOptions>(new());
+        var restart = new RecordingRestartCoordinator();
+        var policy = new LanguageRestartPolicy();
+        var activity = new CatalogActivityState { IsFilesScanning = decision == LanguageRestartDecision.Later };
+        using var diagnostics = CreateDiagnostics(paths,
+            new RecordingValidatedSettings<WorkspaceOptions>(new()),
+            new RecordingValidatedSettings<IndexingOptions>(new()),
+            new RecordingValidatedSettings<AppearanceOptions>(new()), localization, restart,
+            LocalizationOptions.KoreanCultureName, [], policy: policy, activity: activity);
+        var writer = new CallbackSettingsWriter(async update =>
+        {
+            await WriteLocaleAsync(paths, update.Localization!.CultureName);
+            Assert.True(await diagnostics.ReloadNowAsync());
+            await diagnostics.PendingRestartTask;
+            Assert.False(restart.IsRestartRequested);
+        });
+        var languages = new LanguageSelectionService(new TestAppLocalizer(), writer, restart,
+            prompt: new FixedLanguagePrompt(decision), languageRestartPolicy: policy, activity: activity);
+
+        Assert.True(await languages.ChangeAsync(LocalizationOptions.EnglishCultureName));
+        Assert.Equal(expectedRestarts, restart.RestartCount);
+        Assert.Equal(decision == LanguageRestartDecision.Later ? LocalizationOptions.EnglishCultureName : null,
+            languages.PendingCultureName);
+        // A second watcher event, including unrelated setting edits, must not
+        // turn an explicit Later into an automatic restart.
+        Assert.True(await diagnostics.ReloadNowAsync());
+        activity.IsFilesScanning = false;
+        await diagnostics.PendingRestartTask;
+        Assert.Equal(expectedRestarts, restart.RestartCount);
+    }
+
+    [Fact]
+    public async Task A_different_external_locale_edit_clears_in_app_ownership_without_disabling_future_external_restarts()
+    {
+        using var directory = new TemporaryDirectory();
+        var paths = new AppPaths(directory.Path, Path.Combine(directory.Path, "appsettings.user.json"));
+        var policy = new LanguageRestartPolicy();
+        var restart = new RecordingRestartCoordinator();
+        using var diagnostics = CreateDiagnostics(paths,
+            new RecordingValidatedSettings<WorkspaceOptions>(new()),
+            new RecordingValidatedSettings<IndexingOptions>(new()),
+            new RecordingValidatedSettings<AppearanceOptions>(new()),
+            new RecordingValidatedSettings<LocalizationOptions>(new()), restart,
+            LocalizationOptions.KoreanCultureName, [], policy: policy);
+        var languages = new LanguageSelectionService(new TestAppLocalizer(),
+            new CallbackSettingsWriter(update => WriteLocaleAsync(paths, update.Localization!.CultureName)), restart,
+            prompt: new FixedLanguagePrompt(LanguageRestartDecision.Later), languageRestartPolicy: policy);
+        Assert.True(await languages.ChangeAsync(LocalizationOptions.EnglishCultureName));
+        Assert.True(await diagnostics.ReloadNowAsync());
+        await diagnostics.PendingRestartTask;
+        Assert.False(restart.IsRestartRequested);
+
+        await WriteLocaleAsync(paths, LocalizationOptions.KoreanCultureName);
+        Assert.True(await diagnostics.ReloadNowAsync());
+        await diagnostics.PendingRestartTask;
+        Assert.False(restart.IsRestartRequested);
+        await WriteLocaleAsync(paths, LocalizationOptions.EnglishCultureName);
+        Assert.True(await diagnostics.ReloadNowAsync());
+        await diagnostics.PendingRestartTask;
+        Assert.Equal(1, restart.RestartCount);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task External_locale_restart_waits_for_catalog_or_file_scan_to_finish(bool catalogScan)
+    {
+        using var directory = new TemporaryDirectory();
+        var paths = new AppPaths(directory.Path, Path.Combine(directory.Path, "appsettings.user.json"));
+        var restart = new RecordingRestartCoordinator();
+        var activity = new CatalogActivityState { IsScanning = catalogScan, IsFilesScanning = !catalogScan };
+        using var diagnostics = CreateDiagnostics(paths,
+            new RecordingValidatedSettings<WorkspaceOptions>(new()),
+            new RecordingValidatedSettings<IndexingOptions>(new()),
+            new RecordingValidatedSettings<AppearanceOptions>(new()),
+            new RecordingValidatedSettings<LocalizationOptions>(new()), restart,
+            LocalizationOptions.KoreanCultureName, [], activity: activity);
+        await WriteLocaleAsync(paths, LocalizationOptions.EnglishCultureName);
+        Assert.True(await diagnostics.ReloadNowAsync());
+        await diagnostics.PendingRestartTask;
+        Assert.False(restart.IsRestartRequested);
+        activity.IsScanning = false;
+        activity.IsFilesScanning = false;
+        await diagnostics.PendingRestartTask;
+        Assert.Equal(1, restart.RestartCount);
+    }
+
+    [Fact]
+    public async Task Scan_started_while_draft_consent_is_open_defers_the_final_restart_check()
+    {
+        using var directory = new TemporaryDirectory();
+        var paths = new AppPaths(directory.Path, Path.Combine(directory.Path, "appsettings.user.json"));
+        var restart = new RecordingRestartCoordinator();
+        var activity = new CatalogActivityState();
+        var drafts = new DeferredDraftProtection();
+        using var diagnostics = CreateDiagnostics(paths,
+            new RecordingValidatedSettings<WorkspaceOptions>(new()),
+            new RecordingValidatedSettings<IndexingOptions>(new()),
+            new RecordingValidatedSettings<AppearanceOptions>(new()),
+            new RecordingValidatedSettings<LocalizationOptions>(new()), restart,
+            LocalizationOptions.KoreanCultureName, [], activity: activity, drafts: drafts);
+        await WriteLocaleAsync(paths, LocalizationOptions.EnglishCultureName);
+        Assert.True(await diagnostics.ReloadNowAsync());
+        await drafts.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        activity.IsScanning = true;
+        drafts.Consent.SetResult(true);
+        await diagnostics.PendingRestartTask;
+        Assert.False(restart.IsRestartRequested);
+        activity.IsScanning = false;
+        await diagnostics.PendingRestartTask;
+        Assert.Equal(1, restart.RestartCount);
+    }
+
+    [Fact]
+    public async Task External_restart_also_waits_for_coordinated_operations_without_a_scan_badge()
+    {
+        using var directory = new TemporaryDirectory();
+        var paths = new AppPaths(directory.Path, Path.Combine(directory.Path, "appsettings.user.json"));
+        var restart = new RecordingRestartCoordinator();
+        var operations = new ApplicationOperationCoordinator(NullLogger<ApplicationOperationCoordinator>.Instance);
+        var release = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var running = operations.RunAsync(ApplicationOperationKind.IndexLoad, _ => release.Task);
+        using var diagnostics = CreateDiagnostics(paths,
+            new RecordingValidatedSettings<WorkspaceOptions>(new()),
+            new RecordingValidatedSettings<IndexingOptions>(new()),
+            new RecordingValidatedSettings<AppearanceOptions>(new()),
+            new RecordingValidatedSettings<LocalizationOptions>(new()), restart,
+            LocalizationOptions.KoreanCultureName, [], operations: operations);
+        try
+        {
+            await WriteLocaleAsync(paths, LocalizationOptions.EnglishCultureName);
+            Assert.True(await diagnostics.ReloadNowAsync());
+            await diagnostics.PendingRestartTask;
+            Assert.False(restart.IsRestartRequested);
+        }
+        finally
+        {
+            release.TrySetResult(true);
+            await running;
+        }
+        await diagnostics.PendingRestartTask;
+        Assert.Equal(1, restart.RestartCount);
+    }
+
+    [Fact]
+    public async Task A_failed_in_app_write_does_not_suppress_a_later_external_locale_change()
+    {
+        using var directory = new TemporaryDirectory();
+        var paths = new AppPaths(directory.Path, Path.Combine(directory.Path, "appsettings.user.json"));
+        var restart = new RecordingRestartCoordinator();
+        var policy = new LanguageRestartPolicy();
+        using var diagnostics = CreateDiagnostics(paths,
+            new RecordingValidatedSettings<WorkspaceOptions>(new()),
+            new RecordingValidatedSettings<IndexingOptions>(new()),
+            new RecordingValidatedSettings<AppearanceOptions>(new()),
+            new RecordingValidatedSettings<LocalizationOptions>(new()), restart,
+            LocalizationOptions.KoreanCultureName, [], policy: policy);
+        var languages = new LanguageSelectionService(new TestAppLocalizer(),
+            new CallbackSettingsWriter(_ => throw new IOException("write failed")), restart,
+            prompt: new FixedLanguagePrompt(LanguageRestartDecision.Later), languageRestartPolicy: policy);
+        await Assert.ThrowsAsync<IOException>(() => languages.ChangeAsync(LocalizationOptions.EnglishCultureName));
+        Assert.Null(languages.PendingCultureName);
+        await WriteLocaleAsync(paths, LocalizationOptions.EnglishCultureName);
+        Assert.True(await diagnostics.ReloadNowAsync());
+        await diagnostics.PendingRestartTask;
+        Assert.Equal(1, restart.RestartCount);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Superseded_or_disposed_deferred_restart_cannot_run_when_the_scan_finishes(bool dispose)
+    {
+        using var directory = new TemporaryDirectory();
+        var paths = new AppPaths(directory.Path, Path.Combine(directory.Path, "appsettings.user.json"));
+        var restart = new RecordingRestartCoordinator();
+        var activity = new CatalogActivityState { IsScanning = true };
+        using var diagnostics = CreateDiagnostics(paths,
+            new RecordingValidatedSettings<WorkspaceOptions>(new()),
+            new RecordingValidatedSettings<IndexingOptions>(new()),
+            new RecordingValidatedSettings<AppearanceOptions>(new()),
+            new RecordingValidatedSettings<LocalizationOptions>(new()), restart,
+            LocalizationOptions.KoreanCultureName, [], activity: activity);
+        await WriteLocaleAsync(paths, LocalizationOptions.EnglishCultureName);
+        Assert.True(await diagnostics.ReloadNowAsync());
+        if (dispose) diagnostics.Dispose();
+        else
+        {
+            await WriteLocaleAsync(paths, LocalizationOptions.KoreanCultureName);
+            Assert.True(await diagnostics.ReloadNowAsync());
+        }
+        activity.IsScanning = false;
+        await diagnostics.PendingRestartTask;
+        Assert.False(restart.IsRestartRequested);
+    }
+
+    private static Task WriteLocaleAsync(AppPaths paths, string cultureName) =>
+        File.WriteAllTextAsync(paths.UserSettingsFile,
+            "{\"Localization\":{\"CultureName\":\"" + cultureName + "\"}}");
+
     [Fact]
     public async Task Notification_and_batch_settings_reload_atomically_and_invalid_values_preserve_the_previous_settings()
     {
@@ -190,7 +399,11 @@ public sealed class SettingsReloadDiagnosticsTests
         RecordingRestartCoordinator restart,
         string appliedCulture,
         IReadOnlyList<string> arguments,
-        RecordingValidatedSettings<NotificationOptions>? notifications = null) =>
+        RecordingValidatedSettings<NotificationOptions>? notifications = null,
+        LanguageRestartPolicy? policy = null,
+        CatalogActivityState? activity = null,
+        IDraftProtectionService? drafts = null,
+        IApplicationOperationCoordinator? operations = null) =>
         new(
             paths,
             new ApplicationLaunchContext(
@@ -206,7 +419,11 @@ public sealed class SettingsReloadDiagnosticsTests
             new TestAppLocalizer(appliedCulture),
             restart,
             NullLogger<SettingsReloadDiagnostics>.Instance,
-            notificationUpdater: notifications);
+            draftProtection: drafts,
+            notificationUpdater: notifications,
+            languageRestartPolicy: policy,
+            activity: activity,
+            operations: operations);
 
     private static async Task WaitUntilAsync(Func<bool> condition)
     {
@@ -255,10 +472,36 @@ public sealed class SettingsReloadDiagnosticsTests
 
         public bool IsRestartRequested => Volatile.Read(ref _restartRequested) != 0;
 
-        public void RequestRestart() => Volatile.Write(ref _restartRequested, 1);
+        public int RestartCount => Volatile.Read(ref _restartRequested);
+
+        public void RequestRestart() => Interlocked.Increment(ref _restartRequested);
 
         public void RestartAfterShutdownIfRequested()
         {
+        }
+    }
+
+    private sealed class FixedLanguagePrompt(LanguageRestartDecision decision) : ILanguageRestartPrompt
+    {
+        public Task<LanguageRestartDecision> ChooseAsync(string cultureName, bool operationRunning, CancellationToken token) =>
+            Task.FromResult(decision);
+    }
+
+    private sealed class CallbackSettingsWriter(Func<UserSettingsUpdate, Task> save) : IUserSettingsWriter
+    {
+        public Task SaveAsync(UserSettingsUpdate update, CancellationToken cancellationToken = default) => save(update);
+    }
+
+    private sealed class DeferredDraftProtection : IDraftProtectionService
+    {
+        public TaskCompletionSource<bool> Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource<bool> Consent { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public void Register(IDraftParticipant participant) { }
+        public Task<bool> ConfirmAsync(IDraftParticipant participant) => ConfirmAllAsync();
+        public Task<bool> ConfirmAllAsync()
+        {
+            Entered.TrySetResult(true);
+            return Consent.Task;
         }
     }
 

@@ -55,7 +55,11 @@ public partial class CatalogPage
         DynamicProfileGrid.SetPresentationStore(ResultsGrid, presentationStore);
         viewModel.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName == nameof(CatalogViewModel.IsDetailsOpen)) ApplyWorkspaceLayout();
+            if (e.PropertyName == nameof(CatalogViewModel.IsDetailsOpen))
+            {
+                ApplyWorkspaceLayout();
+                if (viewModel.IsDetailsOpen) QueueDetailsFocus(CloseCatalogDetailsButton, () => viewModel.IsDetailsOpen);
+            }
             if (e.PropertyName == nameof(CatalogViewModel.IsScanning) && viewModel.IsScanning)
             {
                 _pendingRowClick = null;
@@ -117,7 +121,7 @@ public partial class CatalogPage
     private void ApplyWorkspaceLayout()
     {
         if (ScanConsolePanel is null || CatalogResultsWorkspace is null) return;
-        CatalogHeaderProgressCaption.Visibility = CatalogPageContent.ActualWidth >= 900
+        CatalogProgressCaption.Visibility = CatalogPageContent.ActualWidth >= 900
             ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
         ScanConsolePanel.Height = Math.Max(120, CatalogPageLayout.ActualHeight * 0.3);
         ScanConsolePanel.MaxHeight = Math.Max(120, CatalogPageLayout.ActualHeight * 0.45);
@@ -139,8 +143,23 @@ public partial class CatalogPage
         var menu = compact ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
         SelectAllResultsButton.Visibility = ClearAllResultsButton.Visibility = InvertResultsSelectionButton.Visibility = full;
         SelectionActionsMenuButton.Visibility = menu;
-        CopySelectionButton.SetResourceReference(System.Windows.Controls.ContentControl.ContentProperty,
-            compact ? "Loc.View.Files.Content.Copy" : "Loc.Workspace.Selection.Copy");
+    }
+
+    private void QueueDetailsFocus(System.Windows.UIElement target, Func<bool> stillRelevant) =>
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, new Action(() =>
+        {
+            if (IsLoaded && stillRelevant() && target.IsVisible && target.IsEnabled) target.Focus();
+        }));
+
+    private void OnCloseDetailsClick(object sender, System.Windows.RoutedEventArgs e) =>
+        QueueDetailsFocus(CatalogDataManagementButton, () => !_viewModel.IsDetailsOpen);
+
+    private void OnWorkspacePaneKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Handled || e.Key != Key.Escape || !_viewModel.IsDetailsOpen || _fileEditorOpen) return;
+        _viewModel.CloseDetailsCommand.Execute(null);
+        QueueDetailsFocus(CatalogDataManagementButton, () => !_viewModel.IsDetailsOpen);
+        e.Handled = true;
     }
 
     private void OnFooterMenuClick(object sender, System.Windows.RoutedEventArgs e)

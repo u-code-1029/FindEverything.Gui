@@ -22,7 +22,16 @@ public partial class FilesPage
         PageActivation.Attach(this);
         viewModel.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName == nameof(FileSearchViewModel.IsDetailsOpen)) ApplyWorkspaceLayout();
+            if (e.PropertyName is nameof(FileSearchViewModel.IsDetailsOpen) or nameof(FileSearchViewModel.IsFilterOpen))
+            {
+                ApplyWorkspaceLayout();
+                if (e.PropertyName == nameof(FileSearchViewModel.IsFilterOpen) && !viewModel.IsFilterOpen)
+                    CloseFilterPickers();
+                if (e.PropertyName == nameof(FileSearchViewModel.IsDetailsOpen) && viewModel.IsDetailsOpen)
+                    QueuePaneFocus(CloseFileDetailsButton, () => viewModel.IsDetailsOpen);
+                if (e.PropertyName == nameof(FileSearchViewModel.IsFilterOpen) && viewModel.IsFilterOpen)
+                    QueuePaneFocus(CloseFileFiltersButton, () => viewModel.IsFilterOpen);
+            }
             if (e.PropertyName == nameof(FileSearchViewModel.IsBusy) && viewModel.IsBusy)
             {
                 if (ResultsGrid.ContextMenu is { } menu) menu.IsOpen = false;
@@ -36,10 +45,12 @@ public partial class FilesPage
 
     private void ApplyWorkspaceLayout()
     {
-        if (FileResultsSurface is null || FileDetailsPanel is null) return;
+        if (FileResultsWorkspace is null || FileDetailsPanel is null || FileFiltersPanel is null) return;
         var reserveDetails = _viewModel.IsDetailsOpen && FilePageLayout.ActualWidth >= 900;
-        FileResultsSurface.Margin = new System.Windows.Thickness(0, 0, reserveDetails ? 348 : 0, 0);
+        var reserveFilters = _viewModel.IsFilterOpen && FilePageLayout.ActualWidth >= 1000;
+        FileResultsWorkspace.Margin = new System.Windows.Thickness(0, 0, reserveFilters ? 408 : reserveDetails ? 348 : 0, 0);
         FileDetailsPanel.Width = Math.Min(340, Math.Max(200, FilePageLayout.ActualWidth));
+        FileFiltersPanel.Width = Math.Min(400, Math.Max(200, FilePageLayout.ActualWidth));
         ApplySelectionToolbarLayout();
     }
 
@@ -55,8 +66,64 @@ public partial class FilesPage
         var menu = compact ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
         SelectAllResultsButton.Visibility = ClearAllResultsButton.Visibility = InvertResultsSelectionButton.Visibility = full;
         SelectionActionsMenuButton.Visibility = menu;
-        CopySelectionButton.SetResourceReference(ContentControl.ContentProperty,
-            compact ? "Loc.View.Files.Content.Copy" : "Loc.Workspace.Selection.Copy");
+    }
+
+    private void QueuePaneFocus(System.Windows.UIElement target, Func<bool> stillRelevant) =>
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input, new Action(() =>
+        {
+            if (IsLoaded && stillRelevant() && target.IsVisible && target.IsEnabled) target.Focus();
+        }));
+
+    private void OnCloseDetailsClick(object sender, System.Windows.RoutedEventArgs e) =>
+        QueuePaneFocus(FileDataManagementButton, () => !_viewModel.IsDetailsOpen);
+
+    private void OnCloseFiltersClick(object sender, System.Windows.RoutedEventArgs e) =>
+        QueuePaneFocus(FilterButton, () => !_viewModel.IsFilterOpen);
+
+    private void OnWorkspacePaneKeyDown(object sender, KeyEventArgs e)
+    {
+        // Bubble after ComboBox/calendar handlers so Escape dismisses the
+        // innermost popup first instead of closing the whole settings pane.
+        if (e.Handled || e.Key != Key.Escape) return;
+        if (_viewModel.IsFilterOpen)
+        {
+            if (CloseFilterPickers(restoreFocus: true)) { e.Handled = true; return; }
+            _viewModel.CloseFileFiltersCommand.Execute(null);
+            QueuePaneFocus(FilterButton, () => !_viewModel.IsFilterOpen);
+        }
+        else if (_viewModel.IsDetailsOpen)
+        {
+            _viewModel.CloseDetailsCommand.Execute(null);
+            QueuePaneFocus(FileDataManagementButton, () => !_viewModel.IsDetailsOpen);
+        }
+        else return;
+        e.Handled = true;
+    }
+
+    private bool CloseFilterPickers(bool restoreFocus = false)
+    {
+        var closed = false;
+        foreach (var control in PaneControls(FileFiltersPanel))
+        {
+            if (control is ComboBox { IsDropDownOpen: true } combo)
+                combo.SetCurrentValue(ComboBox.IsDropDownOpenProperty, false);
+            else if (control is Wpf.Ui.Controls.CalendarDatePicker { IsCalendarOpen: true } calendar)
+                calendar.SetCurrentValue(Wpf.Ui.Controls.CalendarDatePicker.IsCalendarOpenProperty, false);
+            else continue;
+            closed = true;
+            if (restoreFocus) { control.Focus(); break; }
+        }
+        return closed;
+    }
+
+    private static IEnumerable<Control> PaneControls(System.Windows.DependencyObject parent)
+    {
+        for (var index = 0; index < System.Windows.Media.VisualTreeHelper.GetChildrenCount(parent); index++)
+        {
+            var child = System.Windows.Media.VisualTreeHelper.GetChild(parent, index);
+            if (child is Control control) yield return control;
+            foreach (var descendant in PaneControls(child)) yield return descendant;
+        }
     }
 
     private void OnFooterMenuClick(object sender, System.Windows.RoutedEventArgs e)

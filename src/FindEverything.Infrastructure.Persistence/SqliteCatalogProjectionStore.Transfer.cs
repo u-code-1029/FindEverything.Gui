@@ -197,6 +197,13 @@ public sealed class ImportedCatalogProjectionStore : IImportedCatalogProjectionS
             var page = await inner.ReadRangeAsync(offset, limit, cancellationToken).ConfigureAwait(false);
             return page with { Items = page.Items.Select(Map).ToArray() };
         }
+        public async Task<ResultPage<CatalogProjectionRow>> ReadSelectionRangeAsync(QuerySelection selection,
+            int offset, int limit, CancellationToken cancellationToken = default)
+        {
+            using var mapped = selection.MapKeys(key => WorkspacePathMapping.ToEffective(source, key));
+            var page = await inner.ReadSelectionRangeAsync(mapped, offset, limit, cancellationToken).ConfigureAwait(false);
+            return page with { Items = page.Items.Select(Map).ToArray() };
+        }
         public async IAsyncEnumerable<CatalogProjectionRow> EnumerateSelectionAsync(QuerySelection selection,
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {

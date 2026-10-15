@@ -5,20 +5,25 @@
     <ui:DynamicScrollViewer x:Name="HomeScrollViewer" HorizontalScrollBarVisibility="Disabled"
         Style="{StaticResource FluentGutteredScrollViewerStyle}" VerticalScrollBarVisibility="Auto">
         <StackPanel x:Name="DashboardContent" Margin="24,8,8,24" SizeChanged="OnDashboardContentSizeChanged">
-            <controls:PageHeader Title="FindEverything" Description="{DynamicResource Loc.Ux.Shell.Home.Description}" />
             <ui:InfoBar Margin="0,0,12,12" AutomationProperties.LiveSetting="Polite" IsClosable="False"
-                IsOpen="{Binding IsOperationRunning}" Message="{Binding OperationStatus}" Title="{DynamicResource Loc.Home.Operation.Title}" />
-            <controls:SectionCard x:Name="WorkspaceOverviewCard" Margin="0,8,12,16" Padding="20" Style="{StaticResource FluentCardStyle}">
+                IsOpen="{Binding IsOperationRunning}" Visibility="{Binding IsOperationRunning, Converter={StaticResource BooleanToVisibilityConverter}}" Message="{Binding OperationStatus}" Title="{DynamicResource Loc.Home.Operation.Title}" />
+            <controls:SectionCard x:Name="WorkspaceOverviewCard" Margin="0,8,12,16" Padding="20" Style="{StaticResource FluentCardStyle}" AutomationProperties.HelpText="{DynamicResource Loc.Ux.Shell.Home.Description}">
                 <controls:SectionCard.Header>
                     <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                         <StackPanel Margin="0,0,16,0">
-                            <ui:TextBlock Text="{DynamicResource Loc.Ux.Shell.Home.Location}" Style="{StaticResource SectionTitleTextStyle}" AutomationProperties.HeadingLevel="Level2" />
-                            <ui:TextBlock Margin="0,8,0,0" Text="{Binding CurrentLocation}" TextWrapping="Wrap" ToolTip="{Binding CurrentLocation}" />
+                            <ui:TextBlock Text="{Binding NextStepTitle}" TextWrapping="Wrap" Style="{StaticResource SectionTitleTextStyle}" AutomationProperties.HeadingLevel="Level2" />
+                            <ui:TextBlock Margin="0,8,0,0" Text="{Binding NextStepMessage}" TextWrapping="Wrap" Style="{StaticResource CaptionTextStyle}" />
+                            <ui:TextBlock Margin="0,8,0,0" Text="{Binding CurrentLocation}" TextWrapping="Wrap" ToolTip="{Binding CurrentLocation}" Visibility="{Binding HasCurrentLocation, Converter={StaticResource BooleanToVisibilityConverter}}" />
                             <ui:TextBlock Margin="0,4,0,0" Text="{Binding CurrentSourceName}" Style="{StaticResource CaptionTextStyle}" />
                         </StackPanel>
                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                            <ui:Button Content="{DynamicResource Loc.Ux.Shell.Home.ChooseLocation}" Command="{Binding ChooseLocationCommand}" Icon="{ui:SymbolIcon Symbol=FolderOpen20}"
-                                ToolTip="{DynamicResource Loc.Ux.Shell.Home.ChooseLocation.Help}" ToolTipService.ShowOnDisabled="True" />
+                            <ui:Button x:Name="HomeChooseLocationButton" Content="{DynamicResource Loc.Ux.Shell.Home.ChooseLocation}" Command="{Binding ChooseLocationCommand}" Icon="{ui:SymbolIcon Symbol=FolderOpen20}"
+                                ToolTip="{DynamicResource Loc.Ux.Shell.Home.ChooseLocation.Help}" ToolTipService.ShowOnDisabled="True">
+                                <ui:Button.Style><Style TargetType="ui:Button" BasedOn="{StaticResource {x:Type ui:Button}}">
+                                    <Setter Property="Appearance" Value="Secondary" />
+                                    <Style.Triggers><DataTrigger Binding="{Binding NeedsLocation}" Value="True"><Setter Property="Appearance" Value="Primary" /></DataTrigger></Style.Triggers>
+                                </Style></ui:Button.Style>
+                            </ui:Button>
                             <ui:Button Margin="0,8,0,0" Command="{Binding UseLocalSourceCommand}" Content="{DynamicResource Loc.Transfer.Source.Local}"
                                 Visibility="{Binding IsSharedSource, Converter={StaticResource BooleanToVisibilityConverter}}" />
                         </StackPanel>
@@ -32,23 +37,28 @@
                         <ui:TextBlock Margin="0,8,0,0" TextWrapping="Wrap" Text="{DynamicResource Loc.Ux.Shell.Home.Files}" />
                     </StackPanel>
                 </ui:CardAction>
-                <ui:CardAction x:Name="CatalogActionCard" Command="{Binding OpenCatalogCommand}" Margin="0,0,12,12" Padding="20" MinHeight="124"
-                    AutomationProperties.Name="{DynamicResource Loc.Home.Catalog.Title}" ToolTip="{DynamicResource Loc.Home.Catalog.Description}">
-                    <StackPanel><ui:TextBlock FontSize="20" FontWeight="SemiBold" Text="{DynamicResource Loc.Home.Catalog.Title}" />
-                        <ui:TextBlock Margin="0,8,0,0" TextWrapping="Wrap" Text="{DynamicResource Loc.Ux.Shell.Home.Catalog}" />
+                <ui:CardAction x:Name="CatalogActionCard" Command="{Binding OpenStructuredWorkspaceCommand}" Margin="0,0,12,12" Padding="20" MinHeight="124"
+                    AutomationProperties.Name="{Binding StructuredActionTitle}" ToolTip="{Binding StructuredActionDescription}">
+                    <StackPanel><ui:TextBlock FontSize="20" FontWeight="SemiBold" Text="{Binding StructuredActionTitle}" />
+                        <ui:TextBlock Margin="0,8,0,0" TextWrapping="Wrap" Text="{Binding StructuredActionDescription}" />
                     </StackPanel>
                 </ui:CardAction>
             </WrapPanel>
-            <controls:SectionCard Margin="0,4,12,12" Padding="16" Style="{StaticResource FluentCardStyle}">
+            <controls:SectionCard Margin="0,4,12,12" Padding="16" Style="{StaticResource FluentCardStyle}" Visibility="{Binding ShowProfileTools, Converter={StaticResource BooleanToVisibilityConverter}}">
                 <controls:SectionCard.Header>
                     <StackPanel>
                         <ui:TextBlock Text="{DynamicResource Loc.Ux.Shell.Home.Profile}" FontWeight="SemiBold" AutomationProperties.HeadingLevel="Level2" />
                         <ui:TextBlock Text="{Binding ProfileName}" Margin="0,4,0,8" TextWrapping="Wrap" />
-                        <WrapPanel>
-                            <ui:Button Command="{Binding OpenProfilesCommand}" Content="{DynamicResource Loc.Home.Tools.Profiles}" Margin="0,0,8,8" />
-                            <ui:Button Command="{Binding OpenPlaygroundCommand}" Content="{DynamicResource Loc.Home.Tools.Playground}" Margin="0,0,8,8" />
-                            <ui:Button Command="{Binding OpenOutputFormatsCommand}" Content="{DynamicResource Loc.Home.Tools.OutputFormats}" Margin="0,0,0,8" />
-                        </WrapPanel>
+                        <ui:Button HorizontalAlignment="Left" Command="{Binding OpenProfilesCommand}" Content="{DynamicResource Loc.Home.Tools.Profiles}" />
+                        <ui:CardExpander x:Name="HomeProfileToolsExpander" Margin="0,12,0,0" Header="{DynamicResource Loc.Ux.Home.ProfileTools}" IsExpanded="False">
+                            <StackPanel>
+                                <ui:TextBlock Text="{DynamicResource Loc.Ux.Home.ProfileTools.Help}" TextWrapping="Wrap" Style="{StaticResource CaptionTextStyle}" Margin="0,0,0,12" />
+                                <WrapPanel>
+                                    <ui:Button Command="{Binding OpenPlaygroundCommand}" Content="{DynamicResource Loc.Home.Tools.Playground}" Margin="0,0,8,8" ToolTip="{DynamicResource Loc.Ux.Home.ProfileTest.Help}" />
+                                    <ui:Button Command="{Binding OpenOutputFormatsCommand}" Content="{DynamicResource Loc.Home.Tools.OutputFormats}" Margin="0,0,0,8" ToolTip="{DynamicResource Loc.Ux.Home.OutputFormats.Help}" />
+                                </WrapPanel>
+                            </StackPanel>
+                        </ui:CardExpander>
                     </StackPanel>
                 </controls:SectionCard.Header>
             </controls:SectionCard>

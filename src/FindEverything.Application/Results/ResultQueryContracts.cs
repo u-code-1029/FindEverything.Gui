@@ -27,6 +27,21 @@ public interface IResultQuerySession<T> : IAsyncDisposable
         CancellationToken cancellationToken = default);
     IAsyncEnumerable<T> EnumerateSelectionAsync(QuerySelection selection,
         CancellationToken cancellationToken = default);
+    async Task<ResultPage<T>> ReadSelectionRangeAsync(QuerySelection selection, int offset, int limit,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(offset);
+        ArgumentOutOfRangeException.ThrowIfLessThan(limit, 1);
+        var items = new List<T>(limit);
+        var skipped = 0;
+        await foreach (var item in EnumerateSelectionAsync(selection, cancellationToken).ConfigureAwait(false))
+        {
+            if (skipped++ < offset) continue;
+            if (items.Count == limit) return new(items, offset, true);
+            items.Add(item);
+        }
+        return new(items, offset, false);
+    }
     async Task<long> CountSelectionAsync(QuerySelection selection, CancellationToken cancellationToken = default)
     {
         long count = 0;

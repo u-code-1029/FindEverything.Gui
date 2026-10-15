@@ -195,6 +195,35 @@ public sealed partial class SqliteCatalogProjectionStore
                 checkPublication: true, previewCharacters: _query.TextPreviewCharacters, token).ConfigureAwait(false);
         }, cancellationToken);
 
+        public async Task<ResultPage<CatalogProjectionRow>> ReadSelectionRangeAsync(QuerySelection selection,
+            int offset, int limit, CancellationToken cancellationToken = default)
+        {
+            using var captured = selection.Capture();
+            return await ExecuteReadAsync(async token =>
+            {
+                ValidateRange(offset, limit);
+                using var connection = _owner.OpenConnection(readOperation: true);
+                using var interrupt = new SqliteReadCancellation(connection, token);
+                if (captured.Baseline is { } baseline)
+                {
+                    using var attach = connection.CreateCommand();
+                    attach.CommandText = "ATTACH DATABASE $path AS selection_source;";
+                    attach.Parameters.AddWithValue("$path", baseline.DatabasePath); attach.ExecuteNonQuery();
+                }
+                using var prepare = connection.CreateCommand();
+                prepare.CommandText = "CREATE TEMP TABLE selection_keys(path_key TEXT PRIMARY KEY COLLATE BINARY) WITHOUT ROWID; CREATE TEMP TABLE selection_unavailable(path_key TEXT PRIMARY KEY COLLATE BINARY) WITHOUT ROWID;";
+                prepare.ExecuteNonQuery();
+                foreach (var (table, keys) in new[] { ("selection_keys", captured.Keys), ("selection_unavailable", captured.UnavailableKeys) })
+                {
+                    prepare.CommandText = $"INSERT OR IGNORE INTO {table}(path_key) VALUES($key);";
+                    prepare.Parameters.Clear(); var parameter = prepare.Parameters.Add("$key", SqliteType.Text);
+                    foreach (var key in keys) { token.ThrowIfCancellationRequested(); parameter.Value = PathKey(key); prepare.ExecuteNonQuery(); }
+                }
+                return await ReadPageAsync(connection, "user_inputs", captured, offset, limit,
+                    checkPublication: true, previewCharacters: _query.TextPreviewCharacters, token).ConfigureAwait(false);
+            }, cancellationToken).ConfigureAwait(false);
+        }
+
         private async Task<T> ExecuteReadAsync<T>(Func<CancellationToken, Task<T>> operation, CancellationToken token)
         {
             ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);

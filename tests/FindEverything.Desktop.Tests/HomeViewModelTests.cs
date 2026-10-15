@@ -43,6 +43,81 @@ public sealed class HomeViewModelTests
     }
 
     [Fact]
+    public void Profile_test_targets_the_profile_displayed_on_home_without_stale_navigation_fallback()
+    {
+        var workspace = new StubWorkspaceContext(new WorkspaceSnapshot("b", @"C:\Projects", null));
+        var catalog = new StubProfileCatalog(new ProfileCatalogSnapshot(
+            [new StubLoadedProfile("a", "Profile A"), new StubLoadedProfile("b", "Profile B")], [], DateTimeOffset.UtcNow));
+        var navigation = new RecordingHomeNavigationService();
+        var playground = new RecordingPlaygroundNavigator();
+        using var vm = new HomeViewModel(workspace, catalog,
+            new StubDatabasePathResolver("files.db", "profile.db"), new StubOperationCoordinator(),
+            navigation, new TestAppLocalizer(), playgroundNavigator: playground);
+        Assert.Equal("Profile B", vm.ProfileName);
+        vm.OpenPlaygroundCommand.Execute(null);
+        Assert.Equal("b", playground.ProfileId);
+        Assert.Null(navigation.LastPageType);
+
+        workspace.Publish(workspace.Current with { SelectedProfileId = "a" });
+        playground.Result = false;
+        vm.OpenPlaygroundCommand.Execute(null);
+        Assert.Equal("Profile A", vm.ProfileName);
+        Assert.Equal("a", playground.ProfileId);
+        Assert.Null(navigation.LastPageType);
+    }
+
+    private sealed class RecordingPlaygroundNavigator : IProfilePlaygroundNavigator
+    {
+        public string? ProfileId { get; private set; }
+        public bool Result { get; set; } = true;
+        public bool Navigate(string profileId) { ProfileId = profileId; return Result; }
+    }
+
+    [Fact]
+    public void Next_actions_follow_workspace_readiness_without_requiring_a_profile_for_files()
+    {
+        var workspace = new StubWorkspaceContext(new WorkspaceSnapshot(null, null, null));
+        var catalog = new StubProfileCatalog(ProfileCatalogSnapshot.Empty);
+        var navigator = new RecordingHomeNavigationService();
+        using var vm = new HomeViewModel(workspace, catalog,
+            new StubDatabasePathResolver("files.db", "profile.db"), new StubOperationCoordinator(),
+            navigator, new TestAppLocalizer());
+        var notifications = new List<string?>();
+        vm.PropertyChanged += (_, args) => notifications.Add(args.PropertyName);
+
+        Assert.True(vm.NeedsLocation);
+        Assert.False(vm.HasCurrentLocation);
+        Assert.False(vm.ShowProfileTools);
+        Assert.Contains("위치", vm.NextStepTitle);
+        Assert.Equal("프로필 만들기", vm.StructuredActionTitle);
+        vm.OpenStructuredWorkspaceCommand.Execute(null);
+        Assert.Equal(typeof(ProfilesPage), navigator.LastPageType);
+
+        workspace.Publish(workspace.Current with { RootPath = @"C:\Projects" });
+        Assert.False(vm.NeedsLocation);
+        Assert.True(vm.HasCurrentLocation);
+        Assert.Contains("파일 찾기", vm.NextStepTitle);
+        Assert.False(vm.ShowProfileTools);
+        vm.OpenFilesCommand.Execute(null);
+        Assert.Equal(typeof(FilesPage), navigator.LastPageType);
+
+        catalog.Publish(new ProfileCatalogSnapshot([new StubLoadedProfile("projects", "Projects")], [], DateTimeOffset.UtcNow));
+        Assert.True(vm.ShowProfileTools);
+        Assert.Equal("구조화 보기", vm.StructuredActionTitle);
+        vm.OpenStructuredWorkspaceCommand.Execute(null);
+        Assert.Equal(typeof(CatalogPage), navigator.LastPageType);
+        Assert.Contains(nameof(HomeViewModel.ShowProfileTools), notifications);
+        Assert.Contains(nameof(HomeViewModel.NextStepTitle), notifications);
+        Assert.Contains(nameof(HomeViewModel.StructuredActionTitle), notifications);
+
+        catalog.Publish(ProfileCatalogSnapshot.Empty);
+        Assert.False(vm.ShowProfileTools);
+        Assert.Equal("프로필 만들기", vm.StructuredActionTitle);
+        vm.OpenStructuredWorkspaceCommand.Execute(null);
+        Assert.Equal(typeof(ProfilesPage), navigator.LastPageType);
+    }
+
+    [Fact]
     public void Empty_workspace_explains_what_is_missing_and_navigation_remains_available()
     {
         var workspace = new StubWorkspaceContext(new WorkspaceSnapshot(null, null, null));

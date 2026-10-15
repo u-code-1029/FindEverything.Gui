@@ -255,6 +255,7 @@ public partial class CatalogViewModel
             await CommitTrackedNotesAsync();
             cancellation.Token.ThrowIfCancellationRequested();
             _projectionSnapshot = published ?? throw new InvalidOperationException("No catalog projection was published.");
+            if (mode == CatalogOperationMode.Scan) SetSelectedOnlyMode(false);
             Fields = _projectionSnapshot.Fields;
             HasValueMappings = Fields.Any(field => field.HasValueMappings);
             await RefreshProjectionQueryAsync(force: true, cancellationToken: cancellation.Token);
@@ -412,14 +413,23 @@ public partial class CatalogViewModel
         IsSearchPending = true;
         var definition = _queryDefinition with { Keyword = FilterText, ShowOriginalValues = false };
         _queryDefinition = definition;
+        var selectedOnly = IsShowingSelectedOnly;
+        if (selectedOnly) definition = definition with { Keyword = null, Filters = [] };
+        var preparingReview = false;
         IResultQuerySession<CatalogProjectionRow>? query = null;
         try
         {
             // Debounce query construction, not the user's text input. Superseded
             // definitions never allocate a grid or queue a count query.
             if (debounce) await Task.Delay(SearchInputTiming.DebounceDelay, source.Token);
+            if (selectedOnly)
+            {
+                BeginSelectionPreservation(); preparingReview = true;
+                ProgressMessage = L("Loc.Ux.Results.PreparingSelectedOnly", "선택 항목 검토를 준비하는 중… 취소할 수 있습니다.");
+            }
             await PreserveSelectionScopeAsync(snapshot, definition, source.Token);
             query = await OpenProjectionQueryAsync(snapshot, definition, source.Token);
+            if (selectedOnly) query = new SelectedCatalogQuerySession(query, _querySelection);
             var localizer = _localizer;
             var loader = new ResultPageLoader<CatalogProjectionRow, CatalogItemViewModel>(query,
                 row => CreateProjectionItem(row, snapshot, definition, localizer));
@@ -440,9 +450,13 @@ public partial class CatalogViewModel
             _projectionQuery = query;
             _displayedProjectionSnapshot = snapshot;
             _displayedQueryDefinition = definition;
+            _displayedSelectedOnly = selectedOnly;
+            SetSelectedOnlyMode(selectedOnly);
+            _selectedReviewRefreshPending = false;
             query = null;
             var adoptedQuery = _projectionQuery;
             if (!preserveSelection) { _querySelection.Clear(); _selectionSpansFilters = false; _selectionAnchor = -1; }
+            if (selectedOnly) _selectionSpansFilters = true;
             _matchingCount = preserveSelection ? _matchingCount : first.Items.Count;
             _hasExactResultCount = !first.HasMore;
             IsResultCountPending = true;
@@ -478,6 +492,8 @@ public partial class CatalogViewModel
             UpdateProjectionSelection();
             _ = RefreshCurrentSelectionCountAsync();
             PruneCompletedNoteEditors();
+            if (preparingReview) { preparingReview = false; EndSelectionPreservation(); }
+            IsSearchPending = false;
             // Counting a substring filter can inspect every row. The first page
             // is already usable while this work finishes on the query worker.
             var total = await Task.Run(() => adoptedQuery.CountAsync(source.Token), source.Token).WaitAsync(source.Token);
@@ -501,6 +517,7 @@ public partial class CatalogViewModel
         finally
         {
             if (query is not null) _ = DisposeProjectionQueryAsync(query);
+            if (preparingReview) EndSelectionPreservation();
             if (ReferenceEquals(_queryCancellation, source))
             {
                 IsSearchPending = false;
@@ -640,7 +657,7 @@ public partial class CatalogViewModel
     {
         CancelSelectionRequests();
         if (!CanSelectAllResults()) return;
-        if (_selectionSpansFilters && UsesQuerySelection) { _ = ChangeCurrentSelectionAsync(FindEverything.Infrastructure.Persistence.SqliteSelectionSnapshot.SetOperation.Union); return; }
+        if ((_selectionSpansFilters || IsShowingSelectedOnly) && UsesQuerySelection) { _ = ChangeCurrentSelectionAsync(FindEverything.Infrastructure.Persistence.SqliteSelectionSnapshot.SetOperation.Union); return; }
         if (UsesQuerySelection) { _querySelection.SelectAll(); UpdateProjectionSelection(); }
         else SetSelection(_selectedItems.Union(Items.Cast<CatalogItemViewModel>()));
         SetCurrentSelectionCount(UsesQuerySelection ? SelectedCount : _selectedItems.Count(item => Items.Contains(item)));
@@ -653,12 +670,13 @@ public partial class CatalogViewModel
         _selectionSpansFilters = false;
         if (UsesQuerySelection) UpdateProjectionSelection(); else SetSelection([]);
         SetCurrentSelectionCount(0);
+        ScheduleSelectedReviewRefresh();
     }
     [RelayCommand(CanExecute = nameof(CanSelectAllResults))] private void InvertSelection()
     {
         CancelSelectionRequests();
         if (!CanSelectAllResults()) return;
-        if (_selectionSpansFilters && UsesQuerySelection) { _ = ChangeCurrentSelectionAsync(FindEverything.Infrastructure.Persistence.SqliteSelectionSnapshot.SetOperation.SymmetricDifference); return; }
+        if ((_selectionSpansFilters || IsShowingSelectedOnly) && UsesQuerySelection) { _ = ChangeCurrentSelectionAsync(FindEverything.Infrastructure.Persistence.SqliteSelectionSnapshot.SetOperation.SymmetricDifference); return; }
         if (UsesQuerySelection) { _querySelection.Invert(); UpdateProjectionSelection(); }
         else
         {
@@ -709,6 +727,7 @@ public partial class CatalogViewModel
             UpdateProjectionSelection(additive && !range && _querySelection.Baseline is null ? [row] : null);
             if (additive && !range && currentCount.HasValue) SetCurrentSelectionCount(currentCount + SelectedCount - previousCount);
             else _ = RefreshCurrentSelectionCountAsync();
+            ScheduleSelectedReviewRefresh();
         }
         catch (Exception exception) when (exception is OperationCanceledException
             or ResultQueryChangedException or ObjectDisposedException)

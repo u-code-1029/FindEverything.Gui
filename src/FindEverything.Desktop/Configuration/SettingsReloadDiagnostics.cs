@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
 using System.Security.Cryptography;
 using FindEverything.Application.Options;
@@ -40,12 +41,20 @@ public sealed class SettingsReloadDiagnostics :
     private readonly IApplicationRestartCoordinator _restartCoordinator;
     private readonly ILogger<SettingsReloadDiagnostics> _logger;
     private readonly IDraftProtectionService? _draftProtection;
+    private readonly LanguageRestartPolicy? _languageRestartPolicy;
+    private readonly IApplicationOperationCoordinator? _operations;
+    private readonly CatalogActivityState? _activity;
+    private readonly IUiScheduler _scheduler;
     private readonly SemaphoreSlim _reloadGate = new(1, 1);
     private readonly object _sync = new();
     private FileSystemWatcher? _watcher;
     private CancellationTokenSource? _lifetimeSource;
     private CancellationTokenSource? _pendingReload;
     private Task? _pendingReloadTask;
+    private Task _pendingRestartTask = Task.CompletedTask;
+    private string? _pendingRestartCulture;
+    private long _restartRevision;
+    private bool _restartWorkerQueued;
     private PersistedLocale _lastPersistedLocale;
     private bool _hasPersistedLocaleBaseline;
     private string? _lastError;
@@ -64,7 +73,11 @@ public sealed class SettingsReloadDiagnostics :
         IApplicationRestartCoordinator restartCoordinator,
         ILogger<SettingsReloadDiagnostics> logger,
         IDraftProtectionService? draftProtection = null,
-        IValidatedSettingsUpdater<NotificationOptions>? notificationUpdater = null)
+        IValidatedSettingsUpdater<NotificationOptions>? notificationUpdater = null,
+        LanguageRestartPolicy? languageRestartPolicy = null,
+        IApplicationOperationCoordinator? operations = null,
+        CatalogActivityState? activity = null,
+        IUiScheduler? scheduler = null)
     {
         _paths = paths;
         _settingsFilePath = Path.GetFullPath(paths.UserSettingsFile);
@@ -80,11 +93,22 @@ public sealed class SettingsReloadDiagnostics :
         _logger = logger;
         _draftProtection = draftProtection;
         _notificationUpdater = notificationUpdater;
+        _languageRestartPolicy = languageRestartPolicy;
+        _operations = operations;
+        _activity = activity;
+        _scheduler = scheduler ?? ImmediateUiScheduler.Instance;
+        if (_operations is not null) _operations.StateChanged += OnOperationStateChanged;
+        if (_activity is not null) _activity.PropertyChanged += OnActivityChanged;
     }
 
     public string? LastError => Volatile.Read(ref _lastError);
 
     public event EventHandler? Changed;
+
+    internal Task PendingRestartTask { get { lock (_sync) return _pendingRestartTask; } }
+
+    private bool IsWorking => _operations?.IsRunning == true
+        || _activity?.IsScanning == true || _activity?.IsFilesScanning == true;
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -156,6 +180,8 @@ public sealed class SettingsReloadDiagnostics :
             _lifetimeSource = null;
             lifetimeSource?.Cancel();
             _pendingReload?.Cancel();
+            _pendingRestartCulture = null;
+            _restartRevision++;
             pendingTask = _pendingReloadTask;
         }
 
@@ -285,6 +311,7 @@ public sealed class SettingsReloadDiagnostics :
         {
             await _reloadGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             enteredGate = true;
+            var languageRevision = _languageRestartPolicy?.Revision ?? 0;
 
             var snapshot = await ReadUserSettingsSnapshotAsync(
                 cancellationToken).ConfigureAwait(false);
@@ -345,10 +372,10 @@ public sealed class SettingsReloadDiagnostics :
             // preceding error. Editors use this notification to refresh fields
             // that the user has not modified.
             SetError(null, forceNotify: true);
-            if (RequiresRestart(_localizer.Culture.Name, localization.CultureName))
-            {
-                QueueRestartRequest();
-            }
+            var suppressRestart = _languageRestartPolicy?.SuppressWatcherRestart(
+                localization.CultureName, languageRevision) == true;
+            SetRestartRequest(!suppressRestart && RequiresRestart(_localizer.Culture.Name, localization.CultureName)
+                ? localization.CultureName : null);
 
             return true;
         }
@@ -558,24 +585,108 @@ public sealed class SettingsReloadDiagnostics :
         SetError(message);
     }
 
-    private void QueueRestartRequest()
+    private void OnOperationStateChanged(object? sender, ApplicationOperationStateChangedEventArgs args) =>
+        TryQueueRestartRequest();
+
+    private void OnActivityChanged(object? sender, PropertyChangedEventArgs args)
+    {
+        if (args.PropertyName is nameof(CatalogActivityState.IsScanning) or nameof(CatalogActivityState.IsFilesScanning))
+            TryQueueRestartRequest();
+    }
+
+    private void SetRestartRequest(string? cultureName)
+    {
+        lock (_sync)
+        {
+            _pendingRestartCulture = cultureName;
+            _restartRevision++;
+        }
+        TryQueueRestartRequest();
+    }
+
+    private void TryQueueRestartRequest()
+    {
+        lock (_sync)
+        {
+            if (Volatile.Read(ref _disposed) != 0 || _pendingRestartCulture is null
+                || _restartWorkerQueued || IsWorking) return;
+            _restartWorkerQueued = true;
+            var revision = _restartRevision;
+            var cultureName = _pendingRestartCulture;
+            _pendingRestartTask = Task.Run(() => ProcessRestartRequestAsync(cultureName, revision));
+        }
+    }
+
+    private async Task ProcessRestartRequestAsync(string cultureName, long revision)
     {
         // RequestRestart synchronously marshals WPF shutdown to the UI thread. It
         // must not run inside _pendingReloadTask because App.OnExit stops the host
         // and waits for that same task. A separate worker removes that wait cycle.
-        _ = Task.Run(async () =>
+        try
         {
-            try
+            await _scheduler.InvokeAsync(async () =>
             {
+                if (!IsCurrentRestartRequest(cultureName, revision)) return false;
+                if (IsWorking) return false;
                 if (_draftProtection is not null
-                    && !await _draftProtection.ConfirmAllAsync().ConfigureAwait(false)) return;
+                    && !await _draftProtection.ConfirmAllAsync().ConfigureAwait(true))
+                {
+                    ClearRestartRequest(revision);
+                    return false;
+                }
+                // Both the settings and operation state can change while draft
+                // consent is open. The final check runs on the UI dispatcher.
+                if (!IsCurrentRestartRequest(cultureName, revision)) return false;
+                if (IsWorking) return false;
+                ClearRestartRequest(revision);
                 _restartCoordinator.RequestRestart();
-            }
-            catch (Exception exception)
+                return true;
+            }).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (Volatile.Read(ref _disposed) != 0)
+        {
+        }
+        catch (Exception exception)
+        {
+            ClearRestartRequest(revision);
+            ReportFailure(exception);
+        }
+        finally
+        {
+            lock (_sync) _restartWorkerQueued = false;
+            // An idle event or a newer reload may have arrived during the worker.
+            // Coalesce those requests without polling or losing the idle signal.
+            TryQueueRestartRequest();
+        }
+    }
+
+    private bool IsCurrentRestartRequest(string cultureName, long revision)
+    {
+        lock (_sync)
+        {
+            if (Volatile.Read(ref _disposed) != 0 || revision != _restartRevision
+                || _pendingRestartCulture != cultureName) return false;
+            if (_languageRestartPolicy?.AllowsAutomaticRestart(cultureName) == false
+                || !string.Equals(LocalizationOptions.Normalize(_localizationState.Current.CultureName),
+                    LocalizationOptions.Normalize(cultureName), StringComparison.Ordinal)
+                || !RequiresRestart(_localizer.Culture.Name, cultureName))
             {
-                ReportFailure(exception);
+                _pendingRestartCulture = null;
+                _restartRevision++;
+                return false;
             }
-        });
+            return true;
+        }
+    }
+
+    private void ClearRestartRequest(long revision)
+    {
+        lock (_sync)
+        {
+            if (revision != _restartRevision) return;
+            _pendingRestartCulture = null;
+            _restartRevision++;
+        }
     }
 
     private void SetError(string? message, bool forceNotify = false)
@@ -614,6 +725,9 @@ public sealed class SettingsReloadDiagnostics :
             return;
         }
 
+        if (_operations is not null) _operations.StateChanged -= OnOperationStateChanged;
+        if (_activity is not null) _activity.PropertyChanged -= OnActivityChanged;
+
         FileSystemWatcher? watcher;
         CancellationTokenSource? lifetimeSource;
         lock (_sync)
@@ -624,6 +738,8 @@ public sealed class SettingsReloadDiagnostics :
             _lifetimeSource = null;
             lifetimeSource?.Cancel();
             _pendingReload?.Cancel();
+            _pendingRestartCulture = null;
+            _restartRevision++;
         }
 
         DisposeWatcher(watcher);

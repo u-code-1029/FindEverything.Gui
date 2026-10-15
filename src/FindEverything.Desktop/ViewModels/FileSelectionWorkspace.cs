@@ -29,10 +29,17 @@ public partial class FileSearchViewModel
         : _isCurrentSelectionCountPending
             ? F("Loc.Ux.Results.SelectionCounting", "총 {0:N0}개 선택 · 현재 결과 확인 중", SelectedCount)
             : F("Loc.Ux.Results.SelectionCountUnknown", "총 {0:N0}개 선택 · 현재 결과 선택 수 미확인", SelectedCount);
-    public void ApplySearchImmediately() => _ = StartLoadAsync(refreshStatus: false, debounce: false, preserveSelection: true);
-    partial void OnSelectedCountChanged(int value) => OnPropertyChanged(nameof(SelectionSummary));
+    public void ApplySearchImmediately()
+    {
+        if (!IsShowingSelectedOnly) _ = StartLoadAsync(refreshStatus: false, debounce: false, preserveSelection: true);
+    }
+    partial void OnSelectedCountChanged(int value)
+    {
+        OnPropertyChanged(nameof(SelectionSummary)); NotifySelectedReviewAvailability();
+    }
     partial void OnIsPreservingSelectionChanged(bool value)
     {
+        NotifySelectedReviewAvailability();
         OnPropertyChanged(nameof(IsResultInteractionEnabled));
         CopySelectionCommand.NotifyCanExecuteChanged();
         OpenSelectedCommand.NotifyCanExecuteChanged();
@@ -60,7 +67,9 @@ public partial class FileSearchViewModel
     private async Task PreserveSelectionScopeAsync(FileSearchScope scope, EntrySearchRequest request, CancellationToken token)
     {
         if (_fileQueryScope != scope || _fileQueryRequest is not { } old
-            || old.ExpectedScanId != request.ExpectedScanId || SameResultFilters(old, request)) return;
+            || old.ExpectedScanId != request.ExpectedScanId
+            || (SameResultFilters(old, request) && _displayedSelectedOnly == IsShowingSelectedOnly
+                && !(IsShowingSelectedOnly && _selection.AllMatching))) return;
         if (_selection.Count(long.MaxValue) == 0) return;
         if (_selection.AllMatching && _fileQuery is { } previous)
         {
@@ -84,7 +93,7 @@ public partial class FileSearchViewModel
         _selectionCountCancellation = null;
         _isCurrentSelectionCountPending = false;
         if (_fileQuery is not { } query || SelectedCount == 0) { SetCurrentSelectionCount(0); return; }
-        if (!_selectionSpansFilters) { SetCurrentSelectionCount(SelectedCount); return; }
+        if (!_selectionSpansFilters || IsShowingSelectedOnly) { SetCurrentSelectionCount(SelectedCount); return; }
         using var cancellation = new CancellationTokenSource(); _selectionCountCancellation = cancellation;
         _isCurrentSelectionCountPending = true;
         using var captured = _selection.Capture(); SetCurrentSelectionCount(null);
@@ -124,7 +133,7 @@ public partial class FileSearchViewModel
     {
         if (CurrentResultsSelectionState == true)
         {
-            if (_selectionSpansFilters) _ = ChangeCurrentSelectionAsync(SqliteSelectionSnapshot.SetOperation.Except);
+            if (_selectionSpansFilters || IsShowingSelectedOnly) _ = ChangeCurrentSelectionAsync(SqliteSelectionSnapshot.SetOperation.Except);
             else ClearSelection();
         }
         else SelectAll();
@@ -146,6 +155,7 @@ public partial class FileSearchViewModel
             _selectionFlagsVersion++;
             _selection.ReplaceBaseline(merged); UpdateQuerySelection();
             await RefreshCurrentSelectionCountAsync();
+            ScheduleSelectedReviewRefresh();
         }
         catch (OperationCanceledException) { }
         catch (Exception exception) { ShowStatus(L("Loc.Common.Error", "오류"), exception.Message, Wpf.Ui.Controls.InfoBarSeverity.Error); }

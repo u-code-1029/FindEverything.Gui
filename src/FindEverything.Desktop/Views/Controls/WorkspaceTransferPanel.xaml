@@ -44,11 +44,11 @@
             Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}"/>
         <ui:Flyout x:Name="TransferFlyout" Width="0" Height="0" MinWidth="0" MinHeight="0" Padding="16" Placement="Bottom">
             <ui:DynamicScrollViewer MaxHeight="480" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                <StackPanel Width="300" PreviewKeyDown="OnMenuKeyDown">
+                <StackPanel MinWidth="300" MaxWidth="480" PreviewKeyDown="OnMenuKeyDown">
                     <ui:TextBlock FontSize="16" FontWeight="SemiBold" Margin="0,0,0,12" Text="{DynamicResource Loc.Transfer.Menu.Title}"/>
                     <StackPanel Margin="0,0,0,12" Visibility="{Binding ShowSourceSelector, ElementName=TransferPanel, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <Label Padding="0" Margin="0,0,0,4" Content="{DynamicResource Loc.Transfer.Source.Label}" Target="{Binding ElementName=SourcePicker}"/>
-                        <ComboBox x:Name="SourcePicker" HorizontalAlignment="Stretch" ItemsSource="{Binding Sources}" SelectedItem="{Binding SelectedSource}"
+                        <ComboBox Style="{StaticResource ContentAwareComboBoxStyle}" x:Name="SourcePicker" HorizontalAlignment="Stretch" ItemsSource="{Binding Sources}" SelectedItem="{Binding SelectedSource}"
                             DisplayMemberPath="DisplayName" ToolTip="{Binding SourceDescription}" IsEnabled="{Binding CanSelectSource}"
                             AutomationProperties.Name="{DynamicResource Loc.Transfer.Source.Label}"/>
                         <ui:TextBlock Margin="0,4,0,0" Text="{Binding SourceDescription}" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>

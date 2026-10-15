@@ -54,7 +54,7 @@
                                     FontWeight="SemiBold"
                                     Text="{Binding Status}"
                                     TextWrapping="Wrap" />
-                                <ComboBox x:Name="DebugLaneSelector" ItemsSource="{Binding Lanes}" SelectedIndex="0" DisplayMemberPath="Label"
+                                <ComboBox Style="{StaticResource ContentAwareComboBoxStyle}" x:Name="DebugLaneSelector" ItemsSource="{Binding Lanes}" SelectedIndex="0" DisplayMemberPath="Label"
                                     AutomationProperties.Name="{StaticResource Loc.Ux.Authoring.DebugGroup}" Margin="0,0,0,8" />
                                 <ContentControl Content="{Binding SelectedItem, ElementName=DebugLaneSelector}" HorizontalContentAlignment="Stretch">
                                     <ContentControl.ContentTemplate>
@@ -121,23 +121,28 @@
     </Page.Resources>
 
     <controls:WorkspacePageFrame>
-        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-        <controls:PageHeader Title="{StaticResource Loc.Shell.Nav.Playground}" Description="{StaticResource Loc.Workspace.Playground.Description}">
-            <ui:Button Command="{Binding EditProfileCommand}" Content="{StaticResource Loc.Ux.Authoring.EditProfile}" Icon="{ui:SymbolIcon Symbol=DocumentEdit20}" />
-        </controls:PageHeader>
-        <controls:CommandStrip Grid.Row="1" Padding="16" Margin="0,0,0,12">
+        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+        <controls:CommandStrip Grid.Row="0" Padding="16" Margin="0,0,0,12" AutomationProperties.HelpText="{StaticResource Loc.Workspace.Playground.Description}">
             <Grid x:Name="PlaygroundInputPanel" IsEnabled="{Binding IsReady}">
                 <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="2*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                <Label x:Name="PlaygroundProfileLabel" Padding="0" Margin="0,0,12,6" FontWeight="SemiBold" Content="{StaticResource Loc.Workspace.Profile.Label}" Target="{Binding ElementName=PlaygroundProfileComboBox}" />
-                <ui:TextBlock Grid.Column="1" Grid.ColumnSpan="3" Margin="0,0,0,6" FontWeight="SemiBold" Text="{StaticResource Loc.Workspace.Playground.Path}" TextWrapping="Wrap" />
-                <ComboBox x:Name="PlaygroundProfileComboBox" Grid.Row="1" Margin="0,0,12,0" HorizontalAlignment="Stretch" ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}" DisplayMemberPath="Description" AutomationProperties.Name="{StaticResource Loc.Workspace.Playground.Profile}" ToolTip="{StaticResource Loc.Workspace.Playground.Profile.Help}" />
-                <ui:TextBox Grid.Row="1" Grid.Column="1" Margin="0,0,8,0" ClearButtonEnabled="True" PlaceholderText="{StaticResource Loc.Workspace.Playground.Path}" Text="{Binding InputPath, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{StaticResource Loc.Workspace.Playground.Path}" ToolTip="{StaticResource Loc.Workspace.Playground.Path.Help}" />
-                <ui:Button Grid.Row="1" Grid.Column="2" Width="36" Padding="0" Command="{Binding BrowsePathCommand}" Icon="{ui:SymbolIcon Symbol=FolderOpen20}" AutomationProperties.Name="{StaticResource Loc.Workspace.Playground.Browse}" ToolTip="{StaticResource Loc.Workspace.Playground.Browse}" />
-                <ui:Button Grid.Row="1" Grid.Column="3" Margin="8,0,0,0" Appearance="Primary" Command="{Binding EvaluateCommand}" Content="{StaticResource Loc.Workspace.Playground.Run}" Icon="{ui:SymbolIcon Symbol=Play20}" ToolTip="{StaticResource Loc.Workspace.Playground.Run.Help}" ToolTipService.ShowOnDisabled="True" />
+                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                <Label x:Name="PlaygroundProfileLabel" Padding="0" Margin="0,0,12,8" VerticalAlignment="Center" Content="{StaticResource Loc.Workspace.Profile.Label}" Target="{Binding ElementName=PlaygroundProfileComboBox}" />
+                <Grid Grid.Column="1" Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <ComboBox Style="{StaticResource ContentAwareComboBoxStyle}" x:Name="PlaygroundProfileComboBox" HorizontalAlignment="Stretch" ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}" DisplayMemberPath="Description" AutomationProperties.Name="{StaticResource Loc.Workspace.Playground.Profile}" ToolTip="{StaticResource Loc.Workspace.Playground.Profile.Help}" />
+                    <ui:Button x:Name="EditTestProfileButton" Grid.Column="1" Margin="8,0,0,0" Width="36" Padding="4" Appearance="Transparent" Command="{Binding EditProfileCommand}"
+                        Icon="{ui:SymbolIcon Symbol=DocumentEdit20}" ToolTip="{StaticResource Loc.Ux.Authoring.EditProfile}" AutomationProperties.Name="{StaticResource Loc.Ux.Authoring.EditProfile}" />
+                </Grid>
+                <Label Grid.Row="1" Padding="0" Margin="0,0,12,0" VerticalAlignment="Center" Content="{StaticResource Loc.Ux.Results.Location}" Target="{Binding ElementName=PlaygroundPathTextBox}" />
+                <Grid Grid.Row="1" Grid.Column="1">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <ui:TextBox x:Name="PlaygroundPathTextBox" Margin="0,0,8,0" ClearButtonEnabled="True" PlaceholderText="{StaticResource Loc.Workspace.Playground.Path}" Text="{Binding InputPath, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{StaticResource Loc.Workspace.Playground.Path}" ToolTip="{StaticResource Loc.Workspace.Playground.Path.Help}" />
+                    <ui:Button Grid.Column="1" Width="36" Padding="0" Command="{Binding BrowsePathCommand}" Icon="{ui:SymbolIcon Symbol=FolderOpen20}" AutomationProperties.Name="{StaticResource Loc.Workspace.Playground.Browse}" ToolTip="{StaticResource Loc.Workspace.Playground.Browse}" />
+                    <ui:Button Grid.Column="2" Margin="8,0,0,0" Appearance="Primary" Command="{Binding EvaluateCommand}" Content="{StaticResource Loc.Workspace.Playground.Run}" Icon="{ui:SymbolIcon Symbol=Play20}" ToolTip="{StaticResource Loc.Workspace.Playground.Run.Help}" ToolTipService.ShowOnDisabled="True" />
+                </Grid>
             </Grid>
         </controls:CommandStrip>
-        <TabControl Grid.Row="2" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
+        <TabControl Grid.Row="1" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
         <TabItem Header="{StaticResource Loc.Profiles.Features.Playground.PathTab}">
                 <ui:DynamicScrollViewer x:Name="ProfilePlaygroundScrollViewer" Style="{StaticResource FluentGutteredScrollViewerStyle}">
                     <StackPanel>
@@ -261,7 +266,7 @@
                     <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{StaticResource Loc.Profiles.Features.Selection.Title}" />
                     <ui:TextBlock Margin="0,4,0,12" Style="{StaticResource CaptionTextStyle}" TextWrapping="Wrap" Text="{StaticResource Loc.Profiles.Features.Playground.Help}" />
                     <ui:TextBlock Margin="0,0,0,4" Text="{StaticResource Loc.Profiles.Features.Selection.RuleName}" />
-                    <ComboBox ItemsSource="{Binding SelectionRules}" SelectedItem="{Binding SelectedSelectionRule}" DisplayMemberPath="DisplayName" />
+                    <ComboBox Style="{StaticResource ContentAwareComboBoxStyle}" ItemsSource="{Binding SelectionRules}" SelectedItem="{Binding SelectedSelectionRule}" DisplayMemberPath="DisplayName" />
                     <ui:TextBox Margin="0,12,0,0" MinHeight="160" AcceptsReturn="True" TextWrapping="Wrap"
                         VerticalScrollBarVisibility="Auto" Text="{Binding SelectionInputText, UpdateSourceTrigger=PropertyChanged}"
                         PlaceholderText="{StaticResource Loc.Profiles.Features.Playground.Input}" />
@@ -275,7 +280,7 @@
             </ui:DynamicScrollViewer>
         </TabItem>
         </TabControl>
-        <Grid controls:FloatingNotificationChrome.IsBottomChrome="True" Grid.Row="3" Margin="0,8" Background="Transparent">
+        <Grid controls:FloatingNotificationChrome.IsBottomChrome="True" Grid.Row="2" Margin="0,8" Background="Transparent">
             <StackPanel Orientation="Horizontal">
                 <ui:ProgressRing Width="18" Height="18" Margin="0,0,8,0" IsIndeterminate="True" Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}" />
                 <ui:TextBlock Text="{Binding Summary}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Summary}" AutomationProperties.LiveSetting="Polite" />

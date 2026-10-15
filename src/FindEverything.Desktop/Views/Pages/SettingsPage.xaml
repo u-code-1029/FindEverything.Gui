@@ -54,9 +54,8 @@
         </Style>
     </Page.Resources>
     <controls:WorkspacePageFrame>
-        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-        <controls:PageHeader Title="{DynamicResource Loc.Shell.Nav.Settings}" Description="{DynamicResource Loc.Workspace.Settings.Description}" />
-        <ui:DynamicScrollViewer x:Name="SettingsScrollViewer" Grid.Row="1" Style="{StaticResource FluentGutteredScrollViewerStyle}">
+        <Grid.RowDefinitions><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+        <ui:DynamicScrollViewer x:Name="SettingsScrollViewer" Grid.Row="0" Style="{StaticResource FluentGutteredScrollViewerStyle}" AutomationProperties.HelpText="{DynamicResource Loc.Workspace.Settings.Description}">
             <StackPanel HorizontalAlignment="Stretch" IsEnabled="{Binding IsEditable}" ToolTipService.ShowOnDisabled="True">
                 <controls:SectionCard x:Name="AppearanceSettingsCard" Style="{StaticResource SettingsSectionCardStyle}">
                     <controls:SectionCard.Header>
@@ -66,13 +65,13 @@
                             <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.Workspace.Settings.Appearance}" AutomationProperties.HeadingLevel="Level2" />
                         </StackPanel>
                         <controls:SettingRowCard Style="{StaticResource GroupedSettingRowStyle}" Title="{DynamicResource Loc.Workspace.Settings.Theme}" Description="{DynamicResource Loc.Workspace.Settings.Theme.Help}">
-                            <ComboBox HorizontalAlignment="Stretch" DisplayMemberPath="DisplayName" ItemsSource="{Binding ThemeChoices}" SelectedItem="{Binding SelectedTheme}" AutomationProperties.Name="{DynamicResource Loc.Workspace.Settings.Theme}" />
+                            <ComboBox Style="{StaticResource ContentAwareComboBoxStyle}" HorizontalAlignment="Stretch" DisplayMemberPath="DisplayName" ItemsSource="{Binding ThemeChoices}" SelectedItem="{Binding SelectedTheme}" AutomationProperties.Name="{DynamicResource Loc.Workspace.Settings.Theme}" />
                         </controls:SettingRowCard>
                         <controls:SettingRowCard Style="{StaticResource GroupedSettingRowStyle}" Title="{DynamicResource Loc.Workspace.Settings.Backdrop}" Description="{DynamicResource Loc.Workspace.Settings.Backdrop.Help}">
-                            <ComboBox HorizontalAlignment="Stretch" DisplayMemberPath="DisplayName" ItemsSource="{Binding BackdropChoices}" SelectedItem="{Binding SelectedBackdrop}" AutomationProperties.Name="{DynamicResource Loc.Workspace.Settings.Backdrop}" />
+                            <ComboBox Style="{StaticResource ContentAwareComboBoxStyle}" HorizontalAlignment="Stretch" DisplayMemberPath="DisplayName" ItemsSource="{Binding BackdropChoices}" SelectedItem="{Binding SelectedBackdrop}" AutomationProperties.Name="{DynamicResource Loc.Workspace.Settings.Backdrop}" />
                         </controls:SettingRowCard>
                         <controls:SettingRowCard Style="{StaticResource GroupedSettingRowStyle}" Title="{DynamicResource Loc.Settings.Density.Title}" Description="{DynamicResource Loc.Settings.Density.Help}">
-                            <ComboBox HorizontalAlignment="Stretch" DisplayMemberPath="DisplayName" ItemsSource="{Binding CatalogRowDensityChoices}" SelectedItem="{Binding SelectedCatalogRowDensity}" AutomationProperties.Name="{DynamicResource Loc.Settings.Density.Title}" ToolTip="{DynamicResource Loc.Settings.Density.Help}" />
+                            <ComboBox Style="{StaticResource ContentAwareComboBoxStyle}" HorizontalAlignment="Stretch" DisplayMemberPath="DisplayName" ItemsSource="{Binding CatalogRowDensityChoices}" SelectedItem="{Binding SelectedCatalogRowDensity}" AutomationProperties.Name="{DynamicResource Loc.Settings.Density.Title}" ToolTip="{DynamicResource Loc.Settings.Density.Help}" />
                         </controls:SettingRowCard>
                         <controls:SettingRowCard Style="{StaticResource GroupedSettingRowStyle}" BorderThickness="0" Title="{DynamicResource Loc.Workspace.Settings.Language}" Description="{DynamicResource Loc.Workspace.Settings.Language.Help}">
                             <ui:TextBlock Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.Workspace.Settings.Language.Action}" />
@@ -136,7 +135,7 @@
                     </ui:CardExpander>
             </StackPanel>
         </ui:DynamicScrollViewer>
-        <controls:CommandStrip controls:FloatingNotificationChrome.IsBottomChrome="True" Grid.Row="2" Margin="0,12,0,0" Padding="12">
+        <controls:CommandStrip controls:FloatingNotificationChrome.IsBottomChrome="True" Grid.Row="1" Margin="0,12,0,0" Padding="12">
             <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,12,0">
                     <ui:ProgressRing Width="18" Height="18" Margin="0,0,8,0" IsIndeterminate="{Binding IsSaving}" Visibility="{Binding IsSaving, Converter={StaticResource BooleanToVisibilityConverter}}" />

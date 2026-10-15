@@ -355,6 +355,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
         OnPropertyChanged(nameof(IsGuidedMode));
         OnPropertyChanged(nameof(IsExpertMode));
         OnPropertyChanged(nameof(EditorModeDisplay));
+        RefreshOptionalStepSummaries();
     }
 
     partial void OnCurrentEditorStepChanged(ProfileEditorStep value)
@@ -1714,6 +1715,13 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
             return;
         }
 
+        if (eventArgs.PropertyName is nameof(ProfileFieldDraftViewModel.ValueMappings)
+            or nameof(ProfileRuleDraftViewModel.StopTraversalGroupsText)
+            or nameof(ProfileFieldDraftViewModel.IsTerminalField)
+            or nameof(ProfileFieldDraftViewModel.GroupName)
+            or nameof(ProfileFieldDraftViewModel.GroupNamesText))
+            RefreshOptionalStepSummaries();
+
         if (sender is ProfileDirectoryNameExclusionRuleDraftViewModel
             or ProfileTextFileFieldDraftViewModel
             or ProfileUserInputFieldDraftViewModel)
@@ -1797,6 +1805,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
 
     private void RefreshNumericValidation()
     {
+        RefreshOptionalStepSummaries();
         RefreshValidationIssues();
         var message = BuildNumericValidationMessage();
         if (_numericValidationMessage != message)

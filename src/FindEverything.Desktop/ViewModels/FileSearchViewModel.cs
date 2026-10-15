@@ -304,7 +304,7 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
     public bool CanSearch => HasIndex && !IsBusy;
 
     // Cache loading remains interactive; only a disk scan pauses result work.
-    public bool IsResultInteractionEnabled => !IsBusy && !IsPreservingSelection;
+    public bool IsResultInteractionEnabled => !IsBusy && !IsPreservingSelection && !(IsShowingSelectedOnly && IsSearching);
 
     public bool IsSetupStateVisible => !HasRoot || !HasIndex;
 
@@ -436,6 +436,7 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
 
     partial void OnIsBusyChanged(bool value)
     {
+        NotifySelectedReviewAvailability();
         ToggleCurrentResultsSelectionCommand.NotifyCanExecuteChanged();
         if (_activityState is not null) _activityState.IsFilesScanning = !_disposed && value;
         if (value)
@@ -473,6 +474,7 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
 
     partial void OnIsSearchingChanged(bool value)
     {
+        NotifySelectedReviewAvailability();
         ToggleCurrentResultsSelectionCommand.NotifyCanExecuteChanged();
         LoadMoreCommand.NotifyCanExecuteChanged();
         CopySelectionCommand.NotifyCanExecuteChanged();
@@ -791,6 +793,7 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
 
         if (refreshResults)
         {
+            SetSelectedOnlyMode(false);
             if (_isActive) await StartLoadAsync(refreshStatus: false, debounce: false).ConfigureAwait(true);
             else _needsActivationRefresh = true;
         }
@@ -963,6 +966,7 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
 
         if (refreshResults)
         {
+            SetSelectedOnlyMode(false);
             if (_isActive) await StartLoadAsync(refreshStatus: false, debounce: false).ConfigureAwait(true);
             else _needsActivationRefresh = true;
         }
@@ -971,6 +975,8 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
     [RelayCommand(CanExecute = nameof(CanCancel))]
     private void Cancel()
     {
+        _selectedReviewRequests.Cancel();
+        SetSelectedOnlyMode(_displayedSelectedOnly);
         _bulkSelectionCancellation?.Cancel();
         _selectionCountCancellation?.Cancel();
         ProgressMessage = L("Loc.Common.Cancelling", "취소하는 중…");
@@ -989,10 +995,10 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
                 ? EntrySortDirection.Descending : EntrySortDirection.Ascending;
     }
 
-    [RelayCommand(CanExecute = nameof(IsResultInteractionEnabled))]
+    [RelayCommand(CanExecute = nameof(CanEditResultFilters))]
     private void ClearFilters()
     {
-        if (!IsResultInteractionEnabled) return;
+        if (!CanEditResultFilters) return;
         _changingFilters = true;
         try
         {
@@ -1011,10 +1017,10 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
         ScheduleSearch();
     }
 
-    [RelayCommand(CanExecute = nameof(IsResultInteractionEnabled))]
+    [RelayCommand(CanExecute = nameof(CanEditResultFilters))]
     private void ClearSearchAndFilters()
     {
-        if (!IsResultInteractionEnabled) return;
+        if (!CanEditResultFilters) return;
         SearchText = string.Empty;
         ClearFilters();
     }
@@ -1363,6 +1369,12 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
     public void Deactivate()
     {
         _isActive = false;
+        if (IsShowingSelectedOnly && (IsSearching || _selectedReviewRefreshPending))
+        {
+            _selectedReviewRefreshPending = true;
+            _needsActivationRefresh = true;
+        }
+        _selectedReviewRequests.Cancel();
         if (IsSearching || IsResultCountPending)
         {
             _needsActivationRefresh = true;
@@ -1459,6 +1471,7 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
 
     private void ScheduleSearch(bool preserveSelection = true, bool debounce = true)
     {
+        if (IsShowingSelectedOnly && debounce) return;
         if (!_isActive) { _needsActivationRefresh = true; return; }
         if (_disposed || _changingFilters || !CanSearch)
         {
@@ -1480,6 +1493,8 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
 
     private void InvalidateScope()
     {
+        SetSelectedOnlyMode(false); _displayedSelectedOnly = false;
+        _selectedReviewRequests.Cancel();
         Interlocked.Increment(ref _scopeVersion);
         InvalidateSearch();
         _loadedSearchSnapshot = null;
@@ -1496,7 +1511,8 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
         bool refreshStatus,
         bool debounce,
         bool reset = true,
-        bool preserveSelection = true)
+        bool preserveSelection = true,
+        CancellationToken cancellationToken = default)
     {
         if (_disposed)
         {
@@ -1521,7 +1537,7 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
             if (UsesQuerySelection) UpdateQuerySelection(); else SelectedCount = 0;
         }
         IsSearching = true;
-        var cancellation = new CancellationTokenSource();
+        var cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _queryCancellation = cancellation;
         var version = Interlocked.Increment(ref _queryVersion);
         var task = RunLoadSessionAsync(
@@ -1568,7 +1584,7 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
         catch (Exception exception)
         {
             if (version != Volatile.Read(ref _queryVersion) || cancellation.IsCancellationRequested) return;
-            ClearSearchResults();
+            if (_fileQuery is null || (!IsShowingSelectedOnly && !_displayedSelectedOnly)) ClearSearchResults();
             _logger.LogWarning(exception, "Could not load the file index.");
             ShowStatus(
                 refreshStatus
@@ -1623,6 +1639,8 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
                 var scope = ValidateScope(requireExistingRoot: false);
                 var status = await Task.Run(() => _fileSearchService.GetStatusAsync(scope, cancellationToken), cancellationToken);
                 var request = BuildSearchRequest(scope.RootPath, 0) with { ExpectedScanId = status.LastScanId };
+                var selectedOnly = IsShowingSelectedOnly;
+                if (selectedOnly) request = WithoutResultFilters(request);
                 await PreserveSelectionScopeAsync(scope, request, cancellationToken);
                 IResultQuerySession<IndexedPathEntry> query;
                 try
@@ -1639,6 +1657,17 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
                 try
                 {
                     var loader = new ResultPageLoader<IndexedPathEntry, FileSearchItemViewModel>(query, CreateFileRow);
+                    if (selectedOnly)
+                    {
+                        BeginSelectionPreservation();
+                        try
+                        {
+                            ProgressMessage = L("Loc.Ux.Results.PreparingSelectedOnly", "선택 항목 검토를 준비하는 중… 취소할 수 있습니다.");
+                            query = await FindEverything.Infrastructure.Persistence.SqliteSelectedFileQuery.CreateAsync(query, _selection, cancellationToken);
+                            loader = new ResultPageLoader<IndexedPathEntry, FileSearchItemViewModel>(query, CreateFileRow);
+                        }
+                        finally { EndSelectionPreservation(); }
+                    }
                     var first = await loader.ReadAsync(0, VirtualResultCollection<FileSearchItemViewModel>.PageSize, cancellationToken);
                     if (version != Volatile.Read(ref _queryVersion)) { await query.DisposeAsync(); return; }
                     using var retainedSelection = preserveSelection
@@ -1653,8 +1682,12 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
                     _fileQuery = query;
                     _fileQueryScope = scope;
                     _fileQueryRequest = request;
+                    _displayedSelectedOnly = selectedOnly;
+                    SetSelectedOnlyMode(selectedOnly);
+                    _selectedReviewRefreshPending = false;
                     RestoreSelection(retainedSelection);
                     _selectionSpansFilters = spansFilters;
+                    if (selectedOnly) _selectionSpansFilters = true;
                     SelectedItem = retainedItem;
                     _selectionAnchor = -1;
                     var collection = new VirtualResultCollection<FileSearchItemViewModel>(
@@ -1798,7 +1831,7 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
     private void SelectAll()
     {
         if (!CanSelectAllResults()) return;
-        if (_selectionSpansFilters) { _ = ChangeCurrentSelectionAsync(FindEverything.Infrastructure.Persistence.SqliteSelectionSnapshot.SetOperation.Union); return; }
+        if (_selectionSpansFilters || IsShowingSelectedOnly) { _ = ChangeCurrentSelectionAsync(FindEverything.Infrastructure.Persistence.SqliteSelectionSnapshot.SetOperation.Union); return; }
         _selectionController?.Cancel();
         _selectionCountCancellation?.Cancel();
         _selectionFlagsVersion++;
@@ -1815,13 +1848,14 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
         _selectionFlagsVersion++;
         _selection.Clear(); _selectionSpansFilters = false; SelectedItem = null; UpdateQuerySelection();
         SetCurrentSelectionCount(0);
+        ScheduleSelectedReviewRefresh();
     }
 
     [RelayCommand(CanExecute = nameof(CanSelectAllResults))]
     private void InvertSelection()
     {
         if (!CanSelectAllResults()) return;
-        if (_selectionSpansFilters) { _ = ChangeCurrentSelectionAsync(FindEverything.Infrastructure.Persistence.SqliteSelectionSnapshot.SetOperation.SymmetricDifference); return; }
+        if (_selectionSpansFilters || IsShowingSelectedOnly) { _ = ChangeCurrentSelectionAsync(FindEverything.Infrastructure.Persistence.SqliteSelectionSnapshot.SetOperation.SymmetricDifference); return; }
         _selectionController?.Cancel();
         _selectionCountCancellation?.Cancel();
         _selectionFlagsVersion++;
@@ -1849,6 +1883,7 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
             UpdateQuerySelection(additive && !range && _selection.Baseline is null ? [row] : null);
             if (additive && !range && currentCount.HasValue) SetCurrentSelectionCount(currentCount + SelectedCount - previousCount);
             else _ = RefreshCurrentSelectionCountAsync();
+            ScheduleSelectedReviewRefresh();
         }
         catch (OperationCanceledException) { }
         catch (Exception exception)
@@ -2146,6 +2181,7 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
         }
 
         _disposed = true;
+        _selectedReviewRequests.Dispose();
         if (_activityState is not null) _activityState.IsFilesScanning = false;
         DetachWorkspaceTransfer();
         _workspaceContext.Changed -= OnWorkspaceChanged;

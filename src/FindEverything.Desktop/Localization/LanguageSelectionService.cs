@@ -46,7 +46,8 @@ public interface ILanguageSelectionService
 public sealed class LanguageSelectionService(IAppLocalizer localizer, IUserSettingsWriter settingsWriter,
     IApplicationRestartCoordinator restartCoordinator, IDraftProtectionService? draftProtection = null,
     ILanguageRestartPrompt? prompt = null, IApplicationOperationCoordinator? operations = null,
-    IUiScheduler? scheduler = null, CatalogActivityState? activity = null) : ILanguageSelectionService
+    IUiScheduler? scheduler = null, CatalogActivityState? activity = null,
+    LanguageRestartPolicy? languageRestartPolicy = null) : ILanguageSelectionService
 {
     private readonly SemaphoreSlim _changeGate = new(1, 1);
     public string CurrentCultureName => LocalizationOptions.Normalize(localizer.Culture.Name);
@@ -65,7 +66,9 @@ public sealed class LanguageSelectionService(IAppLocalizer localizer, IUserSetti
             // Returning to the running language cancels a deferred preference without a restart.
             if (requested == CurrentCultureName)
             {
+                using var change = languageRestartPolicy?.BeginChange(requested);
                 await settingsWriter.SaveAsync(new UserSettingsUpdate(Localization: new() { CultureName = requested }), cancellationToken).ConfigureAwait(false);
+                change?.Commit();
                 SetPending(null);
                 return true;
             }
@@ -77,7 +80,11 @@ public sealed class LanguageSelectionService(IAppLocalizer localizer, IUserSetti
                 && !await draftProtection.ConfirmAllAsync().ConfigureAwait(false)) return false;
             // Work can start while the confirmation/save dialog is open. Never interrupt it.
             if (choice == LanguageRestartDecision.RestartNow && IsWorking) return false;
+            // Register before writing: FileSystemWatcher can read the new file
+            // before SaveAsync returns. A failed write restores the prior policy.
+            using var preference = languageRestartPolicy?.BeginChange(requested);
             await settingsWriter.SaveAsync(new UserSettingsUpdate(Localization: new() { CultureName = requested }), cancellationToken).ConfigureAwait(false);
+            preference?.Commit();
             await (scheduler ?? ImmediateUiScheduler.Instance).InvokeAsync(() =>
             {
                 if (choice == LanguageRestartDecision.Later || IsWorking) SetPending(requested);

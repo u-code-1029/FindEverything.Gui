@@ -12,7 +12,7 @@ using Wpf.Ui.Controls;
 
 namespace FindEverything.Desktop.ViewModels;
 
-public partial class SettingsViewModel : ObservableObject
+public partial class SettingsViewModel : ObservableObject, IDraftParticipant, IDisposable
 {
     private readonly IUserSettingsWriter _settingsWriter;
     private readonly IAppearanceService _appearanceService;
@@ -27,6 +27,8 @@ public partial class SettingsViewModel : ObservableObject
     private readonly IValidatedSettingsState<NotificationOptions> _notificationSettings;
     private readonly IUiScheduler _uiScheduler;
     private bool _isRefreshing;
+    private bool _disposed;
+    private bool _pendingReload;
     private string _savedSearchPageSize = string.Empty;
     private string _savedMaxEntriesPerSecond = string.Empty;
     private string _savedDirectoryDelay = string.Empty;
@@ -48,7 +50,8 @@ public partial class SettingsViewModel : ObservableObject
         AppPaths paths,
         ILogger<SettingsViewModel> logger,
         IUiScheduler? uiScheduler = null,
-        IValidatedSettingsState<NotificationOptions>? notificationSettings = null)
+        IValidatedSettingsState<NotificationOptions>? notificationSettings = null,
+        IDraftProtectionService? draftProtection = null)
     {
         _settingsWriter = settingsWriter;
         _appearanceService = appearanceService;
@@ -99,6 +102,7 @@ public partial class SettingsViewModel : ObservableObject
 
         _reloadDiagnostics.Changed += OnReloadDiagnosticsChanged;
         ApplyReloadDiagnostics();
+        draftProtection?.Register(this);
     }
 
     public IReadOnlyList<SettingChoice<ThemePreference>> ThemeChoices { get; }
@@ -108,6 +112,33 @@ public partial class SettingsViewModel : ObservableObject
     public IReadOnlyList<SettingChoice<CatalogRowDensity>> CatalogRowDensityChoices { get; }
 
     public string UserSettingsFile { get; }
+
+    public string DraftTitle => L("Loc.Shell.Nav.Settings", "설정");
+
+    public bool CanLeaveDraft => !IsSaving;
+
+    public bool HasUnsavedChanges => !_disposed && (IsSaving
+        || !NumericDraftMatchesSaved(SearchPageSizeText, _savedSearchPageSize)
+        || !NumericDraftMatchesSaved(MaxEntriesPerSecondText, _savedMaxEntriesPerSecond)
+        || !NumericDraftMatchesSaved(DirectoryDelayMillisecondsText, _savedDirectoryDelay)
+        || !NumericDraftMatchesSaved(UiUpdateBatchSizeText, _savedUiUpdateBatchSize)
+        || !NumericDraftMatchesSaved(NotificationAutoDismissSecondsText, _savedNotificationAutoDismissSeconds)
+        || SelectedTheme?.Value != _savedTheme || SelectedBackdrop?.Value != _savedBackdrop
+        || SelectedCatalogRowDensity?.Value != _savedCatalogRowDensity);
+
+    public Task<bool> SaveChangesAsync() => _disposed || IsSaving
+        ? Task.FromResult(false)
+        : !HasUnsavedChanges ? Task.FromResult(true) : SaveCoreAsync(showResetMessage: false);
+
+    public void DiscardChanges()
+    {
+        if (_disposed || IsSaving) return;
+        // Revert this editor only. No settings write, workspace reset, or locale
+        // change is involved; Current always retains the last validated values.
+        RefreshFromSavedSettings(force: true);
+        StatusSeverity = InfoBarSeverity.Informational;
+        StatusMessage = L("Loc.Settings.Status.Discarded", "저장하지 않은 변경을 취소하고 마지막 정상 설정으로 되돌렸습니다.");
+    }
 
     [ObservableProperty]
     private int _searchPageSize;
@@ -162,11 +193,18 @@ public partial class SettingsViewModel : ObservableObject
             : _localizer.Format("Loc.Ux.Shell.Settings.Range", "{0}–{1} 사이의 정수를 입력하세요.", minimum, maximum);
     }
 
-    partial void OnSearchPageSizeTextChanged(string value) => ValidateNumericDrafts();
-    partial void OnMaxEntriesPerSecondTextChanged(string value) => ValidateNumericDrafts();
-    partial void OnDirectoryDelayMillisecondsTextChanged(string value) => ValidateNumericDrafts();
-    partial void OnUiUpdateBatchSizeTextChanged(string value) => ValidateNumericDrafts();
-    partial void OnNotificationAutoDismissSecondsTextChanged(string value) => ValidateNumericDrafts();
+    partial void OnSearchPageSizeTextChanged(string value) => OnNumericDraftChanged();
+    partial void OnMaxEntriesPerSecondTextChanged(string value) => OnNumericDraftChanged();
+    partial void OnDirectoryDelayMillisecondsTextChanged(string value) => OnNumericDraftChanged();
+    partial void OnUiUpdateBatchSizeTextChanged(string value) => OnNumericDraftChanged();
+    partial void OnNotificationAutoDismissSecondsTextChanged(string value) => OnNumericDraftChanged();
+    private void OnNumericDraftChanged()
+    {
+        if (!_isRefreshing) ValidateNumericDrafts();
+    }
+    partial void OnSelectedThemeChanged(SettingChoice<ThemePreference> value) => NotifyDraftState();
+    partial void OnSelectedBackdropChanged(SettingChoice<BackdropPreference> value) => NotifyDraftState();
+    partial void OnSelectedCatalogRowDensityChanged(SettingChoice<CatalogRowDensity> value) => NotifyDraftState();
 
     partial void OnSearchPageSizeChanged(int value)
     {
@@ -217,6 +255,8 @@ public partial class SettingsViewModel : ObservableObject
         ResetCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(IsEditable));
         OnPropertyChanged(nameof(IsSaveAvailable));
+        OnPropertyChanged(nameof(CanLeaveDraft));
+        NotifyDraftState();
     }
 
     [RelayCommand(CanExecute = nameof(CanSaveSettings))]
@@ -267,11 +307,12 @@ public partial class SettingsViewModel : ObservableObject
 
     private void OnReloadDiagnosticsChanged(object? sender, EventArgs e)
     {
-        _uiScheduler.Post(ApplyReloadDiagnostics);
+        if (!_disposed) _uiScheduler.Post(ApplyReloadDiagnostics);
     }
 
     private void ApplyReloadDiagnostics()
     {
+        if (_disposed) return;
         var error = _reloadDiagnostics.LastError;
         if (!string.IsNullOrWhiteSpace(error))
         {
@@ -290,19 +331,22 @@ public partial class SettingsViewModel : ObservableObject
                 "사용자 설정 파일 변경을 적용했습니다.");
         }
 
-        if (!IsSaving) RefreshFromSavedSettings(force: false);
+        if (IsSaving) _pendingReload = true;
+        else RefreshFromSavedSettings(force: false);
     }
 
-    private async Task SaveCoreAsync(bool showResetMessage)
+    private async Task<bool> SaveCoreAsync(bool showResetMessage)
     {
+        if (_disposed || IsSaving) return false;
         if (!TryReadNumericDrafts(out var indexing, out var notifications))
         {
             ValidateNumericDrafts();
             StatusSeverity = InfoBarSeverity.Error;
             StatusMessage = NumericValidationMessage;
-            return;
+            return false;
         }
 
+        var saved = false;
         IsSaving = true;
         try
         {
@@ -328,6 +372,7 @@ public partial class SettingsViewModel : ObservableObject
             _savedTheme = appearance.Theme;
             _savedBackdrop = appearance.Backdrop;
             _savedCatalogRowDensity = appearance.CatalogRowDensity;
+            NormalizeSavedNumericDrafts();
 
             StatusSeverity = InfoBarSeverity.Success;
             StatusMessage = showResetMessage
@@ -341,6 +386,7 @@ public partial class SettingsViewModel : ObservableObject
                 ControlAppearance.Success,
                 null,
                 TimeSpan.FromSeconds(3));
+            saved = true;
         }
         catch (Exception exception)
         {
@@ -359,7 +405,13 @@ public partial class SettingsViewModel : ObservableObject
         finally
         {
             IsSaving = false;
+            if (_pendingReload)
+            {
+                _pendingReload = false;
+                ApplyReloadDiagnostics();
+            }
         }
+        return saved && !HasUnsavedChanges;
     }
 
     private bool TryReadNumericDrafts(out IndexingOptions indexing, out NotificationOptions notifications)
@@ -398,6 +450,7 @@ public partial class SettingsViewModel : ObservableObject
         OnPropertyChanged(nameof(HasNumericValidationError));
         OnPropertyChanged(nameof(IsSaveAvailable));
         SaveCommand.NotifyCanExecuteChanged();
+        NotifyDraftState();
     }
 
     private void RefreshFromSavedSettings(bool force)
@@ -408,36 +461,36 @@ public partial class SettingsViewModel : ObservableObject
         _isRefreshing = true;
         try
         {
-            if (force || SearchPageSizeText == _savedSearchPageSize)
+            if (force || NumericDraftMatchesSaved(SearchPageSizeText, _savedSearchPageSize))
             {
                 SearchPageSize = indexing.SearchPageSize;
                 SearchPageSizeText = indexing.SearchPageSize.ToString(CultureInfo.InvariantCulture);
             }
-            if (force || MaxEntriesPerSecondText == _savedMaxEntriesPerSecond)
+            if (force || NumericDraftMatchesSaved(MaxEntriesPerSecondText, _savedMaxEntriesPerSecond))
             {
                 MaxEntriesPerSecond = indexing.MaxEntriesPerSecond;
                 MaxEntriesPerSecondText = indexing.MaxEntriesPerSecond.ToString(CultureInfo.InvariantCulture);
             }
-            if (force || DirectoryDelayMillisecondsText == _savedDirectoryDelay)
+            if (force || NumericDraftMatchesSaved(DirectoryDelayMillisecondsText, _savedDirectoryDelay))
             {
                 DirectoryDelayMilliseconds = indexing.DirectoryDelayMilliseconds;
                 DirectoryDelayMillisecondsText = indexing.DirectoryDelayMilliseconds.ToString(CultureInfo.InvariantCulture);
             }
-            if (force || UiUpdateBatchSizeText == _savedUiUpdateBatchSize)
+            if (force || NumericDraftMatchesSaved(UiUpdateBatchSizeText, _savedUiUpdateBatchSize))
             {
                 UiUpdateBatchSize = indexing.UiUpdateBatchSize;
                 UiUpdateBatchSizeText = indexing.UiUpdateBatchSize.ToString(CultureInfo.InvariantCulture);
             }
-            if (force || NotificationAutoDismissSecondsText == _savedNotificationAutoDismissSeconds)
+            if (force || NumericDraftMatchesSaved(NotificationAutoDismissSecondsText, _savedNotificationAutoDismissSeconds))
             {
                 NotificationAutoDismissSeconds = notifications.AutoDismissSeconds;
                 NotificationAutoDismissSecondsText = notifications.AutoDismissSeconds.ToString(CultureInfo.InvariantCulture);
             }
-            if (force || SelectedTheme.Value == _savedTheme)
+            if (force || SelectedTheme?.Value == _savedTheme)
                 SelectedTheme = ThemeChoices.First(choice => choice.Value == appearance.Theme);
-            if (force || SelectedBackdrop.Value == _savedBackdrop)
+            if (force || SelectedBackdrop?.Value == _savedBackdrop)
                 SelectedBackdrop = BackdropChoices.First(choice => choice.Value == appearance.Backdrop);
-            if (force || SelectedCatalogRowDensity.Value == _savedCatalogRowDensity)
+            if (force || SelectedCatalogRowDensity?.Value == _savedCatalogRowDensity)
                 SelectedCatalogRowDensity = CatalogRowDensityChoices.First(choice => choice.Value == appearance.CatalogRowDensity);
 
             _savedSearchPageSize = indexing.SearchPageSize.ToString(CultureInfo.InvariantCulture);
@@ -451,6 +504,60 @@ public partial class SettingsViewModel : ObservableObject
         }
         finally { _isRefreshing = false; }
         ValidateNumericDrafts();
+    }
+
+    private static bool NumericDraftMatchesSaved(string draft, string saved) =>
+        int.TryParse(draft, NumberStyles.Integer, CultureInfo.InvariantCulture, out var draftValue)
+        && int.TryParse(saved, NumberStyles.Integer, CultureInfo.InvariantCulture, out var savedValue)
+        && draftValue == savedValue;
+
+    private void NormalizeSavedNumericDrafts()
+    {
+        _isRefreshing = true;
+        try
+        {
+            // Inputs are disabled during save, but preserve any newer programmatic
+            // edit rather than marking a value that was never written as saved.
+            if (NumericDraftMatchesSaved(SearchPageSizeText, _savedSearchPageSize))
+            {
+                SearchPageSize = int.Parse(_savedSearchPageSize, CultureInfo.InvariantCulture);
+                SearchPageSizeText = _savedSearchPageSize;
+            }
+            if (NumericDraftMatchesSaved(MaxEntriesPerSecondText, _savedMaxEntriesPerSecond))
+            {
+                MaxEntriesPerSecond = int.Parse(_savedMaxEntriesPerSecond, CultureInfo.InvariantCulture);
+                MaxEntriesPerSecondText = _savedMaxEntriesPerSecond;
+            }
+            if (NumericDraftMatchesSaved(DirectoryDelayMillisecondsText, _savedDirectoryDelay))
+            {
+                DirectoryDelayMilliseconds = int.Parse(_savedDirectoryDelay, CultureInfo.InvariantCulture);
+                DirectoryDelayMillisecondsText = _savedDirectoryDelay;
+            }
+            if (NumericDraftMatchesSaved(UiUpdateBatchSizeText, _savedUiUpdateBatchSize))
+            {
+                UiUpdateBatchSize = int.Parse(_savedUiUpdateBatchSize, CultureInfo.InvariantCulture);
+                UiUpdateBatchSizeText = _savedUiUpdateBatchSize;
+            }
+            if (NumericDraftMatchesSaved(NotificationAutoDismissSecondsText, _savedNotificationAutoDismissSeconds))
+            {
+                NotificationAutoDismissSeconds = int.Parse(_savedNotificationAutoDismissSeconds, CultureInfo.InvariantCulture);
+                NotificationAutoDismissSecondsText = _savedNotificationAutoDismissSeconds;
+            }
+        }
+        finally { _isRefreshing = false; }
+        ValidateNumericDrafts();
+    }
+
+    private void NotifyDraftState()
+    {
+        if (!_isRefreshing) OnPropertyChanged(nameof(HasUnsavedChanges));
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        _reloadDiagnostics.Changed -= OnReloadDiagnosticsChanged;
     }
 
     private string L(string key, string koreanFallback) =>
