@@ -29,6 +29,9 @@ public sealed class SettingsViewModelTests
         await vm.SaveCommand.ExecuteAsync(null);
         Assert.Null(writer.LastUpdate);
         Assert.NotEmpty(vm.NumericValidationMessage);
+        Assert.NotEmpty(vm.SearchPageSizeError);
+        Assert.Empty(vm.UiUpdateBatchSizeError);
+        Assert.Empty(vm.NotificationAutoDismissSecondsError);
     }
 
     [Fact]

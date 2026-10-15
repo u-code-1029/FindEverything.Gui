@@ -45,48 +45,19 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <Style x:Key="InlineNumericErrorStyle" TargetType="ui:TextBlock" BasedOn="{StaticResource CaptionTextStyle}">
+            <Setter Property="Margin" Value="0,4,0,0" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="Foreground" Value="{DynamicResource SystemFillColorCriticalBrush}" />
+            <Setter Property="AutomationProperties.LiveSetting" Value="Polite" />
+            <Style.Triggers><Trigger Property="Text" Value=""><Setter Property="Visibility" Value="Collapsed" /></Trigger></Style.Triggers>
+        </Style>
     </Page.Resources>
     <controls:WorkspacePageFrame>
         <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
         <controls:PageHeader Title="{DynamicResource Loc.Shell.Nav.Settings}" Description="{DynamicResource Loc.Workspace.Settings.Description}" />
         <ui:DynamicScrollViewer x:Name="SettingsScrollViewer" Grid.Row="1" Style="{StaticResource FluentGutteredScrollViewerStyle}">
             <StackPanel HorizontalAlignment="Stretch" IsEnabled="{Binding IsEditable}" ToolTipService.ShowOnDisabled="True">
-                <controls:SectionCard x:Name="IndexingSettingsCard" Style="{StaticResource SettingsSectionCardStyle}">
-                    <controls:SectionCard.Header>
-                    <StackPanel>
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                            <ui:SymbolIcon Symbol="Search24" Style="{StaticResource SettingsSectionIconStyle}" />
-                            <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.Workspace.Settings.Indexing}" AutomationProperties.HeadingLevel="Level2" />
-                        </StackPanel>
-                        <controls:SettingRowCard Style="{StaticResource GroupedSettingRowStyle}" Title="{DynamicResource Loc.Workspace.Settings.PageSize}" Description="{DynamicResource Loc.Workspace.Settings.PageSize.Help}">
-                            <ui:TextBox HorizontalAlignment="Stretch" Text="{Binding SearchPageSizeText, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{DynamicResource Loc.Workspace.Settings.PageSize}" ToolTip="{DynamicResource Loc.Workspace.Settings.PageSize.Help}" />
-                        </controls:SettingRowCard>
-                        <controls:SettingRowCard Style="{StaticResource GroupedSettingRowStyle}" Title="{DynamicResource Loc.Workspace.Settings.ScanBatch}" Description="{DynamicResource Loc.Workspace.Settings.ScanBatch.Help}">
-                            <ui:TextBox HorizontalAlignment="Stretch" Text="{Binding UiUpdateBatchSizeText, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{DynamicResource Loc.Workspace.Settings.ScanBatch}" ToolTip="{DynamicResource Loc.Workspace.Settings.ScanBatch.Help}" />
-                        </controls:SettingRowCard>
-                        <controls:SettingRowCard Style="{StaticResource GroupedSettingRowStyle}" Title="{DynamicResource Loc.Workspace.Settings.Throttle}" Description="{DynamicResource Loc.Workspace.Settings.Throttle.Help}">
-                            <ui:TextBox HorizontalAlignment="Stretch" Text="{Binding MaxEntriesPerSecondText, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{DynamicResource Loc.Workspace.Settings.Throttle}" ToolTip="{DynamicResource Loc.Workspace.Settings.Throttle.Help}" />
-                        </controls:SettingRowCard>
-                        <controls:SettingRowCard Style="{StaticResource GroupedSettingRowStyle}" BorderThickness="0" Title="{DynamicResource Loc.Workspace.Settings.Delay}" Description="{DynamicResource Loc.Workspace.Settings.Delay.Help}">
-                            <ui:TextBox HorizontalAlignment="Stretch" Text="{Binding DirectoryDelayMillisecondsText, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{DynamicResource Loc.Workspace.Settings.Delay}" ToolTip="{DynamicResource Loc.Workspace.Settings.Delay.Help}" />
-                        </controls:SettingRowCard>
-                    </StackPanel>
-                    </controls:SectionCard.Header>
-                </controls:SectionCard>
-                <controls:SectionCard x:Name="NotificationSettingsCard" Style="{StaticResource SettingsSectionCardStyle}">
-                    <controls:SectionCard.Header>
-                    <StackPanel>
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                            <ui:SymbolIcon Symbol="Info24" Style="{StaticResource SettingsSectionIconStyle}" />
-                            <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.Workspace.Settings.Notifications}" AutomationProperties.HeadingLevel="Level2" />
-                        </StackPanel>
-                        <ui:TextBlock Margin="0,4,0,0" Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.Workspace.Settings.Notifications.Help}" TextWrapping="Wrap" />
-                        <controls:SettingRowCard Style="{StaticResource GroupedSettingRowStyle}" BorderThickness="0" Title="{DynamicResource Loc.Workspace.Settings.NotificationDuration}" Description="{DynamicResource Loc.Workspace.Settings.NotificationDuration.Help}">
-                            <ui:TextBox HorizontalAlignment="Stretch" Text="{Binding NotificationAutoDismissSecondsText, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{DynamicResource Loc.Workspace.Settings.NotificationDuration}" ToolTip="{DynamicResource Loc.Workspace.Settings.NotificationDuration.Help}" />
-                        </controls:SettingRowCard>
-                    </StackPanel>
-                    </controls:SectionCard.Header>
-                </controls:SectionCard>
                 <controls:SectionCard x:Name="AppearanceSettingsCard" Style="{StaticResource SettingsSectionCardStyle}">
                     <controls:SectionCard.Header>
                     <StackPanel>
@@ -109,6 +80,53 @@
                     </StackPanel>
                     </controls:SectionCard.Header>
                 </controls:SectionCard>
+                <controls:SectionCard x:Name="NotificationSettingsCard" Style="{StaticResource SettingsSectionCardStyle}">
+                    <controls:SectionCard.Header>
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                            <ui:SymbolIcon Symbol="Info24" Style="{StaticResource SettingsSectionIconStyle}" />
+                            <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.Workspace.Settings.Notifications}" AutomationProperties.HeadingLevel="Level2" />
+                        </StackPanel>
+                        <ui:TextBlock Margin="0,4,0,0" Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.Ux.Shell.Settings.Notifications.Help}" TextWrapping="Wrap" />
+                        <controls:SettingRowCard Style="{StaticResource GroupedSettingRowStyle}" BorderThickness="0" Title="{DynamicResource Loc.Workspace.Settings.NotificationDuration}" Description="{DynamicResource Loc.Workspace.Settings.NotificationDuration.Help}">
+                            <StackPanel><ui:TextBox HorizontalAlignment="Stretch" Text="{Binding NotificationAutoDismissSecondsText, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{DynamicResource Loc.Workspace.Settings.NotificationDuration}" ToolTip="{DynamicResource Loc.Workspace.Settings.NotificationDuration.Help}" AutomationProperties.HelpText="{Binding NotificationAutoDismissSecondsError}" />
+                                <ui:TextBlock Text="{Binding NotificationAutoDismissSecondsError}" Style="{StaticResource InlineNumericErrorStyle}" /></StackPanel>
+                        </controls:SettingRowCard>
+                    </StackPanel>
+                    </controls:SectionCard.Header>
+                </controls:SectionCard>
+                <ui:CardExpander x:Name="AdvancedIndexingSettings" Margin="0,0,0,16" Header="{DynamicResource Loc.Ux.Shell.Settings.Advanced}" IsExpanded="False">
+                    <StackPanel>
+                        <ui:TextBlock Margin="0,0,0,12" Text="{DynamicResource Loc.Ux.Shell.Settings.Advanced.Help}" TextWrapping="Wrap" Style="{StaticResource CaptionTextStyle}" />
+                <controls:SectionCard x:Name="IndexingSettingsCard" Style="{StaticResource SettingsSectionCardStyle}">
+                    <controls:SectionCard.Header>
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                            <ui:SymbolIcon Symbol="Search24" Style="{StaticResource SettingsSectionIconStyle}" />
+                            <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.Workspace.Settings.Indexing}" AutomationProperties.HeadingLevel="Level2" />
+                        </StackPanel>
+                        <controls:SettingRowCard Style="{StaticResource GroupedSettingRowStyle}" Title="{DynamicResource Loc.Workspace.Settings.PageSize}" Description="{DynamicResource Loc.Workspace.Settings.PageSize.Help}">
+                            <StackPanel><ui:TextBox HorizontalAlignment="Stretch" Text="{Binding SearchPageSizeText, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{DynamicResource Loc.Workspace.Settings.PageSize}" ToolTip="{DynamicResource Loc.Workspace.Settings.PageSize.Help}" AutomationProperties.HelpText="{Binding SearchPageSizeError}" />
+                                <ui:TextBlock Text="{Binding SearchPageSizeError}" Style="{StaticResource InlineNumericErrorStyle}" /></StackPanel>
+                        </controls:SettingRowCard>
+                        <controls:SettingRowCard Style="{StaticResource GroupedSettingRowStyle}" Title="{DynamicResource Loc.Workspace.Settings.ScanBatch}" Description="{DynamicResource Loc.Workspace.Settings.ScanBatch.Help}">
+                            <StackPanel><ui:TextBox HorizontalAlignment="Stretch" Text="{Binding UiUpdateBatchSizeText, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{DynamicResource Loc.Workspace.Settings.ScanBatch}" ToolTip="{DynamicResource Loc.Workspace.Settings.ScanBatch.Help}" AutomationProperties.HelpText="{Binding UiUpdateBatchSizeError}" />
+                                <ui:TextBlock Text="{Binding UiUpdateBatchSizeError}" Style="{StaticResource InlineNumericErrorStyle}" /></StackPanel>
+                        </controls:SettingRowCard>
+                        <controls:SettingRowCard Style="{StaticResource GroupedSettingRowStyle}" Title="{DynamicResource Loc.Workspace.Settings.Throttle}" Description="{DynamicResource Loc.Workspace.Settings.Throttle.Help}">
+                            <StackPanel><ui:TextBox HorizontalAlignment="Stretch" Text="{Binding MaxEntriesPerSecondText, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{DynamicResource Loc.Workspace.Settings.Throttle}" ToolTip="{DynamicResource Loc.Workspace.Settings.Throttle.Help}" AutomationProperties.HelpText="{Binding MaxEntriesPerSecondError}" />
+                                <ui:TextBlock Text="{Binding MaxEntriesPerSecondError}" Style="{StaticResource InlineNumericErrorStyle}" /></StackPanel>
+                        </controls:SettingRowCard>
+                        <controls:SettingRowCard Style="{StaticResource GroupedSettingRowStyle}" BorderThickness="0" Title="{DynamicResource Loc.Workspace.Settings.Delay}" Description="{DynamicResource Loc.Workspace.Settings.Delay.Help}">
+                            <StackPanel><ui:TextBox HorizontalAlignment="Stretch" Text="{Binding DirectoryDelayMillisecondsText, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{DynamicResource Loc.Workspace.Settings.Delay}" ToolTip="{DynamicResource Loc.Workspace.Settings.Delay.Help}" AutomationProperties.HelpText="{Binding DirectoryDelayMillisecondsError}" />
+                                <ui:TextBlock Text="{Binding DirectoryDelayMillisecondsError}" Style="{StaticResource InlineNumericErrorStyle}" /></StackPanel>
+                        </controls:SettingRowCard>
+                    </StackPanel>
+                    </controls:SectionCard.Header>
+                </controls:SectionCard>
+
+                    </StackPanel>
+                </ui:CardExpander>
                 <ui:TextBlock Margin="0,0,0,12" Foreground="{DynamicResource SystemFillColorCriticalBrush}" Text="{Binding NumericValidationMessage}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" Visibility="{Binding HasNumericValidationError, Converter={StaticResource BooleanToVisibilityConverter}}" />
                     <ui:CardExpander Margin="0,0,0,16" Header="{DynamicResource Loc.Workspace.Settings.Advanced}">
                         <StackPanel Margin="0,8,0,0">
@@ -121,7 +139,7 @@
         <controls:CommandStrip controls:FloatingNotificationChrome.IsBottomChrome="True" Grid.Row="2" Margin="0,12,0,0" Padding="12">
             <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,12,0">
-                    <ui:ProgressRing Width="18" Height="18" Margin="0,0,8,0" IsIndeterminate="True" Visibility="{Binding IsSaving, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <ui:ProgressRing Width="18" Height="18" Margin="0,0,8,0" IsIndeterminate="{Binding IsSaving}" Visibility="{Binding IsSaving, Converter={StaticResource BooleanToVisibilityConverter}}" />
                     <ui:TextBlock Text="{Binding StatusMessage}" TextTrimming="CharacterEllipsis" ToolTip="{Binding StatusMessage}" AutomationProperties.LiveSetting="Polite" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal">

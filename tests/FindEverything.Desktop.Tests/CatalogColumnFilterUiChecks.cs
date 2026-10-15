@@ -87,8 +87,10 @@ internal static class CatalogColumnFilterUiChecks
                 if (key is { } activation) Assert.True(RaiseHeaderKey(header, activation).Handled);
                 else
                 {
-                    RaiseHeaderMouse(header, UIElement.PreviewMouseLeftButtonDownEvent);
-                    Assert.True(RaiseHeaderMouse(header, UIElement.PreviewMouseLeftButtonUpEvent).Handled);
+                    var filterButton = FilterButton(grid.Columns[columnIndex]);
+                    var click = new RoutedEventArgs(ButtonBase.ClickEvent, filterButton);
+                    filterButton.RaiseEvent(click);
+                    Assert.True(click.Handled);
                 }
                 var popup = Assert.IsType<Popup>(flyout.Template.FindName("PART_Popup", flyout));
                 PumpUntil(() => flyout.IsLoaded && popup.IsLoaded && flyout.IsOpen && popup.IsOpen);
@@ -102,6 +104,21 @@ internal static class CatalogColumnFilterUiChecks
                 Assert.False(grid.Columns[columnIndex].CanUserSort);
                 Assert.Equal(0, nativeSorts);
             }
+            // The title is a sorting affordance; filtering has its own button
+            // and F4 shortcut. Neither path invokes DataGrid's native sorting.
+            var nameHeader = Header(2);
+            RaiseHeaderMouse(nameHeader, UIElement.PreviewMouseLeftButtonDownEvent);
+            Assert.True(RaiseHeaderMouse(nameHeader, UIElement.PreviewMouseLeftButtonUpEvent).Handled);
+            Assert.True(owner.IsColumnSorted(CatalogColumnTarget.Field("name")));
+            Assert.False(owner.IsColumnSortDescending);
+            Assert.False(flyout.IsOpen);
+            Assert.True(RaiseHeaderKey(nameHeader, Key.Enter).Handled);
+            Assert.True(owner.IsColumnSortDescending);
+            Assert.False(flyout.IsOpen);
+            Assert.True(RaiseHeaderKey(nameHeader, Key.Space).Handled);
+            Assert.False(owner.IsColumnSortDescending);
+            Assert.False(flyout.IsOpen);
+            owner.ApplyColumnSort(CatalogColumnTarget.Field("name"), null);
             Show(2);
             var body = Assert.IsType<StackPanel>(flyout.Content);
             var mode = body.Children.OfType<ComboBox>().Single();
@@ -110,7 +127,7 @@ internal static class CatalogColumnFilterUiChecks
             text.Text = "Apollo";
             Assert.Equal("Apollo", Assert.Single(owner.ActiveColumnFilters).Filter.Text);
             CaptureFlyoutQa(grid, flyout, "catalog-filter-text.png");
-            Show(3, Key.Enter);
+            Show(3, Key.F4);
             body = Assert.IsType<StackPanel>(flyout.Content); mode = body.Children.OfType<ComboBox>().Single(); mode.SelectedIndex = 1;
             Assert.Equal(2, body.Children.OfType<StackPanel>().SelectMany(panel => panel.Children.OfType<Slider>()).Count());
             var numbers = body.Children.OfType<StackPanel>().SelectMany(panel => panel.Children.OfType<Ui.TextBox>()).ToArray();
@@ -121,13 +138,24 @@ internal static class CatalogColumnFilterUiChecks
             Assert.Equal(1m, owner.GetColumnFilter(CatalogColumnTarget.Field("amount"))!.Minimum);
             Show(4, Key.F4);
             body = Assert.IsType<StackPanel>(flyout.Content); mode = body.Children.OfType<ComboBox>().Single(); mode.SelectedIndex = 1;
-            var dates = body.Children.OfType<StackPanel>().SelectMany(panel => panel.Children.OfType<Ui.CalendarDatePicker>()).ToArray();
+            var dates = Descendants<Ui.CalendarDatePicker>(body).ToArray();
             Assert.Equal(2, dates.Length);
             dates[0].SetCurrentValue(Ui.CalendarDatePicker.DateProperty, new DateTime(2026, 5, 21));
             dates[1].SetCurrentValue(Ui.CalendarDatePicker.DateProperty, new DateTime(2026, 5, 22));
             Assert.Equal(new DateTime(2026, 5, 22), owner.GetColumnFilter(CatalogColumnTarget.Field("date"))!.EndDate);
+            PumpUntil(() => Equals(dates[0].Content, new DateTime(2026, 5, 21).ToString("d", owner.Localizer.Culture)));
+            Assert.Equal(new DateTime(2026, 5, 22).ToString("d", owner.Localizer.Culture), dates[1].Content);
+            var startRow = Assert.IsType<DockPanel>(VisualTreeHelper.GetParent(dates[0]));
+            var clearStart = Assert.Single(startRow.Children.OfType<Ui.Button>(), button => !ReferenceEquals(button, dates[0]));
+            Assert.False(string.IsNullOrWhiteSpace(System.Windows.Automation.AutomationProperties.GetName(clearStart)));
+            clearStart.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent, clearStart));
+            PumpUntil(() => dates[0].Date is null);
+            Assert.Null(owner.GetColumnFilter(CatalogColumnTarget.Field("date"))!.StartDate);
+            Assert.Equal(new DateTime(2026, 5, 22), owner.GetColumnFilter(CatalogColumnTarget.Field("date"))!.EndDate);
+            Assert.False(string.IsNullOrWhiteSpace(Convert.ToString(dates[0].Content)));
+            dates[0].SetCurrentValue(Ui.CalendarDatePicker.DateProperty, new DateTime(2026, 5, 21));
             CaptureFlyoutQa(grid, flyout, "catalog-filter-date.png");
-            Show(5, Key.Space);
+            Show(5);
             body = Assert.IsType<StackPanel>(flyout.Content); mode = body.Children.OfType<ComboBox>().Single(); mode.SelectedIndex = 1;
             Assert.True(owner.GetColumnFilter(CatalogColumnTarget.Field("flag"))!.Boolean);
             CaptureFlyoutQa(grid, flyout, "catalog-filter-boolean.png");
@@ -170,8 +198,7 @@ internal static class CatalogColumnFilterUiChecks
             Show(4);
             body = Assert.IsType<StackPanel>(flyout.Content);
             mode = body.Children.OfType<ComboBox>().Single(); mode.SelectedIndex = 1;
-            var lockedCalendar = body.Children.OfType<StackPanel>()
-                .SelectMany(panel => panel.Children.OfType<Ui.CalendarDatePicker>()).First();
+            var lockedCalendar = Descendants<Ui.CalendarDatePicker>(body).First();
             lockedCalendar.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent, lockedCalendar));
             lockedCalendar.SetCurrentValue(Ui.CalendarDatePicker.IsCalendarOpenProperty, true);
             PumpUntil(() => lockedCalendar.IsCalendarOpen);
@@ -198,11 +225,13 @@ internal static class CatalogColumnFilterUiChecks
         {
             flyout.Hide();
             PumpUntil(() => !popup.IsOpen);
-            // A real ButtonBase MouseDown captures the header. RaiseEvent alone
-            // bypasses that native state and missed the stuck-capture defect.
-            native.Click(header(index));
+            // A real ButtonBase MouseDown captures the filter button. RaiseEvent
+            // alone bypasses capture and cannot expose a stuck native popup.
+            var filterButton = FilterButton(grid.Columns[index]);
+            native.Click(filterButton);
             PumpUntil(() => popup.IsOpen && popup.Child is FrameworkElement { ActualWidth: > 0, ActualHeight: > 0 });
             Assert.False(header(index).IsMouseCaptured, "The header must release its MouseDown capture before opening a filter.");
+            Assert.False(filterButton.IsMouseCaptured, "The filter button must release capture before its popup accepts pointer input.");
             return Assert.IsType<StackPanel>(flyout.Content);
         }
         void ChooseCondition(StackPanel panel)
@@ -249,7 +278,7 @@ internal static class CatalogColumnFilterUiChecks
         Assert.True(owner.GetColumnFilter(CatalogColumnTarget.Field("amount"))!.Minimum > 0);
 
         body = Open(4); ChooseCondition(body);
-        var picker = body.Children.OfType<StackPanel>().SelectMany(panel => panel.Children.OfType<Ui.CalendarDatePicker>()).First();
+        var picker = Descendants<Ui.CalendarDatePicker>(body).First();
         native.Click(picker);
         PumpUntil(() => picker.IsCalendarOpen);
         native.Key(0x1B);
@@ -289,6 +318,9 @@ internal static class CatalogColumnFilterUiChecks
         source.RaiseEvent(args);
         return args;
     }
+
+    private static Ui.Button FilterButton(DataGridColumn column) =>
+        Assert.Single(Assert.IsType<StackPanel>(column.Header).Children.OfType<Ui.Button>());
 
     private static KeyEventArgs RaiseHeaderKey(UIElement source, Key key)
     {

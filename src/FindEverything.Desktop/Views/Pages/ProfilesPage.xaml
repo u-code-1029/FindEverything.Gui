@@ -232,11 +232,11 @@
                 Style="{StaticResource EditorSectionStyle}">
                 <controls:SectionCard.Header>
                 <StackPanel>
-                    <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{StaticResource Loc.View.Profiles.Text.EditingMode}" />
+                    <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{StaticResource Loc.Ux.Authoring.PathMode}" />
                     <ui:TextBlock
                         Margin="0,4,0,12"
                         Style="{StaticResource CaptionTextStyle}"
-                        Text="{StaticResource Loc.View.Profiles.Text.IfYouAreNewToRegularExpressions}"
+                        Text="{StaticResource Loc.Ux.Authoring.PathMode.Help}"
                         TextWrapping="Wrap" />
                     <WrapPanel>
                         <RadioButton
@@ -308,38 +308,22 @@
         </DataTemplate>
         <DataTemplate x:Key="ProfileEditor.Item.PathGuided.1">
             <controls:SectionCard Style="{StaticResource EditorSectionStyle}" IsEnabled="{Binding IsEditorReady}"><controls:SectionCard.Header><StackPanel>
-            <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{StaticResource Loc.View.Profiles.Text.2PickResultValuesFromAReal}" />
-            <ui:TextBlock
-                                        Margin="0,4,0,16"
-                                        Style="{StaticResource CaptionTextStyle}"
-                                        Text="{StaticResource Loc.View.Profiles.Text.YouDoNotNeedToKnowRegular}"
-                                        TextWrapping="Wrap" />
             <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Text.PasteARealPath}" />
             <ui:TextBlock
                                         Style="{StaticResource CaptionTextStyle}"
                                         Text="{StaticResource Loc.View.Profiles.Text.UseACompleteRealFolderPathIncluding}"
                                         TextWrapping="Wrap" />
+            <DockPanel Margin="0,8,0,0">
+            <ui:Button DockPanel.Dock="Right" Margin="8,0,0,0" Command="{Binding BuildTemplateFromSampleCommand}"
+                Content="{StaticResource Loc.View.Profiles.Content.AnalyzePath}" Icon="{ui:SymbolIcon Symbol=ArrowDown20}" />
             <ui:TextBox
-                                        Margin="0,4,0,8"
                                         AutomationProperties.Name="{StaticResource Loc.View.Profiles.AutomationName.RealPathUsedToBuildTheRule}"
                                         ClearButtonEnabled="True"
                                         PlaceholderText="{StaticResource Loc.View.Profiles.PlaceholderText.ExampleCArchiveClientProject2026Rev}"
                                         Text="{Binding SamplePath, UpdateSourceTrigger=PropertyChanged}" />
-            <ui:Button
-                                        Margin="0,0,0,20"
-                                        HorizontalAlignment="Left"
-                                        Command="{Binding BuildTemplateFromSampleCommand}"
-                                        Content="{StaticResource Loc.View.Profiles.Content.AnalyzePath}"
-                                        Icon="{ui:SymbolIcon Symbol=ArrowDown20}" />
-            <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Text.ConnectResultValuesToPathSegments}" />
-            <ui:TextBlock
-                                        Style="{StaticResource CaptionTextStyle}"
-                                        Text="{StaticResource Loc.View.Profiles.Text.FirstSelectAResultValueCardBelow}"
-                                        TextWrapping="Wrap" />
-            <ui:TextBlock
-                                        Margin="0,4,0,4"
-                                        Style="{StaticResource CaptionTextStyle}"
-                                        Text="{StaticResource Loc.View.Profiles.Text.GeneratedPathRuleReadOnly}" />
+            </DockPanel>
+            <ui:CardExpander x:Name="GeneratedPathRuleExpander" Margin="0,8,0,0" IsExpanded="False"
+                Header="{StaticResource Loc.Ux.Authoring.GeneratedRule}">
             <ui:TextBox
                                         x:Name="ProfilePathTemplateTextBox"
                                         Margin="0,4,0,20"
@@ -350,27 +334,7 @@
                                         IsReadOnly="True"
                                         PlaceholderText="{StaticResource Loc.View.Profiles.PlaceholderText.PasteARealPathAboveFirst}"
                                         Text="{Binding DraftPathTemplate, Mode=OneWay}" />
-            <Grid Margin="0,0,0,8">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
-                                        <StackPanel>
-                                            <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Text.CreateResultValuesToDisplay}" />
-                                            <ui:TextBlock
-                                                Style="{StaticResource CaptionTextStyle}"
-                                                Text="{StaticResource Loc.View.Profiles.Text.EachCardBecomesOneResultColumnTurn}"
-                                                TextWrapping="Wrap" />
-                                        </StackPanel>
-                                        <ui:Button
-                                            Grid.Column="1"
-                                            Margin="12,0,0,0"
-                                            VerticalAlignment="Center"
-                                            AutomationProperties.Name="{StaticResource Loc.View.Profiles.AutomationName.AddResultValue}"
-                                            Command="{Binding AddFieldCommand}"
-                                            Content="{StaticResource Loc.View.Profiles.AutomationName.AddResultValue}"
-                                            Icon="{ui:SymbolIcon Symbol=AddSquare20}" />
-                                    </Grid>
+            </ui:CardExpander>
             </StackPanel></controls:SectionCard.Header></controls:SectionCard>
         </DataTemplate>
         <DataTemplate x:Key="ProfileEditor.Item.PathGuided.2">
@@ -380,9 +344,22 @@
                 Padding="12"
                 Background="{DynamicResource ControlFillColorSecondaryBrush}"
                 CornerRadius="8"
-                Visibility="{Binding IsAssignmentPickerOpen, Converter={StaticResource BooleanToVisibilityConverter}}" Style="{StaticResource FluentCardStyle}">
+                Visibility="{Binding HasAnalyzedPath, Converter={StaticResource BooleanToVisibilityConverter}}" Style="{StaticResource FluentCardStyle}">
                 <controls:SectionCard.Header>
                 <StackPanel>
+                    <ui:TextBlock FontWeight="SemiBold" Text="{StaticResource Loc.Ux.Authoring.ConnectTitle}" />
+                    <Grid Margin="0,8,0,8">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <ComboBox x:Name="GuidedFieldPicker" ItemsSource="{Binding DraftFields}" SelectedItem="{Binding SelectedGuidedField}"
+                            DisplayMemberPath="Header" AutomationProperties.Name="{StaticResource Loc.Ux.Authoring.SelectField}" />
+                        <ui:Button Grid.Column="1" Margin="8,0,0,0" Command="{Binding AddFieldCommand}" Content="{StaticResource Loc.View.Profiles.AutomationName.AddResultValue}" Icon="{ui:SymbolIcon Symbol=AddSquare20}" />
+                    </Grid>
+                    <ui:TextBlock Style="{StaticResource CaptionTextStyle}" Text="{StaticResource Loc.Ux.Authoring.ConnectHelp}" />
+                    <ui:TextBlock Margin="0,4,0,8" FontWeight="SemiBold" Text="{Binding SelectedGuidedField.SourceSummary}" TextWrapping="Wrap" />
+                    <DockPanel Margin="0,0,0,8">
+                        <ui:TextBlock Margin="0,0,12,0" Style="{StaticResource CaptionTextStyle}" Text="{StaticResource Loc.Ux.Authoring.SelectedSample}" />
+                        <ui:TextBlock FontFamily="Consolas" Text="{Binding SelectedGuidedField.GuidedSampleInput}" TextWrapping="Wrap" />
+                    </DockPanel>
                     <ui:TextBlock FontWeight="SemiBold" Text="{Binding AssignmentPickerTitle}" TextWrapping="Wrap" />
                     <ItemsControl Margin="0,10,0,0" ItemsSource="{Binding GuidedPathSegments}">
                         <ItemsControl.ItemsPanel>
@@ -1420,7 +1397,7 @@
                 Style="{StaticResource EditorSectionStyle}">
                 <controls:SectionCard.Header>
                 <StackPanel>
-                    <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{StaticResource Loc.View.Profiles.Text.4ReviewAndSave}" />
+                    <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{StaticResource Loc.Ux.Authoring.ReviewTitle}" />
                     <ui:TextBlock
                         Margin="0,4,0,16"
                         Style="{StaticResource CaptionTextStyle}"
@@ -1472,7 +1449,7 @@
                         AutomationProperties.Name="{StaticResource Loc.View.Profiles.AutomationName.ProfileSaveAndPlaygroundGuidance}"
                         IsClosable="False"
                         IsOpen="True"
-                        Message="{StaticResource Loc.View.ProfilesPage.Message.ReviewValidationErrorsBelowThenSaveAfterSaving}"
+                        Message="{StaticResource Loc.Ux.Authoring.ReviewHelp}"
                         Severity="Informational"
                         Title="{StaticResource Loc.View.Profiles.Title.TestTheSavedVersionWithAReal}" />
                 </StackPanel>
@@ -1591,14 +1568,16 @@
                         IsEnabled="{Binding IsEditorReady}"
                         Style="{StaticResource WorkspaceToolbarCardStyle}">
                         <controls:SectionCard.Header>
-                        <UniformGrid x:Name="ProfileStepButtons" Columns="3">
+                        <Grid><Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <UniformGrid x:Name="ProfileStepButtons" Columns="3" Rows="1">
                             <RadioButton
                                 Style="{StaticResource ProfileStepChoiceStyle}"
                                 AutomationProperties.HelpText="{StaticResource Loc.View.Profiles.AutomationHelpText.ChooseAProfileAndSetItsBasic}"
                                 AutomationProperties.Name="{StaticResource Loc.View.Profiles.AutomationName.Step1ProfileInformation}"
                                 Command="{Binding GoToEditorStepCommand}"
                                 CommandParameter="{x:Static viewModels:ProfileEditorStep.Profile}"
-                                Content="{StaticResource Loc.View.Profiles.Content.1ProfileInformation}"
+                                Content="{StaticResource Loc.Ux.Authoring.Step.Info}"
                                 GroupName="ProfileEditorSteps"
                                 IsChecked="{Binding IsProfileStep, Mode=OneWay}" />
                             <RadioButton
@@ -1607,42 +1586,33 @@
                                 AutomationProperties.Name="{StaticResource Loc.View.Profiles.AutomationName.Step2PathAndColumns}"
                                 Command="{Binding GoToEditorStepCommand}"
                                 CommandParameter="{x:Static viewModels:ProfileEditorStep.PathAndFields}"
-                                Content="{StaticResource Loc.View.Profiles.Content.2PathAndColumns}"
+                                Content="{StaticResource Loc.Ux.Authoring.Step.Path}"
                                 GroupName="ProfileEditorSteps"
                                 IsChecked="{Binding IsPathAndFieldsStep, Mode=OneWay}" />
-                            <RadioButton Style="{StaticResource ProfileStepChoiceStyle}"
-                                AutomationProperties.Name="{StaticResource Loc.Profiles.Features.Step.DataSources}"
-                                AutomationProperties.HelpText="{StaticResource Loc.Profiles.Features.Step.DataSources}"
-                                Command="{Binding GoToEditorStepCommand}"
-                                CommandParameter="{x:Static viewModels:ProfileEditorStep.DataSources}"
-                                Content="{StaticResource Loc.Profiles.Features.Step.DataSources}"
-                                GroupName="ProfileEditorSteps" IsChecked="{Binding IsDataSourcesStep, Mode=OneWay}" />
-                            <RadioButton Style="{StaticResource ProfileStepChoiceStyle}"
-                                AutomationProperties.Name="{StaticResource Loc.Profiles.Features.Step.SelectionRules}"
-                                AutomationProperties.HelpText="{StaticResource Loc.Profiles.Features.Step.SelectionRules}"
-                                Command="{Binding GoToEditorStepCommand}"
-                                CommandParameter="{x:Static viewModels:ProfileEditorStep.SelectionRules}"
-                                Content="{StaticResource Loc.Profiles.Features.Step.SelectionRules}"
-                                GroupName="ProfileEditorSteps" IsChecked="{Binding IsSelectionRulesStep, Mode=OneWay}" />
-                            <RadioButton
-                                Style="{StaticResource ProfileStepChoiceStyle}"
-                                AutomationProperties.HelpText="{StaticResource Loc.View.Profiles.AutomationHelpText.ConfigureExcludedFoldersAndValuesReadFrom}"
-                                AutomationProperties.Name="{StaticResource Loc.View.Profiles.AutomationName.Step3ScanOptions}"
-                                Command="{Binding GoToEditorStepCommand}"
-                                CommandParameter="{x:Static viewModels:ProfileEditorStep.ScanOptions}"
-                                Content="{StaticResource Loc.View.Profiles.Content.3ScanOptions}"
-                                GroupName="ProfileEditorSteps"
-                                IsChecked="{Binding IsScanOptionsStep, Mode=OneWay}" />
                             <RadioButton
                                 Style="{StaticResource ProfileStepChoiceStyle}"
                                 AutomationProperties.HelpText="{StaticResource Loc.View.Profiles.AutomationHelpText.ValidateAndSaveTheProfileThenContinue}"
-                                AutomationProperties.Name="{StaticResource Loc.View.Profiles.AutomationName.Step4ReviewAndSave}"
+                                AutomationProperties.Name="{StaticResource Loc.Ux.Authoring.Step.Review}"
                                 Command="{Binding GoToEditorStepCommand}"
                                 CommandParameter="{x:Static viewModels:ProfileEditorStep.Review}"
-                                Content="{StaticResource Loc.View.Profiles.Content.4ReviewAndSave}"
+                                Content="{StaticResource Loc.Ux.Authoring.Step.Review}"
                                 GroupName="ProfileEditorSteps"
                                 IsChecked="{Binding IsReviewStep, Mode=OneWay}" />
                         </UniformGrid>
+                        <ui:Button x:Name="OptionalProfileStepsButton" Grid.Column="1" Margin="4" Padding="10,8" VerticalAlignment="Center"
+                            Appearance="Transparent" Content="{StaticResource Loc.Ux.Authoring.Optional}" Icon="{ui:SymbolIcon Symbol=ChevronDown16}"
+                            ToolTip="{StaticResource Loc.Ux.Authoring.Optional.Help}" Click="OnOptionalStepsClick">
+                            <ui:Button.ContextMenu>
+                                <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                                    <ui:MenuItem Header="{StaticResource Loc.Ux.Authoring.Optional.Data}" Command="{Binding GoToEditorStepCommand}" CommandParameter="{x:Static viewModels:ProfileEditorStep.DataSources}" IsCheckable="True" IsChecked="{Binding IsDataSourcesStep, Mode=OneWay}" />
+                                    <ui:MenuItem Header="{StaticResource Loc.Ux.Authoring.Optional.Selection}" Command="{Binding GoToEditorStepCommand}" CommandParameter="{x:Static viewModels:ProfileEditorStep.SelectionRules}" IsCheckable="True" IsChecked="{Binding IsSelectionRulesStep, Mode=OneWay}" />
+                                    <ui:MenuItem Header="{StaticResource Loc.Ux.Authoring.Optional.Scan}" Command="{Binding GoToEditorStepCommand}" CommandParameter="{x:Static viewModels:ProfileEditorStep.ScanOptions}" IsCheckable="True" IsChecked="{Binding IsScanOptionsStep, Mode=OneWay}" />
+                                </ContextMenu>
+                            </ui:Button.ContextMenu>
+                        </ui:Button>
+                        <ui:TextBlock Grid.Row="1" Grid.ColumnSpan="2" Margin="12,0,12,8" Text="{Binding CurrentStepTitle}" FontWeight="SemiBold"
+                            Visibility="{Binding IsOptionalEditorStep, Converter={StaticResource BooleanToVisibilityConverter}}" AutomationProperties.LiveSetting="Polite" />
+                        </Grid>
                         </controls:SectionCard.Header>
                     </controls:SectionCard>
 
@@ -1734,17 +1704,17 @@
                                         Icon="{ui:SymbolIcon Symbol=CheckmarkCircle20}" />
                                     <ui:Button
                                         MinWidth="120"
-                                        Appearance="Primary"
                                         Command="{Binding SaveDraftCommand}"
                                         Content="{StaticResource Loc.View.Profiles.Content.ValidateAndSave}"
                                         Icon="{ui:SymbolIcon Symbol=Save16}" />
                                     <ui:Button
-                                        MinWidth="160"
+                                        MinWidth="120"
                                         Margin="8,0,0,0"
-                                        AutomationProperties.HelpText="{StaticResource Loc.View.Profiles.AutomationHelpText.OpenTheLastSavedProfileCurrentlyLoaded}"
-                                        AutomationProperties.Name="{StaticResource Loc.View.Profiles.AutomationName.TestSavedProfileInPlayground}"
-                                        Command="{Binding OpenSavedProfileInPlaygroundCommand}"
-                                        Content="{StaticResource Loc.Home.Tools.Playground}"
+                                        Appearance="Primary"
+                                        AutomationProperties.HelpText="{StaticResource Loc.Ux.Authoring.SaveAndTest.Help}"
+                                        AutomationProperties.Name="{StaticResource Loc.Ux.Authoring.SaveAndTest}"
+                                        Command="{Binding SaveAndTestCommand}"
+                                        Content="{StaticResource Loc.Ux.Authoring.SaveAndTest}"
                                         Icon="{ui:SymbolIcon Symbol=DocumentSearch20}" />
                                 </StackPanel>
                             </Grid>

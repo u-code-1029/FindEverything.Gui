@@ -77,7 +77,7 @@ public sealed class CatalogFilteringTests
     }
 
     [Fact]
-    public void Catalog_item_uses_mapped_values_by_default_and_switches_every_output_to_raw()
+    public void Inspecting_raw_values_keeps_search_copy_and_export_mapped()
     {
         var field = new ProfileFieldDescriptor(
             "owner",
@@ -124,10 +124,11 @@ public sealed class CatalogFilteringTests
         item.SetShowOriginalValues(true);
 
         Assert.Equal("ZX-42", item.DisplayValues["owner"]);
-        Assert.Equal("ZX-42", item.ExportDisplayValues["owner"]);
-        Assert.Equal("ZX-42", item.OutputValues["owner"]);
-        Assert.True(item.Matches("ZX-42"));
-        Assert.False(item.Matches("홍길동"));
+        Assert.Equal("홍길동", item.CanonicalDisplayValues["owner"]);
+        Assert.Equal("홍길동", item.ExportDisplayValues["owner"]);
+        Assert.Equal("홍길동", item.OutputValues["owner"]);
+        Assert.False(item.Matches("ZX-42"));
+        Assert.True(item.Matches("홍길동"));
     }
 
     [Fact]

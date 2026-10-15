@@ -29,6 +29,7 @@ public partial class CatalogViewModel
     private void ScheduleTextFilter()
     {
         if (IsScanning) return;
+        IsSearchPending = true;
         if (_projectionSnapshot is not null && ActiveProjectionStore is not null)
         {
             _ = RefreshProjectionQueryAsync(debounce: true);
@@ -36,7 +37,7 @@ public partial class CatalogViewModel
         }
         _ = _liveInputRequests.RunAsync(SearchInputTiming.DebounceDelay, token =>
         {
-            if (!_disposed) ApplyFilter();
+            if (!_disposed) { ApplyFilter(); IsSearchPending = false; }
             return Task.CompletedTask;
         });
     }
@@ -122,7 +123,7 @@ public partial class CatalogViewModel
         {
             token.ThrowIfCancellationRequested();
             var paths = _loadedItems.Select(item => item.FullPath).Take(500).ToArray();
-            var definition = _queryDefinition with { Keyword = AppliedHighlightQuery, ShowOriginalValues = ShowOriginalValues };
+            var definition = _queryDefinition with { Keyword = AppliedHighlightQuery, ShowOriginalValues = false };
             var matches = await _projectionStore!.FindMatchingPathsAsync(live.Snapshot, definition, paths, token);
             token.ThrowIfCancellationRequested();
             if (_disposed || version != Volatile.Read(ref _liveFilterVersion) || live.SessionVersion != Volatile.Read(ref _resultSessionVersion)

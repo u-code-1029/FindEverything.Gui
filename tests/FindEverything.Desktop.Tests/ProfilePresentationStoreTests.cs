@@ -34,7 +34,7 @@ public sealed class ProfilePresentationStoreTests
         try
         {
             Assert.Empty(await store.LoadAsync("test-profile"));
-            layout.Save("test-profile", [new("a", 1, 220, GridColumnWidthMode.Manual), new("b", 2, 280, GridColumnWidthMode.Manual)]);
+            layout.Save("test-profile", [new("a", 1, 220, GridColumnWidthMode.Manual, IsHidden: true), new("b", 2, 280, GridColumnWidthMode.Manual)]);
             ProfilePresentationChangedEventArgs? notification = null;
             store.Changed += (_, e) => notification = e;
             await store.SaveAsync("test-profile", new Dictionary<string, ColumnWidthPreset> { ["a"] = ColumnWidthPreset.Wide });
@@ -42,6 +42,7 @@ public sealed class ProfilePresentationStoreTests
             var reload = new ProfilePresentationStore(paths, layout, NullLogger<ProfilePresentationStore>.Instance);
             Assert.Equal(ColumnWidthPreset.Wide, (await reload.LoadAsync("test-profile"))["a"]);
             Assert.Equal(GridColumnWidthMode.Auto, layout.Get("test-profile")["a"].WidthMode);
+            Assert.True(layout.Get("test-profile")["a"].IsHidden);
             Assert.Equal(GridColumnWidthMode.Manual, layout.Get("test-profile")["b"].WidthMode);
             Assert.Equal(["a"], notification!.ChangedFields);
             Assert.False(File.Exists(Path.Combine(paths.UserProfilesDirectory, "test-profile", "profile.json")));
@@ -63,11 +64,13 @@ public sealed class ProfilePresentationStoreTests
             var state = store.Get("profile")["name"];
             Assert.Equal(3, state.DisplayIndex);
             Assert.Equal(GridColumnWidthMode.Auto, state.WidthMode);
-            for (var i = 0; i < 50; i++) store.Save("profile", [state with { Width = 200 + i, WidthMode = GridColumnWidthMode.Manual }]);
+            Assert.False(state.IsHidden);
+            for (var i = 0; i < 50; i++) store.Save("profile", [state with { Width = 200 + i, WidthMode = GridColumnWidthMode.Manual, IsHidden = true }]);
             await store.StopAsync(default);
             var reloaded = new GridLayoutStore(paths, NullLogger<GridLayoutStore>.Instance).Get("profile")["name"];
             Assert.Equal(249, reloaded.Width);
             Assert.Equal(GridColumnWidthMode.Manual, reloaded.WidthMode);
+            Assert.True(reloaded.IsHidden);
         }
         finally { Directory.Delete(directory, true); }
     }

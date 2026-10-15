@@ -2,6 +2,15 @@ namespace FindEverything.Application.Results;
 
 public sealed record ResultPage<T>(IReadOnlyList<T> Items, int Offset, bool HasMore);
 
+public readonly record struct ResultSelectionKey(string StableKey, string QueryKey);
+
+/// <summary>Optional key-only path for preserving huge selections without reading field payloads.</summary>
+public interface IResultSelectionKeyReader
+{
+    IAsyncEnumerable<ResultSelectionKey> EnumerateSelectionKeysAsync(QuerySelection selection,
+        CancellationToken cancellationToken = default);
+}
+
 public sealed class ResultQueryChangedException(string expectedIdentity, string? actualIdentity)
     : InvalidOperationException("The result generation changed. Start a new query before reading more rows.")
 {
@@ -18,6 +27,12 @@ public interface IResultQuerySession<T> : IAsyncDisposable
         CancellationToken cancellationToken = default);
     IAsyncEnumerable<T> EnumerateSelectionAsync(QuerySelection selection,
         CancellationToken cancellationToken = default);
+    async Task<long> CountSelectionAsync(QuerySelection selection, CancellationToken cancellationToken = default)
+    {
+        long count = 0;
+        await foreach (var _ in EnumerateSelectionAsync(selection, cancellationToken).ConfigureAwait(false)) count++;
+        return count;
+    }
 }
 
 /// <summary>All matching rows minus exceptions, or explicit keys; never all row objects.</summary>

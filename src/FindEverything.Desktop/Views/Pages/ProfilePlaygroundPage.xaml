@@ -54,8 +54,10 @@
                                     FontWeight="SemiBold"
                                     Text="{Binding Status}"
                                     TextWrapping="Wrap" />
-                                <ItemsControl ItemsSource="{Binding Lanes}">
-                                    <ItemsControl.ItemTemplate>
+                                <ComboBox x:Name="DebugLaneSelector" ItemsSource="{Binding Lanes}" SelectedIndex="0" DisplayMemberPath="Label"
+                                    AutomationProperties.Name="{StaticResource Loc.Ux.Authoring.DebugGroup}" Margin="0,0,0,8" />
+                                <ContentControl Content="{Binding SelectedItem, ElementName=DebugLaneSelector}" HorizontalContentAlignment="Stretch">
+                                    <ContentControl.ContentTemplate>
                                         <DataTemplate>
                                             <Grid Margin="0,0,0,8">
                                                 <Grid.ColumnDefinitions>
@@ -108,8 +110,8 @@
                                                 </ui:DynamicScrollViewer>
                                             </Grid>
                                         </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
+                                    </ContentControl.ContentTemplate>
+                                </ContentControl>
                             </StackPanel>
                         </controls:SectionCard.Header></controls:SectionCard>
                     </DataTemplate>
@@ -120,7 +122,9 @@
 
     <controls:WorkspacePageFrame>
         <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-        <controls:PageHeader Title="{StaticResource Loc.Shell.Nav.Playground}" Description="{StaticResource Loc.Workspace.Playground.Description}" />
+        <controls:PageHeader Title="{StaticResource Loc.Shell.Nav.Playground}" Description="{StaticResource Loc.Workspace.Playground.Description}">
+            <ui:Button Command="{Binding EditProfileCommand}" Content="{StaticResource Loc.Ux.Authoring.EditProfile}" Icon="{ui:SymbolIcon Symbol=DocumentEdit20}" />
+        </controls:PageHeader>
         <controls:CommandStrip Grid.Row="1" Padding="16" Margin="0,0,0,12">
             <Grid x:Name="PlaygroundInputPanel" IsEnabled="{Binding IsReady}">
                 <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
@@ -135,59 +139,30 @@
         </controls:CommandStrip>
         <TabControl Grid.Row="2" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
         <TabItem Header="{StaticResource Loc.Profiles.Features.Playground.PathTab}">
-        <controls:SplitWorkspace x:Name="PlaygroundWorkspace" PrimaryRatio="0.38" PrimaryTitle="{StaticResource Loc.Workspace.Playground.Values}" SecondaryTitle="{StaticResource Loc.Workspace.Playground.Debug}">
-            <controls:SplitWorkspace.PrimaryContent>
                 <ui:DynamicScrollViewer x:Name="ProfilePlaygroundScrollViewer" Style="{StaticResource FluentGutteredScrollViewerStyle}">
-                    <StackPanel>                <controls:SectionCard Margin="0" Style="{StaticResource FluentSectionCardStyle}">
+                    <StackPanel>
+                <controls:SectionCard Margin="0" Style="{StaticResource FluentSectionCardStyle}">
                       <controls:SectionCard.Header>
                     <StackPanel>
                         <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{StaticResource Loc.View.ProfilePlayground.Text.StructuredValues}" />
                         <ui:TextBlock
                             Margin="0,4,0,12"
                             Style="{StaticResource CaptionTextStyle}"
-                            Text="{StaticResource Loc.View.ProfilePlayground.Text.TheseValuesComeFromTheSameProfile}"
+                            Text="{StaticResource Loc.Ux.Authoring.SavedDefinition}"
                             TextWrapping="Wrap" />
-                        <ItemsControl ItemsSource="{Binding Rows}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <controls:SectionCard Style="{StaticResource PlaygroundFieldCardStyle}"><controls:SectionCard.Header>
-                                        <Grid>
-                                            <Grid.RowDefinitions>
-                                                <RowDefinition Height="Auto" />
-                                                <RowDefinition Height="Auto" />
-                                                <RowDefinition Height="Auto" />
-                                            </Grid.RowDefinitions>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="0.4*" />
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="Auto" />
-                                            </Grid.ColumnDefinitions>
-                                            <ui:TextBlock Grid.ColumnSpan="2" FontWeight="SemiBold" Text="{Binding FieldName}" TextWrapping="Wrap" Margin="0,0,12,0" />
-                                            <ui:TextBlock
-                                                Grid.Row="1"
-                                                Grid.ColumnSpan="3"
-                                                Margin="0,8,0,0"
-                                                Text="{Binding Value}"
-                                                TextWrapping="Wrap" />
-                                            <ui:TextBlock
-                                                Grid.Column="2"
-                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                Text="{Binding Status}" />
-                                            <ui:TextBlock
-                                                Grid.Row="2"
-                                                Grid.ColumnSpan="3"
-                                                Margin="0,6,0,0"
-                                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                Text="{Binding RawValue, StringFormat={StaticResource Loc.Playground.RawValueFormat}}"
-                                                Visibility="{Binding HasMappedValue, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                                        </Grid>
-                                    </controls:SectionCard.Header></controls:SectionCard>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                        <ui:DataGrid x:Name="ProfileTestResultsGrid" ItemsSource="{Binding Rows}" Style="{StaticResource FluentDataGridStyle}"
+                            MinHeight="120" MaxHeight="360" SelectionMode="Extended" ClipboardCopyMode="IncludeHeader" ScrollViewer.HorizontalScrollBarVisibility="Auto">
+                            <ui:DataGrid.Columns>
+                                <DataGridTextColumn Header="{StaticResource Loc.Ux.Authoring.Column}" Binding="{Binding FieldName, Mode=OneWay}" Width="*" MinWidth="110" />
+                                <DataGridTextColumn Header="{StaticResource Loc.Ux.Authoring.RawValue}" Binding="{Binding RawValue, Mode=OneWay}" Width="*" MinWidth="130" />
+                                <DataGridTextColumn Header="{StaticResource Loc.Ux.Authoring.Value}" Binding="{Binding Value, Mode=OneWay}" Width="*" MinWidth="130" />
+                                <DataGridTextColumn Header="{StaticResource Loc.Ux.Authoring.Status}" Binding="{Binding Status, Mode=OneWay}" Width="1.4*" MinWidth="170" />
+                            </ui:DataGrid.Columns>
+                        </ui:DataGrid>
                     </StackPanel>
                       </controls:SectionCard.Header>
-                </controls:SectionCard>                <controls:SectionCard
+                </controls:SectionCard>
+                <controls:SectionCard
                     x:Name="PlaygroundDirectoryExclusionResultPanel"
                     Margin="0,16,0,0"
                     AutomationProperties.Name="{StaticResource Loc.View.ProfilePlayground.AutomationName.PlaygroundFolderNameExclusionResult}"
@@ -223,19 +198,15 @@
                             Title="{Binding DirectoryExclusionTestResult.Title}" />
                     </StackPanel>
                   </controls:SectionCard.Header>
-                </controls:SectionCard></StackPanel>
-                </ui:DynamicScrollViewer>
-            </controls:SplitWorkspace.PrimaryContent>
-            <controls:SplitWorkspace.SecondaryContent>
-                <ui:DynamicScrollViewer x:Name="PlaygroundDebugScrollViewer" Style="{StaticResource FluentGutteredScrollViewerStyle}">
-                    <StackPanel>                <ui:CardExpander
+                </controls:SectionCard>
+                    <ui:CardExpander
                     x:Name="PlaygroundRegexDebugExpander"
-                    Margin="0"
+                    Margin="0,12,0,0"
                     VerticalAlignment="Top"
                     VerticalContentAlignment="Stretch"
                     AutomationProperties.Name="{StaticResource Loc.View.ProfilePlayground.AutomationName.PathRegexColorDebugger}"
-                    Header="{StaticResource Loc.View.ProfilePlayground.AutomationName.PathRegexColorDebugger}"
-                    IsExpanded="True"
+                    Header="{StaticResource Loc.Ux.Authoring.AdvancedDebug}"
+                    IsExpanded="False"
                     Visibility="{Binding HasRegexDebugRules, Converter={StaticResource BooleanToVisibilityConverter}}">
                     <controls:SectionCard x:Name="PlaygroundRegexDebugCard" Margin="0,8,0,0" Background="Transparent" BorderThickness="0" Style="{StaticResource FluentSectionCardStyle}">
                       <controls:SectionCard.Header>
@@ -257,7 +228,8 @@
                         </StackPanel>
                       </controls:SectionCard.Header>
                     </controls:SectionCard>
-                </ui:CardExpander>                <ui:CardExpander
+                </ui:CardExpander>
+                <ui:CardExpander
                     x:Name="PlaygroundDirectoryExclusionRegexDebugExpander"
                     Margin="0,12,0,0"
                     VerticalAlignment="Top"
@@ -279,10 +251,9 @@
                         </StackPanel>
                       </controls:SectionCard.Header>
                     </controls:SectionCard>
-                </ui:CardExpander></StackPanel>
+                </ui:CardExpander>
+                    </StackPanel>
                 </ui:DynamicScrollViewer>
-            </controls:SplitWorkspace.SecondaryContent>
-        </controls:SplitWorkspace>
         </TabItem>
         <TabItem Header="{StaticResource Loc.Profiles.Features.Playground.SelectionTab}">
             <ui:DynamicScrollViewer Style="{StaticResource FluentGutteredScrollViewerStyle}">

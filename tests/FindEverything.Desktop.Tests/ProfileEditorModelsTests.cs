@@ -448,6 +448,7 @@ public sealed class ProfileEditorModelsTests
         var isValid = draft.TryValidateGuidedDateSample(out var errorMessage);
 
         Assert.False(isValid);
+        Assert.Equal("2026521", draft.GuidedSampleInput);
         Assert.Contains("2026521", errorMessage, StringComparison.Ordinal);
         Assert.Contains("날짜 모양", errorMessage, StringComparison.Ordinal);
     }

@@ -89,6 +89,7 @@ public static class DependencyInjection
         services.AddSingleton<IDraftDecisionPrompt, ContentDialogDraftDecisionPrompt>();
         services.AddSingleton<IDraftProtectionService, DraftProtectionService>();
         services.AddSingleton<ILanguageSelectionService, LanguageSelectionService>();
+        services.AddSingleton<ILanguageRestartPrompt, ContentDialogLanguageRestartPrompt>();
         services.AddSingleton<IIndexDatabasePathResolver, IndexDatabasePathResolver>();
         services.AddSingleton<IWorkspaceContext, WorkspaceContext>();
         services.AddSingleton<IDesktopPickerService, DesktopPickerService>();

@@ -9,7 +9,7 @@ namespace FindEverything.Infrastructure.Persistence;
 
 public sealed partial class SqliteCatalogProjectionStore
 {
-    private sealed partial class ProjectionQuery : IResultQuerySession<CatalogProjectionRow>
+    private sealed partial class ProjectionQuery : IResultQuerySession<CatalogProjectionRow>, IResultSelectionKeyReader
     {
         private readonly SqliteCatalogProjectionStore _owner;
         private readonly string _generation;
@@ -85,6 +85,83 @@ public sealed partial class SqliteCatalogProjectionStore
         public string Identity => _building || _buildingRevision != 0 ? _generation + ":" + _buildingRevision : _generation;
 
         public Task<long> CountAsync(CancellationToken cancellationToken = default) => ExecuteReadAsync(CountCoreAsync, cancellationToken);
+
+        public async IAsyncEnumerable<ResultSelectionKey> EnumerateSelectionKeysAsync(QuerySelection selection,
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            using var captured = selection.Capture();
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
+            var token = linked.Token;
+            using var connection = _owner.OpenConnection(readOperation: true);
+            using var interrupt = new SqliteReadCancellation(connection, token);
+            if (captured.Baseline is { } baseline)
+            {
+                using var attach = connection.CreateCommand();
+                attach.CommandText = "ATTACH DATABASE $path AS selection_source;";
+                attach.Parameters.AddWithValue("$path", baseline.DatabasePath); attach.ExecuteNonQuery();
+            }
+            using var transaction = connection.BeginTransaction(deferred: true);
+            EnsureGeneration(connection, transaction);
+            using var prepare = connection.CreateCommand(); prepare.Transaction = transaction;
+            prepare.CommandText = "CREATE TEMP TABLE selection_keys(path_key TEXT PRIMARY KEY COLLATE BINARY); CREATE TEMP TABLE selection_unavailable(path_key TEXT PRIMARY KEY COLLATE BINARY);";
+            prepare.ExecuteNonQuery();
+            foreach (var (table, keys) in new[] { ("selection_keys", captured.Keys), ("selection_unavailable", captured.UnavailableKeys) })
+            {
+                prepare.CommandText = $"INSERT OR IGNORE INTO {table}(path_key) VALUES($key);";
+                prepare.Parameters.Clear(); var key = prepare.Parameters.Add("$key", SqliteType.Text);
+                foreach (var value in keys)
+                {
+                    token.ThrowIfCancellationRequested(); key.Value = PathKey(value); prepare.ExecuteNonQuery();
+                }
+            }
+            using var command = BuildCommand(connection, transaction, "user_inputs", captured, null, null);
+            command.CommandText = "SELECT r.full_path " + command.CommandText;
+            using var reader = await command.ExecuteReaderAsync(token).ConfigureAwait(false);
+            while (await reader.ReadAsync(token).ConfigureAwait(false))
+            {
+                token.ThrowIfCancellationRequested();
+                var path = reader.GetString(0);
+                yield return new(path, path);
+            }
+        }
+
+        public async Task<long> CountSelectionAsync(QuerySelection selection, CancellationToken cancellationToken = default)
+        {
+            using var captured = selection.Capture();
+            return await ExecuteReadAsync(async token =>
+            {
+                using var connection = _owner.OpenConnection(readOperation: true);
+                using var interrupt = new SqliteReadCancellation(connection, token);
+                if (captured.Baseline is { } baseline)
+                {
+                    using var attach = connection.CreateCommand();
+                    attach.CommandText = "ATTACH DATABASE $path AS selection_source;";
+                    attach.Parameters.AddWithValue("$path", baseline.DatabasePath);
+                    attach.ExecuteNonQuery();
+                }
+                using var transaction = connection.BeginTransaction(deferred: true);
+                EnsureGeneration(connection, transaction);
+                using var prepare = connection.CreateCommand();
+                prepare.Transaction = transaction;
+                prepare.CommandText = "CREATE TEMP TABLE selection_keys(path_key TEXT PRIMARY KEY COLLATE BINARY); CREATE TEMP TABLE selection_unavailable(path_key TEXT PRIMARY KEY COLLATE BINARY);";
+                prepare.ExecuteNonQuery();
+                foreach (var (table, keys) in new[] { ("selection_keys", captured.Keys), ("selection_unavailable", captured.UnavailableKeys) })
+                {
+                    prepare.CommandText = $"INSERT OR IGNORE INTO {table}(path_key) VALUES($key);";
+                    prepare.Parameters.Clear();
+                    var key = prepare.Parameters.Add("$key", SqliteType.Text);
+                    foreach (var value in keys)
+                    {
+                        token.ThrowIfCancellationRequested();
+                        key.Value = PathKey(value);
+                        prepare.ExecuteNonQuery();
+                    }
+                }
+                using var count = BuildCommand(connection, transaction, "user_inputs", captured, null, null);
+                count.CommandText = "SELECT COUNT(*) " + count.CommandText;
+                return Convert.ToInt64(await count.ExecuteScalarAsync(token).ConfigureAwait(false));
+            }, cancellationToken).ConfigureAwait(false);
+        }
 
         private async Task<long> CountCoreAsync(CancellationToken cancellationToken)
         {

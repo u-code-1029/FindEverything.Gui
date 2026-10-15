@@ -19,32 +19,38 @@ internal static class OutputFormatsViewportChecks
         var originalWidth = window.Width;
         var originalHeight = window.Height;
         var workspace = Assert.IsType<SplitWorkspace>(page.FindName("OutputWorkspace"));
-        var originalTab = Descendants(workspace).OfType<TabControl>().SingleOrDefault()?.SelectedIndex;
+        Assert.True(workspace.KeepSecondaryVisible);
         var scroll = Assert.IsAssignableFrom<ScrollViewer>(page.FindName("OutputFormatsScrollViewer"));
         var originalOffset = scroll.VerticalOffset;
+        var affixes = Assert.IsAssignableFrom<Expander>(page.FindName("OutputAffixesExpander"));
+        var originalExpansion = affixes.IsExpanded;
         try
         {
+            affixes.IsExpanded = true;
             foreach (var size in new[] { new Size(1360, 860), new Size(760, 640) })
             {
                 window.Width = size.Width;
                 window.Height = size.Height;
                 Pump(window);
-                var tabs = Descendants(workspace).OfType<TabControl>().SingleOrDefault();
-                if (tabs is not null)
-                {
-                    tabs.SelectedIndex = 0;
-                    Pump(window);
-                    var first = Assert.IsAssignableFrom<TabItem>(tabs.Items[0]);
-                    var second = Assert.IsAssignableFrom<TabItem>(tabs.Items[1]);
-                    Assert.True(first.Focusable && second.Focusable);
-                    Assert.True(first.Focus());
-                    Assert.Equal(0, tabs.SelectedIndex);
-                }
+                Assert.Empty(Descendants(workspace).OfType<TabControl>());
 
                 // Comparing only with page.ActualHeight misses a page expanded
                 // beyond the HWND by NavigationView's outer scroll presenter.
                 var viewport = Assert.IsAssignableFrom<FrameworkElement>(window.Content);
                 AssertInside(page, viewport, "The output page must be bounded by the window viewport.");
+                var preview = Assert.IsType<Wpf.Ui.Controls.TextBox>(page.FindName("OutputPreviewTextBox"));
+                Assert.True(preview.IsVisible && preview.IsReadOnly);
+                AssertInside(preview, viewport, "The result preview must stay visible while editing, even in a narrow window.");
+                Assert.True(preview.ActualHeight >= 24, "The compact preview must retain at least one readable line.");
+                if (workspace.ActualWidth < 900)
+                {
+                    var previewCard = Assert.IsType<SectionCard>(page.FindName("OutputPreviewCard"));
+                    Assert.Equal(3, workspace.RowDefinitions.Count);
+                    Assert.Equal(2, Grid.GetRow(previewCard));
+                    Assert.True(scroll.TranslatePoint(new Point(0, scroll.ActualHeight), viewport).Y
+                        <= previewCard.TranslatePoint(new Point(), viewport).Y - 7,
+                        "The editor and persistent preview need their own non-overlapping stacked work areas.");
+                }
                 var footer = Assert.IsType<CommandStrip>(page.FindName("OutputActionsFooter"));
                 var save = Assert.IsType<Wpf.Ui.Controls.Button>(page.FindName("SaveFormatButton"));
                 AssertInside(footer, viewport, "The output action footer must stay on screen.");
@@ -71,14 +77,10 @@ internal static class OutputFormatsViewportChecks
         }
         finally
         {
+            affixes.IsExpanded = originalExpansion;
             window.Width = originalWidth;
             window.Height = originalHeight;
             Pump(window);
-            if (originalTab is { } selected && Descendants(workspace).OfType<TabControl>().SingleOrDefault() is { } tabs)
-            {
-                tabs.SelectedIndex = selected;
-                Pump(window);
-            }
             scroll.ScrollToVerticalOffset(originalOffset);
             Pump(window);
         }

@@ -10,10 +10,19 @@ public sealed class PageHeader : ContentControl
         nameof(Title), typeof(string), typeof(PageHeader), new PropertyMetadata(string.Empty));
     public static readonly DependencyProperty DescriptionProperty = DependencyProperty.Register(
         nameof(Description), typeof(string), typeof(PageHeader), new PropertyMetadata(string.Empty));
+    public static readonly DependencyProperty IsCompactProperty = DependencyProperty.Register(
+        nameof(IsCompact), typeof(bool), typeof(PageHeader), new PropertyMetadata(false));
 
     public PageHeader() => SetResourceReference(StyleProperty, "WorkspacePageHeaderStyle");
     public string Title { get => (string)GetValue(TitleProperty); set => SetValue(TitleProperty, value); }
     public string Description { get => (string)GetValue(DescriptionProperty); set => SetValue(DescriptionProperty, value); }
+    public bool IsCompact { get => (bool)GetValue(IsCompactProperty); private set => SetValue(IsCompactProperty, value); }
+
+    protected override void OnRenderSizeChanged(SizeChangedInfo sizeInfo)
+    {
+        base.OnRenderSizeChanged(sizeInfo);
+        IsCompact = sizeInfo.NewSize.Width < 600;
+    }
 
     public override void OnApplyTemplate()
     {
@@ -136,6 +145,8 @@ public sealed class SplitWorkspace : Grid
         nameof(SecondaryTitle), typeof(string), typeof(SplitWorkspace), new PropertyMetadata(string.Empty, OnContentChanged));
     public static readonly DependencyProperty PrimaryRatioProperty = DependencyProperty.Register(
         nameof(PrimaryRatio), typeof(double), typeof(SplitWorkspace), new PropertyMetadata(0.6, OnContentChanged));
+    public static readonly DependencyProperty KeepSecondaryVisibleProperty = DependencyProperty.Register(
+        nameof(KeepSecondaryVisible), typeof(bool), typeof(SplitWorkspace), new PropertyMetadata(false, OnContentChanged));
     private bool? _compact;
     private TabItem? _primaryTab;
     private TabItem? _secondaryTab;
@@ -145,6 +156,7 @@ public sealed class SplitWorkspace : Grid
     public string PrimaryTitle { get => (string)GetValue(PrimaryTitleProperty); set => SetValue(PrimaryTitleProperty, value); }
     public string SecondaryTitle { get => (string)GetValue(SecondaryTitleProperty); set => SetValue(SecondaryTitleProperty, value); }
     public double PrimaryRatio { get => (double)GetValue(PrimaryRatioProperty); set => SetValue(PrimaryRatioProperty, value); }
+    public bool KeepSecondaryVisible { get => (bool)GetValue(KeepSecondaryVisibleProperty); set => SetValue(KeepSecondaryVisibleProperty, value); }
 
     protected override void OnRenderSizeChanged(SizeChangedInfo sizeInfo)
     {
@@ -163,8 +175,22 @@ public sealed class SplitWorkspace : Grid
         if (_secondaryTab is not null) _secondaryTab.Content = null;
         Children.Clear();
         ColumnDefinitions.Clear();
+        RowDefinitions.Clear();
+        if (PrimaryContent is not null) { SetRow(PrimaryContent, 0); SetColumn(PrimaryContent, 0); }
+        if (SecondaryContent is not null) { SetRow(SecondaryContent, 0); SetColumn(SecondaryContent, 0); }
         _primaryTab = null;
         _secondaryTab = null;
+        if (compact && KeepSecondaryVisible)
+        {
+            // Editing an expression and reading its effect is one task. Keep a
+            // bounded preview visible without requiring a tab round trip.
+            RowDefinitions.Add(new RowDefinition { Height = new GridLength(2, GridUnitType.Star) });
+            RowDefinitions.Add(new RowDefinition { Height = new GridLength(8) });
+            RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star), MinHeight = 96 });
+            if (PrimaryContent is not null) Children.Add(PrimaryContent);
+            if (SecondaryContent is not null) { SetRow(SecondaryContent, 2); Children.Add(SecondaryContent); }
+            return;
+        }
         if (compact)
         {
             _primaryTab = new Wpf.Ui.Controls.TabViewItem { Header = PrimaryTitle, Content = PrimaryContent };

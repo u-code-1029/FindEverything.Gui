@@ -93,10 +93,11 @@ internal sealed class FileSearchQuerySession : IResultQuerySession<IndexedPathEn
         for (var offset = 0; ;)
         {
             var page = await ReadRangeAsync(offset, 500, cancellationToken).ConfigureAwait(false);
-            foreach (var item in page.Items)
+            var membership = await captured.ReadMembershipAsync(page.Items.Select(item => item.FullPath).ToArray(), cancellationToken).ConfigureAwait(false);
+            for (var index = 0; index < page.Items.Count; index++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (captured.Contains(item.FullPath)) yield return item;
+                if (membership[index]) yield return page.Items[index];
             }
             if (!page.HasMore) yield break;
             if (page.Items.Count == 0) throw new InvalidDataException("Empty continuation page.");

@@ -7,4 +7,7 @@ public sealed partial class CatalogActivityState : ObservableObject
 {
     [ObservableProperty]
     private bool _isScanning;
+
+    [ObservableProperty]
+    private bool _isFilesScanning;
 }

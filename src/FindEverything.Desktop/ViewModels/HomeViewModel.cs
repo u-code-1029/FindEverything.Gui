@@ -17,6 +17,9 @@ public partial class HomeViewModel : ObservableObject, IDisposable
     private readonly IAppLocalizer _localizer;
     private readonly IUiScheduler _uiScheduler;
     private bool _disposed;
+    private readonly IDesktopPickerService? _picker;
+    private readonly WorkspaceTransferViewModel? _transfer;
+    private readonly Wpf.Ui.ISnackbarService? _notifications;
 
     [ObservableProperty]
     private bool _hasRoot;
@@ -82,7 +85,10 @@ public partial class HomeViewModel : ObservableObject, IDisposable
         IApplicationOperationCoordinator operationCoordinator,
         IHomeNavigationService navigationService,
         IAppLocalizer localizer,
-        IUiScheduler? uiScheduler = null)
+        IUiScheduler? uiScheduler = null,
+        IDesktopPickerService? picker = null,
+        WorkspaceTransferViewModel? transfer = null,
+        Wpf.Ui.ISnackbarService? notifications = null)
     {
         _workspaceContext = workspaceContext;
         _profileCatalog = profileCatalog;
@@ -91,6 +97,10 @@ public partial class HomeViewModel : ObservableObject, IDisposable
         _navigationService = navigationService;
         _localizer = localizer;
         _uiScheduler = uiScheduler ?? ImmediateUiScheduler.Instance;
+        _picker = picker;
+        _transfer = transfer;
+        _notifications = notifications;
+        if (_transfer is not null) _transfer.SourceChanged += OnSourceChanged;
 
         _workspaceContext.Changed += OnWorkspaceChanged;
         _profileCatalog.Changed += OnProfileCatalogChanged;
@@ -114,6 +124,37 @@ public partial class HomeViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void OpenOutputFormats() => _navigationService.Navigate(typeof(OutputFormatsPage));
 
+    public bool IsSharedSource => _transfer?.IsImported == true;
+    public string CurrentLocation => _transfer?.CurrentSource?.EffectiveRoot ?? RootPathText;
+    public string CurrentSourceName => _transfer?.SelectedSource?.DisplayName
+        ?? L("Loc.Ux.Shell.Home.Local", "이 PC의 작업 환경");
+    public bool CanChooseLocation => !IsOperationRunning && !IsSharedSource && _picker is not null;
+    [RelayCommand(CanExecute = nameof(CanChooseLocation))]
+    private async Task ChooseLocationAsync()
+    {
+        if (!CanChooseLocation) return;
+        try
+        {
+            var selected = _picker!.PickRootDirectory(_workspaceContext.Current.RootPath);
+            if (selected is null || !CanChooseLocation) return;
+            await _workspaceContext.UpdateAsync(current => current with { RootPath = selected }, CancellationToken.None);
+        }
+        catch (Exception exception)
+        {
+            _notifications?.Show(L("Loc.Ux.Shell.Home.LocationFailed", "검색 위치를 저장하지 못했습니다."), exception.Message,
+                Wpf.Ui.Controls.ControlAppearance.Danger, null, TimeSpan.Zero);
+        }
+    }
+    [RelayCommand]
+    private void UseLocalSource() => _transfer?.UseLocalCommand.Execute(null);
+    private void OnSourceChanged(object? sender, EventArgs e) => Dispatch(RefreshSource);
+    private void RefreshSource()
+    {
+        OnPropertyChanged(nameof(IsSharedSource)); OnPropertyChanged(nameof(CurrentLocation));
+        OnPropertyChanged(nameof(CurrentSourceName)); OnPropertyChanged(nameof(CanChooseLocation));
+        ChooseLocationCommand.NotifyCanExecuteChanged();
+    }
+
     public void Dispose()
     {
         if (_disposed)
@@ -125,6 +166,7 @@ public partial class HomeViewModel : ObservableObject, IDisposable
         _workspaceContext.Changed -= OnWorkspaceChanged;
         _profileCatalog.Changed -= OnProfileCatalogChanged;
         _operationCoordinator.StateChanged -= OnOperationStateChanged;
+        if (_transfer is not null) _transfer.SourceChanged -= OnSourceChanged;
         GC.SuppressFinalize(this);
     }
 
@@ -210,11 +252,14 @@ public partial class HomeViewModel : ObservableObject, IDisposable
         ScanStepState = IsReady
             ? L("Loc.Common.Ready", "준비")
             : L("Loc.Home.State.Waiting", "대기 중");
+        RefreshSource();
     }
 
     private void ApplyOperationState(ApplicationOperationKind? operationKind)
     {
         IsOperationRunning = operationKind is not null;
+        OnPropertyChanged(nameof(CanChooseLocation));
+        ChooseLocationCommand.NotifyCanExecuteChanged();
         OperationStatus = operationKind switch
         {
             ApplicationOperationKind.IndexWrite => L(

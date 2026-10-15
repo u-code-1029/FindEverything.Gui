@@ -10,7 +10,6 @@ namespace FindEverything.Desktop.Views.Pages;
 public partial class ProfilesPage
 {
     private ProfileEditorList? _activeEditorList;
-    private bool? _compact;
     internal ProfileEditorList? ActiveEditorList => _activeEditorList;
     internal ScrollViewer? EditorScrollViewer => _activeEditorList?.ScrollViewer;
 
@@ -31,8 +30,15 @@ public partial class ProfilesPage
     private void ApplyWorkspaceLayout()
     {
         if (ProfileStepButtons is null) return;
-        var compact = ProfilePageLayout.ActualWidth < 900;
-        if (_compact != compact) { ProfileStepButtons.Columns = compact ? 2 : 3; _compact = compact; }
+        ProfileStepButtons.Columns = 3;
+    }
+
+    private void OnOptionalStepsClick(object sender, System.Windows.RoutedEventArgs e)
+    {
+        if (sender is not Wpf.Ui.Controls.Button { ContextMenu: { } menu } button) return;
+        menu.PlacementTarget = button;
+        menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+        menu.IsOpen = true;
     }
 
     private void OnEditorStepContentLoaded(object sender, System.Windows.RoutedEventArgs e)

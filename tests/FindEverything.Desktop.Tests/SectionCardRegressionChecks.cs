@@ -19,10 +19,11 @@ internal static class SectionCardRegressionChecks
     {
         VerifyCollapsedHeaderInheritance();
         VerifyHeaderReplacementAndRemoval();
-        VerifyFullHeightHeaderAlignment();
+        VerifyFullHeightHeaderAlignment(16);
+        VerifyFullHeightHeaderAlignment(12);
     }
 
-    private static void VerifyFullHeightHeaderAlignment()
+    private static void VerifyFullHeightHeaderAlignment(double padding)
     {
         var title = new TextBlock { Text = "Preview", Height = 28 };
         var editor = new Wpf.Ui.Controls.TextBox { Text = "Example", IsReadOnly = true };
@@ -36,6 +37,7 @@ internal static class SectionCardRegressionChecks
         {
             Header = header,
             Style = (Style)System.Windows.Application.Current.FindResource("FluentCardStyle"),
+            Padding = new Thickness(padding),
         };
         card.Measure(new Size(480, 400));
         card.Arrange(new Rect(0, 0, 480, 400));
@@ -44,10 +46,11 @@ internal static class SectionCardRegressionChecks
         card.UpdateLayout();
         var presenter = Assert.IsType<ContentPresenter>(card.Template.FindName("HeaderContentPresenter", card));
         Assert.Equal(VerticalAlignment.Stretch, presenter.VerticalAlignment);
-        Assert.InRange(title.TranslatePoint(new Point(), card).Y, 16, 18);
-        Assert.True(header.ActualHeight >= card.ActualHeight - 36,
+        Assert.InRange(title.TranslatePoint(new Point(), card).Y, padding, padding + 2);
+        Assert.True(header.ActualHeight >= card.ActualHeight - 2 * padding - 4,
             "A full-height native card must stretch its Header to the content area.");
-        Assert.True(editor.ActualHeight >= 330, "The preview editor must use the available vertical space.");
+        Assert.True(editor.ActualHeight >= card.ActualHeight - 2 * padding - title.Height - 8,
+            "The preview editor must use the available vertical space at either shared or compact card spacing.");
         card.VerticalContentAlignment = VerticalAlignment.Top;
         FlushBindings();
         Assert.Equal(VerticalAlignment.Top, presenter.VerticalAlignment);

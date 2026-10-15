@@ -31,9 +31,11 @@ public partial class CatalogPage
         IProfilePresentationStore? presentationStore = null,
         IContentDialogService? dialogs = null,
         ITextFileEditingService? textFiles = null,
-        ILiveDirectoryService? liveDirectories = null)
+        ILiveDirectoryService? liveDirectories = null,
+        IProfilePlaygroundNavigator? playgroundNavigator = null)
     {
         _viewModel = viewModel;
+        _playgroundNavigator = playgroundNavigator;
         DataContext = viewModel;
         InitializeComponent();
         PageActivation.Attach(this);
@@ -60,7 +62,7 @@ public partial class CatalogPage
                 LiveFolderFlyout.Hide(); _directoryBrowser.Stop(); _fileEditCancellation?.Cancel();
                 if (ResultsGrid.ContextMenu is { } menu) menu.IsOpen = false;
                 if (SelectionActionsMenuButton.ContextMenu is { } selectionMenu) selectionMenu.IsOpen = false;
-                if (AdditionalActionsMenuButton.ContextMenu is { } actionsMenu) actionsMenu.IsOpen = false;
+                if (CopySelectionButton.Flyout is System.Windows.Controls.ContextMenu formatMenu) formatMenu.IsOpen = false;
             }
             if (e.PropertyName is nameof(CatalogViewModel.SelectedProfile) or nameof(CatalogViewModel.RootPath) or nameof(CatalogViewModel.IsReadOnlyDataSource))
             { LiveFolderFlyout.Hide(); _directoryBrowser.Stop(); _fileEditCancellation?.Cancel(); }
@@ -136,12 +138,9 @@ public partial class CatalogPage
         var full = compact ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
         var menu = compact ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
         SelectAllResultsButton.Visibility = ClearAllResultsButton.Visibility = InvertResultsSelectionButton.Visibility = full;
-        SelectionActionsMenuButton.Visibility = AdditionalActionsMenuButton.Visibility = menu;
-        CatalogOutputFormatLabel.Visibility = full;
+        SelectionActionsMenuButton.Visibility = menu;
         CopySelectionButton.SetResourceReference(System.Windows.Controls.ContentControl.ContentProperty,
             compact ? "Loc.View.Files.Content.Copy" : "Loc.Workspace.Selection.Copy");
-        OpenSelectionButton.Visibility = full;
-        ExportSelectionButton.Visibility = full;
     }
 
     private void OnFooterMenuClick(object sender, System.Windows.RoutedEventArgs e)
@@ -155,6 +154,20 @@ public partial class CatalogPage
 
     private async void OnPagePreviewKeyDown(object sender, KeyEventArgs e)
     {
+        if (CopySelectionButton.IsKeyboardFocusWithin && (e.Key == Key.F4
+            || e.SystemKey == Key.Down && Keyboard.Modifiers.HasFlag(ModifierKeys.Alt))
+            && CopySelectionButton.Flyout is System.Windows.Controls.ContextMenu formatMenu)
+        {
+            formatMenu.PlacementTarget = CopySelectionButton;
+            formatMenu.Placement = PlacementMode.Top;
+            formatMenu.IsOpen = true; e.Handled = true; return;
+        }
+        if (e.Key == Key.Enter && SearchBox.IsKeyboardFocusWithin)
+        {
+            e.Handled = true;
+            _viewModel.ApplySearchImmediately();
+            return;
+        }
         if (e.Key == Key.V && Keyboard.Modifiers.HasFlag(ModifierKeys.Control)
             && Keyboard.FocusedElement is not TextBoxBase && Keyboard.FocusedElement is not System.Windows.Controls.PasswordBox
             && _viewModel.CanOpenSelectionImport)

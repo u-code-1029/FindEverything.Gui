@@ -39,10 +39,13 @@ internal static class DesktopFeatureRegistration
         services.AddSingleton<IProfilePlaygroundEvaluator, ProfilePlaygroundEvaluator>();
         services.AddSingleton<IProfilePlaygroundNavigator>(static provider => new ProfilePlaygroundNavigator(
             provider.GetRequiredService<INavigationService>(), provider.GetRequiredService<ProfilePlaygroundViewModel>));
+        services.AddSingleton<IProfileEditorNavigator>(static provider => new ProfileEditorNavigator(
+            provider.GetRequiredService<INavigationService>(), provider.GetRequiredService<ProfilesViewModel>));
     }
 
     public static void AddSelectionOutputFeature(this IServiceCollection services)
     {
+        services.AddSingleton<OutputPreviewSampleStore>();
         services.AddSingleton<ISelectionOutputFormatStore, SelectionOutputFormatStore>();
         services.AddSingleton<IProfileUserInputValueStore, ProfileUserInputValueStore>();
         services.AddSingleton<ISelectionOutputFormatter, SelectionOutputFormatter>();

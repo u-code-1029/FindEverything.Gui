@@ -9,6 +9,22 @@ public interface IProfilePlaygroundNavigator
     bool Navigate(string profileId);
 }
 
+public interface IProfileEditorNavigator
+{
+    Task<bool> NavigateAsync(string profileId);
+}
+
+public sealed class ProfileEditorNavigator(
+    INavigationService navigationService,
+    Func<ProfilesViewModel> getEditor) : IProfileEditorNavigator
+{
+    public async Task<bool> NavigateAsync(string profileId)
+    {
+        if (!await getEditor().OpenForEditingAsync(profileId).ConfigureAwait(true)) return false;
+        return navigationService.Navigate(typeof(ProfilesPage));
+    }
+}
+
 public sealed class ProfilePlaygroundNavigator : IProfilePlaygroundNavigator
 {
     private readonly INavigationService _navigationService;

@@ -133,8 +133,8 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
     [ObservableProperty]
     private InfoBarSeverity _statusSeverity = InfoBarSeverity.Informational;
 
-    public bool CanEditWorkspace => !IsBusy && !IsReadOnlyDataSource && WorkspaceTransfer?.IsBusy != true && WorkspaceTransfer?.IsInitialized != false;
-    public bool IsResultInteractionEnabled => !IsScanning;
+    public bool CanEditWorkspace => !IsBusy && !IsPreservingSelection && !IsReadOnlyDataSource && WorkspaceTransfer?.IsBusy != true && WorkspaceTransfer?.IsInitialized != false;
+    public bool IsResultInteractionEnabled => !IsScanning && !IsPreservingSelection;
 
     public string DetailsButtonText => IsDetailsOpen
         ? L("Loc.Common.Compact", "간단히")
@@ -232,6 +232,7 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
     {
         if (_activityState is not null) _activityState.IsScanning = value;
         SelectAllCommand.NotifyCanExecuteChanged();
+        ToggleCurrentResultsSelectionCommand.NotifyCanExecuteChanged();
         InvertSelectionCommand.NotifyCanExecuteChanged();
         ClearSelectionCommand.NotifyCanExecuteChanged();
         CopySelectionCommand.NotifyCanExecuteChanged();
@@ -279,6 +280,8 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
 
     public void Dispose()
     {
+        _selectionCountCancellation?.Cancel();
+        _bulkSelectionCancellation?.Cancel();
         if (_disposed)
         {
             return;
@@ -426,8 +429,8 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
         {
             item.SetShowOriginalValues(value);
         }
-
-        ApplyFilter();
+        if (_virtualItems is not null)
+            foreach (var item in _virtualItems.LoadedItems) item.SetShowOriginalValues(value);
     }
 
     private void OnProfileCatalogChanged(object? sender, ProfileCatalogChangedEventArgs eventArgs)
@@ -551,6 +554,7 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
     [RelayCommand]
     private async Task BrowseRootAsync()
     {
+        if (!CanEditWorkspace) return;
         var selected = _pickerService.PickRootDirectory(RootPath);
         if (selected is not null)
         {
@@ -562,6 +566,7 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
     [RelayCommand]
     private async Task BrowseDatabaseAsync()
     {
+        if (!CanEditWorkspace) return;
         var selected = _pickerService.PickDatabasePath(DatabasePath);
         if (selected is not null)
         {
@@ -682,6 +687,8 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
     [RelayCommand(CanExecute = nameof(CanCancel))]
     private void Cancel()
     {
+        _bulkSelectionCancellation?.Cancel();
+        _selectionCountCancellation?.Cancel();
         _sharedLoadCancellation?.Cancel();
         _automaticLoadSuppressed = true;
         _pendingScanCancellation?.Cancel();
@@ -899,19 +906,21 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
         foreach (var item in selected) item.IsSelected = true;
         _selectedItems = selected;
         SelectedCount = _selectedItems.Count;
+        SetCurrentSelectionCount(_selectedItems.Count(item => Items.Contains(item)));
         CopySelectionCommand.NotifyCanExecuteChanged();
         ExportSelectionCommand.NotifyCanExecuteChanged();
     }
 
     private bool CanStart() => !_disposed && _pendingScanCancellation is null
-        && !IsBusy && !IsReadOnlyDataSource && WorkspaceTransfer?.IsBusy != true && WorkspaceTransfer?.IsInitialized != false && SelectedProfile is not null;
+        && !IsBusy && !IsPreservingSelection && !IsReadOnlyDataSource && WorkspaceTransfer?.IsBusy != true && WorkspaceTransfer?.IsInitialized != false && SelectedProfile is not null;
 
     private bool CanScan() => !_disposed && _pendingScanCancellation is null
-        && !IsReadOnlyDataSource && WorkspaceTransfer?.IsBusy != true && WorkspaceTransfer?.IsInitialized != false && SelectedProfile is not null && (!IsBusy || IsLoadingExistingIndex);
+        && !IsPreservingSelection && !IsReadOnlyDataSource && WorkspaceTransfer?.IsBusy != true && WorkspaceTransfer?.IsInitialized != false && SelectedProfile is not null && (!IsBusy || IsLoadingExistingIndex);
 
-    private bool CanCancel() => IsBusy || _pendingScanCancellation is not null;
+    private bool CanCancel() => IsBusy || IsSearchPending || IsPreservingSelection || _pendingScanCancellation is not null;
 
-    private bool CanOpenSelected() => IsResultInteractionEnabled && SelectedItem is { IsPlaceholder: false };
+    private bool CanOpenSelected() => IsResultInteractionEnabled && SelectedCount == 1
+        && SelectedItem is { IsPlaceholder: false, IsSelected: true };
 
     private bool CanCopySelection() => !_disposed && IsResultInteractionEnabled && SelectedCount > 0;
 
@@ -1682,6 +1691,7 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
             ScheduleLiveFilterRefresh(criteriaChanged: true);
         }
         Items.Refresh();
+        SetCurrentSelectionCount(_selectedItems.Count(item => Items.Contains(item)));
         SelectedItem = selectedPath is null
             ? null
             : Items.Cast<CatalogItemViewModel>().FirstOrDefault(item =>

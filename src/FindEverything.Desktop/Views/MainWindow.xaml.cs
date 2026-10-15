@@ -19,6 +19,10 @@ public partial class MainWindow
     private bool _confirmingClose;
     private readonly HashSet<FrameworkElement> _notificationChrome = [];
     private bool _notificationPlacementPending;
+    private bool _settingPaneLayout;
+    private bool? _preferredPaneOpen;
+    private readonly DependencyPropertyDescriptor _paneOpenDescriptor;
+    private readonly EventHandler _paneOpenChanged;
 
     public MainWindow(
         MainWindowViewModel viewModel,
@@ -37,6 +41,17 @@ public partial class MainWindow
         InitializeComponent();
         OperationInfoBar.DataContext = operationNotifications ?? snackbarService as OperationNotificationService;
         Loaded += (_, _) => UpdatePageNotificationSpace();
+        RootNavigation.SelectionChanged += (_, _) =>
+            viewModel.IsCatalogPage = (RootNavigation.SelectedItem as NavigationViewItem)?.TargetPageType == typeof(Pages.CatalogPage);
+        NotificationHistoryFlyout.Opened += (_, _) =>
+        {
+            if (viewModel.Notifications is { } notices) notices.IsHistoryOpen = true;
+            NotificationHistoryFlyout.MoveFocus(new System.Windows.Input.TraversalRequest(System.Windows.Input.FocusNavigationDirection.First));
+        };
+        NotificationHistoryFlyout.Closed += (_, _) =>
+        {
+            if (viewModel.Notifications is { } notices) notices.IsHistoryOpen = false;
+        };
 
         navigationService.SetNavigationControl(RootNavigation);
         snackbarService.SetSnackbarPresenter(SnackbarPresenter);
@@ -50,6 +65,14 @@ public partial class MainWindow
         appearanceService.Apply(this, appearanceSettings.Current);
 
         ApplyAdaptiveShellLayout(Width);
+        // 640 DIP exceeds a 1080p display's available height at 200% scaling.
+        var workArea = SystemParameters.WorkArea;
+        Width = Math.Min(Width, Math.Max(MinWidth, workArea.Width));
+        Height = Math.Min(Height, Math.Max(MinHeight, workArea.Height));
+        _paneOpenDescriptor = DependencyPropertyDescriptor.FromProperty(NavigationView.IsPaneOpenProperty, typeof(NavigationView));
+        _paneOpenChanged = (_, _) => { if (!_settingPaneLayout) _preferredPaneOpen = RootNavigation.IsPaneOpen; };
+        _paneOpenDescriptor.AddValueChanged(RootNavigation, _paneOpenChanged);
+        Closed += (_, _) => _paneOpenDescriptor.RemoveValueChanged(RootNavigation, _paneOpenChanged);
     }
 
     protected override async void OnClosing(CancelEventArgs e)
@@ -100,6 +123,27 @@ public partial class MainWindow
 
     private void OnOperationInfoBarVisibilityChanged(object sender, DependencyPropertyChangedEventArgs eventArgs)
         => UpdatePageNotificationSpace();
+
+    private void OnNoticeInteractionChanged(object sender, System.Windows.Input.MouseEventArgs e) => UpdateNoticePause();
+    private void OnNoticeFocusChanged(object sender, DependencyPropertyChangedEventArgs e) => UpdateNoticePause();
+    private void UpdateNoticePause()
+    {
+        if (OperationInfoBar.DataContext is OperationNotificationService service)
+            service.SetInteractionPaused(OperationInfoBar.IsMouseOver || OperationInfoBar.IsKeyboardFocusWithin);
+    }
+    private void OnNotificationsClick(object sender, RoutedEventArgs e)
+    {
+        NotificationHistoryFlyout.ApplyTemplate();
+        if (NotificationHistoryFlyout.Template?.FindName("PART_Popup", NotificationHistoryFlyout) is not System.Windows.Controls.Primitives.Popup popup) return;
+        popup.PlacementTarget = NotificationsButton;
+        popup.StaysOpen = false;
+        if (NotificationHistoryFlyout.IsOpen) NotificationHistoryFlyout.Hide(); else NotificationHistoryFlyout.Show();
+    }
+    private void OnNotificationHistoryKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key != System.Windows.Input.Key.Escape) return;
+        NotificationHistoryFlyout.Hide(); NotificationsButton.Focus(); e.Handled = true;
+    }
 
     private void UpdatePageNotificationSpace()
     {
@@ -159,13 +203,9 @@ public partial class MainWindow
         // supported compact-rail state; unlike LeftMinimal it keeps the rail,
         // selection marker, and scan InfoBadge visible and aligned.
         RootNavigation.PaneDisplayMode = NavigationViewPaneDisplayMode.Left;
-        if (state.Mode == ShellLayoutMode.Compact)
-        {
-            RootNavigation.IsPaneOpen = false;
-            return;
-        }
-
-        RootNavigation.IsPaneOpen = true;
+        _settingPaneLayout = true;
+        try { RootNavigation.IsPaneOpen = _preferredPaneOpen ?? state.Mode != ShellLayoutMode.Compact; }
+        finally { _settingPaneLayout = false; }
     }
 
     protected override void SetWindowChrome()

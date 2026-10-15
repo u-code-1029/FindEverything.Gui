@@ -129,6 +129,65 @@ public sealed class SelectionOutputFormatterTests
             _inner.ValidateTemplate(template, allowedFieldIds);
         public string Format(SelectionOutputFormatDefinition format, IEnumerable<SelectionOutputItem> items) =>
             _inner.Format(format, items);
+        public SelectionOutputPreview FormatPreview(SelectionOutputFormatDefinition format,
+            IEnumerable<SelectionOutputItem> items, int maximumCharacters = SelectionOutputPreview.MaximumCharacters) =>
+            _inner.FormatPreview(format, items, maximumCharacters);
+    }
+
+    [Fact]
+    public void Preview_stops_expanding_tokens_and_enumerating_items_once_full()
+    {
+        var formatter = new SelectionOutputFormatter();
+        var format = new SelectionOutputFormatDefinition("test", "Test", "{Field:Large}{Field:Never}", "", null);
+        IEnumerable<SelectionOutputItem> Items()
+        {
+            yield return SelectionOutputItem.FromPath(@"C:\Actual", fields: new Dictionary<string, object?>
+            {
+                ["Large"] = new string('x', 100_000),
+                ["Never"] = new MustNotFormatValue()
+            });
+            throw new InvalidOperationException("A bounded preview must not enumerate additional items.");
+        }
+
+        var preview = formatter.FormatPreview(format, Items());
+
+        Assert.True(preview.IsTruncated);
+        Assert.Equal(new string('x', SelectionOutputPreview.MaximumCharacters), preview.Text);
+    }
+
+    [Theory]
+    [InlineData(4, "[fir", true)]
+    [InlineData(8, "[first|s", true)]
+    [InlineData(14, "[first|second]", false)]
+    [InlineData(15, "[first|second]", false)]
+    public void Preview_preserves_exact_prefix_separator_and_suffix_boundaries(int limit, string expected, bool truncated)
+    {
+        var formatter = new SelectionOutputFormatter();
+        var format = new SelectionOutputFormatDefinition("test", "Test", "{Name}", "|", null, "[", "]");
+        var items = new[] { SelectionOutputItem.FromPath(@"C:\first"), SelectionOutputItem.FromPath(@"C:\second") };
+
+        var preview = formatter.FormatPreview(format, items, limit);
+
+        Assert.Equal(expected, preview.Text);
+        Assert.Equal(truncated, preview.IsTruncated);
+        Assert.Equal("[first|second]", formatter.Format(format, items));
+    }
+
+    [Fact]
+    public void Bounded_preview_does_not_truncate_normal_clipboard_output()
+    {
+        var formatter = new SelectionOutputFormatter();
+        var value = new string('x', 20_000);
+        var format = new SelectionOutputFormatDefinition("test", "Test", "{Field:Large}", "", null);
+        var item = SelectionOutputItem.FromPath(@"C:\Actual", fields: new Dictionary<string, object?> { ["Large"] = value });
+
+        Assert.True(formatter.FormatPreview(format, [item]).IsTruncated);
+        Assert.Equal(value, formatter.Format(format, [item]));
+    }
+
+    private sealed class MustNotFormatValue
+    {
+        public override string ToString() => throw new InvalidOperationException("Preview expanded an invisible token.");
     }
 
     [Fact]

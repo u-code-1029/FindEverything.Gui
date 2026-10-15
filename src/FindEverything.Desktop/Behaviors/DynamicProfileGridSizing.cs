@@ -213,7 +213,7 @@ public static partial class DynamicProfileGrid
                 return;
             }
         }
-        var auto = grid.Columns.Skip(SelectionColumnOffset).Where(c => !(bool)c.GetValue(IsManualWidthProperty)).ToArray();
+        var auto = grid.Columns.Skip(SelectionColumnOffset).Where(c => c.Visibility == Visibility.Visible && !(bool)c.GetValue(IsManualWidthProperty)).ToArray();
         foreach (var column in grid.Columns.Skip(SelectionColumnOffset))
         {
             var (min, max) = Bounds((string)column.GetValue(FieldIdProperty), fields, state);
@@ -221,7 +221,7 @@ public static partial class DynamicProfileGrid
             column.MaxWidth = max;
         }
         var available = Math.Max(0, grid.ActualWidth - 112 - SystemParameters.VerticalScrollBarWidth
-            - grid.Columns.Skip(SelectionColumnOffset).Where(c => (bool)c.GetValue(IsManualWidthProperty)).Sum(static c => c.ActualWidth));
+            - grid.Columns.Skip(SelectionColumnOffset).Where(c => c.Visibility == Visibility.Visible && (bool)c.GetValue(IsManualWidthProperty)).Sum(static c => c.ActualWidth));
         var weights = auto.Sum(c => Weight((string)c.GetValue(FieldIdProperty), state));
         foreach (var column in auto)
         {
@@ -234,6 +234,7 @@ public static partial class DynamicProfileGrid
             if (!column.Width.IsAbsolute || Math.Abs(column.Width.Value - width) > 0.5)
                 column.Width = new DataGridLength(width);
         }
+        UpdateFrozenColumns(grid);
     }
 
     private static bool AdvanceMeasurement(SizingState state, MeasurementWork work)

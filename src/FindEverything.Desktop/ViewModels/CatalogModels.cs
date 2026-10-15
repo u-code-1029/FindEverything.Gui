@@ -107,9 +107,7 @@ public sealed class CatalogItemViewModel : ObservableObject
     private readonly Dictionary<string, string> _rawDisplayValues;
     private readonly Dictionary<string, string> _mappedDisplayValues;
     private readonly CatalogDisplayCellDictionary _displayCells;
-    private readonly Dictionary<string, object?> _rawOutputValues;
     private readonly Dictionary<string, object?> _mappedOutputValues;
-    private readonly string[] _rawSearchableValues;
     private readonly string[] _mappedSearchableValues;
     private readonly string _coverageText;
     private bool _showOriginalValues;
@@ -154,15 +152,10 @@ public sealed class CatalogItemViewModel : ObservableObject
             static pair => pair.Key,
             static pair => pair.Value,
             StringComparer.OrdinalIgnoreCase);
-        var rawOutputValues = Values.ToDictionary(
-            static pair => pair.Key,
-            static pair => pair.Value,
-            StringComparer.OrdinalIgnoreCase);
         var userInputValues = new Dictionary<string, CatalogUserInputValueViewModel>(
             StringComparer.OrdinalIgnoreCase);
         var mappedValueIndicators = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
         var mappedValueTooltips = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        var rawSearchableValues = new List<string>(fields.Count + 1);
         var mappedSearchableValues = new List<string>(fields.Count + 1);
         foreach (var field in fields)
         {
@@ -183,7 +176,6 @@ public sealed class CatalogItemViewModel : ObservableObject
                         var current = input!;
                         rawDisplayValues[field.FieldId] = current.Value;
                         mappedDisplayValues[field.FieldId] = current.Value;
-                        rawOutputValues[field.FieldId] = current.Value;
                         mappedOutputValues[field.FieldId] = current.Value;
                         displayCells.RefreshValue(field.FieldId);
                         // In-memory consumers have no asynchronous persistence
@@ -194,7 +186,6 @@ public sealed class CatalogItemViewModel : ObservableObject
                 userInputValues[field.FieldId] = input;
                 rawDisplayValues[field.FieldId] = initialValue;
                 mappedDisplayValues[field.FieldId] = initialValue;
-                rawOutputValues[field.FieldId] = initialValue;
                 mappedOutputValues[field.FieldId] = initialValue;
                 mappedValueIndicators[field.FieldId] = false;
                 mappedValueTooltips[field.FieldId] = string.Empty;
@@ -230,22 +221,18 @@ public sealed class CatalogItemViewModel : ObservableObject
                 mappedOutputValues[field.FieldId] = mappedDisplayValue;
             }
 
-            rawSearchableValues.Add(rawDisplayValue);
             mappedSearchableValues.Add(mappedDisplayValue);
         }
 
-        rawSearchableValues.Add(FullPath);
         mappedSearchableValues.Add(FullPath);
         _rawDisplayValues = rawDisplayValues;
         _mappedDisplayValues = mappedDisplayValues;
         _displayCells = displayCells;
-        _rawOutputValues = rawOutputValues;
         _mappedOutputValues = mappedOutputValues;
         UserInputValues = userInputValues;
         MappedValueIndicators = mappedValueIndicators;
         MappedValueTooltips = mappedValueTooltips;
         HasMappedValues = mappedValueIndicators.Values.Any(static value => value);
-        _rawSearchableValues = rawSearchableValues.ToArray();
         _mappedSearchableValues = mappedSearchableValues.ToArray();
     }
 
@@ -268,8 +255,9 @@ public sealed class CatalogItemViewModel : ObservableObject
 
     public IReadOnlyDictionary<string, CatalogDisplayCell> DisplayCells => _displayCells;
 
-    public IReadOnlyDictionary<string, object?> OutputValues =>
-        _showOriginalValues ? _rawOutputValues : _mappedOutputValues;
+    public IReadOnlyDictionary<string, object?> OutputValues => _mappedOutputValues;
+
+    public IReadOnlyDictionary<string, string> CanonicalDisplayValues => _mappedDisplayValues;
 
     public IReadOnlyDictionary<string, bool> MappedValueIndicators { get; }
 
@@ -278,11 +266,10 @@ public sealed class CatalogItemViewModel : ObservableObject
     public bool HasMappedValues { get; }
 
     /// <summary>
-    /// Gets the values written by tabular exports. This follows the same
-    /// original/mapped presentation mode as the grid without exposing those
-    /// presentation rules to the file writer.
+    /// Exports always use the profile's mapped values. Inspecting raw source
+    /// values on screen must not silently alter the user's output contract.
     /// </summary>
-    public IReadOnlyDictionary<string, string> ExportDisplayValues => DisplayValues;
+    public IReadOnlyDictionary<string, string> ExportDisplayValues => _mappedDisplayValues;
 
     /// <summary>
     /// Captures raw typed fields and the current, possibly not-yet-persisted user
@@ -302,7 +289,7 @@ public sealed class CatalogItemViewModel : ObservableObject
 
     public bool MatchesTerms(IReadOnlyList<string> terms)
     {
-        var values = _showOriginalValues ? _rawSearchableValues : _mappedSearchableValues;
+        var values = _mappedSearchableValues;
         foreach (var term in terms)
             if (!values.Any(value => TextFilter.Contains(value, term))
                 && !UserInputValues.Values.Any(value => TextFilter.Contains(value.Value, term))) return false;
@@ -319,8 +306,6 @@ public sealed class CatalogItemViewModel : ObservableObject
         _showOriginalValues = showOriginalValues;
         _displayCells.SetValues(DisplayValues);
         OnPropertyChanged(nameof(DisplayValues));
-        OnPropertyChanged(nameof(OutputValues));
-        OnPropertyChanged(nameof(ExportDisplayValues));
     }
 
     private static string FormatValue(object? value, string? displayFormat, CultureInfo culture)

@@ -62,6 +62,9 @@ public sealed class HomeViewModelTests
         Assert.False(viewModel.IsReady);
         Assert.Equal("선택 필요", viewModel.RootStateText);
         Assert.Equal("선택 필요", viewModel.ProfileStateText);
+        Assert.Equal(viewModel.RootPathText, viewModel.CurrentLocation);
+        Assert.False(viewModel.IsSharedSource);
+        Assert.False(viewModel.ChooseLocationCommand.CanExecute(null)); // No picker in the isolated fixture.
         Assert.Contains("프로필을 선택하면", viewModel.ProfileDatabasePath);
 
         viewModel.OpenFilesCommand.Execute(null);

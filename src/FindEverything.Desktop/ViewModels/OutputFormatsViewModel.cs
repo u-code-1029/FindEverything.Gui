@@ -48,11 +48,15 @@ public partial class OutputFormatsViewModel : ObservableObject, IDraftParticipan
     private readonly IDraftProtectionService? _draftProtection;
     private OutputFormatSummaryViewModel? _loadedFormat;
     private readonly IUiScheduler _uiScheduler;
+    private readonly OutputPreviewSampleStore _previewSamples;
     private volatile bool _isActive;
     private volatile bool _disposed;
     private int _pendingProfilesRefresh;
     private int _pendingFormatsRefresh;
     private int _refreshScheduled;
+
+    [ObservableProperty]
+    private bool _useTestSample = true;
 
     [ObservableProperty]
     private bool _isSaving;
@@ -117,7 +121,8 @@ public partial class OutputFormatsViewModel : ObservableObject, IDraftParticipan
         IAppLocalizer localizer,
         ILogger<OutputFormatsViewModel> logger,
         IDraftProtectionService? draftProtection = null,
-        IUiScheduler? uiScheduler = null)
+        IUiScheduler? uiScheduler = null,
+        OutputPreviewSampleStore? previewSamples = null)
     {
         _formatStore = formatStore;
         _formatter = formatter;
@@ -128,6 +133,8 @@ public partial class OutputFormatsViewModel : ObservableObject, IDraftParticipan
         _logger = logger;
         _draftProtection = draftProtection;
         _uiScheduler = uiScheduler ?? ImmediateUiScheduler.Instance;
+        _previewSamples = previewSamples ?? new OutputPreviewSampleStore();
+        _previewSamples.Changed += OnPreviewSampleChanged;
         _draftProtection?.Register(this);
         StatusMessage = L(
             "Loc.Output.Status.Initial",
@@ -153,6 +160,20 @@ public partial class OutputFormatsViewModel : ObservableObject, IDraftParticipan
 
     public bool IsEditorReady => !IsSaving && !IsTransitioning;
 
+    public bool IsBuiltInPreview => !CanEdit;
+    public bool HasTestSample => _previewSamples.Get(SelectedProfileChoice?.ProfileId) is not null;
+    public string PreviewSourceDescription => UseTestSample && HasTestSample
+        ? L("Loc.Ux.Output.Preview.Test", "최근 프로필 테스트의 실제 값 1개 · 디스크를 다시 읽지 않습니다.")
+        : L("Loc.Ux.Output.Preview.Examples", "형식 확인용 예제 2개 · 실제 검색 결과가 아닙니다.");
+
+    partial void OnUseTestSampleChanged(bool value) => RefreshPreview();
+
+    private void OnPreviewSampleChanged(object? sender, EventArgs e)
+    {
+        if (_disposed || !_isActive) return;
+        _uiScheduler.Post(() => { if (!_disposed && _isActive) RefreshPreview(); });
+    }
+
     public string DraftTitle => DraftDisplayName;
 
     public bool HasUnsavedChanges => _isDraftDirty;
@@ -168,6 +189,7 @@ public partial class OutputFormatsViewModel : ObservableObject, IDraftParticipan
 
     partial void OnSelectedFormatChanged(OutputFormatSummaryViewModel? value)
     {
+        DuplicateFormatCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(IsDeleteAvailable));
         DeleteCommand.NotifyCanExecuteChanged();
         if (_isPopulatingDraft)
@@ -239,7 +261,38 @@ public partial class OutputFormatsViewModel : ObservableObject, IDraftParticipan
         DeleteCommand.NotifyCanExecuteChanged();
         InsertTokenCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(IsDeleteAvailable));
+        OnPropertyChanged(nameof(IsBuiltInPreview));
+        DuplicateFormatCommand.NotifyCanExecuteChanged();
     }
+
+    [RelayCommand(CanExecute = nameof(CanDuplicateFormat))]
+    private void DuplicateFormat()
+    {
+        if (SelectedFormat is not { } source) return;
+        var definition = source.Definition;
+        _isPopulatingDraft = true;
+        try
+        {
+            SelectedFormat = null;
+            _loadedFormat = null;
+            _draftId = $"format.{Guid.NewGuid():N}";
+            CanEdit = true;
+            DraftDisplayName = F("Loc.Ux.Output.CopyName", "{0} 복사본", definition.DisplayName);
+            DraftTemplate = definition.Template;
+            DraftItemSeparator = EncodeSeparator(definition.ItemSeparator);
+            DraftPrefix = EncodeSeparator(definition.Prefix ?? string.Empty);
+            DraftSuffix = EncodeSeparator(definition.Suffix ?? string.Empty);
+            SelectedProfileChoice = ProfileChoices.FirstOrDefault(choice => string.Equals(choice.ProfileId, definition.ProfileId, StringComparison.OrdinalIgnoreCase))
+                ?? ProfileChoices.FirstOrDefault();
+            RefreshTokenChoices(SelectedProfileChoice);
+        }
+        finally { _isPopulatingDraft = false; }
+        SetDraftChangedStatus();
+        RefreshPreview();
+        DuplicateFormatCommand.NotifyCanExecuteChanged();
+    }
+
+    private bool CanDuplicateFormat() => IsEditorReady && SelectedFormat is not null && !_isDraftDirty;
 
     [RelayCommand(CanExecute = nameof(CanStartTransition))]
     private async Task NewFormatAsync()
@@ -417,6 +470,7 @@ public partial class OutputFormatsViewModel : ObservableObject, IDraftParticipan
         DeleteCommand.NotifyCanExecuteChanged();
         InsertTokenCommand.NotifyCanExecuteChanged();
         NewFormatCommand.NotifyCanExecuteChanged();
+        DuplicateFormatCommand.NotifyCanExecuteChanged();
     }
 
     private async Task SwitchFormatAsync(OutputFormatSummaryViewModel value)
@@ -472,6 +526,7 @@ public partial class OutputFormatsViewModel : ObservableObject, IDraftParticipan
         }
 
         _isDraftDirty = false;
+        DuplicateFormatCommand.NotifyCanExecuteChanged();
         RefreshPreview();
 
         StatusSeverity = InfoBarSeverity.Informational;
@@ -590,6 +645,8 @@ public partial class OutputFormatsViewModel : ObservableObject, IDraftParticipan
 
     private void RefreshPreview()
     {
+        OnPropertyChanged(nameof(HasTestSample));
+        OnPropertyChanged(nameof(PreviewSourceDescription));
         var fields = SelectedProfileChoice?.Fields ?? [];
         var definition = CreateDraftDefinition("preview", DraftDisplayName);
         var validation = _formatter.ValidateFormat(definition, fields.Select(static field => field.FieldId));
@@ -601,14 +658,17 @@ public partial class OutputFormatsViewModel : ObservableObject, IDraftParticipan
             return;
         }
 
-        var items = Enumerable.Range(1, 2).Select(index => SelectionOutputItem.FromPath(
+        IEnumerable<SelectionOutputItem> items = Enumerable.Range(1, 2).Select(index => SelectionOutputItem.FromPath(
             $@"C:\Example\Project-{index}",
             $@"C:\Example\Project-{index}",
             fields.ToDictionary(static field => field.FieldId,
-                field => (object?)$"{field.Header} {index}", StringComparer.OrdinalIgnoreCase)));
+                field => ExampleValue(field, index), StringComparer.OrdinalIgnoreCase)));
+        if (UseTestSample && _previewSamples.Get(SelectedProfileChoice?.ProfileId) is { } sample) items = [sample];
         try
         {
-            PreviewText = _formatter.Format(definition, items);
+            var output = _formatter.FormatPreview(definition, items);
+            PreviewText = output.Text + (output.IsTruncated ? Environment.NewLine + "…" : string.Empty);
+            if (output.IsTruncated) PreviewValidationMessage = L("Loc.Ux.Output.Preview.Truncated", "긴 미리보기는 16,384자까지만 표시합니다. 복사 결과는 잘리지 않습니다.");
         }
         catch (Exception exception) when (exception is FormatException or ArgumentException or InvalidOperationException)
         {
@@ -617,6 +677,15 @@ public partial class OutputFormatsViewModel : ObservableObject, IDraftParticipan
             PreviewText = string.Empty;
         }
     }
+
+    private object? ExampleValue(ProfileFieldDescriptor field, int index) => field.Kind switch
+    {
+        ProfileFieldValueKind.Int32 => index * 10,
+        ProfileFieldValueKind.Decimal => 1250.5m * index,
+        ProfileFieldValueKind.Boolean => index == 1,
+        ProfileFieldValueKind.DateTime => new DateTime(2026, 5, 20).AddDays(index).ToString(field.DisplayFormat ?? "d", _localizer.Culture),
+        _ => $"{field.Header} {index}"
+    };
 
     private SelectionOutputFormatDefinition CreateDraftDefinition(string id, string displayName) => new(
         id, displayName, DraftTemplate, DecodeSeparator(DraftItemSeparator), SelectedProfileChoice?.ProfileId,
@@ -628,6 +697,7 @@ public partial class OutputFormatsViewModel : ObservableObject, IDraftParticipan
         ObjectDisposedException.ThrowIf(_disposed, this);
         _isActive = true;
         ApplyPendingRefresh();
+        RefreshPreview();
         return Task.CompletedTask;
     }
 
@@ -640,6 +710,7 @@ public partial class OutputFormatsViewModel : ObservableObject, IDraftParticipan
         Deactivate();
         _formatStore.Changed -= OnFormatStoreChanged;
         _profileCatalog.Changed -= OnProfileCatalogChanged;
+        _previewSamples.Changed -= OnPreviewSampleChanged;
     }
 
     private void OnFormatStoreChanged(object? sender, EventArgs e)
@@ -699,6 +770,7 @@ public partial class OutputFormatsViewModel : ObservableObject, IDraftParticipan
             "Loc.Output.Status.Dirty",
             "변경 사항을 저장하면 결과 페이지의 포맷 목록에 반영됩니다.");
         _isDraftDirty = true;
+        DuplicateFormatCommand.NotifyCanExecuteChanged();
     }
 
     private void SetError(string message)

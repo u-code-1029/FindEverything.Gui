@@ -22,6 +22,8 @@ public static partial class DynamicProfileGrid
         "ColumnFiltersState", typeof(ColumnFiltersState), typeof(DynamicProfileGrid));
     private static readonly DependencyProperty HeaderFilterMarkerProperty = DependencyProperty.RegisterAttached(
         "HeaderFilterMarker", typeof(Ui.TextBlock), typeof(DynamicProfileGrid));
+    private static readonly DependencyProperty HeaderFilterButtonProperty = DependencyProperty.RegisterAttached(
+        "HeaderFilterButton", typeof(Ui.Button), typeof(DynamicProfileGrid));
     private static readonly DependencyProperty OriginalFilterHeaderProperty = DependencyProperty.RegisterAttached(
         "OriginalFilterHeader", typeof(object), typeof(DynamicProfileGrid));
     internal static object? GetColumnHeaderContent(DataGridColumn column) => column.GetValue(OriginalFilterHeaderProperty) ?? column.Header;
@@ -43,7 +45,7 @@ public static partial class DynamicProfileGrid
         public CancellationTokenSource? EditorCancellation;
         public DispatcherOperation? HeaderPreparation;
         public DispatcherOperation? HostUpdate;
-        public DataGridColumnHeader? FocusOrigin;
+        public FrameworkElement? FocusOrigin;
         public Ui.CalendarDatePicker? ActiveCalendar;
         public Panel? HostPanel;
         public AdornerLayer? HostAdornerLayer;
@@ -147,11 +149,10 @@ public static partial class DynamicProfileGrid
             // DataGridColumnHeader derives from ButtonBase and captures the
             // pointer on MouseDown. Handling PreviewMouseUp bypasses its native
             // MouseUp/ReleaseMouseCapture. Release only this header's capture
-            // before the popup establishes its own SubTree capture; otherwise
-            // every subsequent click is delivered back to the header, including
-            // clicks over the popup's TextBox, ComboBox and calendar.
+            // before sorting; otherwise the header can keep receiving clicks
+            // intended for the result cells or a subsequently opened filter.
             if (header.IsMouseCaptured) header.ReleaseMouseCapture();
-            _ = OpenColumnFlyoutAsync(grid, state, owner, header, target);
+            ToggleHeaderSort(owner, target);
         }), true);
         grid.AddHandler(UIElement.PreviewKeyDownEvent, new KeyEventHandler((_, e) =>
         {
@@ -160,9 +161,21 @@ public static partial class DynamicProfileGrid
                 || IsNestedHeaderControl(e.OriginalSource as DependencyObject, header)
                 || grid.DataContext is not CatalogViewModel owner || Target(header.Column) is not { } target) return;
             e.Handled = true;
-            _ = OpenColumnFlyoutAsync(grid, state, owner, header, target);
+            if (e.Key == Key.F4) _ = OpenColumnFlyoutAsync(grid, state, owner, header, target);
+            else ToggleHeaderSort(owner, target);
         }), true);
         if (grid.IsLoaded) ScheduleHost();
+    }
+
+    private static void ToggleHeaderSort(CatalogViewModel owner, CatalogColumnTarget target) =>
+        owner.ApplyColumnSort(target, owner.IsColumnSorted(target) && !owner.IsColumnSortDescending);
+
+    /// <summary>Filter chips edit their condition; only their separate dismiss button removes it.</summary>
+    public static void OpenColumnFilter(DataGrid grid, CatalogColumnTarget target, FrameworkElement anchor)
+    {
+        if (!grid.IsEnabled || grid.DataContext is not CatalogViewModel owner
+            || grid.GetValue(ColumnFiltersStateProperty) is not ColumnFiltersState state) return;
+        _ = OpenColumnFlyoutAsync(grid, state, owner, anchor, target);
     }
 
     private static bool EnsureFlyoutHost(DataGrid grid, ColumnFiltersState state)
@@ -302,10 +315,29 @@ public static partial class DynamicProfileGrid
         var panel = new StackPanel { Orientation = Orientation.Horizontal };
         if (originalHeader is UIElement element) panel.Children.Add(element);
         else panel.Children.Add(new Ui.TextBlock { Text = Convert.ToString(originalHeader), VerticalAlignment = VerticalAlignment.Center });
-        var marker = new Ui.TextBlock { Text = "⌄", Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
-            ToolTip = L(GetLocalizer(grid), "Loc.Catalog.ColumnFilter.Open.Help", "클릭하여 이 컬럼을 필터링하거나 정렬합니다.") };
+        var marker = new Ui.TextBlock { Text = "", Margin = new Thickness(4, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
         panel.Children.Add(marker);
+        var filterButton = new Ui.Button
+        {
+            Width = 28, Height = 28, MinWidth = 28, MinHeight = 28, Padding = new Thickness(4),
+            Margin = new Thickness(4, 0, 0, 0), Appearance = Ui.ControlAppearance.Transparent,
+            Icon = new Ui.SymbolIcon(Ui.SymbolRegular.Filter20),
+            ToolTip = L(GetLocalizer(grid), "Loc.Ux.Results.ColumnFilter", "컬럼 필터 (F4)")
+        };
+        var headerName = GetFields(grid)?.OfType<ProfileFieldDescriptor>()
+            .FirstOrDefault(field => field.FieldId == (string?)column.GetValue(FieldIdProperty))?.Header
+            ?? Convert.ToString(originalHeader);
+        System.Windows.Automation.AutomationProperties.SetName(filterButton,
+            headerName + " · " + L(GetLocalizer(grid), "Loc.Ux.Results.ColumnFilter", "컬럼 필터 (F4)"));
+        filterButton.Click += (_, e) =>
+        {
+            e.Handled = true;
+            if (Target(column) is { } target)
+                OpenColumnFilter(grid, target, (FrameworkElement?)Ancestor<DataGridColumnHeader>(filterButton) ?? filterButton);
+        };
+        panel.Children.Add(filterButton);
         column.SetValue(HeaderFilterMarkerProperty, marker);
+        column.SetValue(HeaderFilterButtonProperty, filterButton);
         column.SetCurrentValue(DataGridColumn.HeaderProperty, panel);
     }
 
@@ -316,13 +348,18 @@ public static partial class DynamicProfileGrid
             {
                 var filtered = state.Owner?.GetColumnFilter(target) is not null;
                 var sorted = state.Owner?.IsColumnSorted(target) == true;
-                marker.Text = (filtered ? "● " : "") + (sorted ? state.Owner!.IsColumnSortDescending ? "↓" : "↑" : "⌄");
-                marker.ToolTip = L(GetLocalizer(grid), "Loc.Catalog.ColumnFilter.Open.Help", "클릭하여 이 컬럼을 필터링하거나 정렬합니다.");
+                marker.Text = sorted ? state.Owner!.IsColumnSortDescending ? "↓" : "↑" : "";
+                if (column.GetValue(HeaderFilterButtonProperty) is Ui.Button button)
+                {
+                    button.Appearance = filtered ? Ui.ControlAppearance.Secondary : Ui.ControlAppearance.Transparent;
+                    button.ToolTip = L(GetLocalizer(grid), filtered ? "Loc.Ux.Results.EditFilter" : "Loc.Ux.Results.ColumnFilter",
+                        filtered ? "적용된 필터 수정 (F4)" : "컬럼 필터 (F4)");
+                }
             }
     }
 
     private static async Task OpenColumnFlyoutAsync(DataGrid grid, ColumnFiltersState state, CatalogViewModel owner,
-        DataGridColumnHeader header, CatalogColumnTarget target)
+        FrameworkElement header, CatalogColumnTarget target)
     {
         if (!grid.IsEnabled || !ReferenceEquals(state.Owner, owner) || !EnsureFlyoutHost(grid, state)) return;
         CloseActiveCalendar(state);
@@ -416,15 +453,34 @@ public static partial class DynamicProfileGrid
             }
             if (selected.Operator == CatalogFilterOperator.DateRange)
             {
-                var dates = new CalendarRangeDraft(filter?.StartDate, filter?.EndDate);
+                var dates = new CalendarRangeDraft(filter?.StartDate, filter?.EndDate, localizer.Culture,
+                    localizer.Get("Loc.Ux.Results.Date.Unbounded", "제한 없음"));
                 var start = new Ui.CalendarDatePicker { FirstDayOfWeek = localizer.Culture.DateTimeFormat.FirstDayOfWeek };
                 var end = new Ui.CalendarDatePicker { FirstDayOfWeek = localizer.Culture.DateTimeFormat.FirstDayOfWeek };
                 start.Click += (_, _) => state.ActiveCalendar = start;
                 end.Click += (_, _) => state.ActiveCalendar = end;
                 start.SetBinding(Ui.CalendarDatePicker.DateProperty, new Binding(nameof(CalendarRangeDraft.Start)) { Source = dates, Mode = BindingMode.TwoWay });
                 end.SetBinding(Ui.CalendarDatePicker.DateProperty, new Binding(nameof(CalendarRangeDraft.End)) { Source = dates, Mode = BindingMode.TwoWay });
-                AddLabel(editors, T("StartDate", "시작일"), start); AddLabel(editors, T("EndDate", "종료일"), end);
-                dates.Changed = () => Apply(draft with { StartDate = dates.Start, EndDate = dates.End });
+                start.SetBinding(ContentControl.ContentProperty, new Binding(nameof(CalendarRangeDraft.StartLabel)) { Source = dates });
+                end.SetBinding(ContentControl.ContentProperty, new Binding(nameof(CalendarRangeDraft.EndLabel)) { Source = dates });
+                AddDate(T("StartDate", "시작일"), start, () => dates.Start = null);
+                AddDate(T("EndDate", "종료일"), end, () => dates.End = null);
+                editors.Children.Add(new Ui.TextBlock { Text = localizer.Get("Loc.Ux.Results.Date.Inclusive", "시작일과 종료일을 모두 포함합니다. 한쪽만 지정할 수도 있습니다."),
+                    TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 0) });
+                dates.Changed = () => Apply(dates.Start is null && dates.End is null ? null : draft with { StartDate = dates.Start, EndDate = dates.End });
+                void AddDate(string label, Ui.CalendarDatePicker picker, Action clear)
+                {
+                    var row = new DockPanel();
+                    var clearButton = new Ui.Button { Width = 32, Height = 32, MinWidth = 32, Padding = new Thickness(4),
+                        Margin = new Thickness(8, 0, 0, 0), Appearance = Ui.ControlAppearance.Transparent,
+                        Icon = new Ui.SymbolIcon(Ui.SymbolRegular.Dismiss16), ToolTip = localizer.Get("Loc.Ux.Results.Date.Clear", "날짜 제한 해제") };
+                    System.Windows.Automation.AutomationProperties.SetName(clearButton, label + " · " + clearButton.ToolTip);
+                    clearButton.Click += (_, _) => clear();
+                    DockPanel.SetDock(clearButton, Dock.Right); row.Children.Add(clearButton);
+                    picker.HorizontalAlignment = HorizontalAlignment.Stretch;
+                    System.Windows.Automation.AutomationProperties.SetName(picker, label);
+                    row.Children.Add(picker); AddLabel(editors, label, row);
+                }
                 return;
             }
             if (selected.Operator == CatalogFilterOperator.NumberRange)
@@ -505,13 +561,15 @@ public static partial class DynamicProfileGrid
     }
 
     private sealed record FilterChoice(CatalogFilterOperator? Operator, string Label, bool? Boolean = null);
-    private sealed class CalendarRangeDraft(DateTime? start, DateTime? end) : CommunityToolkit.Mvvm.ComponentModel.ObservableObject
+    private sealed class CalendarRangeDraft(DateTime? start, DateTime? end, CultureInfo culture, string unbounded) : CommunityToolkit.Mvvm.ComponentModel.ObservableObject
     {
         private DateTime? _start = start;
         private DateTime? _end = end;
         public Action? Changed { get; set; }
-        public DateTime? Start { get => _start; set { if (SetProperty(ref _start, value)) Changed?.Invoke(); } }
-        public DateTime? End { get => _end; set { if (SetProperty(ref _end, value)) Changed?.Invoke(); } }
+        public string StartLabel => Start?.ToString("d", culture) ?? unbounded;
+        public string EndLabel => End?.ToString("d", culture) ?? unbounded;
+        public DateTime? Start { get => _start; set { if (SetProperty(ref _start, value)) { OnPropertyChanged(nameof(StartLabel)); Changed?.Invoke(); } } }
+        public DateTime? End { get => _end; set { if (SetProperty(ref _end, value)) { OnPropertyChanged(nameof(EndLabel)); Changed?.Invoke(); } } }
     }
     private static void AddButton(Panel panel, string label, Action action)
     {

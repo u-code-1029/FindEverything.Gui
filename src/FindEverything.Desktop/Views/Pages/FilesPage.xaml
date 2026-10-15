@@ -29,26 +29,34 @@
         </controls:PageHeader>
         <controls:CommandStrip Grid.Row="1">
             <StackPanel>
-            <Grid>
-                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-                <Grid x:Name="FileCommandLayout">
-                    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-                    <Grid.ColumnDefinitions><ColumnDefinition x:Name="FileLocationColumn" Width="220" /><ColumnDefinition x:Name="FileSearchColumn" Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                    <ui:TextBlock x:Name="FileRootPathText" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding RootPath, TargetNullValue={StaticResource Loc.Files.Root.None}}" TextTrimming="CharacterEllipsis" ToolTip="{Binding RootPath}" AutomationProperties.Name="{StaticResource Loc.Workspace.Location.Change}" />
-                <ui:TextBox x:Name="SearchBox" Grid.Column="1" Margin="12,0,0,0" Style="{StaticResource FluentSearchBoxStyle}" MinHeight="36" Padding="12,6" FontSize="15" VerticalContentAlignment="Center" AutomationProperties.Name="{StaticResource Loc.Workspace.Files.Search}" ClearButtonEnabled="True" Icon="{ui:SymbolIcon Symbol=Search20}" PlaceholderText="{StaticResource Loc.Workspace.Files.Search}" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" ToolTip="{StaticResource Loc.Workspace.Files.Search.Help}" IsEnabled="{Binding CanSearch}" />
-                    <WrapPanel Grid.Column="2" Margin="8,0,0,0">
-                        <ui:Button MinWidth="76" Margin="0,0,8,0" Appearance="Transparent" Command="{Binding BrowseRootCommand}" Content="{StaticResource Loc.Workspace.Location.Change}" Icon="{ui:SymbolIcon Symbol=FolderOpen20}" ToolTip="{StaticResource Loc.Workspace.Location.Change.Help}" ToolTipService.ShowOnDisabled="True" />
-                        <ui:Button MinWidth="92" Margin="0,0,8,0" Appearance="Primary" Command="{Binding RefreshIndexCommand}" Content="{StaticResource Loc.Workspace.Scan}" Icon="{ui:SymbolIcon Symbol=ArrowSync20}" ToolTip="{StaticResource Loc.Workspace.Scan.Files.Help}" ToolTipService.ShowOnDisabled="True" />
-                        <ui:Button Appearance="Transparent" Command="{Binding ToggleDetailsCommand}" Content="{Binding DetailsButtonText}" ToolTip="{StaticResource Loc.Workspace.Details.Help}" />
-                        <ui:Button Margin="8,0,0,0" Command="{Binding CancelCommand}" Content="{StaticResource Loc.Workspace.Cancel}" Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}" ToolTip="{StaticResource Loc.Workspace.Cancel.Help}" />
-                    </WrapPanel>
-                </Grid>
-
+            <Grid x:Name="FileCommandLayout">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <ui:TextBox x:Name="SearchBox" Style="{StaticResource FluentSearchBoxStyle}" MinHeight="36" Padding="12,6" FontSize="15"
+                    AutomationProperties.Name="{StaticResource Loc.Workspace.Files.Search}" ClearButtonEnabled="True" Icon="{ui:SymbolIcon Symbol=Search20}"
+                    PlaceholderText="{StaticResource Loc.Workspace.Files.Search}" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                    ToolTip="{StaticResource Loc.Workspace.Files.Search.Help}" IsEnabled="{Binding CanSearch}" />
+                <WrapPanel Grid.Column="1" Margin="8,0,0,0">
+                    <ui:Button MinWidth="92" Margin="0,0,8,0" Command="{Binding RefreshIndexCommand}" Content="{Binding ScanActionText}" Icon="{ui:SymbolIcon Symbol=ArrowSync20}"
+                        ToolTip="{StaticResource Loc.Workspace.Scan.Files.Help}" ToolTipService.ShowOnDisabled="True">
+                        <ui:Button.Style><Style TargetType="ui:Button" BasedOn="{StaticResource {x:Type ui:Button}}">
+                            <Setter Property="Appearance" Value="Secondary" />
+                            <Style.Triggers><DataTrigger Binding="{Binding HasIndex}" Value="False"><Setter Property="Appearance" Value="Primary" /></DataTrigger></Style.Triggers>
+                        </Style></ui:Button.Style>
+                    </ui:Button>
+                    <ui:Button Appearance="Transparent" Command="{Binding ToggleDetailsCommand}" Content="{StaticResource Loc.Ux.Results.DataManagement}" ToolTip="{StaticResource Loc.Ux.Results.DataManagementHelp}" />
+                    <ui:Button Margin="8,0,0,0" Command="{Binding CancelCommand}" Content="{StaticResource Loc.Workspace.Cancel}" Visibility="{Binding ShowCancelAction, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                </WrapPanel>
             </Grid>
+            <DockPanel Margin="0,8,0,0">
+                <ui:Button DockPanel.Dock="Right" Padding="8,2" Appearance="Transparent" Command="{Binding BrowseRootCommand}" Content="{StaticResource Loc.Workspace.Location.Change}" Icon="{ui:SymbolIcon Symbol=FolderOpen20}" />
+                <Label DockPanel.Dock="Left" Padding="0" Margin="0,0,8,0" VerticalAlignment="Center" Content="{StaticResource Loc.Ux.Results.Location}" />
+                <ui:TextBlock x:Name="FileRootPathText" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding RootPath, TargetNullValue={StaticResource Loc.Files.Root.None}}" TextTrimming="CharacterEllipsis" ToolTip="{Binding RootPath}" />
+            </DockPanel>
             <ui:TextBlock x:Name="ScanInteractionNotice" Margin="0,8,0,0"
                 Style="{StaticResource CaptionTextStyle}" TextWrapping="Wrap"
-                Text="{StaticResource Loc.Workspace.Scan.InteractionPaused}"
+                Text="{Binding ScanDisplayNotice}"
                 Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}" />
+            <ui:TextBlock Margin="0,8,0,0" Style="{StaticResource CaptionTextStyle}" Text="{StaticResource Loc.Ux.Results.PreservingSelection}" Visibility="{Binding IsPreservingSelection, Converter={StaticResource BooleanToVisibilityConverter}}" />
             </StackPanel>
         </controls:CommandStrip>
         <Grid Grid.Row="2">
@@ -58,34 +66,19 @@
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
-            <DockPanel Margin="0,0,0,4" Visibility="{Binding HasIndex, Converter={StaticResource BooleanToVisibilityConverter}}">
-                <ui:TextBlock
-                    AutomationProperties.LiveSetting="Polite"
-                    DockPanel.Dock="Left"
-                    VerticalAlignment="Center"
-                    FontWeight="SemiBold"
-                    Text="{Binding ResultSummary}" />
-                <ui:Button x:Name="RetryResultCountButton" DockPanel.Dock="Left"
-                    Width="28" Height="24" MinWidth="0" MinHeight="0" Padding="0" Margin="8,0,8,0"
-                    VerticalAlignment="Center" Appearance="Transparent" Icon="{ui:SymbolIcon Symbol=ArrowSync20}"
-                    Command="{Binding RetryResultCountCommand}"
-                    Visibility="{Binding CanRetryResultCount, Converter={StaticResource BooleanToVisibilityConverter}, FallbackValue=Collapsed}"
-                    AutomationProperties.Name="{StaticResource Loc.Files.Count.Retry}"
-                    ToolTip="{StaticResource Loc.Files.Count.Retry.Help}" />
-                <StackPanel HorizontalAlignment="Right" Orientation="Horizontal"><ui:Button MinWidth="84" Padding="8,2" Margin="0,0,8,0" Appearance="Transparent" Content="{StaticResource Loc.Selection.All}" Command="{Binding SelectAllCommand}" ToolTip="{StaticResource Loc.Selection.All.ToolTip}" ToolTipService.ShowOnDisabled="True" />
-                    <ui:ProgressRing
-                        Width="18"
-                        Height="18"
-                        Margin="0,0,8,0"
-                        IsIndeterminate="{Binding IsSearching}"
-                        Visibility="{Binding IsSearching, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                    <ui:TextBlock
-                        VerticalAlignment="Center"
-                        Style="{StaticResource CaptionTextStyle}"
-                        Text="{Binding ProgressMessage}" />
+            <Grid Margin="0,0,0,8">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <StackPanel Orientation="Horizontal">
+                    <ui:TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="{Binding VisibleResultCount}" AutomationProperties.LiveSetting="Polite" />
+                    <ui:Button x:Name="RetryResultCountButton" Width="28" Height="24" MinWidth="0" MinHeight="0" Padding="0" Margin="8,0"
+                        Appearance="Transparent" Icon="{ui:SymbolIcon Symbol=ArrowSync20}" Command="{Binding RetryResultCountCommand}"
+                        Visibility="{Binding CanRetryResultCount, Converter={StaticResource BooleanToVisibilityConverter}, FallbackValue=Collapsed}"
+                        AutomationProperties.Name="{StaticResource Loc.Files.Count.Retry}" ToolTip="{StaticResource Loc.Files.Count.Retry.Help}" />
                 </StackPanel>
-            </DockPanel>
-
+                <ui:TextBlock Grid.Column="1" Margin="12,0" VerticalAlignment="Center" Style="{StaticResource CaptionTextStyle}" Text="{Binding ResultProvenance}" TextTrimming="CharacterEllipsis" ToolTip="{Binding ResultSourceDescription}" />
+                <ui:TextBlock Grid.Column="2" VerticalAlignment="Center" Text="{StaticResource Loc.Ux.Results.SearchPending}" Style="{StaticResource CaptionTextStyle}"
+                    Visibility="{Binding IsSearching, Converter={StaticResource BooleanToVisibilityConverter}}" />
+            </Grid>
             <controls:SectionCard x:Name="FileResultsSurface" Grid.Row="1" Style="{StaticResource WorkspaceResultCardStyle}"
                 Visibility="{Binding HasIndex, Converter={StaticResource BooleanToVisibilityConverter}}">
                 <controls:SectionCard.Header>
@@ -98,7 +91,7 @@
                 AutomationProperties.Name="{StaticResource Loc.View.Files.AutomationName.FileSearchResults}"
 
                 ItemsSource="{Binding Items}"
-                FrozenColumnCount="1"
+                FrozenColumnCount="2"
                 ContextMenuOpening="OnResultsGridContextMenuOpening"
                 MouseDoubleClick="OnResultsGridMouseDoubleClick"
                 PreviewMouseLeftButtonDown="OnResultsGridPreviewMouseLeftButtonDown"
@@ -142,7 +135,10 @@
                                 <Setter Property="VerticalContentAlignment" Value="Center" />
                             </Style>
                         </DataGridTemplateColumn.CellStyle>
-                        <DataGridTemplateColumn.Header><ui:Button Width="32" Height="28" Padding="0" Appearance="Transparent" Icon="{ui:SymbolIcon Symbol=CheckboxChecked20}" Command="{Binding DataContext.SelectAllCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" AutomationProperties.Name="{StaticResource Loc.Selection.All}" ToolTip="{StaticResource Loc.Selection.All.ToolTip}" /></DataGridTemplateColumn.Header>
+                        <DataGridTemplateColumn.Header><CheckBox Width="24" Height="24" Padding="0" Margin="0" IsThreeState="True"
+                            IsChecked="{Binding DataContext.CurrentResultsSelectionState, RelativeSource={RelativeSource AncestorType=DataGrid}, Mode=OneWay}"
+                            Command="{Binding DataContext.ToggleCurrentResultsSelectionCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                            AutomationProperties.Name="{StaticResource Loc.Selection.CurrentResults.Toggle}" ToolTip="{StaticResource Loc.Selection.CurrentResults.Toggle.Help}" /></DataGridTemplateColumn.Header>
                         <DataGridTemplateColumn.CellTemplate><DataTemplate><CheckBox Width="24" Height="24" MinWidth="24" MinHeight="24" Padding="0" Margin="0" HorizontalAlignment="Center" VerticalAlignment="Center" IsChecked="{Binding IsSelected, Mode=OneWay}" AutomationProperties.Name="{StaticResource Loc.Catalog.Selection.Item}" PreviewMouseLeftButtonDown="OnSelectionCheckBoxPreviewMouseLeftButtonDown" PreviewKeyDown="OnSelectionCheckBoxPreviewKeyDown" Checked="OnSelectionCheckBoxStateChanged" Unchecked="OnSelectionCheckBoxStateChanged" /></DataTemplate></DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
                     <DataGridTemplateColumn Width="180" MinWidth="160" Header="{StaticResource Loc.Profiles.New.DefaultField}" SortMemberPath="Name">
@@ -191,12 +187,12 @@
                         <WrapPanel x:Name="SelectionManagementGroup" VerticalAlignment="Center">
                             <ui:TextBlock Margin="0,0,12,0" VerticalAlignment="Center" FontWeight="SemiBold"
                                 Visibility="{Binding Visibility, ElementName=SelectAllResultsButton}"
-                                Text="{Binding SelectedCount, StringFormat={StaticResource Loc.Common.SelectedCountFormat}}" />
+                                Text="{Binding SelectionSummary}" />
                             <ui:Button x:Name="SelectionActionsMenuButton" Margin="0,0,8,0" Padding="8,4" Click="OnFooterMenuClick"
                                 Icon="{ui:SymbolIcon Symbol=ChevronDown20}"
                                 AutomationProperties.Name="{StaticResource Loc.Workspace.Selection.Manage}" ToolTip="{StaticResource Loc.Workspace.Selection.Manage.Help}">
                                 <ui:Button.Content>
-                                    <ui:TextBlock Text="{Binding SelectedCount, StringFormat={StaticResource Loc.Common.SelectedCountFormat}}" />
+                                    <ui:TextBlock Text="{Binding SelectionSummary}" />
                                 </ui:Button.Content>
                                 <ui:Button.ContextMenu>
                                     <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
@@ -214,26 +210,26 @@
                                 Content="{StaticResource Loc.Workspace.Selection.Invert}" AutomationProperties.Name="{StaticResource Loc.Workspace.Selection.Invert}" ToolTip="{StaticResource Loc.Selection.Invert.ToolTip}" />
                         </WrapPanel>
                         <WrapPanel x:Name="SelectionOutputGroup" VerticalAlignment="Center" HorizontalAlignment="Right">
-                            <Label x:Name="FilesOutputFormatLabel" Padding="0" Margin="0,0,8,0" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                Content="{StaticResource Loc.Workspace.Output.Format.Label}" Target="{Binding ElementName=FilesOutputFormatComboBox}" />
-                            <ComboBox x:Name="FilesOutputFormatComboBox" Width="280" MinWidth="240" Margin="0,0,8,0"
-                                AutomationProperties.Name="{StaticResource Loc.View.Files.AutomationName.SelectionOutputFormat}" DisplayMemberPath="DisplayName"
-                                ItemsSource="{Binding OutputFormats}" SelectedItem="{Binding SelectedOutputFormat}" ToolTip="{Binding SelectedOutputFormat.DisplayName}" />
-                            <ui:Button x:Name="CopySelectionButton" Margin="0,0,8,0" Padding="8,4" Appearance="Primary" Command="{Binding CopySelectionCommand}"
+                            <ui:SplitButton x:Name="CopySelectionButton" Margin="0,0,8,0" Padding="8,4" Appearance="Primary" Command="{Binding CopySelectionCommand}"
                                 Content="{StaticResource Loc.Workspace.Selection.Copy}" AutomationProperties.Name="{StaticResource Loc.Workspace.Selection.Copy}"
-                                ToolTip="{StaticResource Loc.Workspace.Selection.Copy.Help}" Icon="{ui:SymbolIcon Symbol=Copy20}" />
-                            <ui:Button x:Name="OpenSelectionButton" Width="32" Padding="0" Command="{Binding OpenSelectedCommand}"
-                                AutomationProperties.Name="{StaticResource Loc.Workspace.Selection.Open}" ToolTip="{StaticResource Loc.Workspace.Selection.Open.Help}"
-                                ToolTipService.ShowOnDisabled="True" Icon="{ui:SymbolIcon Symbol=FolderOpen20}" />
-                            <ui:Button x:Name="AdditionalActionsMenuButton" Width="32" Padding="0" Click="OnFooterMenuClick"
-                                AutomationProperties.Name="{StaticResource Loc.Workspace.Selection.More}" ToolTip="{StaticResource Loc.Workspace.Selection.More}"
-                                Icon="{ui:SymbolIcon Symbol=MoreHorizontal20}">
-                                <ui:Button.ContextMenu>
+                                ToolTip="{StaticResource Loc.Ux.Results.CopyFormatHelp}" Icon="{ui:SymbolIcon Symbol=Copy20}">
+                                <ui:SplitButton.Flyout>
                                     <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
-                                        <ui:MenuItem Command="{Binding OpenSelectedCommand}" Header="{StaticResource Loc.Workspace.Selection.Open}" />
+                                        <ui:MenuItem StaysOpenOnClick="True">
+                                            <ui:MenuItem.Header>
+                                                <StackPanel Margin="4">
+                                                    <Label x:Name="FilesOutputFormatLabel" Padding="0" Margin="0,0,0,8"
+                                                        Content="{StaticResource Loc.Workspace.Output.Format.Label}" Target="{Binding ElementName=FilesOutputFormatComboBox}" />
+                                                    <ComboBox x:Name="FilesOutputFormatComboBox" Width="280" MinWidth="240"
+                                                        AutomationProperties.Name="{StaticResource Loc.View.Files.AutomationName.SelectionOutputFormat}" DisplayMemberPath="DisplayName"
+                                                        ItemsSource="{Binding OutputFormats}" SelectedItem="{Binding SelectedOutputFormat}" />
+                                                    <ui:TextBlock Margin="0,8,0,0" Style="{StaticResource CaptionTextStyle}" Text="{StaticResource Loc.Ux.Results.CopyFormatHint}" />
+                                                </StackPanel>
+                                            </ui:MenuItem.Header>
+                                        </ui:MenuItem>
                                     </ContextMenu>
-                                </ui:Button.ContextMenu>
-                            </ui:Button>
+                                </ui:SplitButton.Flyout>
+                            </ui:SplitButton>
                         </WrapPanel>
                     </controls:PurposeFooterPanel>
                 </controls:SectionCard.Header>
@@ -318,18 +314,12 @@
 
         </Grid>
 
-        <Grid Grid.Row="3" Margin="0,4" Background="Transparent">
-            <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                <ui:TextBlock Text="{Binding StatusMessage}" Style="{StaticResource CaptionTextStyle}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" ToolTip="{Binding StatusMessage}" AutomationProperties.LiveSetting="Polite" />
-                <ui:TextBlock Grid.Column="1" MaxWidth="260" Margin="12,0,0,0" Text="{Binding ResultSourceDescription}" Style="{StaticResource CaptionTextStyle}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" ToolTip="{Binding ResultSourceDescription}" AutomationProperties.Name="{StaticResource Loc.Workspace.ResultSource}" />
-            </Grid>
-        </Grid>
         <controls:SectionCard x:Name="FileDetailsPanel" Grid.Row="2" Width="340" HorizontalAlignment="Right" VerticalAlignment="Stretch" Panel.ZIndex="8" Style="{StaticResource FluentSectionCardStyle}" Visibility="{Binding IsDetailsOpen, Converter={StaticResource BooleanToVisibilityConverter}}" IsEnabled="{Binding IsResultInteractionEnabled, FallbackValue=True}">
           <controls:SectionCard.Header>
             <ui:DynamicScrollViewer x:Name="FileDetailsScrollViewer" Style="{StaticResource FluentGutteredScrollViewerStyle}">
                 <StackPanel>
-                    <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{StaticResource Loc.Workspace.Details}" />
-                    <ui:TextBlock Margin="0,4,0,12" Style="{StaticResource CaptionTextStyle}" Text="{Binding IndexStatusDetail}" />
+                    <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{StaticResource Loc.Ux.Results.DataManagement}" />
+                    <ui:TextBlock Margin="0,4,0,12" Style="{StaticResource CaptionTextStyle}" Text="{Binding ResultSourceDescription}" TextWrapping="Wrap" />
                     <WrapPanel>
                         <ui:Button Command="{Binding BrowseDatabaseCommand}" Content="{StaticResource Loc.Workspace.Database.Choose}" ToolTip="{Binding DatabasePath}" Margin="0,0,8,8" />
                         <ui:Button Command="{Binding UseDefaultDatabasePathCommand}" Content="{StaticResource Loc.Workspace.Database.Default}" ToolTip="{Binding DefaultDatabasePath}" Margin="0,0,0,8" />
@@ -427,8 +417,8 @@
                                     <ColumnDefinition Width="12" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
-                                <ui:CalendarDatePicker AutomationProperties.Name="{StaticResource Loc.View.Files.AutomationName.CreatedStartDate}" Date="{Binding CreatedFromDate}" />
-                                <ui:CalendarDatePicker Grid.Column="2" AutomationProperties.Name="{StaticResource Loc.View.Files.AutomationName.CreatedEndDate}" Date="{Binding CreatedToDate}" />
+                                <ui:CalendarDatePicker AutomationProperties.Name="{StaticResource Loc.View.Files.AutomationName.CreatedStartDate}" Date="{Binding CreatedFromDate}" Content="{Binding CreatedFromDate, TargetNullValue={StaticResource Loc.Ux.Results.Date.Unbounded}}" ContentStringFormat="{}{0:d}" />
+                                <ui:CalendarDatePicker Grid.Column="2" AutomationProperties.Name="{StaticResource Loc.View.Files.AutomationName.CreatedEndDate}" Date="{Binding CreatedToDate}" Content="{Binding CreatedToDate, TargetNullValue={StaticResource Loc.Ux.Results.Date.Unbounded}}" ContentStringFormat="{}{0:d}" />
                             </Grid>
 
                             <ui:TextBlock Margin="0,16,0,0" FontWeight="SemiBold" Text="{StaticResource Loc.Files.Sort.Modified}" />
@@ -444,8 +434,8 @@
                                     <ColumnDefinition Width="12" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
-                                <ui:CalendarDatePicker AutomationProperties.Name="{StaticResource Loc.View.Files.AutomationName.ModifiedStartDate}" Date="{Binding ModifiedFromDate}" />
-                                <ui:CalendarDatePicker Grid.Column="2" AutomationProperties.Name="{StaticResource Loc.View.Files.AutomationName.ModifiedEndDate}" Date="{Binding ModifiedToDate}" />
+                                <ui:CalendarDatePicker AutomationProperties.Name="{StaticResource Loc.View.Files.AutomationName.ModifiedStartDate}" Date="{Binding ModifiedFromDate}" Content="{Binding ModifiedFromDate, TargetNullValue={StaticResource Loc.Ux.Results.Date.Unbounded}}" ContentStringFormat="{}{0:d}" />
+                                <ui:CalendarDatePicker Grid.Column="2" AutomationProperties.Name="{StaticResource Loc.View.Files.AutomationName.ModifiedEndDate}" Date="{Binding ModifiedToDate}" Content="{Binding ModifiedToDate, TargetNullValue={StaticResource Loc.Ux.Results.Date.Unbounded}}" ContentStringFormat="{}{0:d}" />
                             </Grid>
                         </StackPanel>
                     </ui:DynamicScrollViewer>

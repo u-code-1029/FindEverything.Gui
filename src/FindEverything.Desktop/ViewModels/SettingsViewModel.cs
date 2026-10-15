@@ -148,6 +148,20 @@ public partial class SettingsViewModel : ObservableObject
 
     public bool IsSaveAvailable => IsEditable && !HasNumericValidationError;
 
+    public string SearchPageSizeError => IntegerError(SearchPageSizeText, 1, 1000);
+    public string MaxEntriesPerSecondError => IntegerError(MaxEntriesPerSecondText, 1, int.MaxValue);
+    public string DirectoryDelayMillisecondsError => IntegerError(DirectoryDelayMillisecondsText, 0, int.MaxValue);
+    public string UiUpdateBatchSizeError => IntegerError(UiUpdateBatchSizeText, 1, 1000);
+    public string NotificationAutoDismissSecondsError => IntegerError(NotificationAutoDismissSecondsText, 1, 60);
+    private string IntegerError(string text, int minimum, int maximum)
+    {
+        if (int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value)
+            && value >= minimum && value <= maximum) return string.Empty;
+        return maximum == int.MaxValue
+            ? _localizer.Format("Loc.Ux.Shell.Settings.Minimum", "{0} 이상의 정수를 입력하세요.", minimum)
+            : _localizer.Format("Loc.Ux.Shell.Settings.Range", "{0}–{1} 사이의 정수를 입력하세요.", minimum, maximum);
+    }
+
     partial void OnSearchPageSizeTextChanged(string value) => ValidateNumericDrafts();
     partial void OnMaxEntriesPerSecondTextChanged(string value) => ValidateNumericDrafts();
     partial void OnDirectoryDelayMillisecondsTextChanged(string value) => ValidateNumericDrafts();
@@ -373,6 +387,11 @@ public partial class SettingsViewModel : ObservableObject
 
     private void ValidateNumericDrafts()
     {
+        OnPropertyChanged(nameof(SearchPageSizeError));
+        OnPropertyChanged(nameof(MaxEntriesPerSecondError));
+        OnPropertyChanged(nameof(DirectoryDelayMillisecondsError));
+        OnPropertyChanged(nameof(UiUpdateBatchSizeError));
+        OnPropertyChanged(nameof(NotificationAutoDismissSecondsError));
         NumericValidationMessage = TryReadNumericDrafts(out _, out _)
             ? string.Empty
             : L("Loc.Settings.Validation.Numeric", "검색 페이지 크기와 화면 갱신 묶음은 1–1,000, 초당 최대 항목 수는 1 이상, 폴더 지연은 0 이상, 알림 표시 시간은 1–60초인 정수를 입력하세요.");

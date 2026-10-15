@@ -12,7 +12,7 @@
     Height="860"
     Language="{StaticResource Loc.Culture.XmlLanguage}"
     MinWidth="760"
-    MinHeight="640"
+    MinHeight="480"
     ExtendsContentIntoTitleBar="True"
     Foreground="{DynamicResource TextFillColorPrimaryBrush}"
     SizeChanged="OnWindowSizeChanged"
@@ -44,6 +44,7 @@
                 </Style>
             </ui:NavigationView.Resources>
             <ui:NavigationView.MenuItems>
+                <ui:NavigationViewItemHeader Text="{DynamicResource Loc.Ux.Shell.Nav.Work}" Visibility="{Binding IsPaneOpen, ElementName=RootNavigation, Converter={StaticResource BooleanToVisibilityConverter}}" />
                 <ui:NavigationViewItem
                     AutomationProperties.Name="{StaticResource Loc.Home.Nav}"
                     Content="{StaticResource Loc.Home.Nav}"
@@ -59,7 +60,17 @@
                     NavigationCacheMode="Required"
                     TargetPageTag="files"
                     TargetPageType="{x:Type pages:FilesPage}"
-                    ToolTip="{StaticResource Loc.Shell.Nav.Files}" />
+                    ToolTip="{StaticResource Loc.Shell.Nav.Files}">
+                    <ui:NavigationViewItem.InfoBadge>
+                        <ui:InfoBadge x:Name="FilesScanBadge"
+                            AutomationProperties.Name="{DynamicResource Loc.Ux.Shell.Scan.Files}" AutomationProperties.LiveSetting="Polite"
+                            ToolTip="{DynamicResource Loc.Ux.Shell.Scan.Files}"
+                            Visibility="{Binding Catalog.IsFilesScanning, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <ui:InfoBadge.Style><Style TargetType="ui:InfoBadge"><Setter Property="Width" Value="16" /><Setter Property="Height" Value="16" /><Style.Triggers><DataTrigger Binding="{Binding IsPaneOpen, ElementName=RootNavigation}" Value="False"><Setter Property="Width" Value="40" /><Setter Property="Height" Value="40" /></DataTrigger></Style.Triggers></Style></ui:InfoBadge.Style>
+                            <ui:InfoBadge.Template><ControlTemplate TargetType="ui:InfoBadge"><ui:ProgressRing Width="16" Height="16" IsIndeterminate="{Binding Catalog.IsFilesScanning}" HorizontalAlignment="Center" VerticalAlignment="Center" /></ControlTemplate></ui:InfoBadge.Template>
+                        </ui:InfoBadge>
+                    </ui:NavigationViewItem.InfoBadge>
+                </ui:NavigationViewItem>
                 <ui:NavigationViewItem
                     x:Name="CatalogNavigationItem"
                     AutomationProperties.Name="{StaticResource Loc.Shell.Nav.Catalog}"
@@ -101,6 +112,7 @@
                         </ui:InfoBadge>
                     </ui:NavigationViewItem.InfoBadge>
                 </ui:NavigationViewItem>
+                <ui:NavigationViewItemHeader Text="{DynamicResource Loc.Ux.Shell.Nav.Manage}" Visibility="{Binding IsPaneOpen, ElementName=RootNavigation, Converter={StaticResource BooleanToVisibilityConverter}}" />
                 <ui:NavigationViewItem
                     AutomationProperties.Name="{StaticResource Loc.Shell.Nav.Profiles}"
                     Content="{StaticResource Loc.Shell.Nav.Profiles}"
@@ -151,6 +163,8 @@
                         IsClosable="True"
                         IsOpen="{Binding IsOpen, Mode=TwoWay}"
                         IsVisibleChanged="OnOperationInfoBarVisibilityChanged"
+                        MouseEnter="OnNoticeInteractionChanged" MouseLeave="OnNoticeInteractionChanged"
+                        IsKeyboardFocusWithinChanged="OnNoticeFocusChanged"
                         Message="{Binding Message}"
                         Severity="{Binding Severity}"
                         SizeChanged="OnOperationInfoBarSizeChanged"
@@ -171,15 +185,21 @@
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Margin="0,0,12,0" VerticalAlignment="Center">
+                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                                <ui:SymbolIcon Symbol="{Binding SeveritySymbol}" FontSize="16" Margin="0,0,6,0" />
+                                                <ui:TextBlock Text="{Binding SeverityName}" Style="{StaticResource CaptionTextStyle}" />
+                                            </StackPanel>
                                             <ui:TextBlock
                                                 Foreground="{DynamicResource TextFillColorPrimaryBrush}"
                                                 FontWeight="SemiBold"
                                                 Text="{TemplateBinding Title}"
+                                                MaxHeight="80"
                                                 TextWrapping="Wrap" />
                                             <ui:TextBlock
                                                 Margin="0,2,0,0"
                                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                                 Text="{TemplateBinding Message}"
+                                                MaxHeight="140"
                                                 TextWrapping="Wrap" />
                                         </StackPanel>
                                         <ui:Button
@@ -212,6 +232,11 @@
                     MinWidth="124"
                     HorizontalAlignment="Right"
                     Orientation="Horizontal">
+                    <ui:Button Margin="0,0,8,0" Padding="8,0" Height="28" Appearance="Transparent"
+                        Content="{Binding PendingLanguageLabel}" ToolTip="{Binding PendingLanguageHint}"
+                        AutomationProperties.Name="{Binding PendingLanguageHint}"
+                        Command="{Binding ApplyPendingLanguageCommand}"
+                        Visibility="{Binding HasPendingLanguage, Converter={StaticResource BooleanToVisibilityConverter}}" />
                     <controls:DisplayBadge
                         Margin="0,0,8,0"
                         Padding="2"
@@ -225,6 +250,7 @@
                                 Height="28"
                                 Padding="8,0"
                                 AutomationProperties.Name="{StaticResource Loc.Shell.Language.Korean}"
+                                AutomationProperties.ItemStatus="{Binding KoreanSelectionState}"
                                 Command="{Binding ChangeLanguageCommand}"
                                 CommandParameter="ko-KR"
                                 Content="KO">
@@ -244,6 +270,7 @@
                                 Height="28"
                                 Padding="8,0"
                                 AutomationProperties.Name="{StaticResource Loc.Shell.Language.English}"
+                                AutomationProperties.ItemStatus="{Binding EnglishSelectionState}"
                                 Command="{Binding ChangeLanguageCommand}"
                                 CommandParameter="en-US"
                                 Content="EN">
@@ -260,6 +287,9 @@
                             </ui:Button>
                         </StackPanel>
                     </controls:DisplayBadge>
+                    <ui:Button x:Name="NotificationsButton" Width="36" Height="32" Margin="0,0,8,0" Padding="0"
+                        Appearance="Transparent" Icon="{ui:SymbolIcon Symbol=Alert20}" Click="OnNotificationsClick"
+                        AutomationProperties.Name="{DynamicResource Loc.Ux.Shell.Notifications.Title}" ToolTip="{DynamicResource Loc.Ux.Shell.Notifications.Title}" />
                     <ui:Button
                         x:Name="ScanConsoleToggleButton"
                         Width="36"
@@ -269,6 +299,7 @@
                         AutomationProperties.ItemStatus="{Binding ScanConsole.PanelToggleToolTip}"
                         AutomationProperties.Name="{Binding ScanConsole.PanelToggleToolTip}"
                         Command="{Binding ToggleScanConsoleCommand}"
+                        Visibility="{Binding IsCatalogPage, Converter={StaticResource BooleanToVisibilityConverter}}"
                         Icon="{ui:SymbolIcon Symbol=PanelBottom20}"
                         ToolTip="{Binding ScanConsole.PanelToggleToolTip}">
                         <ui:Button.Style>
@@ -280,20 +311,7 @@
                                     </DataTrigger>
                                     <DataTrigger Binding="{Binding ScanConsole.IsActivityAttentionRequested}" Value="True">
                                         <Setter Property="Appearance" Value="Primary" />
-                                        <DataTrigger.EnterActions>
-                                            <BeginStoryboard x:Name="ScanConsoleAttentionStoryboard">
-                                                <Storyboard AutoReverse="True" RepeatBehavior="Forever">
-                                                    <DoubleAnimation
-                                                        Storyboard.TargetProperty="Opacity"
-                                                        From="1"
-                                                        To="0.55"
-                                                        Duration="0:0:0.55" />
-                                                </Storyboard>
-                                            </BeginStoryboard>
-                                        </DataTrigger.EnterActions>
-                                        <DataTrigger.ExitActions>
-                                            <StopStoryboard BeginStoryboardName="ScanConsoleAttentionStoryboard" />
-                                        </DataTrigger.ExitActions>
+                                        <!-- A static unread state does not distract or override reduced-motion preferences. -->
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
@@ -302,6 +320,23 @@
                 </StackPanel>
             </ui:TitleBar.TrailingContent>
         </ui:TitleBar>
+
+        <ui:Flyout x:Name="NotificationHistoryFlyout" Width="0" Height="0" MinWidth="0" MinHeight="0" Padding="16" Placement="Bottom"
+            DataContext="{Binding Notifications}" PreviewKeyDown="OnNotificationHistoryKeyDown">
+            <Grid Width="360" MaxHeight="340">
+                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                <StackPanel Margin="0,0,0,8"><ui:TextBlock Text="{DynamicResource Loc.Ux.Shell.Notifications.Title}" FontSize="18" FontWeight="SemiBold" />
+                    <ui:TextBlock Text="{DynamicResource Loc.Ux.Shell.Notifications.HistoryHelp}" TextWrapping="Wrap" Style="{StaticResource CaptionTextStyle}" /></StackPanel>
+                <ListBox Grid.Row="1" MinHeight="64" MaxHeight="130" ItemsSource="{Binding RecentNotifications}" SelectedItem="{Binding SelectedNotification}"
+                    ScrollViewer.VerticalScrollBarVisibility="Auto" AutomationProperties.Name="{DynamicResource Loc.Ux.Shell.Notifications.Title}">
+                    <ListBox.ItemTemplate><DataTemplate><StackPanel Orientation="Horizontal"><ui:SymbolIcon Symbol="{Binding Symbol}" Margin="0,0,8,0" /><ui:TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" MaxWidth="290" /></StackPanel></DataTemplate></ListBox.ItemTemplate>
+                </ListBox>
+                <ui:TextBox Grid.Row="2" Margin="0,8,0,8" MaxHeight="120" Text="{Binding SelectedNotification.Details, Mode=OneWay}" IsReadOnly="True" IsTextSelectionEnabled="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" ClearButtonEnabled="False"
+                    AutomationProperties.Name="{DynamicResource Loc.Ux.Shell.Notifications.Details}" />
+                <StackPanel Grid.Row="3"><ui:Button HorizontalAlignment="Right" Command="{Binding CopyNotificationDetailsCommand}" Content="{DynamicResource Loc.Ux.Shell.Notifications.Copy}" />
+                    <ui:TextBlock Text="{Binding HistoryStatus}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" /></StackPanel>
+            </Grid>
+        </ui:Flyout>
 
         <ui:ContentDialogHost
             x:Name="DialogHost"

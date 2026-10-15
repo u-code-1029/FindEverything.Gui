@@ -312,6 +312,11 @@ public partial class ProfileFieldDraftViewModel : ObservableObject
     public bool SupportsGuidedAssignments =>
         TryInferGuidedDateSourcePreset(out _);
 
+    public string GuidedSampleInput => GuidedAssignments.Count == 0
+        ? "—"
+        : string.Concat(GuidedAssignments.OrderBy(static assignment => assignment.Part)
+            .Select(static assignment => assignment.Choice.Value));
+
     public string SourceSummary
     {
         get
@@ -850,6 +855,7 @@ public partial class ProfileFieldDraftViewModel : ObservableObject
         OnPropertyChanged(nameof(EffectiveGroupNames));
         OnPropertyChanged(nameof(HasGuidedAssignments));
         OnPropertyChanged(nameof(SourceSummary));
+        OnPropertyChanged(nameof(GuidedSampleInput));
         OnPropertyChanged(nameof(SupportsGuidedAssignments));
     }
 

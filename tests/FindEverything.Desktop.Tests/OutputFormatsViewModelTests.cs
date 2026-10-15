@@ -144,12 +144,154 @@ public sealed class OutputFormatsViewModelTests
         Assert.True(vm.HasUnsavedChanges);
     }
 
+    [Fact]
+    public async Task Duplicating_a_built_in_format_preserves_every_output_option_under_a_new_id()
+    {
+        var original = SelectionOutputFormatDefaults.FullPathLines with
+        {
+            Template = "{Name}: {Field:Client} ({FullPath})",
+            ItemSeparator = "\t|\r\n",
+            Prefix = "[\r\n",
+            Suffix = "\n]\\end",
+            ProfileId = "projects"
+        };
+        var store = new MemoryFormatStore();
+        store.Save(original);
+        using var vm = Create(DraftLeaveDecision.Discard, new StructuredProfileCatalog(), store);
+
+        Assert.True(vm.IsBuiltInPreview);
+        Assert.True(vm.DuplicateFormatCommand.CanExecute(null));
+        vm.DuplicateFormatCommand.Execute(null);
+
+        Assert.Null(vm.SelectedFormat);
+        Assert.True(vm.CanEdit);
+        Assert.True(vm.HasUnsavedChanges);
+        Assert.Equal(original.Template, vm.DraftTemplate);
+        Assert.Equal("\\t|\\r\\n", vm.DraftItemSeparator);
+        Assert.Equal("[\\r\\n", vm.DraftPrefix);
+        Assert.Equal("\\n]\\\\end", vm.DraftSuffix);
+        Assert.Equal(original.ProfileId, vm.SelectedProfileChoice?.ProfileId);
+        Assert.False(vm.DuplicateFormatCommand.CanExecute(null));
+
+        Assert.True(await vm.SaveChangesAsync());
+        var saved = Assert.Single(store.GetAll(), format => !format.IsBuiltIn);
+        Assert.NotEqual(original.Id, saved.Id);
+        Assert.StartsWith("format.", saved.Id);
+        Assert.NotEqual(original.DisplayName, saved.DisplayName);
+        Assert.Equal(original.Template, saved.Template);
+        Assert.Equal(original.ItemSeparator, saved.ItemSeparator);
+        Assert.Equal(original.Prefix, saved.Prefix);
+        Assert.Equal(original.Suffix, saved.Suffix);
+        Assert.Equal(original.ProfileId, saved.ProfileId);
+        Assert.Equal(original, Assert.Single(store.GetAll(), format => format.IsBuiltIn));
+        Assert.False(vm.HasUnsavedChanges);
+        Assert.True(vm.DuplicateFormatCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task Preview_uses_a_snapshot_of_the_recent_test_and_can_switch_back_to_examples()
+    {
+        var samples = new OutputPreviewSampleStore();
+        var fields = new Dictionary<string, object?> { ["Client"] = "Contoso" };
+        samples.Set("projects", SelectionOutputItem.FromPath(@"D:\Actual\Release-42", fields: fields));
+        fields["Client"] = "Changed after test";
+        using var vm = Create(DraftLeaveDecision.Discard, new StructuredProfileCatalog(), samples: samples);
+        await vm.NewFormatCommand.ExecuteAsync(null);
+        vm.DraftTemplate = "{Name}|{Field:Client}";
+        vm.DraftItemSeparator = ";";
+
+        Assert.True(vm.HasTestSample);
+        Assert.True(vm.IsPreviewValid);
+        Assert.Equal("Release-42|Contoso", vm.PreviewText);
+        Assert.Contains("최근 프로필 테스트", vm.PreviewSourceDescription);
+
+        vm.UseTestSample = false;
+        Assert.Equal("Project-1|Client name 1;Project-2|Client name 2", vm.PreviewText);
+        Assert.Contains("예제 2개", vm.PreviewSourceDescription);
+        vm.UseTestSample = true;
+        Assert.Equal("Release-42|Contoso", vm.PreviewText);
+    }
+
+    [Fact]
+    public async Task A_recent_test_from_another_profile_is_not_used_for_structured_tokens()
+    {
+        var samples = new OutputPreviewSampleStore();
+        samples.Set("projects", SelectionOutputItem.FromPath(@"D:\Actual\Release-42",
+            fields: new Dictionary<string, object?> { ["Client"] = "Contoso" }));
+        using var vm = Create(DraftLeaveDecision.Discard,
+            new StructuredProfileCatalog("projects", "other"), samples: samples);
+        await vm.NewFormatCommand.ExecuteAsync(null);
+        vm.DraftTemplate = "{Name}|{Field:Client}";
+        vm.DraftItemSeparator = ";";
+        vm.SelectedProfileChoice = vm.ProfileChoices.Single(choice => choice.ProfileId == "other");
+
+        Assert.False(vm.HasTestSample);
+        Assert.True(vm.UseTestSample);
+        Assert.Equal("Project-1|Client name 1;Project-2|Client name 2", vm.PreviewText);
+        Assert.Contains("예제 2개", vm.PreviewSourceDescription);
+
+        vm.SelectedProfileChoice = vm.ProfileChoices.Single(choice => choice.ProfileId == "projects");
+        Assert.True(vm.HasTestSample);
+        Assert.Equal("Release-42|Contoso", vm.PreviewText);
+    }
+
+    [Fact]
+    public async Task Common_formats_can_preview_a_recent_test_path_without_selecting_its_profile()
+    {
+        var samples = new OutputPreviewSampleStore();
+        samples.Set("projects", SelectionOutputItem.FromPath(@"D:\Actual\Release-42"));
+        using var vm = Create(DraftLeaveDecision.Discard, samples: samples);
+        await vm.ActivateAsync();
+
+        Assert.True(vm.SelectedProfileChoice?.IsCommon);
+        Assert.True(vm.HasTestSample);
+        Assert.Equal(@"D:\Actual\Release-42", vm.PreviewText);
+    }
+
+    [Fact]
+    public async Task Hidden_page_defers_recent_sample_rendering_until_activation()
+    {
+        var samples = new OutputPreviewSampleStore();
+        using var vm = Create(DraftLeaveDecision.Discard, samples: samples);
+        var examples = vm.PreviewText;
+
+        samples.Set("projects", SelectionOutputItem.FromPath(@"D:\Actual\first"));
+        Assert.Equal(examples, vm.PreviewText);
+        await vm.ActivateAsync();
+        Assert.Equal(@"D:\Actual\first", vm.PreviewText);
+        samples.Set("projects", SelectionOutputItem.FromPath(@"D:\Actual\second"));
+        Assert.Equal(@"D:\Actual\second", vm.PreviewText);
+
+        vm.Deactivate();
+        samples.Set("projects", SelectionOutputItem.FromPath(@"D:\Actual\latest"));
+        Assert.Equal(@"D:\Actual\second", vm.PreviewText);
+        await vm.ActivateAsync();
+        Assert.Equal(@"D:\Actual\latest", vm.PreviewText);
+    }
+
+    [Fact]
+    public async Task Huge_repeated_test_values_are_bounded_without_invalidating_the_preview()
+    {
+        var samples = new OutputPreviewSampleStore();
+        samples.Set("projects", SelectionOutputItem.FromPath(@"D:\Actual\large",
+            fields: new Dictionary<string, object?> { ["Client"] = new string('x', 100_000) }));
+        using var vm = Create(DraftLeaveDecision.Discard, new StructuredProfileCatalog(), samples: samples);
+        await vm.NewFormatCommand.ExecuteAsync(null);
+        // Full output would exceed even the 32 Mi-character clipboard limit.
+        vm.DraftTemplate = string.Concat(Enumerable.Repeat("{Field:Client}", 500));
+
+        Assert.True(vm.IsPreviewValid);
+        Assert.Equal(new string('x', SelectionOutputPreview.MaximumCharacters) + Environment.NewLine + "…", vm.PreviewText);
+        Assert.Contains("16,384", vm.PreviewValidationMessage);
+    }
+
     private static OutputFormatsViewModel Create(DraftLeaveDecision decision,
-        IProfileCatalog? profiles = null, MemoryFormatStore? store = null) => new(
+        IProfileCatalog? profiles = null, MemoryFormatStore? store = null,
+        OutputPreviewSampleStore? samples = null) => new(
         store ?? new MemoryFormatStore(), new SelectionOutputFormatter(), profiles ?? new EmptyProfileCatalog(),
         new SettingsViewModelTests.NoopSnackbar(), null!, new TestAppLocalizer(),
         NullLogger<OutputFormatsViewModel>.Instance,
-        new DraftProtectionService(new FixedPrompt(decision), ImmediateUiScheduler.Instance));
+        new DraftProtectionService(new FixedPrompt(decision), ImmediateUiScheduler.Instance), previewSamples: samples);
 
     private sealed class FixedPrompt(DraftLeaveDecision decision) : IDraftDecisionPrompt
     {
@@ -162,15 +304,17 @@ public sealed class OutputFormatsViewModelTests
         public event EventHandler<ProfileCatalogChangedEventArgs>? Changed { add { } remove { } }
     }
 
-    private sealed class StructuredProfileCatalog : IProfileCatalog
+    private sealed class StructuredProfileCatalog(params string[] profileIds) : IProfileCatalog
     {
-        public ProfileCatalogSnapshot Current { get; } = new([new StructuredProfile()], [], DateTimeOffset.UtcNow);
+        public ProfileCatalogSnapshot Current { get; } = new(
+            (profileIds.Length == 0 ? new[] { "projects" } : profileIds)
+                .Select(id => (ILoadedProfile)new StructuredProfile(id)).ToArray(), [], DateTimeOffset.UtcNow);
         public event EventHandler<ProfileCatalogChangedEventArgs>? Changed { add { } remove { } }
     }
 
-    private sealed class StructuredProfile : ILoadedProfile
+    private sealed class StructuredProfile(string id) : ILoadedProfile
     {
-        public ProfileDescriptor Descriptor { get; } = new("projects", "1", "Projects", ProfileCandidateKind.Directory,
+        public ProfileDescriptor Descriptor { get; } = new(id, "1", "Projects", ProfileCandidateKind.Directory,
             [new ProfileFieldDescriptor("Client", "client", "Client name", 0, true,
                 ProfileFieldValueKind.String, false, null, null)], []);
         public ProfileMapResult Map(ProfilePathCandidate candidate) => ProfileMapResult.NoMatch();

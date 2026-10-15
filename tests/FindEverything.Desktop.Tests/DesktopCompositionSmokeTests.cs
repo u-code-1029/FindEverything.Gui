@@ -359,19 +359,21 @@ public sealed class DesktopCompositionSmokeTests
                         page is CatalogPage ? "CatalogOutputFormatComboBox" : "FilesOutputFormatComboBox"));
                     Assert.Equal(280, format.Width);
                     Assert.Equal(240, format.MinWidth);
-                    Assert.True(format.ActualWidth >= 240, "Output formats must remain readable in a narrow footer.");
+                    var copy = Assert.IsType<Wpf.Ui.Controls.SplitButton>(page.FindName("CopySelectionButton"));
+                    Assert.IsType<ContextMenu>(copy.Flyout);
+                    Assert.DoesNotContain(format, FindVisualChildren<System.Windows.Controls.ComboBox>(toolbar));
                     var selectionMenu = Assert.IsType<Wpf.Ui.Controls.Button>(page.FindName("SelectionActionsMenuButton"));
                     Assert.NotNull(selectionMenu.ContextMenu);
                     Assert.Equal(3, selectionMenu.ContextMenu.Items.Count);
                     Assert.Equal(size.Width < 1040 ? Visibility.Visible : Visibility.Collapsed, selectionMenu.Visibility);
-                    var additionalMenu = Assert.IsType<Wpf.Ui.Controls.Button>(page.FindName("AdditionalActionsMenuButton"));
-                    Assert.NotNull(additionalMenu.ContextMenu);
-                    Assert.Equal(page is CatalogPage ? 2 : 1, additionalMenu.ContextMenu.Items.Count);
+                    Assert.Null(page.FindName("AdditionalActionsMenuButton"));
+                    if (page is CatalogPage)
+                        Assert.Equal(Visibility.Visible, Assert.IsType<Wpf.Ui.Controls.Button>(page.FindName("ExportSelectionButton")).Visibility);
                     Assert.False(toolbar.Focusable);
                     var gridBottom = grid.TranslatePoint(new Point(0, grid.ActualHeight), page).Y;
                     var toolbarTop = toolbar.TranslatePoint(new Point(0, 0), page).Y;
                     Assert.True(toolbarTop >= gridBottom, "Selection actions must not cover the last row or scrollbar.");
-                    var header = grid.Columns[0].Header as Wpf.Ui.Controls.Button;
+                    var header = grid.Columns[0].Header as System.Windows.Controls.CheckBox;
                     Assert.NotNull(header);
                     Assert.False(string.IsNullOrWhiteSpace(System.Windows.Automation.AutomationProperties.GetName(header)));
                     Assert.False(ResultGridInput.IsInteractiveOrigin(new System.Windows.Controls.TextBlock()));
@@ -751,20 +753,27 @@ public sealed class DesktopCompositionSmokeTests
             mainWindow.FindName("SnackbarPresenter"));
         var navigationService = provider.GetRequiredService<INavigationService>();
 
-        // The panel is page-local, but the title-bar button is global. A click from
-        // another page must navigate to the owning CatalogPage and reveal it instead
-        // of toggling invisible state.
+        // A page-local panel must not unexpectedly navigate away from other work.
         Assert.True(navigationService.Navigate(typeof(FilesPage)));
         mainWindow.Dispatcher.Invoke(static () => { }, DispatcherPriority.Loaded);
         Assert.Equal(Visibility.Collapsed, panel.Visibility);
         Assert.False(viewModel.IsPanelOpen);
         Assert.NotNull(toggleButton.Command);
+        Assert.False(toggleButton.Command.CanExecute(null));
         toggleButton.Command.Execute(null);
         mainWindow.Dispatcher.Invoke(static () => { }, DispatcherPriority.Loaded);
         mainWindow.UpdateLayout();
         Assert.Equal(
-            typeof(CatalogPage),
+            typeof(FilesPage),
             Assert.IsType<NavigationViewItem>(navigation.SelectedItem).TargetPageType);
+        Assert.False(viewModel.IsPanelOpen);
+        Assert.Equal(Visibility.Collapsed, toggleButton.Visibility);
+        Assert.True(navigationService.Navigate(typeof(CatalogPage)));
+        mainWindow.Dispatcher.Invoke(static () => { }, DispatcherPriority.Loaded);
+        Assert.True(toggleButton.Command.CanExecute(null));
+        toggleButton.Command.Execute(null);
+        mainWindow.Dispatcher.Invoke(static () => { }, DispatcherPriority.Loaded);
+        mainWindow.UpdateLayout();
         Assert.True(viewModel.IsPanelOpen);
         Assert.Equal(Visibility.Visible, panel.Visibility);
 
@@ -1317,12 +1326,12 @@ public sealed class DesktopCompositionSmokeTests
             Assert.True(second.IsSelected);
             Assert.Equal(1, viewModel.SelectedCount);
 
-            var header = Assert.IsType<Wpf.Ui.Controls.Button>(grid.Columns[0].Header);
-            Assert.Same(viewModel.InvertSelectionCommand, header.Command);
+            var header = Assert.IsType<System.Windows.Controls.CheckBox>(grid.Columns[0].Header);
+            Assert.Same(viewModel.ToggleCurrentResultsSelectionCommand, header.Command);
             header.Command!.Execute(null);
-            Assert.Equal(1199, viewModel.SelectedCount);
+            Assert.Equal(1200, viewModel.SelectedCount);
             Assert.True(first.IsSelected);
-            Assert.False(second.IsSelected);
+            Assert.True(second.IsSelected);
             var row = Assert.IsType<System.Windows.Controls.DataGridRow>(
                 grid.ItemContainerGenerator.ContainerFromIndex(0));
             var checkbox = Assert.Single(FindVisualChildren<System.Windows.Controls.CheckBox>(row));
@@ -1431,9 +1440,16 @@ public sealed class DesktopCompositionSmokeTests
         Assert.NotEmpty(viewModel.GeneratedPatternPreview);
         viewModel.GoToEditorStepCommand.Execute(ProfileEditorStep.PathAndFields);
         PumpLayout(window, page);
+        var generatedRule = Assert.IsAssignableFrom<Expander>(
+            page.FindEditorElement<FrameworkElement>("GeneratedPathRuleExpander"));
+        Assert.False(generatedRule.IsExpanded);
+        generatedRule.IsExpanded = true;
+        PumpDispatcherFor(window.Dispatcher, TimeSpan.FromMilliseconds(400));
+        PumpLayout(window, page);
         var templateBox = Assert.IsType<Wpf.Ui.Controls.TextBox>(
             page.FindEditorElement<FrameworkElement>("ProfilePathTemplateTextBox"));
         Assert.True(templateBox.IsReadOnly);
+        generatedRule.IsExpanded = false;
         page.ActiveEditorList!.ScrollToSection("AssignmentPicker");
         PumpLayout(window, page);
         Assert.IsAssignableFrom<CardControl>(page.FindEditorElement<FrameworkElement>("AssignmentPickerPanel"));
@@ -1445,6 +1461,10 @@ public sealed class DesktopCompositionSmokeTests
         var editorScrollViewer = Assert.IsAssignableFrom<ScrollViewer>(page.EditorScrollViewer);
         Assert.Equal(new Thickness(0, 0, 16, 0), editorScrollViewer.Padding);
         Assert.IsAssignableFrom<CardControl>(page.FindName("ProfileEditorStepRail"));
+        var coreSteps = Assert.IsType<System.Windows.Controls.Primitives.UniformGrid>(page.FindName("ProfileStepButtons"));
+        Assert.Equal(1, coreSteps.Rows);
+        Assert.Equal(3, coreSteps.Children.Count);
+        Assert.IsType<Wpf.Ui.Controls.Button>(page.FindName("OptionalProfileStepsButton"));
         Assert.IsType<Wpf.Ui.Controls.Button>(page.FindName("PreviousProfileStepButton"));
         Assert.IsType<Wpf.Ui.Controls.Button>(page.FindName("NextProfileStepButton"));
         Assert.True(viewModel.AddUserInputFieldCommand.CanExecute(null));
@@ -1457,6 +1477,8 @@ public sealed class DesktopCompositionSmokeTests
         Assert.Equal(ProfileEditorStep.PathAndFields, viewModel.CurrentEditorStep);
         Assert.True(viewModel.IsPathAndFieldsStep);
         Assert.Equal(0, Assert.IsAssignableFrom<ScrollViewer>(page.EditorScrollViewer).VerticalOffset);
+        viewModel.NextEditorStepCommand.Execute(null);
+        Assert.Equal(ProfileEditorStep.Review, viewModel.CurrentEditorStep);
 
         viewModel.GoToEditorStepCommand.Execute(ProfileEditorStep.DataSources);
         PumpDispatcherFor(window.Dispatcher, TimeSpan.FromMilliseconds(20));
@@ -1725,7 +1747,13 @@ public sealed class DesktopCompositionSmokeTests
             UIElement.IsEnabledProperty);
         Assert.NotNull(enabledBinding);
         Assert.Equal(nameof(ProfilePlaygroundViewModel.IsReady), enabledBinding.Path.Path);
-        Assert.NotNull(page.FindName("PlaygroundRegexDebugExpander"));
+        var expander = Assert.IsAssignableFrom<Expander>(page.FindName("PlaygroundRegexDebugExpander"));
+        Assert.False(expander.IsExpanded);
+        var results = Assert.IsAssignableFrom<System.Windows.Controls.DataGrid>(page.FindName("ProfileTestResultsGrid"));
+        Assert.True(results.IsReadOnly);
+        Assert.Equal(4, results.Columns.Count);
+        Assert.Equal(360, results.MaxHeight);
+        Assert.True(VirtualizingPanel.GetIsVirtualizing(results));
         Assert.NotNull(page.FindName("PlaygroundDirectoryExclusionResultPanel"));
         Assert.IsType<ProfilePlaygroundViewModel>(page.DataContext);
         var originalContext = page.DataContext;
@@ -1741,13 +1769,14 @@ public sealed class DesktopCompositionSmokeTests
             page.DataContext = new PlaygroundLayoutFixture(input, ProfileRegexDebugBuilder.Build(input, rules));
             window.Width = 1360;
             PumpLayout(window, page);
-            var debugScroll = Assert.IsAssignableFrom<ScrollViewer>(page.FindName("PlaygroundDebugScrollViewer"));
-            debugScroll.ScrollToTop();
+            var debugScroll = scrollViewer;
+            expander.IsExpanded = true;
             PumpDispatcherFor(window.Dispatcher, TimeSpan.FromMilliseconds(400));
+            PumpLayout(window, page);
+            debugScroll.ScrollToVerticalOffset(debugScroll.VerticalOffset + expander.TranslatePoint(new Point(), debugScroll).Y);
             PumpLayout(window, page);
             var card = Assert.IsType<SectionCard>(page.FindName("PlaygroundRegexDebugCard"));
             var caption = Assert.IsAssignableFrom<System.Windows.Controls.TextBlock>(page.FindName("PlaygroundRegexDebugCaption"));
-            var expander = Assert.IsAssignableFrom<Expander>(page.FindName("PlaygroundRegexDebugExpander"));
             var toggle = Assert.IsType<System.Windows.Controls.Primitives.ToggleButton>(
                 expander.Template.FindName("ExpanderToggleButton", expander));
             Assert.True(caption.ActualHeight > 0);
@@ -1761,6 +1790,7 @@ public sealed class DesktopCompositionSmokeTests
         }
         finally
         {
+            expander.IsExpanded = false;
             page.DataContext = originalContext;
             window.Width = originalWidth;
             PumpLayout(window, page);
@@ -1770,6 +1800,9 @@ public sealed class DesktopCompositionSmokeTests
     private static void VerifySettingsLayout(Window window, SettingsPage page)
     {
         Assert.False(ScrollViewer.GetCanContentScroll(page));
+        var advanced = Assert.IsType<Wpf.Ui.Controls.CardExpander>(page.FindName("AdvancedIndexingSettings"));
+        Assert.False(advanced.IsExpanded);
+        advanced.IsExpanded = true;
         PumpLayout(window, page);
 
         var scrollViewer = Assert.IsAssignableFrom<ScrollViewer>(page.FindName("SettingsScrollViewer"));
@@ -1998,6 +2031,10 @@ public sealed class DesktopCompositionSmokeTests
         VerifyOutputPreviewLayout(window, page);
         var scroll = Assert.IsAssignableFrom<ScrollViewer>(page.FindName("OutputFormatsScrollViewer"));
         Assert.Equal(new Thickness(0, 0, 16, 0), scroll.Padding);
+        var formatPicker = Assert.IsType<ComboBox>(page.FindName("OutputFormatComboBox"));
+        var formatLabel = Assert.IsType<Label>(page.FindName("OutputFormatLabel"));
+        Assert.Same(formatPicker, formatLabel.Target);
+        Assert.False(string.IsNullOrWhiteSpace(Convert.ToString(formatLabel.Content)));
         provider.GetRequiredService<IProfileCatalogPublisher>().Publish(
             new ProfileCatalogSnapshot([new StubLoadedProfile()], [], DateTimeOffset.UtcNow));
         // Profile publication is marshalled to the UI scheduler. Let that refresh
@@ -2028,6 +2065,11 @@ public sealed class DesktopCompositionSmokeTests
         tokenButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
         Assert.Equal("before{Field:client}after", viewModel.DraftTemplate);
 
+        var affixes = Assert.IsAssignableFrom<Expander>(page.FindName("OutputAffixesExpander"));
+        Assert.False(affixes.IsExpanded);
+        affixes.IsExpanded = true;
+        PumpDispatcherFor(window.Dispatcher, TimeSpan.FromMilliseconds(400));
+        PumpLayout(window, page);
         var prefix = Assert.IsType<Wpf.Ui.Controls.TextBox>(page.FindName("OutputPrefixTextBox"));
         var suffix = Assert.IsType<Wpf.Ui.Controls.TextBox>(page.FindName("OutputSuffixTextBox"));
         foreach (var input in new[] { prefix, suffix })
@@ -2045,6 +2087,7 @@ public sealed class DesktopCompositionSmokeTests
         Assert.True(viewModel.IsPreviewValid);
         Assert.StartsWith("[before", viewModel.PreviewText, StringComparison.Ordinal);
         Assert.EndsWith("after]", viewModel.PreviewText, StringComparison.Ordinal);
+        affixes.IsExpanded = false;
         viewModel.DiscardChanges();
     }
 
@@ -2060,22 +2103,23 @@ public sealed class DesktopCompositionSmokeTests
                 window.Height = 860;
                 PumpLayout(window, page);
                 var workspace = Assert.IsType<SplitWorkspace>(page.FindName("OutputWorkspace"));
-                if (workspace.ActualWidth < 900)
-                {
-                    var tabs = Assert.Single(FindVisualChildren<TabControl>(workspace));
-                    tabs.SelectedIndex = 1;
-                    PumpLayout(window, page);
-                }
+                Assert.True(workspace.KeepSecondaryVisible);
+                Assert.Empty(FindVisualChildren<TabControl>(workspace));
                 var card = Assert.IsType<SectionCard>(page.FindName("OutputPreviewCard"));
                 var content = Assert.IsType<Grid>(page.FindName("OutputPreviewContent"));
                 var title = Assert.IsAssignableFrom<System.Windows.Controls.TextBlock>(page.FindName("OutputPreviewTitle"));
                 var preview = Assert.IsType<Wpf.Ui.Controls.TextBox>(page.FindName("OutputPreviewTextBox"));
-                Assert.True(card.ActualHeight > 180);
-                Assert.InRange(title.TranslatePoint(new Point(), card).Y, 16, 18);
-                Assert.True(content.ActualHeight >= card.ActualHeight - 36,
+                Assert.True(card.IsVisible && preview.IsVisible);
+                Assert.True(card.ActualHeight >= 96);
+                Assert.InRange(title.TranslatePoint(new Point(), card).Y, 12, 14);
+                Assert.True(content.ActualHeight >= card.ActualHeight - 28,
                     "The preview grid must stretch through its native card rather than remain vertically centered.");
-                Assert.True(preview.ActualHeight / card.ActualHeight >= 0.60,
-                    "Preview text must occupy the majority of the available preview surface.");
+                if (workspace.ActualWidth >= 900)
+                    Assert.True(preview.ActualHeight / card.ActualHeight >= 0.60,
+                        "Preview text must occupy the majority of the available wide preview surface.");
+                else
+                    Assert.True(preview.ActualHeight >= 24,
+                        "The persistent compact preview must retain a readable line below its title and source label.");
                 Assert.True(card.TranslatePoint(new Point(0, card.ActualHeight), page).Y <= page.ActualHeight + 1,
                     "The full-height preview must remain inside the page and above its action footer.");
             }
@@ -2219,7 +2263,7 @@ public sealed class DesktopCompositionSmokeTests
             Assert.Equal(64, selectionColumn.Width.Value);
             Assert.Equal(64, selectionColumn.MinWidth);
             Assert.Equal(64, selectionColumn.MaxWidth);
-            Assert.Equal(2, grid.FrozenColumnCount);
+            Assert.Equal(3, grid.FrozenColumnCount);
             var folderColumn = grid.Columns[1];
             var folderHeader = Assert.IsType<Wpf.Ui.Controls.SymbolIcon>(folderColumn.Header);
             Assert.Equal("Live folder contents", folderHeader.ToolTip);
@@ -2550,6 +2594,23 @@ public sealed class DesktopCompositionSmokeTests
             }).ToArray();
         }
         public bool HasIndex => true;
+        public bool HasPublishedResults => true;
+        public bool ShowCancelAction => false;
+        public bool IsCatalogEmptyVisible => false;
+        public bool IsFilteredEmpty => false;
+        public bool CanTestEmptyProfile => false;
+        public bool CanTypeSearch => true;
+        public bool IsSearchPending => false;
+        public bool IsPreservingSelection => false;
+        public bool IsScanning => false;
+        public bool IsResultInteractionEnabled => true;
+        public bool? CurrentResultsSelectionState => true;
+        public string SelectionSummary => _localizer.Format("Loc.Ux.Results.SelectionSummary", "{0:N0} selected · {1:N0} in results", SelectedCount, SelectedCount);
+        public string ScanActionText => _localizer.Get("Loc.Ux.Results.Refresh", "결과 새로고침");
+        public string ResultScopePath => RootPath;
+        public string ResultProvenance => _localizer.Get("Loc.Ux.Results.Source.Saved", "저장된 결과") + " · 2026-10-16 14:32";
+        public string VisibleResultCount => ResultSummary;
+        public System.Windows.Input.ICommand ToggleCurrentResultsSelectionCommand { get; } = new CommunityToolkit.Mvvm.Input.RelayCommand(static () => { });
         public IAppLocalizer Localizer => _localizer;
         public bool HasLoadedItems => true;
         public bool HasSelection => true;

@@ -39,6 +39,7 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
     private readonly IAppLocalizer _localizer;
     private readonly ILogger<FileSearchViewModel> _logger;
     private readonly IUiScheduler _uiScheduler;
+    private readonly CatalogActivityState? _activityState;
     private CancellationTokenSource? _queryCancellation;
     private Task? _activeLoadTask;
     private long _queryVersion;
@@ -69,7 +70,8 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
         IProfilePathCanonicalizer profilePathCanonicalizer,
         IAppLocalizer localizer,
         ILogger<FileSearchViewModel> logger,
-        IUiScheduler? uiScheduler = null)
+        IUiScheduler? uiScheduler = null,
+        CatalogActivityState? activityState = null)
     {
         _fileSearchService = fileSearchService;
         _indexingSettings = indexingSettings;
@@ -88,6 +90,7 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
         _localizer = localizer;
         _logger = logger;
         _uiScheduler = uiScheduler ?? ImmediateUiScheduler.Instance;
+        _activityState = activityState;
 
         KindChoices =
         [
@@ -298,10 +301,10 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
 
     public bool HasNoRoot => !HasRoot;
 
-    public bool CanSearch => HasIndex && IsResultInteractionEnabled;
+    public bool CanSearch => HasIndex && !IsBusy;
 
     // Cache loading remains interactive; only a disk scan pauses result work.
-    public bool IsResultInteractionEnabled => !IsBusy;
+    public bool IsResultInteractionEnabled => !IsBusy && !IsPreservingSelection;
 
     public bool IsSetupStateVisible => !HasRoot || !HasIndex;
 
@@ -433,6 +436,8 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
 
     partial void OnIsBusyChanged(bool value)
     {
+        ToggleCurrentResultsSelectionCommand.NotifyCanExecuteChanged();
+        if (_activityState is not null) _activityState.IsFilesScanning = !_disposed && value;
         if (value)
         {
             IsDetailsOpen = false;
@@ -468,6 +473,7 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
 
     partial void OnIsSearchingChanged(bool value)
     {
+        ToggleCurrentResultsSelectionCommand.NotifyCanExecuteChanged();
         LoadMoreCommand.NotifyCanExecuteChanged();
         CopySelectionCommand.NotifyCanExecuteChanged();
         CancelCommand.NotifyCanExecuteChanged();
@@ -478,6 +484,7 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
 
     partial void OnIsResultCountPendingChanged(bool value)
     {
+        ToggleCurrentResultsSelectionCommand.NotifyCanExecuteChanged();
         CancelCommand.NotifyCanExecuteChanged();
         SelectAllCommand.NotifyCanExecuteChanged();
         InvertSelectionCommand.NotifyCanExecuteChanged();
@@ -964,6 +971,8 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
     [RelayCommand(CanExecute = nameof(CanCancel))]
     private void Cancel()
     {
+        _bulkSelectionCancellation?.Cancel();
+        _selectionCountCancellation?.Cancel();
         ProgressMessage = L("Loc.Common.Cancelling", "취소하는 중…");
         InvalidateSearch();
         IsResultCountPending = false;
@@ -1019,7 +1028,7 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
     [RelayCommand(CanExecute = nameof(CanUseSelected))]
     private void OpenSelected()
     {
-        OpenItem(SelectedItem);
+        if (CanUseSelected()) OpenItemFolder(SelectedItem);
     }
 
     [RelayCommand]
@@ -1125,6 +1134,7 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
         var scope = _fileQueryScope;
         var request = _fileQueryRequest;
         using var capturedSelection = _selection.Capture();
+        if (request is not null && !capturedSelection.AllMatching) request = WithoutResultFilters(request);
         var legacyItems = _selectedItems.Where(static item => !item.IsPlaceholder).ToArray();
         var selectedCount = SelectedCount;
         var importedSource = WorkspaceTransfer?.CurrentSource;
@@ -1258,16 +1268,16 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
         ScheduleSearch(preserveSelection: true, debounce: false);
     }
 
-    private bool CanRefreshIndex() => !IsBusy && HasRoot && !IsReadOnlyDataSource && WorkspaceTransfer?.IsBusy != true && WorkspaceTransfer?.IsInitialized != false;
+    private bool CanRefreshIndex() => !IsBusy && !IsPreservingSelection && HasRoot && !IsReadOnlyDataSource && WorkspaceTransfer?.IsBusy != true && WorkspaceTransfer?.IsInitialized != false;
 
-    private bool CanBrowseRefreshScope() => !IsBusy && HasRoot && HasIndex && !IsReadOnlyDataSource;
+    private bool CanBrowseRefreshScope() => !IsBusy && !IsPreservingSelection && HasRoot && HasIndex && !IsReadOnlyDataSource;
 
     private bool CanRefreshScope() =>
-        !IsBusy && HasRoot && HasIndex && !IsReadOnlyDataSource && !string.IsNullOrWhiteSpace(RefreshScopePath);
+        !IsBusy && !IsPreservingSelection && HasRoot && HasIndex && !IsReadOnlyDataSource && !string.IsNullOrWhiteSpace(RefreshScopePath);
 
     private bool CanRefreshItemScope(FileSearchItemViewModel? item)
     {
-        if (IsBusy || IsReadOnlyDataSource || !HasRoot || !HasIndex || item is null || item.IsPlaceholder)
+        if (IsBusy || IsPreservingSelection || IsReadOnlyDataSource || !HasRoot || !HasIndex || item is null || item.IsPlaceholder)
         {
             return false;
         }
@@ -1283,16 +1293,16 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
         }
     }
 
-    private bool CanChangeWorkspace() => !IsBusy && !IsReadOnlyDataSource && WorkspaceTransfer?.IsInitialized != false;
+    private bool CanChangeWorkspace() => !IsBusy && !IsPreservingSelection && !IsReadOnlyDataSource && WorkspaceTransfer?.IsInitialized != false;
 
-    private bool CanUseDefaultDatabasePath() => !IsBusy && !IsReadOnlyDataSource && !IsUsingDefaultDatabasePath;
+    private bool CanUseDefaultDatabasePath() => !IsBusy && !IsPreservingSelection && !IsReadOnlyDataSource && !IsUsingDefaultDatabasePath;
 
-    private bool CanCancel() => IsBusy || IsSearching || IsResultCountPending;
+    private bool CanCancel() => IsBusy || IsSearching || IsResultCountPending || IsPreservingSelection;
 
     private bool CanLoadMore() => HasMore && !IsSearching && !IsBusy;
 
     private bool CanUseSelected() => IsResultInteractionEnabled && SelectedItem is { IsPlaceholder: false }
-        && (!UsesQuerySelection || (SelectedCount == 1 && _selection.Contains(SelectedItem.SelectionKey)));
+        && SelectedCount == 1 && (!UsesQuerySelection || SelectedItem.IsSelected);
 
     private bool CanCopySelection() => IsResultInteractionEnabled && SelectedCount > 0 && !IsSearching && !IsCopyingSelection;
 
@@ -1447,7 +1457,7 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
         return true;
     }
 
-    private void ScheduleSearch(bool preserveSelection = false, bool debounce = true)
+    private void ScheduleSearch(bool preserveSelection = true, bool debounce = true)
     {
         if (!_isActive) { _needsActivationRefresh = true; return; }
         if (_disposed || _changingFilters || !CanSearch)
@@ -1461,6 +1471,8 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
     private void InvalidateSearch()
     {
         _queryCancellation?.Cancel();
+        _bulkSelectionCancellation?.Cancel();
+        _selectionCountCancellation?.Cancel();
         _selectionController?.Cancel();
         Interlocked.Increment(ref _queryVersion);
         IsSearching = false;
@@ -1484,7 +1496,7 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
         bool refreshStatus,
         bool debounce,
         bool reset = true,
-        bool preserveSelection = false)
+        bool preserveSelection = true)
     {
         if (_disposed)
         {
@@ -1498,6 +1510,8 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
         }
 
         _queryCancellation?.Cancel();
+        _bulkSelectionCancellation?.Cancel();
+        _selectionCountCancellation?.Cancel();
         _selectionController?.Cancel();
         if (!preserveSelection)
         {
@@ -1609,6 +1623,7 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
                 var scope = ValidateScope(requireExistingRoot: false);
                 var status = await Task.Run(() => _fileSearchService.GetStatusAsync(scope, cancellationToken), cancellationToken);
                 var request = BuildSearchRequest(scope.RootPath, 0) with { ExpectedScanId = status.LastScanId };
+                await PreserveSelectionScopeAsync(scope, request, cancellationToken);
                 IResultQuerySession<IndexedPathEntry> query;
                 try
                 {
@@ -1629,8 +1644,9 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
                     using var retainedSelection = preserveSelection
                         && _fileQueryRequest is { } oldRequest && _fileQueryScope == scope
                         && oldRequest.ExpectedScanId == request.ExpectedScanId
-                        && SameResultFilters(oldRequest, request)
                             ? _selection.Capture() : new QuerySelection();
+                    var spansFilters = _selectionSpansFilters && preserveSelection && _fileQueryScope == scope
+                        && _fileQueryRequest?.ExpectedScanId == request.ExpectedScanId;
                     var retainedItem = retainedSelection.Count(long.MaxValue) > 0 ? SelectedItem : null;
                     var previousTotalCount = TotalCount;
                     ReleaseFileQuery();
@@ -1638,6 +1654,7 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
                     _fileQueryScope = scope;
                     _fileQueryRequest = request;
                     RestoreSelection(retainedSelection);
+                    _selectionSpansFilters = spansFilters;
                     SelectedItem = retainedItem;
                     _selectionAnchor = -1;
                     var collection = new VirtualResultCollection<FileSearchItemViewModel>(
@@ -1660,6 +1677,7 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
                     _hasExactResultCount = !first.HasMore;
                     IsResultCountPending = true;
                     UpdateQuerySelection();
+                    _ = RefreshCurrentSelectionCountAsync();
                     HasMore = false;
                     HasSearched = true;
                     IsSearching = false;
@@ -1715,7 +1733,13 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
                 }
             }
         }
-        finally { if (version == Volatile.Read(ref _queryVersion)) IsSearching = false; }
+        finally
+        {
+            if (version == Volatile.Read(ref _queryVersion))
+            {
+                IsSearching = false;
+            }
+        }
     }
 
     private FileSearchItemViewModel CreateFileRow(IndexedPathEntry entry) =>
@@ -1723,6 +1747,7 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
 
     private void ReleaseFileQuery()
     {
+        _selectionCountCancellation?.Cancel();
         _selectionController?.Cancel();
         if (Items is IDisposable disposable) disposable.Dispose();
         if (_fileQuery is not null) _ = _fileQuery.DisposeAsync();
@@ -1731,6 +1756,8 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
         _fileQueryRequest = null;
         Items = new ObservableCollection<FileSearchItemViewModel>();
         _selection.Clear();
+        _selectionSpansFilters = false;
+        SetCurrentSelectionCount(0);
         _selectionAnchor = -1;
         _selectedItems = [];
         SelectedItem = null;
@@ -1771,8 +1798,12 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
     private void SelectAll()
     {
         if (!CanSelectAllResults()) return;
+        if (_selectionSpansFilters) { _ = ChangeCurrentSelectionAsync(FindEverything.Infrastructure.Persistence.SqliteSelectionSnapshot.SetOperation.Union); return; }
         _selectionController?.Cancel();
+        _selectionCountCancellation?.Cancel();
+        _selectionFlagsVersion++;
         _selection.SelectAll(); UpdateQuerySelection();
+        SetCurrentSelectionCount(SelectedCount);
     }
 
     [RelayCommand(CanExecute = nameof(IsResultInteractionEnabled))]
@@ -1780,15 +1811,22 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
     {
         if (!IsResultInteractionEnabled) return;
         _selectionController?.Cancel();
-        _selection.Clear(); SelectedItem = null; UpdateQuerySelection();
+        _selectionCountCancellation?.Cancel();
+        _selectionFlagsVersion++;
+        _selection.Clear(); _selectionSpansFilters = false; SelectedItem = null; UpdateQuerySelection();
+        SetCurrentSelectionCount(0);
     }
 
     [RelayCommand(CanExecute = nameof(CanSelectAllResults))]
     private void InvertSelection()
     {
         if (!CanSelectAllResults()) return;
+        if (_selectionSpansFilters) { _ = ChangeCurrentSelectionAsync(FindEverything.Infrastructure.Persistence.SqliteSelectionSnapshot.SetOperation.SymmetricDifference); return; }
         _selectionController?.Cancel();
+        _selectionCountCancellation?.Cancel();
+        _selectionFlagsVersion++;
         _selection.Invert(); UpdateQuerySelection();
+        SetCurrentSelectionCount(SelectedCount);
     }
 
     public async Task SelectRowAsync(object value, bool additive, bool range)
@@ -1805,7 +1843,12 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
                 () => !_disposed && IsResultInteractionEnabled && ReferenceEquals(query, _fileQuery) && version == Volatile.Read(ref _queryVersion))) return;
             if (!range || _selectionAnchor < 0) _selectionAnchor = index;
             SelectedItem = row;
-            UpdateQuerySelection(additive && !range ? [row] : null);
+            _selectionFlagsVersion++;
+            var previousCount = SelectedCount;
+            var currentCount = _currentSelectionCount;
+            UpdateQuerySelection(additive && !range && _selection.Baseline is null ? [row] : null);
+            if (additive && !range && currentCount.HasValue) SetCurrentSelectionCount(currentCount + SelectedCount - previousCount);
+            else _ = RefreshCurrentSelectionCountAsync();
         }
         catch (OperationCanceledException) { }
         catch (Exception exception)
@@ -1818,8 +1861,15 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
     {
         if (!UsesQuerySelection) return;
         if (Items is VirtualResultCollection<FileSearchItemViewModel> list)
-            foreach (var row in changedItems ?? list.LoadedItems) row.IsSelected = _selection.Contains(row.SelectionKey);
-        SelectedCount = checked((int)_selection.Count(TotalCount));
+        {
+            var rows = changedItems ?? list.LoadedItems;
+            if (_selection.Baseline is null)
+                foreach (var row in rows) row.IsSelected = _selection.Contains(row.SelectionKey);
+            else _ = UpdateSelectionFlagsAsync(rows);
+        }
+        SelectedCount = checked((int)_selection.Count(_selection.AllMatching ? TotalCount : long.MaxValue));
+        if (!_selectionSpansFilters) SetCurrentSelectionCount(SelectedCount);
+        OnPropertyChanged(nameof(CurrentResultsSelectionState));
         OnPropertyChanged(nameof(HasSelection));
         CopySelectionCommand.NotifyCanExecuteChanged();
         OpenSelectedCommand.NotifyCanExecuteChanged();
@@ -2088,12 +2138,15 @@ public partial class FileSearchViewModel : ObservableObject, IPageSession
 
     public void Dispose()
     {
+        _selectionCountCancellation?.Cancel();
+        _bulkSelectionCancellation?.Cancel();
         if (_disposed)
         {
             return;
         }
 
         _disposed = true;
+        if (_activityState is not null) _activityState.IsFilesScanning = false;
         DetachWorkspaceTransfer();
         _workspaceContext.Changed -= OnWorkspaceChanged;
         _outputFormatStore.Changed -= OnOutputFormatsChanged;

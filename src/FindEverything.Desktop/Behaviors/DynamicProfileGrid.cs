@@ -182,6 +182,10 @@ public static partial class DynamicProfileGrid
         PrepareFilterHeader(dataGrid, pathColumn);
         dataGrid.Columns.Add(pathColumn);
 
+        // Keep the leading identifying field alongside the selectors while
+        // horizontally exploring the remaining structured columns.
+        dataGrid.FrozenColumnCount = Math.Min(SelectionColumnOffset + 1, dataGrid.Columns.Count);
+
         ApplyLayout(dataGrid);
         ScheduleSizing(dataGrid);
     }
@@ -245,7 +249,11 @@ public static partial class DynamicProfileGrid
         try
         {
             var saved = store.Get(profileId);
-            foreach (var column in dataGrid.Columns.Skip(SelectionColumnOffset)) column.SetValue(IsManualWidthProperty, false);
+            foreach (var column in dataGrid.Columns.Skip(SelectionColumnOffset))
+            {
+                column.SetValue(IsManualWidthProperty, false);
+                column.Visibility = Visibility.Visible;
+            }
             var columns = dataGrid.Columns
                 .Select(column => new
                 {
@@ -264,6 +272,8 @@ public static partial class DynamicProfileGrid
             foreach (var value in columns)
             {
                 var state = value.State!;
+                value.Column.Visibility = state.IsHidden && value.Column != dataGrid.Columns[SelectionColumnOffset]
+                    ? Visibility.Collapsed : Visibility.Visible;
                 value.Column.SetValue(IsManualWidthProperty, state.WidthMode == GridColumnWidthMode.Manual);
                 if (state.WidthMode == GridColumnWidthMode.Manual && double.IsFinite(state.Width) && state.Width >= 24)
                 {
@@ -289,6 +299,7 @@ public static partial class DynamicProfileGrid
         if (sender is DataGrid dataGrid)
         {
             SaveLayout(dataGrid);
+            UpdateFrozenColumns(dataGrid);
         }
     }
 
@@ -302,6 +313,7 @@ public static partial class DynamicProfileGrid
             if (FindAncestor<DataGridColumnHeader>(resizeThumb)?.Column is { CanUserResize: true } column)
                 column.SetValue(IsManualWidthProperty, true);
             SaveLayout(dataGrid);
+            UpdateFrozenColumns(dataGrid);
         }
     }
 
@@ -330,7 +342,8 @@ public static partial class DynamicProfileGrid
                 value.FieldId!,
                 Math.Max(0, value.Column.DisplayIndex - SelectionColumnOffset),
                 value.Column.ActualWidth,
-                (bool)value.Column.GetValue(IsManualWidthProperty) ? GridColumnWidthMode.Manual : GridColumnWidthMode.Auto))
+                (bool)value.Column.GetValue(IsManualWidthProperty) ? GridColumnWidthMode.Manual : GridColumnWidthMode.Auto,
+                value.Column.Visibility != Visibility.Visible))
             .ToArray();
         store.Save(profileId, columns);
     }
@@ -367,20 +380,21 @@ public static partial class DynamicProfileGrid
                 localizer,
                 "Loc.Catalog.Selection.Item",
                 "항목 선택");
-            var invertButton = new Wpf.Ui.Controls.Button
+            var selectAll = new System.Windows.Controls.CheckBox
             {
-                Width = 32, Height = 28, Padding = new Thickness(0),
-                Appearance = Wpf.Ui.Controls.ControlAppearance.Transparent,
-                Icon = new Wpf.Ui.Controls.SymbolIcon(Wpf.Ui.Controls.SymbolRegular.ArrowSwap20),
-                ToolTip = L(localizer, "Loc.Selection.Invert.ToolTip", "현재 검색 결과 전체에서 선택을 반전합니다. 미로딩 항목도 포함됩니다."),
+                IsThreeState = true, Width = 28, Height = 28, Padding = new Thickness(0),
+                ToolTip = L(localizer, "Loc.Ux.Results.SelectCurrent", "현재 검색 결과 전체를 선택하거나 해제합니다. 다른 검색에서 체크한 항목은 유지됩니다."),
             };
-            System.Windows.Automation.AutomationProperties.SetName(invertButton,
-                L(localizer, "Loc.Workspace.Selection.Invert", "선택 반전"));
-            invertButton.SetBinding(Button.CommandProperty, new Binding("DataContext.InvertSelectionCommand")
+            selectAll.SetBinding(System.Windows.Controls.Primitives.ToggleButton.IsCheckedProperty,
+                new Binding("DataContext.CurrentResultsSelectionState") { Mode = BindingMode.OneWay,
+                    RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor, typeof(DataGrid), 1) });
+            System.Windows.Automation.AutomationProperties.SetName(selectAll,
+                L(localizer, "Loc.Selection.All", "전체 선택"));
+            selectAll.SetBinding(System.Windows.Controls.Primitives.ButtonBase.CommandProperty, new Binding("DataContext.ToggleCurrentResultsSelectionCommand")
             {
                 RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor, typeof(DataGrid), 1),
             });
-            Header = invertButton;
+            Header = selectAll;
             // This column stays frozen at the leading edge. The extra width is
             // intentional: WPF's focus chrome and the vertical grid line must
             // not crop the Fluent checkbox at the minimum window width.

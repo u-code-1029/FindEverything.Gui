@@ -273,7 +273,7 @@ public sealed class LocalizationInfrastructureTests
         var service = new LanguageSelectionService(
             new TestAppLocalizer(LocalizationOptions.KoreanCultureName),
             writer,
-            restart);
+            restart, prompt: new LanguagePrompt(LanguageRestartDecision.RestartNow));
 
         Assert.True(await service.ChangeAsync("EN-us"));
 
@@ -314,7 +314,7 @@ public sealed class LocalizationInfrastructureTests
         var restart = new RecordingRestartCoordinator(events);
         var service = new LanguageSelectionService(
             new TestAppLocalizer(LocalizationOptions.KoreanCultureName),
-            writer, restart, new RejectingDraftProtection());
+            writer, restart, new RejectingDraftProtection(), new LanguagePrompt(LanguageRestartDecision.RestartNow));
 
         Assert.False(await service.ChangeAsync(LocalizationOptions.EnglishCultureName));
         Assert.Empty(events);
@@ -327,6 +327,52 @@ public sealed class LocalizationInfrastructureTests
         public void Register(IDraftParticipant participant) { }
         public Task<bool> ConfirmAsync(IDraftParticipant participant) => Task.FromResult(false);
         public Task<bool> ConfirmAllAsync() => Task.FromResult(false);
+    }
+
+    [Fact]
+    public async Task Deferred_language_is_saved_without_interrupting_work_or_discarding_drafts()
+    {
+        var events = new List<string>();
+        var writer = new RecordingSettingsWriter(events);
+        var restart = new RecordingRestartCoordinator(events);
+        var activity = new CatalogActivityState { IsFilesScanning = true };
+        var service = new LanguageSelectionService(new TestAppLocalizer("ko-KR"), writer, restart,
+            new RejectingDraftProtection(), new LanguagePrompt(LanguageRestartDecision.Later), activity: activity);
+        Assert.True(await service.ChangeAsync("en-US"));
+        Assert.Equal(["save"], events);
+        Assert.Equal("ko-KR", service.CurrentCultureName);
+        Assert.Equal("en-US", service.PendingCultureName);
+        Assert.False(restart.IsRestartRequested);
+        Assert.True(await service.ChangeAsync("ko-KR"));
+        Assert.Null(service.PendingCultureName);
+        Assert.False(restart.IsRestartRequested);
+    }
+
+    [Fact]
+    public async Task Restart_choice_is_rejected_if_a_scan_is_running()
+    {
+        var events = new List<string>();
+        var service = new LanguageSelectionService(new TestAppLocalizer("ko-KR"), new RecordingSettingsWriter(events),
+            new RecordingRestartCoordinator(events), prompt: new LanguagePrompt(LanguageRestartDecision.RestartNow),
+            activity: new CatalogActivityState { IsScanning = true });
+        Assert.False(await service.ChangeAsync("en-US"));
+        Assert.Empty(events);
+    }
+
+    [Fact]
+    public async Task Cancelling_restart_consent_does_not_write_preferences()
+    {
+        var events = new List<string>();
+        var service = new LanguageSelectionService(new TestAppLocalizer("ko-KR"), new RecordingSettingsWriter(events),
+            new RecordingRestartCoordinator(events), prompt: new LanguagePrompt(LanguageRestartDecision.Cancel));
+        Assert.False(await service.ChangeAsync("en-US"));
+        Assert.Empty(events);
+    }
+
+    private sealed class LanguagePrompt(LanguageRestartDecision decision) : ILanguageRestartPrompt
+    {
+        public Task<LanguageRestartDecision> ChooseAsync(string cultureName, bool operationRunning, CancellationToken token)
+            => Task.FromResult(decision);
     }
 
     [Fact]

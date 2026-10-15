@@ -284,10 +284,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
     public bool CanGoToNextStep =>
         !IsEditorBusy && CurrentEditorStep < ProfileEditorStep.Review;
 
-    public string EditorStepStatus => F(
-        "Loc.Profiles.Step.Status",
-        "{0}/6 단계",
-        (int)CurrentEditorStep + 1);
+    public string EditorStepStatus => CurrentStepTitle;
 
     public bool CanOpenSavedProfileInPlayground =>
         !IsEditorBusy
@@ -371,6 +368,8 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
         OnPropertyChanged(nameof(CanGoToPreviousStep));
         OnPropertyChanged(nameof(CanGoToNextStep));
         OnPropertyChanged(nameof(EditorStepStatus));
+        OnPropertyChanged(nameof(CurrentStepTitle));
+        OnPropertyChanged(nameof(IsOptionalEditorStep));
         PreviousEditorStepCommand.NotifyCanExecuteChanged();
         NextEditorStepCommand.NotifyCanExecuteChanged();
         EditorStepChanged?.Invoke(this, EventArgs.Empty);
@@ -394,6 +393,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
         LoadDraftCommand.NotifyCanExecuteChanged();
         ValidateDraftCommand.NotifyCanExecuteChanged();
         SaveDraftCommand.NotifyCanExecuteChanged();
+        SaveAndTestCommand.NotifyCanExecuteChanged();
         BuildTemplateFromSampleCommand.NotifyCanExecuteChanged();
         UseExpertModeCommand.NotifyCanExecuteChanged();
         UseGuidedModeCommand.NotifyCanExecuteChanged();
@@ -422,13 +422,15 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
     [RelayCommand(CanExecute = nameof(CanGoToPreviousEditorStep))]
     private void PreviousEditorStep()
     {
-        CurrentEditorStep--;
+        CurrentEditorStep = CurrentEditorStep == ProfileEditorStep.PathAndFields
+            ? ProfileEditorStep.Profile : ProfileEditorStep.PathAndFields;
     }
 
     [RelayCommand(CanExecute = nameof(CanGoToNextEditorStep))]
     private void NextEditorStep()
     {
-        CurrentEditorStep++;
+        CurrentEditorStep = CurrentEditorStep == ProfileEditorStep.Profile
+            ? ProfileEditorStep.PathAndFields : ProfileEditorStep.Review;
     }
 
     private bool CanGoToPreviousEditorStep() => CanGoToPreviousStep;
@@ -461,6 +463,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
             EditorMode = ProfileEditorMode.Guided;
             CanUseGuidedMode = true;
             _activeAssignmentField = null;
+            SelectedGuidedField = null;
             IsAssignmentPickerOpen = false;
             DraftFields.Clear();
             DraftRules.Clear();
@@ -509,6 +512,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
             _isPopulatingDraft = false;
         }
 
+        SelectedGuidedField = DraftFields.FirstOrDefault();
         RefreshTemplatePreview();
         RefreshNumericValidation();
         RefreshAvailableSelectionFields();
@@ -685,6 +689,8 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
     [RelayCommand]
     private void AssignPathChoice(GuidedPathChoiceViewModel? choice)
     {
+        if (_activeAssignmentField is null && SelectedGuidedField is { } selected)
+            BeginAssignment(selected, NextMissingSourcePart(selected) ?? FirstGuidedSourcePart(selected));
         if (choice is null || _activeAssignmentField is null || !HasAnalyzedPath)
         {
             return;
@@ -707,6 +713,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
                 "‘{0}’ 연결을 완료했습니다.",
                 _activeAssignmentField.Header);
             TemplateStatusSeverity = InfoBarSeverity.Success;
+            AssignmentPickerTitle = TemplateStatusMessage;
             _activeAssignmentField = null;
         }
         else
@@ -848,6 +855,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
         if (IsGuidedMode)
         {
             RebuildGuidedTemplate();
+            if (IsPathAndFieldsStep) SelectedGuidedField = DraftFields[^1];
         }
     }
 
@@ -858,6 +866,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
         {
             field.PropertyChanged -= OnDraftRowChanged;
             CloseAssignmentPickerFor(field);
+            if (ReferenceEquals(SelectedGuidedField, field)) SelectedGuidedField = null;
             if (IsGuidedMode)
             {
                 RebuildGuidedTemplate();
@@ -1432,6 +1441,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
             HasAnalyzedPath = false;
             IsAssignmentPickerOpen = false;
             _activeAssignmentField = null;
+            SelectedGuidedField = null;
             _analyzedNormalizedPath = string.Empty;
             foreach (var field in (manifest.Fields ?? [])
                          .OrderBy(static field => field.Order))
@@ -1795,6 +1805,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
             OnPropertyChanged(nameof(NumericValidationMessage));
             OnPropertyChanged(nameof(HasNumericValidationError));
             SaveDraftCommand.NotifyCanExecuteChanged();
+            SaveAndTestCommand.NotifyCanExecuteChanged();
             ValidateDraftCommand.NotifyCanExecuteChanged();
         }
     }
@@ -1982,6 +1993,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
         }
 
         _activeAssignmentField = field;
+        SelectedGuidedField = field;
         _activeAssignmentPart = part;
         IsAssignmentPickerOpen = true;
         AssignmentPickerTitle = F(

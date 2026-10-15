@@ -40,6 +40,11 @@ public sealed record SelectionOutputTemplateValidation(
     public bool IsValid => Errors.Count == 0;
 }
 
+public sealed record SelectionOutputPreview(string Text, bool IsTruncated)
+{
+    public const int MaximumCharacters = 16_384;
+}
+
 public interface ISelectionOutputFormatter
 {
     SelectionOutputTemplateValidation ValidateTemplate(
@@ -63,6 +68,11 @@ public interface ISelectionOutputFormatter
     string Format(
         Configuration.SelectionOutputFormatDefinition format,
         IEnumerable<SelectionOutputItem> items);
+
+    SelectionOutputPreview FormatPreview(
+        Configuration.SelectionOutputFormatDefinition format,
+        IEnumerable<SelectionOutputItem> items,
+        int maximumCharacters = SelectionOutputPreview.MaximumCharacters);
 
     async Task<string> FormatAsync(Configuration.SelectionOutputFormatDefinition format,
         IAsyncEnumerable<SelectionOutputItem> items, CancellationToken cancellationToken = default)
@@ -201,7 +211,22 @@ public sealed class SelectionOutputFormatter(IAppLocalizer? localizer = null) : 
 
     public string Format(
         Configuration.SelectionOutputFormatDefinition format,
-        IEnumerable<SelectionOutputItem> items)
+        IEnumerable<SelectionOutputItem> items) => FormatCore(format, items, null).Text;
+
+    public SelectionOutputPreview FormatPreview(
+        Configuration.SelectionOutputFormatDefinition format,
+        IEnumerable<SelectionOutputItem> items,
+        int maximumCharacters = SelectionOutputPreview.MaximumCharacters)
+    {
+        if (maximumCharacters is < 1 or > SelectionOutputPreview.MaximumCharacters)
+            throw new ArgumentOutOfRangeException(nameof(maximumCharacters));
+        return FormatCore(format, items, maximumCharacters);
+    }
+
+    private SelectionOutputPreview FormatCore(
+        Configuration.SelectionOutputFormatDefinition format,
+        IEnumerable<SelectionOutputItem> items,
+        int? previewLimit)
     {
         ArgumentNullException.ThrowIfNull(format);
         ArgumentNullException.ThrowIfNull(items);
@@ -231,6 +256,21 @@ public sealed class SelectionOutputFormatter(IAppLocalizer? localizer = null) : 
         }
 
         var builder = new StringBuilder();
+        bool Append(string value)
+        {
+            if (previewLimit is not { } limit)
+            {
+                AppendChecked(builder, value);
+                return true;
+            }
+
+            // Stop expanding tokens as soon as the preview fills. In particular,
+            // repeated tokens must not allocate a full clipboard-sized output.
+            var remaining = limit - builder.Length;
+            builder.Append(value, 0, Math.Min(remaining, value.Length));
+            return value.Length <= remaining;
+        }
+        SelectionOutputPreview Truncated() => new(builder.ToString(), true);
         var itemIndex = 0;
         foreach (var item in items)
         {
@@ -238,11 +278,11 @@ public sealed class SelectionOutputFormatter(IAppLocalizer? localizer = null) : 
             ArgumentNullException.ThrowIfNull(item.Fields);
             if (itemIndex == 0)
             {
-                AppendChecked(builder, format.Prefix ?? string.Empty);
+                if (!Append(format.Prefix ?? string.Empty)) return Truncated();
             }
             else
             {
-                AppendChecked(builder, format.ItemSeparator ?? string.Empty);
+                if (!Append(format.ItemSeparator ?? string.Empty)) return Truncated();
             }
 
             foreach (var segment in segments)
@@ -259,15 +299,15 @@ public sealed class SelectionOutputFormatter(IAppLocalizer? localizer = null) : 
                         "Loc.Output.Validation.UnsupportedSegment",
                         "지원되지 않는 출력 템플릿 조각입니다.")),
                 };
-                AppendChecked(builder, value ?? string.Empty);
+                if (!Append(value ?? string.Empty)) return Truncated();
             }
 
             itemIndex++;
         }
 
-        if (itemIndex > 0) AppendChecked(builder, format.Suffix ?? string.Empty);
+        if (itemIndex > 0 && !Append(format.Suffix ?? string.Empty)) return Truncated();
 
-        return builder.ToString();
+        return new SelectionOutputPreview(builder.ToString(), false);
     }
 
     private static bool HasOversizedAffix(Configuration.SelectionOutputFormatDefinition format) =>

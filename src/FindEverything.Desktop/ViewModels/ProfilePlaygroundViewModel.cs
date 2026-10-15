@@ -49,6 +49,8 @@ public partial class ProfilePlaygroundViewModel : ObservableObject, IPageSession
     private readonly IDesktopPickerService _pickerService;
     private readonly IAppLocalizer _localizer;
     private readonly ILogger<ProfilePlaygroundViewModel> _logger;
+    private readonly IProfileEditorNavigator? _editorNavigator;
+    private readonly OutputPreviewSampleStore? _outputSamples;
     private string? _preferredProfileId;
     private long _evaluationGeneration;
     private long _busyOperationVersion;
@@ -62,6 +64,7 @@ public partial class ProfilePlaygroundViewModel : ObservableObject, IPageSession
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(EvaluateCommand))]
+    [NotifyCanExecuteChangedFor(nameof(EditProfileCommand))]
     private ProfilePlaygroundProfileViewModel? _selectedProfile;
 
     [ObservableProperty]
@@ -71,6 +74,7 @@ public partial class ProfilePlaygroundViewModel : ObservableObject, IPageSession
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(EvaluateCommand))]
     [NotifyPropertyChangedFor(nameof(IsReady))]
+    [NotifyCanExecuteChangedFor(nameof(EditProfileCommand))]
     private bool _isBusy;
 
     [ObservableProperty]
@@ -100,13 +104,17 @@ public partial class ProfilePlaygroundViewModel : ObservableObject, IPageSession
         IProfilePlaygroundEvaluator evaluator,
         IDesktopPickerService pickerService,
         IAppLocalizer localizer,
-        ILogger<ProfilePlaygroundViewModel> logger)
+        ILogger<ProfilePlaygroundViewModel> logger,
+        IProfileEditorNavigator? editorNavigator = null,
+        OutputPreviewSampleStore? outputSamples = null)
     {
         _profileCatalog = profileCatalog;
         _evaluator = evaluator;
         _pickerService = pickerService;
         _localizer = localizer;
         _logger = logger;
+        _editorNavigator = editorNavigator;
+        _outputSamples = outputSamples;
         Summary = L(
             "Loc.Playground.Status.Initial",
             "프로필과 실제 절대 경로를 선택해 결과를 확인하세요.");
@@ -115,6 +123,24 @@ public partial class ProfilePlaygroundViewModel : ObservableObject, IPageSession
     }
 
     public bool HasRegexDebugRules => RegexDebugRules.Count > 0;
+
+    private bool CanEditProfile() => IsReady && SelectedProfile is not null && _editorNavigator is not null;
+
+    [RelayCommand(CanExecute = nameof(CanEditProfile))]
+    private async Task EditProfileAsync()
+    {
+        if (SelectedProfile is not { } selected || _editorNavigator is null) return;
+        try
+        {
+            if (await _editorNavigator.NavigateAsync(selected.Id).ConfigureAwait(true)) return;
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "Could not return to profile {ProfileId} for editing.", selected.Id);
+        }
+        Summary = L("Loc.Ux.Authoring.EditUnavailable", "편집을 열지 않았습니다. 현재 초안을 유지했거나 파일로 편집할 수 없는 프로필입니다.");
+        SummarySeverity = InfoBarSeverity.Informational;
+    }
 
     public bool IsReady => !IsBusy;
 
@@ -212,6 +238,9 @@ public partial class ProfilePlaygroundViewModel : ObservableObject, IPageSession
                 evaluation.DirectoryExclusionRegexDebugRules;
             Rows = evaluation.Rows;
             _selectionSampleItem = evaluation.SampleItem;
+            if (evaluation.SampleItem is { } sample)
+                _outputSamples?.Set(selectedProfile.Id,
+                    SelectionOutputItem.FromPath(evaluation.CanonicalPath, fields: sample.DisplayValues));
             Summary = evaluation.Summary;
             SummarySeverity = evaluation.Severity;
         }

@@ -13,6 +13,55 @@ namespace FindEverything.Desktop.Tests;
 public sealed class ProfilesViewModelDirtyStateTests
 {
     [Fact]
+    public void Core_authoring_path_skips_optional_steps_but_keeps_them_directly_accessible()
+    {
+        using var vm = CreateFreshDraft(DraftLeaveDecision.Cancel);
+        Assert.Equal(ProfileEditorStep.Profile, vm.CurrentEditorStep);
+        vm.NextEditorStepCommand.Execute(null);
+        Assert.Equal(ProfileEditorStep.PathAndFields, vm.CurrentEditorStep);
+        vm.NextEditorStepCommand.Execute(null);
+        Assert.Equal(ProfileEditorStep.Review, vm.CurrentEditorStep);
+        vm.PreviousEditorStepCommand.Execute(null);
+        Assert.Equal(ProfileEditorStep.PathAndFields, vm.CurrentEditorStep);
+        foreach (var optional in new[] { ProfileEditorStep.DataSources, ProfileEditorStep.SelectionRules, ProfileEditorStep.ScanOptions })
+        {
+            vm.GoToEditorStepCommand.Execute(optional);
+            Assert.Equal(optional, vm.CurrentEditorStep);
+            Assert.True(vm.IsOptionalEditorStep);
+            vm.NextEditorStepCommand.Execute(null);
+            Assert.Equal(ProfileEditorStep.Review, vm.CurrentEditorStep);
+            Assert.False(vm.IsOptionalEditorStep);
+        }
+    }
+
+    [Fact]
+    public async Task Invalid_guided_save_and_test_keeps_the_draft_and_does_not_test_an_old_profile()
+    {
+        using var vm = CreateFreshDraft(DraftLeaveDecision.Cancel);
+        vm.DraftPathTemplate = "{missing@missing}";
+        await vm.SaveAndTestCommand.ExecuteAsync(null);
+        Assert.True(vm.IsDraftDirty);
+        Assert.False(vm.CanOpenSavedProfileInPlayground);
+        Assert.Equal(Wpf.Ui.Controls.InfoBarSeverity.Error, vm.EditorStatusSeverity);
+    }
+
+    [Fact]
+    public void Selected_column_can_be_reassigned_by_clicking_path_pieces_without_reopening_a_picker()
+    {
+        using var vm = CreateFreshDraft(DraftLeaveDecision.Cancel);
+        vm.GoToEditorStepCommand.Execute(ProfileEditorStep.PathAndFields);
+        var field = Assert.Single(vm.DraftFields);
+        Assert.Same(field, vm.SelectedGuidedField);
+        vm.ClearFieldAssignmentsCommand.Execute(field);
+        vm.AssignPathChoiceCommand.Execute(vm.GuidedPathSegments[^1].WholeChoice);
+        Assert.Equal("Example", field.GuidedSampleInput);
+        Assert.False(vm.IsAssignmentPickerOpen);
+        vm.AssignPathChoiceCommand.Execute(vm.GuidedPathSegments[0].WholeChoice);
+        Assert.Equal(vm.GuidedPathSegments[0].Value, field.GuidedSampleInput);
+        Assert.Single(field.GuidedAssignments);
+    }
+
+    [Fact]
     public async Task Invalid_guided_definition_save_shows_validation_without_escaping_the_command()
     {
         var vm = CreateFreshDraft(DraftLeaveDecision.Cancel);
@@ -95,6 +144,7 @@ public sealed class ProfilesViewModelDirtyStateTests
         Assert.True(vm.HasNumericValidationError);
         Assert.False(vm.ValidateDraftCommand.CanExecute(null));
         Assert.False(vm.SaveDraftCommand.CanExecute(null));
+        Assert.False(vm.SaveAndTestCommand.CanExecute(null));
         Assert.False(await vm.SaveChangesAsync());
         Assert.Equal("bad-input", vm.DraftRules[0].TimeoutMillisecondsText);
         Assert.True(vm.HasUnsavedChanges);
@@ -183,6 +233,14 @@ public sealed class ProfilesViewModelDirtyStateTests
         Assert.True(viewModel.CanOpenSavedProfileInPlayground);
         Assert.True(viewModel.OpenSavedProfileInPlaygroundCommand.CanExecute(null));
         Assert.Equal(pathTemplate, viewModel.DraftPathTemplate);
+
+        viewModel.DraftDisplayName = "Unfinished edit";
+        Assert.True(await viewModel.OpenForEditingAsync("saved-profile"));
+        Assert.Equal(ProfileEditorStep.PathAndFields, viewModel.CurrentEditorStep);
+        Assert.Equal("Unfinished edit", viewModel.DraftDisplayName);
+        Assert.True(viewModel.IsDraftDirty);
+        viewModel.DraftDisplayName = "Saved profile";
+        await viewModel.LoadDraftCommand.ExecuteAsync(null);
 
         catalog.Publish(ProfileCatalogSnapshot.Empty);
         Assert.False(viewModel.CanOpenSavedProfileInPlayground);

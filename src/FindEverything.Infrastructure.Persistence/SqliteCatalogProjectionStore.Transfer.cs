@@ -172,10 +172,26 @@ public sealed class ImportedCatalogProjectionStore : IImportedCatalogProjectionS
     private static InvalidOperationException ReadOnly() => new("Imported workspace data is read-only. Start an explicit local scan to create a new result.");
 
     private sealed class ImportedQuery(IResultQuerySession<CatalogProjectionRow> inner, ImportedWorkspaceSource source)
-        : IResultQuerySession<CatalogProjectionRow>, ICatalogSelectionMatchQuery
+        : IResultQuerySession<CatalogProjectionRow>, ICatalogSelectionMatchQuery, IResultSelectionKeyReader
     {
         public string Identity => source.Id + ":" + source.LinkRevision + ":" + inner.Identity;
         public Task<long> CountAsync(CancellationToken cancellationToken = default) => inner.CountAsync(cancellationToken);
+        public async Task<long> CountSelectionAsync(QuerySelection selection, CancellationToken cancellationToken = default)
+        {
+            using var mapped = selection.MapKeys(key => WorkspacePathMapping.ToEffective(source, key));
+            return await inner.CountSelectionAsync(mapped, cancellationToken).ConfigureAwait(false);
+        }
+        public async IAsyncEnumerable<ResultSelectionKey> EnumerateSelectionKeysAsync(QuerySelection selection,
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            using var mapped = selection.MapKeys(key => WorkspacePathMapping.ToEffective(source, key));
+            if (inner is IResultSelectionKeyReader reader)
+                await foreach (var key in reader.EnumerateSelectionKeysAsync(mapped, cancellationToken).ConfigureAwait(false))
+                    yield return new(WorkspacePathMapping.ToOriginal(source, key.QueryKey), key.QueryKey);
+            else
+                await foreach (var row in inner.EnumerateSelectionAsync(mapped, cancellationToken).ConfigureAwait(false))
+                    yield return new(WorkspacePathMapping.ToOriginal(source, row.FullPath), row.FullPath);
+        }
         public async Task<ResultPage<CatalogProjectionRow>> ReadRangeAsync(int offset, int limit, CancellationToken cancellationToken = default)
         {
             var page = await inner.ReadRangeAsync(offset, limit, cancellationToken).ConfigureAwait(false);

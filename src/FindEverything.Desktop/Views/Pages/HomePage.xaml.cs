@@ -4,7 +4,7 @@ namespace FindEverything.Desktop.Views.Pages;
 
 public partial class HomePage
 {
-    private const double TwoColumnBreakpoint = 760;
+    private const double TwoColumnBreakpoint = 600;
     private const double CardGap = 12;
 
     public HomePage(HomeViewModel viewModel)
@@ -24,10 +24,5 @@ public partial class HomePage
 
         FilesActionCard.Width = cardWidth;
         CatalogActionCard.Width = cardWidth;
-        WorkspaceOverviewCard.Width = cardWidth;
-        SetupOverviewCard.Width = cardWidth;
-        HeroVisual.Visibility = availableWidth < 680
-            ? System.Windows.Visibility.Collapsed
-            : System.Windows.Visibility.Visible;
     }
 }

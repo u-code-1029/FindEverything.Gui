@@ -8,7 +8,7 @@ public enum GridColumnWidthMode { Auto, Manual }
 
 // Missing WidthMode in old files becomes Auto: old measured widths aren't user resize intent.
 public sealed record GridColumnLayout(string FieldId, int DisplayIndex, double Width,
-    GridColumnWidthMode WidthMode = GridColumnWidthMode.Auto);
+    GridColumnWidthMode WidthMode = GridColumnWidthMode.Auto, bool IsHidden = false);
 
 public interface IGridLayoutStore
 {

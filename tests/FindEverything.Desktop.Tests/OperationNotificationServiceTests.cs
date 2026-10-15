@@ -29,12 +29,12 @@ public sealed class OperationNotificationServiceTests
         using var service = Create(time);
         service.Show("First", "First message", ControlAppearance.Secondary, null, TimeSpan.Zero);
         time.Advance(TimeSpan.FromSeconds(2));
-        service.Show("Second", "Second message", ControlAppearance.Danger, null, TimeSpan.Zero);
+        service.Show("Second", "Second message", ControlAppearance.Caution, null, TimeSpan.Zero);
         time.Advance(TimeSpan.FromSeconds(1));
         Assert.True(service.IsOpen);
         Assert.Equal("Second", service.Title);
         Assert.Equal("Second message", service.Message);
-        Assert.Equal(InfoBarSeverity.Error, service.Severity);
+        Assert.Equal(InfoBarSeverity.Warning, service.Severity);
 
         time.Advance(TimeSpan.FromSeconds(2));
         await WaitUntilClosedAsync(service);
@@ -52,6 +52,61 @@ public sealed class OperationNotificationServiceTests
         Assert.Equal(0, time.ActiveTimerCount);
         time.Advance(TimeSpan.FromSeconds(30));
         Assert.False(service.IsOpen);
+    }
+
+    [Fact]
+    public void Errors_remain_until_dismissed_and_are_retained_for_review()
+    {
+        var time = new ManualTimeProvider();
+        using var service = Create(time);
+        service.Show("Failed", "Detailed reason", ControlAppearance.Danger, null, TimeSpan.Zero);
+        time.Advance(TimeSpan.FromHours(1));
+        Assert.True(service.IsOpen);
+        Assert.Equal(0, time.ActiveTimerCount);
+        Assert.Equal(SymbolRegular.ErrorCircle20, service.SeveritySymbol);
+        service.DismissCommand.Execute(null);
+        Assert.False(service.IsOpen);
+        Assert.Equal("Detailed reason", Assert.Single(service.RecentNotifications).Message);
+    }
+
+    [Fact]
+    public async Task Interaction_pauses_dismissal_and_leaving_gives_a_full_reading_interval()
+    {
+        var time = new ManualTimeProvider();
+        using var service = Create(time);
+        service.Show("Saved", "Complete", ControlAppearance.Success, null, TimeSpan.Zero);
+        time.Advance(TimeSpan.FromSeconds(2));
+        service.SetInteractionPaused(true);
+        time.Advance(TimeSpan.FromSeconds(30));
+        Assert.True(service.IsOpen);
+        service.SetInteractionPaused(false);
+        time.Advance(TimeSpan.FromSeconds(2));
+        Assert.True(service.IsOpen);
+        time.Advance(TimeSpan.FromSeconds(1));
+        await WaitUntilClosedAsync(service);
+    }
+
+    [Fact]
+    public void Recent_history_is_bounded_and_copy_does_not_replace_the_notice()
+    {
+        var clipboard = new RecordingClipboard();
+        using var service = new OperationNotificationService(new MutableSettings(), ImmediateUiScheduler.Instance,
+            new ManualTimeProvider(), clipboard: clipboard);
+        for (var index = 0; index < 40; index++) service.Show(index.ToString(), "Details", ControlAppearance.Secondary, null, TimeSpan.Zero);
+        Assert.Equal(30, service.RecentNotifications.Count);
+        Assert.Equal("39", service.RecentNotifications[0].Title);
+        service.SelectedNotification = service.RecentNotifications[2];
+        service.CopyNotificationDetailsCommand.Execute(null);
+        Assert.Contains("37", clipboard.Text);
+        Assert.Contains("Details", clipboard.Text);
+        Assert.Equal("39", service.Title);
+    }
+
+    private sealed class RecordingClipboard : IClipboardService
+    {
+        public string Text { get; private set; } = "";
+        public bool TrySetText(string text, out string? errorMessage)
+        { Text = text; errorMessage = null; return true; }
     }
 
     [Fact]

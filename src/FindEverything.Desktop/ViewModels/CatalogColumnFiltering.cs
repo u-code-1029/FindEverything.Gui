@@ -28,7 +28,6 @@ public partial class CatalogViewModel
         if (next.SequenceEqual(_queryDefinition.Filters)) return;
         _queryDefinition = _queryDefinition with { Filters = next };
         RebuildActiveColumnFilters();
-        ClearSelectionCommand.Execute(null);
         // Continuous popup input shares the keyword debounce. Explicit API
         // calls remain immediate, as do sorting and removing a condition.
         if (debounce) ScheduleTextFilter();
@@ -42,7 +41,6 @@ public partial class CatalogViewModel
         if (next.Length == _queryDefinition.Filters.Count) return;
         _queryDefinition = _queryDefinition with { Filters = next };
         RebuildActiveColumnFilters();
-        ClearSelectionCommand.Execute(null);
         ApplyFilter();
     }
 
@@ -53,7 +51,6 @@ public partial class CatalogViewModel
         if (_queryDefinition.Filters.Count == 0) return;
         _queryDefinition = _queryDefinition with { Filters = [] };
         RebuildActiveColumnFilters();
-        ClearSelectionCommand.Execute(null);
         ApplyFilter();
     }
 
@@ -122,7 +119,7 @@ public partial class CatalogViewModel
             {
                 var fieldId = filter.Target.FieldId!;
                 raw = item.UserInputValues.TryGetValue(fieldId, out var input) ? input.Value : item.Values.GetValueOrDefault(fieldId);
-                display = item.DisplayValues.GetValueOrDefault(fieldId);
+                display = item.CanonicalDisplayValues.GetValueOrDefault(fieldId);
             }
             if (!CatalogColumnFilters.Matches(filter, raw, display)) return false;
         }
@@ -139,7 +136,7 @@ public partial class CatalogViewModel
                 CatalogColumnTargetKind.FullPath => row.FullPath,
                 CatalogColumnTargetKind.Coverage => row.CoveragePending,
                 _ => fields.FirstOrDefault(field => string.Equals(field.FieldId, target.FieldId, StringComparison.OrdinalIgnoreCase))?.Kind == ProfileFieldValueKind.String
-                    ? row.DisplayValues.GetValueOrDefault(target.FieldId!) : row.Values.GetValueOrDefault(target.FieldId!)
+                    ? row.CanonicalDisplayValues.GetValueOrDefault(target.FieldId!) : row.Values.GetValueOrDefault(target.FieldId!)
             };
             var a = Value(left); var b = Value(right);
             if (a is null || b is null) return a is null ? b is null ? 0 : 1 : -1;

@@ -29,11 +29,46 @@ internal static class UiRenderingLifetimeChecks
         VerifyEditorEntryTemplateKeepsMetadataContext();
         VerifyEntryPresenterChangesTemplateAtomically();
         VerifyOnlyTheActiveProfileStepIsConstructed();
+        VerifyPersistentOutputPreviewSurvivesWorkspaceResize();
         VerifyProfileCardsRecycleWithoutLosingDraftEdits();
         VerifyReadOnlyColumnsUseTheNarrowestBinding();
         VerifySizingCommitsAfterTheWholeSample();
         VerifyIdleTextCellsDoNotCreateNativeTextViews();
         VerifyPlainHighlightingKeepsTheSimpleTextPath();
+    }
+
+    private static void VerifyPersistentOutputPreviewSurvivesWorkspaceResize()
+    {
+        var editor = new Wpf.Ui.Controls.TextBox();
+        editor.SetBinding(TextBox.TextProperty, new Binding("Template") { Mode = BindingMode.OneWay });
+        var preview = new Wpf.Ui.Controls.TextBox { IsReadOnly = true };
+        preview.SetBinding(TextBox.TextProperty, new Binding("Preview") { Mode = BindingMode.OneWay });
+        var previewCard = new SectionCard { Header = preview };
+        var workspace = new SplitWorkspace
+        {
+            KeepSecondaryVisible = true,
+            PrimaryContent = editor,
+            SecondaryContent = previewCard,
+            DataContext = new { Template = "{Name}", Preview = "Apollo" },
+        };
+        foreach (var width in new[] { 1100d, 680d, 1100d, 680d })
+        {
+            workspace.Measure(new Size(width, 480));
+            workspace.Arrange(new Rect(0, 0, width, 480));
+            workspace.UpdateLayout(); Pump(); workspace.UpdateLayout();
+            Assert.Same(editor, workspace.PrimaryContent);
+            Assert.Same(previewCard, workspace.SecondaryContent);
+            Assert.Same(preview, previewCard.Header);
+            Assert.Equal("{Name}", editor.Text);
+            Assert.Equal("Apollo", preview.Text);
+            Assert.Equal(BindingStatus.Active, preview.GetBindingExpression(TextBox.TextProperty)!.Status);
+            Assert.Empty(Descendants<TabControl>(workspace));
+            Assert.Equal(2, workspace.Children.Count);
+            Assert.True(editor.ActualHeight > 0 && previewCard.ActualHeight > 0);
+            Assert.Same(previewCard, LogicalTreeHelper.GetParent(preview));
+            Assert.Equal(width < 900 ? 2 : 0, Grid.GetRow(previewCard));
+            Assert.Equal(width < 900 ? 0 : 2, Grid.GetColumn(previewCard));
+        }
     }
 
     private static void VerifyIdleTextCellsDoNotCreateNativeTextViews()
@@ -331,6 +366,10 @@ internal static class UiRenderingLifetimeChecks
             vm.CurrentEditorStep = ProfileEditorStep.PathAndFields;
             Pump(); window.UpdateLayout(); Pump();
             Assert.False(profilePicker.IsLoaded);
+            var generatedRule = Assert.IsAssignableFrom<Expander>(page.FindEditorElement<FrameworkElement>("GeneratedPathRuleExpander"));
+            Assert.False(generatedRule.IsExpanded);
+            generatedRule.IsExpanded = true;
+            Pump(); window.UpdateLayout(); Pump();
             var path = Assert.IsType<Wpf.Ui.Controls.TextBox>(page.FindEditorElement<Wpf.Ui.Controls.TextBox>("ProfilePathTemplateTextBox"));
             Assert.True(path.IsReadOnly);
             Assert.Null(page.FindEditorElement<FrameworkElement>("UserInputFieldsEditor"));

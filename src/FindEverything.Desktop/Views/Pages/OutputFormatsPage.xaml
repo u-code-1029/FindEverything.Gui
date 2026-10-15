@@ -3,14 +3,9 @@
     xmlns:controls="clr-namespace:FindEverything.Desktop.Views.Controls" xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
     Title="{DynamicResource Loc.Shell.Nav.OutputFormats}" Background="Transparent" Foreground="{DynamicResource TextFillColorPrimaryBrush}" ScrollViewer.CanContentScroll="False">
     <Page.Resources>
-        <Style x:Key="OutputEditorCardStyle" TargetType="ui:CardControl" BasedOn="{StaticResource FluentCardStyle}">
-            <Setter Property="Margin" Value="0,0,0,12" />
-        </Style>
         <Style x:Key="OutputTokenButtonStyle" TargetType="ui:Button" BasedOn="{StaticResource {x:Type ui:Button}}">
-            <Setter Property="Margin" Value="0,0,8,8" />
-            <Setter Property="Padding" Value="10,6" />
-            <Setter Property="Appearance" Value="Transparent" />
-            <Setter Property="Background" Value="{DynamicResource ControlFillColorSecondaryBrush}" />
+            <Setter Property="Margin" Value="0,0,8,8" /><Setter Property="Padding" Value="8,4" />
+            <Setter Property="Appearance" Value="Transparent" /><Setter Property="Background" Value="{DynamicResource ControlFillColorSecondaryBrush}" />
         </Style>
     </Page.Resources>
     <controls:WorkspacePageFrame>
@@ -18,73 +13,75 @@
         <controls:PageHeader Title="{DynamicResource Loc.Shell.Nav.OutputFormats}" Description="{DynamicResource Loc.Workspace.Output.Description}">
             <ui:Button Command="{Binding NewFormatCommand}" Content="{DynamicResource Loc.Workspace.Output.New}" Icon="{ui:SymbolIcon Symbol=AddSquare20}" ToolTip="{DynamicResource Loc.Workspace.Output.New.Help}" ToolTipService.ShowOnDisabled="True" />
         </controls:PageHeader>
-        <controls:CommandStrip Grid.Row="1" Padding="12" Margin="0,0,0,12">
-            <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                <ui:TextBlock x:Name="OutputFormatLabel" Margin="0,0,12,0" VerticalAlignment="Center" FontWeight="SemiBold" Text="{DynamicResource Loc.Workspace.Output.Choose}" />
-                <ComboBox x:Name="OutputFormatComboBox" Grid.Column="1" HorizontalAlignment="Stretch" IsEnabled="{Binding IsEditorReady}" ItemsSource="{Binding Formats}" SelectedItem="{Binding SelectedFormat}" DisplayMemberPath="DisplayName" AutomationProperties.Name="{DynamicResource Loc.Workspace.Output.Choose}" ToolTip="{DynamicResource Loc.Workspace.Output.Choose.Help}" />
-                <ui:Button Grid.Column="2" Margin="8,0,0,0" Command="{Binding DeleteCommand}" Content="{DynamicResource Loc.Workspace.Output.Delete}" Icon="{ui:SymbolIcon Symbol=Delete12}" ToolTip="{DynamicResource Loc.Workspace.Output.Delete.Help}" ToolTipService.ShowOnDisabled="True" />
-            </Grid>
-        </controls:CommandStrip>
-        <controls:SplitWorkspace x:Name="OutputWorkspace" Grid.Row="2" PrimaryRatio="0.6" PrimaryTitle="{DynamicResource Loc.Workspace.Output.Edit}" SecondaryTitle="{DynamicResource Loc.Workspace.Output.Preview}">
+        <Grid Grid.Row="1" Margin="0,0,0,12">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+            <Label x:Name="OutputFormatLabel" Padding="0" Margin="0,0,12,0" VerticalAlignment="Center" Content="{DynamicResource Loc.Workspace.Output.Choose}" Target="{Binding ElementName=OutputFormatComboBox}" />
+            <ComboBox x:Name="OutputFormatComboBox" Grid.Column="1" HorizontalAlignment="Stretch" IsEnabled="{Binding IsEditorReady}" ItemsSource="{Binding Formats}" SelectedItem="{Binding SelectedFormat}" DisplayMemberPath="DisplayName" AutomationProperties.Name="{DynamicResource Loc.Workspace.Output.Choose}" ToolTip="{DynamicResource Loc.Workspace.Output.Choose.Help}" />
+            <ui:Button Grid.Column="2" Margin="8,0,0,0" Appearance="Transparent" Command="{Binding DeleteCommand}" Content="{DynamicResource Loc.Workspace.Output.Delete}" Icon="{ui:SymbolIcon Symbol=Delete12}" Visibility="{Binding IsDeleteAvailable, Converter={StaticResource BooleanToVisibilityConverter}}" />
+        </Grid>
+        <controls:SplitWorkspace x:Name="OutputWorkspace" Grid.Row="2" PrimaryRatio="0.58" KeepSecondaryVisible="True" PrimaryTitle="{DynamicResource Loc.Workspace.Output.Edit}" SecondaryTitle="{DynamicResource Loc.Workspace.Output.Preview}">
             <controls:SplitWorkspace.PrimaryContent>
                 <ui:DynamicScrollViewer x:Name="OutputFormatsScrollViewer" IsEnabled="{Binding IsEditorReady}" Style="{StaticResource FluentGutteredScrollViewerStyle}">
-                    <StackPanel IsEnabled="{Binding CanEdit}">
-                        <controls:SettingRowCard Margin="0,0,0,12" Title="{DynamicResource Loc.Workspace.Output.Name}">
-                            <ui:TextBox Text="{Binding DraftDisplayName, UpdateSourceTrigger=PropertyChanged}" HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource Loc.Workspace.Output.Name}" />
-                        </controls:SettingRowCard>
-                        <controls:SectionCard Style="{StaticResource OutputEditorCardStyle}">
-                            <controls:SectionCard.Header>
-                            <StackPanel>
-                                <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.Output.Profile.CardTitle}" />
-                                <ui:TextBlock x:Name="OutputProfileLabel" Margin="0,12,0,4" FontWeight="SemiBold" Text="{DynamicResource Loc.Workspace.Output.Profile}" />
-                                <ComboBox x:Name="OutputProfileComboBox" Margin="0,0,0,8" HorizontalAlignment="Stretch" DisplayMemberPath="DisplayName" ItemsSource="{Binding ProfileChoices}" SelectedItem="{Binding SelectedProfileChoice}" AutomationProperties.Name="{DynamicResource Loc.Workspace.Output.Profile}" ToolTip="{DynamicResource Loc.Output.Profile.Choose.Help}" />
-                                <ui:TextBlock Style="{StaticResource CaptionTextStyle}" Text="{Binding ProfileColumnGuidance}" TextWrapping="Wrap" />
-                                <ItemsControl Margin="0,12,0,0" ItemsSource="{Binding ProfileTokenChoices}">
+                    <StackPanel>
+                        <controls:SectionCard Padding="16" Visibility="{Binding IsBuiltInPreview, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <controls:SectionCard.Header><StackPanel>
+                                <ui:TextBlock Text="{Binding DraftDisplayName}" Style="{StaticResource SectionTitleTextStyle}" TextWrapping="Wrap" />
+                                <ui:TextBlock Margin="0,8,0,16" Text="{DynamicResource Loc.Ux.Output.BuiltIn}" Style="{StaticResource CaptionTextStyle}" TextWrapping="Wrap" />
+                                <ui:TextBlock Text="{DynamicResource Loc.Workspace.Output.Template}" FontWeight="SemiBold" Margin="0,0,0,8" />
+                                <ui:TextBox Text="{Binding DraftTemplate, Mode=OneWay}" IsReadOnly="True" MinHeight="96" TextWrapping="Wrap" AcceptsReturn="True" FontFamily="Consolas" AutomationProperties.Name="{DynamicResource Loc.Workspace.Output.Template}" />
+                            </StackPanel></controls:SectionCard.Header>
+                        </controls:SectionCard>
+                        <controls:SectionCard Padding="16" Visibility="{Binding CanEdit, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <controls:SectionCard.Header><StackPanel>
+                                <Grid Margin="0,0,0,12">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="12" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <Label Padding="0" Margin="0,0,0,4" Content="{DynamicResource Loc.Workspace.Output.Name}" Target="{Binding ElementName=OutputNameTextBox}" />
+                                        <ui:TextBox x:Name="OutputNameTextBox" Text="{Binding DraftDisplayName, UpdateSourceTrigger=PropertyChanged}" HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource Loc.Workspace.Output.Name}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2">
+                                        <Label x:Name="OutputProfileLabel" Padding="0" Margin="0,0,0,4" Content="{DynamicResource Loc.Workspace.Output.Profile}" Target="{Binding ElementName=OutputProfileComboBox}" />
+                                        <ComboBox x:Name="OutputProfileComboBox" HorizontalAlignment="Stretch" DisplayMemberPath="DisplayName" ItemsSource="{Binding ProfileChoices}" SelectedItem="{Binding SelectedProfileChoice}" AutomationProperties.Name="{DynamicResource Loc.Workspace.Output.Profile}" ToolTip="{DynamicResource Loc.Output.Profile.Choose.Help}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Label Padding="0" Margin="0,0,0,8" FontWeight="SemiBold" Content="{DynamicResource Loc.Workspace.Output.Template}" Target="{Binding ElementName=TemplateTextBox}" />
+                                <ItemsControl ItemsSource="{Binding CommonTokenChoices}">
                                     <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
                                     <ItemsControl.ItemTemplate><DataTemplate><ui:Button Style="{StaticResource OutputTokenButtonStyle}" Click="OnInsertTokenClick" Content="{Binding DisplayName}" ToolTip="{Binding Description}" /></DataTemplate></ItemsControl.ItemTemplate>
                                 </ItemsControl>
-                            </StackPanel>
-                            </controls:SectionCard.Header>
-                        </controls:SectionCard>
-                        <controls:SectionCard Style="{StaticResource OutputEditorCardStyle}">
-                            <controls:SectionCard.Header>
-                            <StackPanel>
-                                <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.Workspace.Output.Template}" />
-                                <ui:TextBlock Margin="0,4,0,8" Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.Output.Template.Click.Help}" TextWrapping="Wrap" />
-                                <ItemsControl ItemsSource="{Binding CommonTokenChoices}">
-                                <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
-                                <ItemsControl.ItemTemplate><DataTemplate><ui:Button Style="{StaticResource OutputTokenButtonStyle}" Click="OnInsertTokenClick" Content="{Binding DisplayName}" ToolTip="{Binding Description}" /></DataTemplate></ItemsControl.ItemTemplate>
+                                <ItemsControl ItemsSource="{Binding ProfileTokenChoices}" ToolTip="{Binding ProfileColumnGuidance}">
+                                    <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate><DataTemplate><ui:Button Style="{StaticResource OutputTokenButtonStyle}" Click="OnInsertTokenClick" Content="{Binding DisplayName}" ToolTip="{Binding Description}" /></DataTemplate></ItemsControl.ItemTemplate>
                                 </ItemsControl>
-                                <ui:TextBox x:Name="TemplateTextBox" MinHeight="200" Padding="12" HorizontalAlignment="Stretch" AcceptsReturn="True" FontFamily="Consolas" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Text="{Binding DraftTemplate, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{DynamicResource Loc.Workspace.Output.Template}" ToolTip="{DynamicResource Loc.Workspace.Output.Template.Help}" />
-                            </StackPanel>
-                            </controls:SectionCard.Header>
-                        </controls:SectionCard>
-                        <controls:SettingRowCard Margin="0,0,0,12" Title="{DynamicResource Loc.Workspace.Output.Separator}" Description="{DynamicResource Loc.Workspace.Output.Separator.Help}">
-                            <ui:TextBox Text="{Binding DraftItemSeparator, UpdateSourceTrigger=PropertyChanged}" HorizontalAlignment="Stretch" FontFamily="Consolas" AutomationProperties.Name="{DynamicResource Loc.Workspace.Output.Separator}" />
-                        </controls:SettingRowCard>
-                        <controls:SectionCard Style="{StaticResource FluentCardStyle}">
-                            <controls:SectionCard.Header>
-                            <StackPanel>
-                                <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.Output.Affixes.Title}" />
-                                <ui:TextBlock Margin="0,4,0,12" Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.Output.Affixes.Help}" TextWrapping="Wrap" />
-                                <ui:TextBlock Margin="0,0,0,4" FontWeight="SemiBold" Text="{DynamicResource Loc.Output.Prefix}" />
-                                <ui:TextBox x:Name="OutputPrefixTextBox" Text="{Binding DraftPrefix, UpdateSourceTrigger=PropertyChanged}" HorizontalAlignment="Stretch" FontFamily="Consolas" AutomationProperties.Name="{DynamicResource Loc.Output.Prefix}" ToolTip="{DynamicResource Loc.Output.Prefix.Help}" />
-                                <ui:TextBlock Margin="0,12,0,4" FontWeight="SemiBold" Text="{DynamicResource Loc.Output.Suffix}" />
-                                <ui:TextBox x:Name="OutputSuffixTextBox" Text="{Binding DraftSuffix, UpdateSourceTrigger=PropertyChanged}" HorizontalAlignment="Stretch" FontFamily="Consolas" AutomationProperties.Name="{DynamicResource Loc.Output.Suffix}" ToolTip="{DynamicResource Loc.Output.Suffix.Help}" />
-                            </StackPanel>
-                            </controls:SectionCard.Header>
+                                <ui:TextBox x:Name="TemplateTextBox" MinHeight="112" Padding="12" HorizontalAlignment="Stretch" AcceptsReturn="True" FontFamily="Consolas" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Text="{Binding DraftTemplate, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{DynamicResource Loc.Workspace.Output.Template}" ToolTip="{DynamicResource Loc.Workspace.Output.Template.Help}" />
+                                <ui:TextBlock Margin="0,4,0,0" Style="{StaticResource CaptionTextStyle}" Text="{Binding PreviewValidationMessage}" Foreground="{DynamicResource SystemFillColorCriticalBrush}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
+                                <ui:CardExpander x:Name="OutputAffixesExpander" Margin="0,12,0,0" Header="{DynamicResource Loc.Ux.Output.JoinOptions}">
+                                    <StackPanel Margin="0,8,0,0">
+                                        <ui:TextBlock Text="{DynamicResource Loc.Output.Affixes.Help}" Style="{StaticResource CaptionTextStyle}" TextWrapping="Wrap" Margin="0,0,0,12" />
+                                        <Label Padding="0" Margin="0,0,0,4" Content="{DynamicResource Loc.Workspace.Output.Separator}" Target="{Binding ElementName=OutputSeparatorTextBox}" />
+                                        <ui:TextBox x:Name="OutputSeparatorTextBox" Text="{Binding DraftItemSeparator, UpdateSourceTrigger=PropertyChanged}" FontFamily="Consolas" AutomationProperties.Name="{DynamicResource Loc.Workspace.Output.Separator}" ToolTip="{DynamicResource Loc.Workspace.Output.Separator.Help}" />
+                                        <Label Padding="0" Margin="0,12,0,4" Content="{DynamicResource Loc.Output.Prefix}" Target="{Binding ElementName=OutputPrefixTextBox}" />
+                                        <ui:TextBox x:Name="OutputPrefixTextBox" Text="{Binding DraftPrefix, UpdateSourceTrigger=PropertyChanged}" FontFamily="Consolas" AutomationProperties.Name="{DynamicResource Loc.Output.Prefix}" ToolTip="{DynamicResource Loc.Output.Prefix.Help}" />
+                                        <Label Padding="0" Margin="0,12,0,4" Content="{DynamicResource Loc.Output.Suffix}" Target="{Binding ElementName=OutputSuffixTextBox}" />
+                                        <ui:TextBox x:Name="OutputSuffixTextBox" Text="{Binding DraftSuffix, UpdateSourceTrigger=PropertyChanged}" FontFamily="Consolas" AutomationProperties.Name="{DynamicResource Loc.Output.Suffix}" ToolTip="{DynamicResource Loc.Output.Suffix.Help}" />
+                                    </StackPanel>
+                                </ui:CardExpander>
+                            </StackPanel></controls:SectionCard.Header>
                         </controls:SectionCard>
                     </StackPanel>
                 </ui:DynamicScrollViewer>
             </controls:SplitWorkspace.PrimaryContent>
             <controls:SplitWorkspace.SecondaryContent>
-                <controls:SectionCard x:Name="OutputPreviewCard" Style="{StaticResource WorkspaceResultCardStyle}" Padding="16" VerticalContentAlignment="Stretch">
+                <controls:SectionCard x:Name="OutputPreviewCard" Style="{StaticResource WorkspaceResultCardStyle}" Padding="12" VerticalContentAlignment="Stretch">
                     <controls:SectionCard.Header>
-                    <Grid x:Name="OutputPreviewContent"><Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
-                        <ui:TextBlock x:Name="OutputPreviewTitle" Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.Workspace.Output.Preview}" />
-                        <ui:TextBlock Grid.Row="1" Margin="0,4,0,12" Text="{Binding PreviewValidationMessage}" Style="{StaticResource CaptionTextStyle}" AutomationProperties.LiveSetting="Polite" />
-                        <ui:TextBox x:Name="OutputPreviewTextBox" Grid.Row="2" Padding="12" Background="{DynamicResource ControlFillColorSecondaryBrush}" BorderThickness="0" Text="{Binding PreviewText, Mode=OneWay}" IsReadOnly="True" AcceptsReturn="True" FontFamily="Consolas" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" AutomationProperties.Name="{DynamicResource Loc.Workspace.Output.Preview}" ToolTip="{DynamicResource Loc.Workspace.Output.Preview.Help}" />
-                    </Grid>
+                        <Grid x:Name="OutputPreviewContent"><Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                            <DockPanel>
+                                <ui:TextBlock x:Name="OutputPreviewTitle" DockPanel.Dock="Left" FontWeight="SemiBold" Text="{DynamicResource Loc.Workspace.Output.Preview}" />
+                                <CheckBox Margin="12,0,0,0" HorizontalAlignment="Right" Content="{DynamicResource Loc.Ux.Output.UseTestSample}" IsChecked="{Binding UseTestSample}" Visibility="{Binding HasTestSample, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            </DockPanel>
+                            <ui:TextBlock Grid.Row="1" Margin="0,4,0,8" Text="{Binding PreviewSourceDescription}" Style="{StaticResource CaptionTextStyle}" TextWrapping="Wrap" />
+                            <ui:TextBox x:Name="OutputPreviewTextBox" Grid.Row="2" Padding="8" Background="{DynamicResource ControlFillColorSecondaryBrush}" BorderThickness="0" Text="{Binding PreviewText, Mode=OneWay}" IsReadOnly="True" AcceptsReturn="True" FontFamily="Consolas" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" AutomationProperties.Name="{DynamicResource Loc.Workspace.Output.Preview}" ToolTip="{DynamicResource Loc.Workspace.Output.Preview.Help}" />
+                        </Grid>
                     </controls:SectionCard.Header>
                 </controls:SectionCard>
             </controls:SplitWorkspace.SecondaryContent>
@@ -92,7 +89,8 @@
         <controls:CommandStrip x:Name="OutputActionsFooter" controls:FloatingNotificationChrome.IsBottomChrome="True" Grid.Row="3" Margin="0,12,0,0" Padding="12">
             <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                 <ui:TextBlock Margin="0,0,12,0" VerticalAlignment="Center" Text="{Binding StatusMessage}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" ToolTip="{Binding StatusMessage}" AutomationProperties.LiveSetting="Polite" />
-                <ui:Button x:Name="SaveFormatButton" Grid.Column="1" MinWidth="112" Appearance="Primary" Command="{Binding SaveCommand}" Content="{DynamicResource Loc.Workspace.Output.Save}" ToolTip="{DynamicResource Loc.Workspace.Output.Save.Help}" ToolTipService.ShowOnDisabled="True" Icon="{ui:SymbolIcon Symbol=Save16}" />
+                <ui:Button x:Name="SaveFormatButton" Grid.Column="1" MinWidth="112" Appearance="Primary" Command="{Binding SaveCommand}" Content="{DynamicResource Loc.Workspace.Output.Save}" Visibility="{Binding CanEdit, Converter={StaticResource BooleanToVisibilityConverter}}" ToolTip="{DynamicResource Loc.Workspace.Output.Save.Help}" ToolTipService.ShowOnDisabled="True" Icon="{ui:SymbolIcon Symbol=Save16}" />
+                <ui:Button Grid.Column="1" Appearance="Primary" Command="{Binding DuplicateFormatCommand}" Content="{DynamicResource Loc.Ux.Output.Duplicate}" Visibility="{Binding IsBuiltInPreview, Converter={StaticResource BooleanToVisibilityConverter}}" Icon="{ui:SymbolIcon Symbol=Copy20}" />
             </Grid>
         </controls:CommandStrip>
     </controls:WorkspacePageFrame>

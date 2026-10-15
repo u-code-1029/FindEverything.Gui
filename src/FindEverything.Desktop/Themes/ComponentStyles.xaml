@@ -231,14 +231,26 @@
             <Setter.Value>
                 <ControlTemplate TargetType="controls:PageHeader">
                     <Grid>
+                        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <StackPanel x:Name="Heading" Orientation="Horizontal" VerticalAlignment="Center">
                             <TextBlock Style="{StaticResource PageTitleTextStyle}" Text="{TemplateBinding Title}" AutomationProperties.HeadingLevel="Level1" />
                             <ui:Button x:Name="HelpButton" Margin="8,0,0,0" Width="28" Height="28" Padding="0" Appearance="Transparent" BorderThickness="0" Icon="{ui:SymbolIcon Symbol=QuestionCircle20}"
                                 AutomationProperties.Name="{TemplateBinding Description}" ToolTip="{TemplateBinding Description}" ToolTipService.ShowOnDisabled="True" />
                         </StackPanel>
-                        <ContentPresenter Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center" Content="{TemplateBinding Content}" />
+                        <ContentPresenter x:Name="Actions" Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center" Content="{TemplateBinding Content}" />
                     </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsCompact" Value="True">
+                            <Setter TargetName="Heading" Property="Grid.ColumnSpan" Value="2" />
+                            <Setter TargetName="Actions" Property="Grid.Row" Value="1" />
+                            <Setter TargetName="Actions" Property="Grid.Column" Value="0" />
+                            <Setter TargetName="Actions" Property="Grid.ColumnSpan" Value="2" />
+                            <Setter TargetName="Actions" Property="Margin" Value="0,8,0,0" />
+                            <Setter TargetName="Actions" Property="HorizontalAlignment" Value="Left" />
+                        </Trigger>
+                        <Trigger Property="Content" Value="{x:Null}"><Setter TargetName="Actions" Property="Visibility" Value="Collapsed" /></Trigger>
+                    </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value>
         </Setter>

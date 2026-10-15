@@ -552,13 +552,19 @@ public sealed partial class CatalogMissingDataAndCancellationTests
                 IndexedPathKind.File, 12, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, false)], offset, true));
         public async IAsyncEnumerable<IndexedPathEntry> EnumerateSelectionAsync(QuerySelection selection,
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
-        { await Task.CompletedTask; yield break; }
+        {
+            var page = await ReadRangeAsync(0, 1, cancellationToken);
+            foreach (var item in page.Items) if (selection.Contains(item.FullPath)) yield return item;
+        }
         public ValueTask DisposeAsync() { IsDisposed = true; return ValueTask.CompletedTask; }
     }
 
     private sealed class Query(bool ignoreCountCancellation, int cacheCount) : IResultQuerySession<CatalogProjectionRow>
     {
         public string Identity { get; set; } = "cached";
+        public string RowName { get; init; } = "sample";
+        public TaskCompletionSource? ReadGate { get; init; }
+        public TaskCompletionSource ReadStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource CountStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource<long> ReleaseCount { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public CancellationToken CountToken { get; private set; }
@@ -567,15 +573,22 @@ public sealed partial class CatalogMissingDataAndCancellationTests
         {
             CountToken = cancellationToken;
             CountStarted.TrySetResult();
-            return ignoreCountCancellation ? ReleaseCount.Task : Task.FromResult((long)Math.Max(1, cacheCount));
+            return ignoreCountCancellation ? ReleaseCount.Task : Task.FromResult((long)Math.Max(0, cacheCount));
         }
-        public Task<ResultPage<CatalogProjectionRow>> ReadRangeAsync(int offset, int limit, CancellationToken cancellationToken = default) =>
-            Task.FromResult(new ResultPage<CatalogProjectionRow>(cacheCount == 0 ? [] :
-                [new(Path.Combine(Path.GetTempPath(), "sample"), "sample", "rule",
-                    new Dictionary<string, object?> { ["client"] = "Example" }, false)], offset, ignoreCountCancellation));
+        public async Task<ResultPage<CatalogProjectionRow>> ReadRangeAsync(int offset, int limit, CancellationToken cancellationToken = default)
+        {
+            ReadStarted.TrySetResult();
+            if (ReadGate is not null) await ReadGate.Task.WaitAsync(cancellationToken);
+            return new ResultPage<CatalogProjectionRow>(cacheCount == 0 ? [] :
+                [new(Path.Combine(Path.GetTempPath(), RowName), RowName, "rule",
+                    new Dictionary<string, object?> { ["client"] = "Example" }, false)], offset, ignoreCountCancellation);
+        }
         public async IAsyncEnumerable<CatalogProjectionRow> EnumerateSelectionAsync(QuerySelection selection,
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
-        { await Task.CompletedTask; yield break; }
+        {
+            var page = await ReadRangeAsync(0, 1, cancellationToken);
+            foreach (var item in page.Items) if (selection.Contains(item.FullPath)) yield return item;
+        }
         public ValueTask DisposeAsync() { IsDisposed = true; return ValueTask.CompletedTask; }
     }
 

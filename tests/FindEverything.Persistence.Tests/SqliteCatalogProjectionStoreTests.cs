@@ -8,6 +8,25 @@ namespace FindEverything.Persistence.Tests;
 
 public sealed class SqliteCatalogProjectionStoreTests
 {
+    [Fact]
+    public async Task Selection_count_uses_current_filter_without_losing_hidden_checked_items()
+    {
+        using var workspace = new Workspace();
+        using var store = new SqliteCatalogProjectionStore(workspace.Database);
+        var rows = new[] { workspace.Item("first", new() { ["name"] = "alpha" }),
+            workspace.Item("second", new() { ["name"] = "beta" }), workspace.Item("third", new() { ["name"] = "alpha" }) };
+        var snapshot = Publish(store, workspace.Scope, [Field("name")], rows);
+        await using var allQuery = store.OpenQuery(snapshot, new());
+        using var all = new QuerySelection(true);
+        using var baseline = await SqliteSelectionSnapshot.CreateAsync(allQuery, all, row => row.FullPath, row => row.FullPath);
+        using var selection = new QuerySelection(); selection.ReplaceBaseline(baseline);
+        selection.Set(rows[2].FullPath, false);
+        await using var filtered = store.OpenQuery(snapshot, new("alpha"));
+        Assert.Equal(1, await filtered.CountSelectionAsync(selection));
+        Assert.Equal(2, selection.Count(long.MaxValue));
+        Assert.Equal(2, await allQuery.CountSelectionAsync(selection));
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

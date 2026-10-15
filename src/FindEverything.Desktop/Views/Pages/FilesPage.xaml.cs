@@ -27,7 +27,7 @@ public partial class FilesPage
             {
                 if (ResultsGrid.ContextMenu is { } menu) menu.IsOpen = false;
                 if (SelectionActionsMenuButton.ContextMenu is { } selectionMenu) selectionMenu.IsOpen = false;
-                if (AdditionalActionsMenuButton.ContextMenu is { } actionsMenu) actionsMenu.IsOpen = false;
+                if (CopySelectionButton.Flyout is ContextMenu formatMenu) formatMenu.IsOpen = false;
             }
         };
     }
@@ -40,17 +40,6 @@ public partial class FilesPage
         var reserveDetails = _viewModel.IsDetailsOpen && FilePageLayout.ActualWidth >= 900;
         FileResultsSurface.Margin = new System.Windows.Thickness(0, 0, reserveDetails ? 348 : 0, 0);
         FileDetailsPanel.Width = Math.Min(340, Math.Max(200, FilePageLayout.ActualWidth));
-        var compact = FilePageLayout.ActualWidth < 900;
-        Grid.SetRow(SearchBox, 0);
-        Grid.SetColumn(SearchBox, compact ? 0 : 1);
-        Grid.SetColumnSpan(SearchBox, compact ? 2 : 1);
-        SearchBox.Margin = compact ? new System.Windows.Thickness(0) : new System.Windows.Thickness(12, 0, 0, 0);
-        Grid.SetRow(FileRootPathText, compact ? 1 : 0);
-        Grid.SetColumnSpan(FileRootPathText, compact ? 3 : 1);
-        FileRootPathText.Margin = compact ? new System.Windows.Thickness(0, 4, 0, 0) : new System.Windows.Thickness(0);
-        FileRootPathText.FontSize = compact ? 12 : 14;
-        FileLocationColumn.Width = compact ? new System.Windows.GridLength(1, System.Windows.GridUnitType.Star) : new System.Windows.GridLength(220);
-        FileSearchColumn.Width = compact ? new System.Windows.GridLength(0) : new System.Windows.GridLength(1, System.Windows.GridUnitType.Star);
         ApplySelectionToolbarLayout();
     }
 
@@ -65,11 +54,9 @@ public partial class FilesPage
         var full = compact ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
         var menu = compact ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
         SelectAllResultsButton.Visibility = ClearAllResultsButton.Visibility = InvertResultsSelectionButton.Visibility = full;
-        SelectionActionsMenuButton.Visibility = AdditionalActionsMenuButton.Visibility = menu;
-        FilesOutputFormatLabel.Visibility = full;
+        SelectionActionsMenuButton.Visibility = menu;
         CopySelectionButton.SetResourceReference(ContentControl.ContentProperty,
             compact ? "Loc.View.Files.Content.Copy" : "Loc.Workspace.Selection.Copy");
-        OpenSelectionButton.Visibility = full;
     }
 
     private void OnFooterMenuClick(object sender, System.Windows.RoutedEventArgs e)
@@ -110,7 +97,9 @@ public partial class FilesPage
         ResultsGrid.SelectedItem = item;
         ResultsGrid.CurrentItem = item;
         row.Focus();
-        await _viewModel.SelectRowAsync(item, Keyboard.Modifiers.HasFlag(ModifierKeys.Control), Keyboard.Modifiers.HasFlag(ModifierKeys.Shift));
+        // Opening an item with a double-click must not undo the first click's check.
+        if (e.ClickCount != 1) return;
+        await _viewModel.SelectRowAsync(item, additive: true, range: Keyboard.Modifiers.HasFlag(ModifierKeys.Shift));
     }
 
     private async void OnSelectionCheckBoxPreviewKeyDown(object sender, KeyEventArgs e)
@@ -131,6 +120,20 @@ public partial class FilesPage
 
     private async void OnPagePreviewKeyDown(object sender, KeyEventArgs e)
     {
+        if (CopySelectionButton.IsKeyboardFocusWithin && (e.Key == Key.F4
+            || e.SystemKey == Key.Down && Keyboard.Modifiers.HasFlag(ModifierKeys.Alt))
+            && CopySelectionButton.Flyout is ContextMenu formatMenu)
+        {
+            formatMenu.PlacementTarget = CopySelectionButton;
+            formatMenu.Placement = PlacementMode.Top;
+            formatMenu.IsOpen = true; e.Handled = true; return;
+        }
+        if (e.Key == Key.Enter && SearchBox.IsKeyboardFocusWithin)
+        {
+            e.Handled = true;
+            _viewModel.ApplySearchImmediately();
+            return;
+        }
         if (ResultsGrid.IsKeyboardFocusWithin && Keyboard.FocusedElement is System.Windows.DependencyObject focused
             && !ResultGridInput.IsInteractiveOrigin(focused)
             && ResultsGrid.CurrentItem is FileSearchItemViewModel { IsPlaceholder: false } current)
@@ -196,7 +199,7 @@ public partial class FilesPage
         {
             ResultsGrid.CurrentItem = row.Item;
             row.Focus();
-            if (!_pointerContextItem.IsSelected) await _viewModel.SelectRowAsync(_pointerContextItem, additive: false, range: false);
+            if (!_pointerContextItem.IsSelected) await _viewModel.SelectRowAsync(_pointerContextItem, additive: true, range: false);
             return;
         }
 

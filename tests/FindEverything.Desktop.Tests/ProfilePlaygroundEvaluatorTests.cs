@@ -11,6 +11,41 @@ namespace FindEverything.Desktop.Tests;
 public sealed class ProfilePlaygroundEvaluatorTests
 {
     [Fact]
+    public async Task A_test_publishes_the_actual_mapped_sample_and_edit_returns_to_that_profile()
+    {
+        var path = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "FindEverything.Playground.Tests", "A"));
+        var profile = new RecordingLoadedProfile(path);
+        var localizer = new TestAppLocalizer();
+        var samples = new OutputPreviewSampleStore();
+        var navigator = new RecordingEditorNavigator();
+        using var vm = new ProfilePlaygroundViewModel(
+            new StubProfileCatalog(new([profile], [], DateTimeOffset.UtcNow)),
+            new ProfilePlaygroundEvaluator(new RecordingCanonicalizer(path), localizer),
+            new StubDesktopPickerService(), localizer, NullLogger<ProfilePlaygroundViewModel>.Instance,
+            navigator, samples)
+        { InputPath = path };
+
+        await vm.EvaluateCommand.ExecuteAsync(null);
+        var sample = Assert.IsType<SelectionOutputItem>(samples.Get(profile.Descriptor.Id));
+        Assert.Equal(path, sample.FullPath);
+        Assert.Equal("홍길동", sample.Fields["owner"]);
+        Assert.Null(samples.Get("different-profile"));
+        Assert.True(vm.EditProfileCommand.CanExecute(null));
+        await vm.EditProfileCommand.ExecuteAsync(null);
+        Assert.Equal(profile.Descriptor.Id, navigator.ProfileId);
+    }
+
+    private sealed class RecordingEditorNavigator : IProfileEditorNavigator
+    {
+        public string? ProfileId { get; private set; }
+        public Task<bool> NavigateAsync(string profileId)
+        {
+            ProfileId = profileId;
+            return Task.FromResult(true);
+        }
+    }
+
+    [Fact]
     public void Evaluate_uses_the_loaded_profile_and_returns_display_and_debug_results()
     {
         var canonicalPath = Path.GetFullPath(Path.Combine(
@@ -115,6 +150,7 @@ public sealed class ProfilePlaygroundEvaluatorTests
             "A"));
         var profile = new RecordingLoadedProfile(canonicalPath);
         using var evaluator = new DeferredPlaygroundEvaluator(canonicalPath);
+        var samples = new OutputPreviewSampleStore();
         var viewModel = new ProfilePlaygroundViewModel(
             new StubProfileCatalog(new ProfileCatalogSnapshot(
                 [profile],
@@ -123,7 +159,8 @@ public sealed class ProfilePlaygroundEvaluatorTests
             evaluator,
             new StubDesktopPickerService(),
             new TestAppLocalizer(),
-            NullLogger<ProfilePlaygroundViewModel>.Instance)
+            NullLogger<ProfilePlaygroundViewModel>.Instance,
+            outputSamples: samples)
         {
             InputPath = "first path",
         };
@@ -147,6 +184,7 @@ public sealed class ProfilePlaygroundEvaluatorTests
         Assert.False(viewModel.IsBusy);
         Assert.True(viewModel.IsReady);
         Assert.Empty(viewModel.Rows);
+        Assert.Null(samples.Get(profile.Descriptor.Id));
         Assert.Contains("변경", viewModel.Summary, StringComparison.Ordinal);
     }
 

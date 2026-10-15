@@ -16,7 +16,7 @@ public partial class CatalogViewModel
     private IReadOnlyList<ProfileSelectionMatchRuleManifest> SelectionRules =>
         WorkspaceTransfer?.CurrentSource is { } imported ? imported.FrozenProfile.SelectionMatchRules ?? []
         : SelectedProfile?.Profile.Descriptor.SelectionMatchRules ?? [];
-    public bool CanOpenSelectionImport => !_disposed && !_selectionImportOpen && !IsBusy
+    public bool CanOpenSelectionImport => !_disposed && !_selectionImportOpen && !IsBusy && !IsPreservingSelection && !IsSearchPending
         && _projectionQuery is ICatalogSelectionMatchQuery && _displayedProjectionSnapshot is { IsBuilding: false }
         && SelectionRules.Count > 0;
 
@@ -38,7 +38,7 @@ public partial class CatalogViewModel
             if (!Current()) lifetime.Cancel();
         }
         bool Current() => !_disposed && ReferenceEquals(query, _projectionQuery)
-            && version == Volatile.Read(ref _queryVersion) && !IsBusy
+            && version == Volatile.Read(ref _queryVersion) && !IsBusy && !IsPreservingSelection && !IsSearchPending
             && ReferenceEquals(snapshot, _displayedProjectionSnapshot)
             && Equals(definition, _displayedQueryDefinition) && ReferenceEquals(source, WorkspaceTransfer?.CurrentSource)
             && ReferenceEquals(selectedProfile, SelectedProfile);
@@ -76,6 +76,7 @@ public partial class CatalogViewModel
             if (!Current()) throw new OperationCanceledException();
             CancelSelectionRequests();
             _querySelection.ReplaceBaseline(result.Keys); _selectionAnchor = -1;
+            _selectionSpansFilters = false;
             UpdateProjectionSelection();
             SetStatus(L("Loc.SelectionImport.Completed", "데이터로 선택 완료"),
                 F("Loc.SelectionImport.Completed.Message", "현재 검색 결과에서 {0:N0}개 항목을 체크했습니다.", result.Summary.MatchingItems), InfoBarSeverity.Informational);

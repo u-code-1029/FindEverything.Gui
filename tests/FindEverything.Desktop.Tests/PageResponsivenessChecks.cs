@@ -155,6 +155,15 @@ internal static class PageResponsivenessChecks
             if (scroll.Name == "ProfileEditorScrollViewer" || scroll.TemplatedParent?.GetType().Name == "ProfileEditorList")
                 scroll.ScrollToTop();
         Pump(Task.Delay(40));
+        // The UX experiment intentionally hides generated regex. Keep this benchmark
+        // measuring the same editor on both the baseline and the experiment branch.
+        var generatedRule = Descendants<System.Windows.Controls.Expander>(page)
+            .FirstOrDefault(expander => expander.Name == "GeneratedPathRuleExpander" && expander.IsVisible);
+        if (generatedRule is not null)
+        {
+            generatedRule.IsExpanded = true;
+            Pump(Task.Delay(400));
+        }
         var editor = Descendants<System.Windows.Controls.TextBox>(page).FirstOrDefault(box =>
             box.Name == "ProfilePathTemplateTextBox" && box.IsVisible);
         if (editor is null) throw new InvalidOperationException("The measured profile path editor was not rendered.");
