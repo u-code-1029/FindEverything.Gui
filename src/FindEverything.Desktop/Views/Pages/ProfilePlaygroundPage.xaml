@@ -13,11 +13,10 @@
     mc:Ignorable="d">
     <Page.Resources>
         <Style x:Key="PlaygroundFieldCardStyle" TargetType="ui:CardControl" BasedOn="{StaticResource FluentCardStyle}">
-            <Setter Property="Margin" Value="0,0,0,10" />
-            <Setter Property="Padding" Value="14" />
-            <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Margin" Value="0,0,0,8" />
+            <Setter Property="Padding" Value="12" />
+            <Setter Property="Background" Value="{DynamicResource ControlFillColorSecondaryBrush}" />
+            <Setter Property="BorderThickness" Value="0" />
             <Setter Property="CornerRadius" Value="8" />
         </Style>
         <Style x:Key="PlaygroundRegexDebugItemsStyle" TargetType="ItemsControl">
@@ -30,7 +29,7 @@
                             Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
                             BorderBrush="{Binding AccentBrush}"
                             BorderThickness="3,1,1,1"
-                            CornerRadius="7"><controls:SectionCard.Header>
+                            CornerRadius="8"><controls:SectionCard.Header>
                             <StackPanel>
                                 <Grid>
                                     <Grid.ColumnDefinitions>
@@ -80,7 +79,7 @@
                                                     </StackPanel>
                                                     <ui:TextBlock
                                                         Margin="16,2,0,0"
-                                                        FontSize="11"
+                                                        FontSize="12"
                                                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                                         Text="{Binding Detail}" />
                                                 </StackPanel>
@@ -122,21 +121,21 @@
     <controls:WorkspacePageFrame>
         <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
         <controls:PageHeader Title="{StaticResource Loc.Shell.Nav.Playground}" Description="{StaticResource Loc.Workspace.Playground.Description}" />
-        <controls:CommandStrip Grid.Row="1">
+        <controls:CommandStrip Grid.Row="1" Padding="16" Margin="0,0,0,12">
             <Grid x:Name="PlaygroundInputPanel" IsEnabled="{Binding IsReady}">
-                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <Label x:Name="PlaygroundProfileLabel" Padding="0" Margin="0,0,8,0" VerticalAlignment="Center" Content="{StaticResource Loc.Workspace.Profile.Label}" Target="{Binding ElementName=PlaygroundProfileComboBox}" />
-                    <ComboBox x:Name="PlaygroundProfileComboBox" Width="140" ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}" DisplayMemberPath="Description" AutomationProperties.Name="{StaticResource Loc.Workspace.Playground.Profile}" ToolTip="{StaticResource Loc.Workspace.Playground.Profile.Help}" />
-                </StackPanel>
-                <ui:TextBox Grid.Column="1" Margin="8,0" ClearButtonEnabled="True" PlaceholderText="{StaticResource Loc.Workspace.Playground.Path}" Text="{Binding InputPath, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{StaticResource Loc.Workspace.Playground.Path}" ToolTip="{StaticResource Loc.Workspace.Playground.Path.Help}" />
-                <ui:Button Grid.Column="2" Width="36" Padding="0" Command="{Binding BrowsePathCommand}" Icon="{ui:SymbolIcon Symbol=FolderOpen20}" AutomationProperties.Name="{StaticResource Loc.Workspace.Playground.Browse}" ToolTip="{StaticResource Loc.Workspace.Playground.Browse}" />
-                <ui:Button Grid.Column="3" Margin="8,0,0,0" Appearance="Primary" Command="{Binding EvaluateCommand}" Content="{StaticResource Loc.Workspace.Playground.Run}" Icon="{ui:SymbolIcon Symbol=Play20}" ToolTip="{StaticResource Loc.Workspace.Playground.Run.Help}" ToolTipService.ShowOnDisabled="True" />
+                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="2*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <Label x:Name="PlaygroundProfileLabel" Padding="0" Margin="0,0,12,6" FontWeight="SemiBold" Content="{StaticResource Loc.Workspace.Profile.Label}" Target="{Binding ElementName=PlaygroundProfileComboBox}" />
+                <ui:TextBlock Grid.Column="1" Grid.ColumnSpan="3" Margin="0,0,0,6" FontWeight="SemiBold" Text="{StaticResource Loc.Workspace.Playground.Path}" TextWrapping="Wrap" />
+                <ComboBox x:Name="PlaygroundProfileComboBox" Grid.Row="1" Margin="0,0,12,0" HorizontalAlignment="Stretch" ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}" DisplayMemberPath="Description" AutomationProperties.Name="{StaticResource Loc.Workspace.Playground.Profile}" ToolTip="{StaticResource Loc.Workspace.Playground.Profile.Help}" />
+                <ui:TextBox Grid.Row="1" Grid.Column="1" Margin="0,0,8,0" ClearButtonEnabled="True" PlaceholderText="{StaticResource Loc.Workspace.Playground.Path}" Text="{Binding InputPath, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{StaticResource Loc.Workspace.Playground.Path}" ToolTip="{StaticResource Loc.Workspace.Playground.Path.Help}" />
+                <ui:Button Grid.Row="1" Grid.Column="2" Width="36" Padding="0" Command="{Binding BrowsePathCommand}" Icon="{ui:SymbolIcon Symbol=FolderOpen20}" AutomationProperties.Name="{StaticResource Loc.Workspace.Playground.Browse}" ToolTip="{StaticResource Loc.Workspace.Playground.Browse}" />
+                <ui:Button Grid.Row="1" Grid.Column="3" Margin="8,0,0,0" Appearance="Primary" Command="{Binding EvaluateCommand}" Content="{StaticResource Loc.Workspace.Playground.Run}" Icon="{ui:SymbolIcon Symbol=Play20}" ToolTip="{StaticResource Loc.Workspace.Playground.Run.Help}" ToolTipService.ShowOnDisabled="True" />
             </Grid>
         </controls:CommandStrip>
         <TabControl Grid.Row="2" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
         <TabItem Header="{StaticResource Loc.Profiles.Features.Playground.PathTab}">
-        <controls:SplitWorkspace x:Name="PlaygroundWorkspace" PrimaryRatio="0.35" PrimaryTitle="{StaticResource Loc.Workspace.Playground.Values}" SecondaryTitle="{StaticResource Loc.Workspace.Playground.Debug}">
+        <controls:SplitWorkspace x:Name="PlaygroundWorkspace" PrimaryRatio="0.38" PrimaryTitle="{StaticResource Loc.Workspace.Playground.Values}" SecondaryTitle="{StaticResource Loc.Workspace.Playground.Debug}">
             <controls:SplitWorkspace.PrimaryContent>
                 <ui:DynamicScrollViewer x:Name="ProfilePlaygroundScrollViewer" Style="{StaticResource FluentGutteredScrollViewerStyle}">
                     <StackPanel>                <controls:SectionCard Margin="0" Style="{StaticResource FluentSectionCardStyle}">
@@ -156,16 +155,18 @@
                                             <Grid.RowDefinitions>
                                                 <RowDefinition Height="Auto" />
                                                 <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
                                             </Grid.RowDefinitions>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="0.4*" />
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="Auto" />
                                             </Grid.ColumnDefinitions>
-                                            <ui:TextBlock FontWeight="SemiBold" Text="{Binding FieldName}" />
+                                            <ui:TextBlock Grid.ColumnSpan="2" FontWeight="SemiBold" Text="{Binding FieldName}" TextWrapping="Wrap" Margin="0,0,12,0" />
                                             <ui:TextBlock
-                                                Grid.Column="1"
-                                                Margin="12,0"
+                                                Grid.Row="1"
+                                                Grid.ColumnSpan="3"
+                                                Margin="0,8,0,0"
                                                 Text="{Binding Value}"
                                                 TextWrapping="Wrap" />
                                             <ui:TextBlock
@@ -173,10 +174,9 @@
                                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                                 Text="{Binding Status}" />
                                             <ui:TextBlock
-                                                Grid.Row="1"
-                                                Grid.Column="1"
-                                                Grid.ColumnSpan="2"
-                                                Margin="12,6,0,0"
+                                                Grid.Row="2"
+                                                Grid.ColumnSpan="3"
+                                                Margin="0,6,0,0"
                                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                                 Text="{Binding RawValue, StringFormat={StaticResource Loc.Playground.RawValueFormat}}"
                                                 Visibility="{Binding HasMappedValue, Converter={StaticResource BooleanToVisibilityConverter}}" />
@@ -237,7 +237,7 @@
                     Header="{StaticResource Loc.View.ProfilePlayground.AutomationName.PathRegexColorDebugger}"
                     IsExpanded="True"
                     Visibility="{Binding HasRegexDebugRules, Converter={StaticResource BooleanToVisibilityConverter}}">
-                    <controls:SectionCard x:Name="PlaygroundRegexDebugCard" Margin="0,8,0,0" Style="{StaticResource FluentSectionCardStyle}">
+                    <controls:SectionCard x:Name="PlaygroundRegexDebugCard" Margin="0,8,0,0" Background="Transparent" BorderThickness="0" Style="{StaticResource FluentSectionCardStyle}">
                       <controls:SectionCard.Header>
                         <StackPanel>
                             <ui:TextBlock x:Name="PlaygroundRegexDebugCaption"
@@ -265,7 +265,7 @@
                     AutomationProperties.Name="{StaticResource Loc.View.ProfilePlayground.AutomationName.FolderExclusionRegexColorDebugger}"
                     Header="{StaticResource Loc.View.ProfilePlayground.AutomationName.FolderExclusionRegexColorDebugger}"
                     Visibility="{Binding HasDirectoryExclusionRegexDebugRules, Converter={StaticResource BooleanToVisibilityConverter}}">
-                    <controls:SectionCard Margin="0,8,0,0" Style="{StaticResource FluentSectionCardStyle}">
+                    <controls:SectionCard Margin="0,8,0,0" Background="Transparent" BorderThickness="0" Style="{StaticResource FluentSectionCardStyle}">
                       <controls:SectionCard.Header>
                         <StackPanel>
                             <ui:TextBlock

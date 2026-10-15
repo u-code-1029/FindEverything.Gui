@@ -32,13 +32,19 @@
     <Thickness x:Key="CatalogRowMargin">0,2,0,2</Thickness>
     <Thickness x:Key="CatalogCellPadding">12,4,12,4</Thickness>
     <Thickness x:Key="CatalogEditorMargin">4,2,4,2</Thickness>
-    <CornerRadius x:Key="SurfaceCornerRadius">8</CornerRadius>
+    <!-- This experiment changes presentation only. Keep density and gutter
+         tokens independent so existing result geometry remains predictable. -->
+    <CornerRadius x:Key="SurfaceCornerRadius">12</CornerRadius>
+    <CornerRadius x:Key="WorkspaceControlCornerRadius">6</CornerRadius>
+    <Thickness x:Key="WorkspaceToolbarPadding">12,8</Thickness>
+    <Thickness x:Key="WorkspaceResultPadding">4,0</Thickness>
+    <Thickness x:Key="WorkspaceActionPadding">12,8</Thickness>
 
     <Style x:Key="PageTitleTextStyle" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="Segoe UI Variable Display, Segoe UI" />
-        <Setter Property="FontSize" Value="28" />
+        <Setter Property="FontSize" Value="24" />
         <Setter Property="FontWeight" Value="SemiBold" />
-        <Setter Property="LineHeight" Value="36" />
+        <Setter Property="LineHeight" Value="32" />
         <Setter Property="TextWrapping" Value="Wrap" />
     </Style>
 
@@ -52,9 +58,9 @@
 
     <Style x:Key="SectionTitleTextStyle" TargetType="TextBlock">
         <Setter Property="FontFamily" Value="Segoe UI Variable Display, Segoe UI" />
-        <Setter Property="FontSize" Value="20" />
+        <Setter Property="FontSize" Value="18" />
         <Setter Property="FontWeight" Value="SemiBold" />
-        <Setter Property="LineHeight" Value="28" />
+        <Setter Property="LineHeight" Value="26" />
         <Setter Property="TextWrapping" Value="Wrap" />
     </Style>
 

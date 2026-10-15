@@ -25,6 +25,10 @@
                     <ui:ProgressRing Width="18" Height="18" Margin="0,0,8,0" IsIndeterminate="{Binding IsBusy}" />
                     <ui:TextBlock x:Name="CatalogHeaderProgressCaption" MaxWidth="240" VerticalAlignment="Center" Text="{Binding ProgressMessage}" Style="{StaticResource CaptionTextStyle}" TextTrimming="CharacterEllipsis" ToolTip="{Binding ProgressMessage}" />
                 </StackPanel>
+                <ui:Button Width="32" Height="32" Margin="8,0,0,0" Padding="0" Appearance="Transparent"
+                    Command="{Binding OpenSelectionImportCommand}" Icon="{ui:SymbolIcon Symbol=ClipboardTaskListLtr20}"
+                    AutomationProperties.Name="{StaticResource Loc.SelectionImport.Open}"
+                    ToolTip="{StaticResource Loc.SelectionImport.Open.Help}" ToolTipService.ShowOnDisabled="True" />
                 <controls:WorkspaceTransferPanel x:Name="CatalogWorkspaceTransferPanel" Margin="8,0,0,0" DataContext="{Binding WorkspaceTransfer}" ExportOwner="{Binding DataContext, RelativeSource={RelativeSource AncestorType=Page}}" />
                 </StackPanel>
             </controls:PageHeader>
@@ -34,16 +38,15 @@
                     <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <Label x:Name="CatalogProfileLabel" Padding="0" Margin="0,0,8,0" VerticalAlignment="Center" Content="{StaticResource Loc.Workspace.Profile.Label}" Target="{Binding ElementName=CatalogProfileComboBox}" />
+                        <Label x:Name="CatalogProfileLabel" Padding="0" Margin="0,0,8,0" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Content="{StaticResource Loc.Workspace.Profile.Label}" Target="{Binding ElementName=CatalogProfileComboBox}" />
                         <ComboBox x:Name="CatalogProfileComboBox" Width="140" AutomationProperties.Name="{StaticResource Loc.Workspace.Profile}" ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}" DisplayMemberPath="DisplayName" IsEnabled="{Binding CanEditWorkspace}" ToolTip="{StaticResource Loc.Workspace.Catalog.Profile.Help}" />
                     </StackPanel>
-                    <ui:TextBlock Grid.Column="1" Margin="12,0" VerticalAlignment="Center" Text="{Binding RootPath, TargetNullValue={StaticResource Loc.Catalog.Root.None}}" TextTrimming="CharacterEllipsis" ToolTip="{Binding RootPath}" />
+                    <ui:TextBlock Grid.Column="1" Margin="12,0" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding RootPath, TargetNullValue={StaticResource Loc.Catalog.Root.None}}" TextTrimming="CharacterEllipsis" ToolTip="{Binding RootPath}" />
                     <WrapPanel Grid.Column="2">
-                        <ui:Button MinWidth="76" Margin="0,0,8,0" Command="{Binding BrowseRootCommand}" Content="{StaticResource Loc.Workspace.Location.Change}" Icon="{ui:SymbolIcon Symbol=FolderOpen20}" ToolTip="{StaticResource Loc.Workspace.Location.Change.Help}" ToolTipService.ShowOnDisabled="True" />
+                        <ui:Button MinWidth="76" Margin="0,0,8,0" Appearance="Transparent" Command="{Binding BrowseRootCommand}" Content="{StaticResource Loc.Workspace.Location.Change}" Icon="{ui:SymbolIcon Symbol=FolderOpen20}" ToolTip="{StaticResource Loc.Workspace.Location.Change.Help}" ToolTipService.ShowOnDisabled="True" />
                         <ui:Button MinWidth="92" Margin="0,0,8,0" Appearance="Primary" Command="{Binding ScanCommand}" Content="{StaticResource Loc.Workspace.Scan}" Icon="{ui:SymbolIcon Symbol=Search20}" ToolTip="{StaticResource Loc.Workspace.Scan.Catalog.Help}" ToolTipService.ShowOnDisabled="True" />
-                        <ui:Button Command="{Binding ToggleDetailsCommand}" Content="{Binding DetailsButtonText}" ToolTip="{StaticResource Loc.Workspace.Details.Help}" />
+                        <ui:Button Appearance="Transparent" Command="{Binding ToggleDetailsCommand}" Content="{Binding DetailsButtonText}" ToolTip="{StaticResource Loc.Workspace.Details.Help}" />
                         <ui:Button Margin="8,0,0,0" Command="{Binding CancelCommand}" Content="{StaticResource Loc.Workspace.Cancel}" Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}" ToolTip="{StaticResource Loc.Workspace.Cancel.Help}" />
-                        <ui:Button Margin="8,0,0,0" Command="{Binding OpenSelectionImportCommand}" Content="{StaticResource Loc.SelectionImport.Open}" Icon="{ui:SymbolIcon Symbol=ClipboardTaskListLtr20}" ToolTip="{StaticResource Loc.SelectionImport.Open.Help}" ToolTipService.ShowOnDisabled="True" />
                     </WrapPanel>
                 <Grid x:Name="CatalogFilterBar" Grid.Row="1" Grid.ColumnSpan="3" Margin="0,8,0,0"
                     IsEnabled="{Binding IsResultInteractionEnabled, FallbackValue=True}"
@@ -56,18 +59,22 @@
                     </Grid.ColumnDefinitions>
             <ui:TextBox
                 x:Name="SearchBox"
+                Style="{StaticResource FluentSearchBoxStyle}"
                 MinHeight="36"
+                Padding="12,6"
+                FontSize="15"
+                VerticalContentAlignment="Center"
                 Grid.Column="0"
                 Margin="0,0,12,0"
                 AutomationProperties.Name="{StaticResource Loc.View.Catalog.AutomationName.FilterAllResultColumns}"
                 ClearButtonEnabled="True"
-                Icon="{ui:SymbolIcon Symbol=Search12}"
+                Icon="{ui:SymbolIcon Symbol=Search20}"
                 PlaceholderText="{StaticResource Loc.View.Catalog.PlaceholderText.SearchAllColumnsAndFolderPaths}"
                 Text="{Binding FilterText, UpdateSourceTrigger=PropertyChanged}"
                 Visibility="{Binding HasLoadedItems, Converter={StaticResource BooleanToVisibilityConverter}}" />
                     <ui:ToggleSwitch
                         Grid.Column="1"
-                        Margin="16,0"
+                        Margin="8,0,16,0"
                         VerticalAlignment="Center"
                         AutomationProperties.HelpText="{StaticResource Loc.View.Catalog.AutomationHelpText.ValuesMarkedWereReplacedUsingTheProfile}"
                         AutomationProperties.Name="{StaticResource Loc.View.Catalog.AutomationName.ShowOriginalValues}"
@@ -79,10 +86,13 @@
                     <ui:TextBlock
                         Grid.Column="2"
                         MinWidth="72"
+                        MaxWidth="180"
                         VerticalAlignment="Center"
                         AutomationProperties.LiveSetting="Polite"
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                         Text="{Binding FilterSummary}"
+                        TextTrimming="CharacterEllipsis"
+                        ToolTip="{Binding FilterSummary}"
                         TextAlignment="Right" />
                     <WrapPanel Grid.Row="1" Grid.ColumnSpan="3" Margin="0,8,0,0"
                         Visibility="{Binding HasColumnFilters, Converter={StaticResource BooleanToVisibilityConverter}}">
@@ -111,6 +121,9 @@
             <Grid.RowDefinitions><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
             <ui:Flyout x:Name="LiveFolderFlyout" Width="0" Height="0" MinWidth="0" MinHeight="0" />
 
+            <controls:SectionCard x:Name="CatalogResultsSurface" Grid.Row="0" Style="{StaticResource WorkspaceResultCardStyle}"
+                Visibility="{Binding HasLoadedItems, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <controls:SectionCard.Header>
             <ui:DataGrid
                 x:Name="ResultsGrid"
                 IsEnabled="{Binding IsResultInteractionEnabled, FallbackValue=True}"
@@ -123,6 +136,7 @@
                 EnableColumnVirtualization="True"
                 EnableRowVirtualization="True"
                 IsReadOnly="True"
+                BorderThickness="0"
                 ItemsSource="{Binding Items}"
                 ContextMenuOpening="OnResultsGridContextMenuOpening"
                 MouseDoubleClick="OnResultsGridMouseDoubleClick"
@@ -165,10 +179,12 @@
                     </ContextMenu>
                 </ui:DataGrid.ContextMenu>
             </ui:DataGrid>
+                </controls:SectionCard.Header>
+            </controls:SectionCard>
 
             <controls:SectionCard x:Name="SelectionToolbar" controls:FloatingNotificationChrome.IsBottomChrome="True" Grid.Row="1" Margin="0,8,0,0" Padding="12,4"
                 IsEnabled="{Binding IsResultInteractionEnabled, FallbackValue=True}"
-                Style="{StaticResource FluentToolbarCardStyle}" SizeChanged="OnSelectionToolbarSizeChanged"
+                Style="{StaticResource WorkspaceActionCardStyle}" SizeChanged="OnSelectionToolbarSizeChanged"
                 Visibility="{Binding HasSelection, Converter={StaticResource BooleanToVisibilityConverter}}">
                 <controls:SectionCard.Header>
                     <controls:PurposeFooterPanel>
@@ -190,15 +206,15 @@
                                     </ContextMenu>
                                 </ui:Button.ContextMenu>
                             </ui:Button>
-                            <ui:Button x:Name="SelectAllResultsButton" Margin="0,0,8,0" Padding="8,4" Command="{Binding SelectAllCommand}"
+                            <ui:Button x:Name="SelectAllResultsButton" Margin="0,0,8,0" Padding="8,4" Appearance="Transparent" Command="{Binding SelectAllCommand}"
                                 Content="{StaticResource Loc.Selection.All}" AutomationProperties.Name="{StaticResource Loc.Selection.All}" ToolTip="{StaticResource Loc.Selection.All.ToolTip}" />
-                            <ui:Button x:Name="ClearAllResultsButton" Margin="0,0,8,0" Padding="8,4" Command="{Binding ClearSelectionCommand}"
+                            <ui:Button x:Name="ClearAllResultsButton" Margin="0,0,8,0" Padding="8,4" Appearance="Transparent" Command="{Binding ClearSelectionCommand}"
                                 Content="{StaticResource Loc.Workspace.Selection.Clear}" AutomationProperties.Name="{StaticResource Loc.Workspace.Selection.Clear}" ToolTip="{StaticResource Loc.Workspace.Selection.Clear}" />
-                            <ui:Button x:Name="InvertResultsSelectionButton" Padding="8,4" Command="{Binding InvertSelectionCommand}"
+                            <ui:Button x:Name="InvertResultsSelectionButton" Padding="8,4" Appearance="Transparent" Command="{Binding InvertSelectionCommand}"
                                 Content="{StaticResource Loc.Workspace.Selection.Invert}" AutomationProperties.Name="{StaticResource Loc.Workspace.Selection.Invert}" ToolTip="{StaticResource Loc.Selection.Invert.ToolTip}" />
                         </WrapPanel>
                         <WrapPanel x:Name="SelectionOutputGroup" VerticalAlignment="Center" HorizontalAlignment="Right">
-                            <Label x:Name="CatalogOutputFormatLabel" Padding="0" Margin="0,0,8,0" VerticalAlignment="Center"
+                            <Label x:Name="CatalogOutputFormatLabel" Padding="0" Margin="0,0,8,0" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                 Content="{StaticResource Loc.Workspace.Output.Format.Label}" Target="{Binding ElementName=CatalogOutputFormatComboBox}" />
                             <ComboBox x:Name="CatalogOutputFormatComboBox" Width="280" MinWidth="240" Margin="0,0,8,0"
                                 AutomationProperties.Name="{StaticResource Loc.View.Files.AutomationName.SelectionOutputFormat}" DisplayMemberPath="DisplayName"
@@ -261,7 +277,7 @@
         </Grid>
             <Grid Grid.Row="3" Margin="0,4" Background="Transparent">
                 <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                    <ui:TextBlock Text="{Binding StatusMessage}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" ToolTip="{Binding StatusMessage}" AutomationProperties.LiveSetting="Polite" />
+                    <ui:TextBlock Text="{Binding StatusMessage}" Style="{StaticResource CaptionTextStyle}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" ToolTip="{Binding StatusMessage}" AutomationProperties.LiveSetting="Polite" />
                     <ui:TextBlock Grid.Column="1" MaxWidth="260" Margin="12,0,0,0" Text="{Binding ResultSourceDescription}" Style="{StaticResource CaptionTextStyle}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" ToolTip="{Binding ResultSourceDescription}" AutomationProperties.Name="{StaticResource Loc.Workspace.ResultSource}" />
                 </Grid>
             </Grid>

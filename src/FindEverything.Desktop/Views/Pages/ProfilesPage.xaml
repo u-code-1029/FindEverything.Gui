@@ -34,7 +34,7 @@
             <Setter Property="FontWeight" Value="SemiBold" />
         </Style>
         <Style x:Key="EditorSectionStyle" BasedOn="{StaticResource FluentCardStyle}" TargetType="ui:CardControl">
-            <Setter Property="Margin" Value="0,0,0,16" />
+            <Setter Property="Margin" Value="{StaticResource SectionGap}" />
         </Style>
         <Style
             x:Key="IconOnlyButtonStyle"
@@ -52,13 +52,50 @@
             <Setter Property="Padding" Value="12,10" />
             <Setter Property="FontWeight" Value="SemiBold" />
         </Style>
+        <!-- Keep radio semantics and arrow-key navigation while presenting the
+             setup steps as a small, theme-aware segmented navigation rail. -->
+        <Style x:Key="ProfileStepChoiceStyle" TargetType="RadioButton" BasedOn="{StaticResource {x:Type RadioButton}}">
+            <Setter Property="Margin" Value="4" />
+            <Setter Property="Padding" Value="12,10" />
+            <Setter Property="MinHeight" Value="40" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+            <Setter Property="FocusVisualStyle" Value="{DynamicResource DefaultControlFocusVisualStyle}" />
+            <Setter Property="ToolTip" Value="{Binding RelativeSource={RelativeSource Self}, Path=(AutomationProperties.HelpText)}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border Padding="{TemplateBinding Padding}" CornerRadius="8"
+                            Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}" RecognizesAccessKey="True" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource ControlFillColorSecondaryBrush}" />
+                    <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+                </Trigger>
+                <Trigger Property="IsChecked" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+                    <Setter Property="Foreground" Value="{DynamicResource TextOnAccentFillColorPrimaryBrush}" />
+                    <Setter Property="FontWeight" Value="SemiBold" />
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.5" /></Trigger>
+            </Style.Triggers>
+        </Style>
         <!-- Inset editors belong to their section card; avoid repeating the full outer-card treatment. -->
         <Style x:Key="FieldCardStyle" BasedOn="{StaticResource FluentCardStyle}" TargetType="ui:CardControl">
             <Setter Property="Margin" Value="0,0,0,12" />
-            <Setter Property="Padding" Value="12" />
+            <Setter Property="Padding" Value="16" />
             <Setter Property="Background" Value="{DynamicResource ControlFillColorSecondaryBrush}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
-            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="8" />
         </Style>
         <Style x:Key="ProfileEditorVirtualListStyle" TargetType="controls:ProfileEditorList">
             <Setter Property="Background" Value="Transparent" />
@@ -1545,19 +1582,18 @@
                     <controls:SectionCard
                         x:Name="ProfileEditorStepRail"
                         Grid.Row="0"
-                        Margin="0,4,0,0"
-                        Padding="12"
+                        Margin="0,8,0,0"
+                        Padding="4"
                         AutomationProperties.ItemStatus="{Binding EditorStepStatus}"
                         ToolTip="{Binding NumericValidationMessage}"
                         ToolTipService.ShowOnDisabled="True"
                         AutomationProperties.Name="{StaticResource Loc.View.Profiles.AutomationName.ProfileSetupSteps}"
                         IsEnabled="{Binding IsEditorReady}"
-                        Style="{StaticResource FluentToolbarCardStyle}">
+                        Style="{StaticResource WorkspaceToolbarCardStyle}">
                         <controls:SectionCard.Header>
                         <UniformGrid x:Name="ProfileStepButtons" Columns="3">
                             <RadioButton
-                                Margin="0,0,8,0"
-                                Padding="10,8"
+                                Style="{StaticResource ProfileStepChoiceStyle}"
                                 AutomationProperties.HelpText="{StaticResource Loc.View.Profiles.AutomationHelpText.ChooseAProfileAndSetItsBasic}"
                                 AutomationProperties.Name="{StaticResource Loc.View.Profiles.AutomationName.Step1ProfileInformation}"
                                 Command="{Binding GoToEditorStepCommand}"
@@ -1566,8 +1602,7 @@
                                 GroupName="ProfileEditorSteps"
                                 IsChecked="{Binding IsProfileStep, Mode=OneWay}" />
                             <RadioButton
-                                Margin="0,0,8,0"
-                                Padding="10,8"
+                                Style="{StaticResource ProfileStepChoiceStyle}"
                                 AutomationProperties.HelpText="{StaticResource Loc.View.Profiles.AutomationHelpText.DefineResultColumnsFromARealPath}"
                                 AutomationProperties.Name="{StaticResource Loc.View.Profiles.AutomationName.Step2PathAndColumns}"
                                 Command="{Binding GoToEditorStepCommand}"
@@ -1575,19 +1610,22 @@
                                 Content="{StaticResource Loc.View.Profiles.Content.2PathAndColumns}"
                                 GroupName="ProfileEditorSteps"
                                 IsChecked="{Binding IsPathAndFieldsStep, Mode=OneWay}" />
-                            <RadioButton Padding="10,8" Margin="0,0,8,0"
+                            <RadioButton Style="{StaticResource ProfileStepChoiceStyle}"
+                                AutomationProperties.Name="{StaticResource Loc.Profiles.Features.Step.DataSources}"
+                                AutomationProperties.HelpText="{StaticResource Loc.Profiles.Features.Step.DataSources}"
                                 Command="{Binding GoToEditorStepCommand}"
                                 CommandParameter="{x:Static viewModels:ProfileEditorStep.DataSources}"
                                 Content="{StaticResource Loc.Profiles.Features.Step.DataSources}"
                                 GroupName="ProfileEditorSteps" IsChecked="{Binding IsDataSourcesStep, Mode=OneWay}" />
-                            <RadioButton Padding="10,8" Margin="0,0,8,0"
+                            <RadioButton Style="{StaticResource ProfileStepChoiceStyle}"
+                                AutomationProperties.Name="{StaticResource Loc.Profiles.Features.Step.SelectionRules}"
+                                AutomationProperties.HelpText="{StaticResource Loc.Profiles.Features.Step.SelectionRules}"
                                 Command="{Binding GoToEditorStepCommand}"
                                 CommandParameter="{x:Static viewModels:ProfileEditorStep.SelectionRules}"
                                 Content="{StaticResource Loc.Profiles.Features.Step.SelectionRules}"
                                 GroupName="ProfileEditorSteps" IsChecked="{Binding IsSelectionRulesStep, Mode=OneWay}" />
                             <RadioButton
-                                Margin="0,0,8,0"
-                                Padding="10,8"
+                                Style="{StaticResource ProfileStepChoiceStyle}"
                                 AutomationProperties.HelpText="{StaticResource Loc.View.Profiles.AutomationHelpText.ConfigureExcludedFoldersAndValuesReadFrom}"
                                 AutomationProperties.Name="{StaticResource Loc.View.Profiles.AutomationName.Step3ScanOptions}"
                                 Command="{Binding GoToEditorStepCommand}"
@@ -1596,7 +1634,7 @@
                                 GroupName="ProfileEditorSteps"
                                 IsChecked="{Binding IsScanOptionsStep, Mode=OneWay}" />
                             <RadioButton
-                                Padding="10,8"
+                                Style="{StaticResource ProfileStepChoiceStyle}"
                                 AutomationProperties.HelpText="{StaticResource Loc.View.Profiles.AutomationHelpText.ValidateAndSaveTheProfileThenContinue}"
                                 AutomationProperties.Name="{StaticResource Loc.View.Profiles.AutomationName.Step4ReviewAndSave}"
                                 Command="{Binding GoToEditorStepCommand}"
@@ -1608,7 +1646,7 @@
                         </controls:SectionCard.Header>
                     </controls:SectionCard>
 
-                    <Grid x:Name="ProfileEditorViewport" Grid.Row="1" Margin="0,8,0,0">
+                    <Grid x:Name="ProfileEditorViewport" Grid.Row="1" Margin="0,12,0,0">
                         <ContentControl x:Name="ProfileEditorStepHost" Content="{Binding}"
                             HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" Focusable="False" IsTabStop="False">
                             <ContentControl.Style>
@@ -1631,8 +1669,8 @@
                         x:Name="EditorFooter"
                         controls:FloatingNotificationChrome.IsBottomChrome="True"
                         Grid.Row="2"
-                        Margin="8,12,8,8"
-                        Style="{StaticResource FluentToolbarCardStyle}">
+                        Margin="0,12,0,0"
+                        Style="{StaticResource WorkspaceActionCardStyle}">
                         <controls:SectionCard.Header>
                         <Grid>
                             <Grid.RowDefinitions>

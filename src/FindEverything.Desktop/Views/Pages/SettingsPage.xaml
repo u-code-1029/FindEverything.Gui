@@ -7,6 +7,13 @@
         <Style x:Key="SettingsSectionCardStyle" TargetType="ui:CardControl" BasedOn="{StaticResource FluentCardStyle}">
             <Setter Property="Margin" Value="{StaticResource SectionGap}" />
         </Style>
+        <Style x:Key="SettingsSectionIconStyle" TargetType="ui:SymbolIcon">
+            <Setter Property="FontSize" Value="20" />
+            <Setter Property="Margin" Value="0,0,12,0" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+            <Setter Property="IsHitTestVisible" Value="False" />
+        </Style>
         <Style x:Key="GroupedSettingRowStyle" TargetType="controls:SettingRowCard">
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
@@ -14,7 +21,7 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="controls:SettingRowCard">
-                        <Border Padding="0,12" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
+                        <Border Padding="0,16" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
                             <Grid>
                                 <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="0.45*" /><ColumnDefinition Width="0.55*" /></Grid.ColumnDefinitions>
@@ -47,7 +54,10 @@
                 <controls:SectionCard x:Name="IndexingSettingsCard" Style="{StaticResource SettingsSectionCardStyle}">
                     <controls:SectionCard.Header>
                     <StackPanel>
-                        <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.Workspace.Settings.Indexing}" AutomationProperties.HeadingLevel="Level2" />
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                            <ui:SymbolIcon Symbol="Search24" Style="{StaticResource SettingsSectionIconStyle}" />
+                            <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.Workspace.Settings.Indexing}" AutomationProperties.HeadingLevel="Level2" />
+                        </StackPanel>
                         <controls:SettingRowCard Style="{StaticResource GroupedSettingRowStyle}" Title="{DynamicResource Loc.Workspace.Settings.PageSize}" Description="{DynamicResource Loc.Workspace.Settings.PageSize.Help}">
                             <ui:TextBox HorizontalAlignment="Stretch" Text="{Binding SearchPageSizeText, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{DynamicResource Loc.Workspace.Settings.PageSize}" ToolTip="{DynamicResource Loc.Workspace.Settings.PageSize.Help}" />
                         </controls:SettingRowCard>
@@ -66,7 +76,10 @@
                 <controls:SectionCard x:Name="NotificationSettingsCard" Style="{StaticResource SettingsSectionCardStyle}">
                     <controls:SectionCard.Header>
                     <StackPanel>
-                        <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.Workspace.Settings.Notifications}" AutomationProperties.HeadingLevel="Level2" />
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                            <ui:SymbolIcon Symbol="Info24" Style="{StaticResource SettingsSectionIconStyle}" />
+                            <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.Workspace.Settings.Notifications}" AutomationProperties.HeadingLevel="Level2" />
+                        </StackPanel>
                         <ui:TextBlock Margin="0,4,0,0" Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.Workspace.Settings.Notifications.Help}" TextWrapping="Wrap" />
                         <controls:SettingRowCard Style="{StaticResource GroupedSettingRowStyle}" BorderThickness="0" Title="{DynamicResource Loc.Workspace.Settings.NotificationDuration}" Description="{DynamicResource Loc.Workspace.Settings.NotificationDuration.Help}">
                             <ui:TextBox HorizontalAlignment="Stretch" Text="{Binding NotificationAutoDismissSecondsText, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{DynamicResource Loc.Workspace.Settings.NotificationDuration}" ToolTip="{DynamicResource Loc.Workspace.Settings.NotificationDuration.Help}" />
@@ -77,7 +90,10 @@
                 <controls:SectionCard x:Name="AppearanceSettingsCard" Style="{StaticResource SettingsSectionCardStyle}">
                     <controls:SectionCard.Header>
                     <StackPanel>
-                        <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.Workspace.Settings.Appearance}" AutomationProperties.HeadingLevel="Level2" />
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                            <ui:SymbolIcon Symbol="Settings24" Style="{StaticResource SettingsSectionIconStyle}" />
+                            <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{DynamicResource Loc.Workspace.Settings.Appearance}" AutomationProperties.HeadingLevel="Level2" />
+                        </StackPanel>
                         <controls:SettingRowCard Style="{StaticResource GroupedSettingRowStyle}" Title="{DynamicResource Loc.Workspace.Settings.Theme}" Description="{DynamicResource Loc.Workspace.Settings.Theme.Help}">
                             <ComboBox HorizontalAlignment="Stretch" DisplayMemberPath="DisplayName" ItemsSource="{Binding ThemeChoices}" SelectedItem="{Binding SelectedTheme}" AutomationProperties.Name="{DynamicResource Loc.Workspace.Settings.Theme}" />
                         </controls:SettingRowCard>
@@ -94,19 +110,15 @@
                     </controls:SectionCard.Header>
                 </controls:SectionCard>
                 <ui:TextBlock Margin="0,0,0,12" Foreground="{DynamicResource SystemFillColorCriticalBrush}" Text="{Binding NumericValidationMessage}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" Visibility="{Binding HasNumericValidationError, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                <controls:SectionCard Style="{StaticResource SettingsSectionCardStyle}">
-                    <controls:SectionCard.Header>
-                    <ui:CardExpander Header="{DynamicResource Loc.Workspace.Settings.Advanced}">
-                        <StackPanel Margin="0,12,0,0">
+                    <ui:CardExpander Margin="0,0,0,16" Header="{DynamicResource Loc.Workspace.Settings.Advanced}">
+                        <StackPanel Margin="0,8,0,0">
                             <ui:TextBlock FontWeight="SemiBold" Text="{DynamicResource Loc.Workspace.Settings.File}" />
                             <ui:TextBlock Margin="0,4,0,0" Text="{Binding UserSettingsFile}" TextWrapping="Wrap" Style="{StaticResource CaptionTextStyle}" />
                         </StackPanel>
                     </ui:CardExpander>
-                    </controls:SectionCard.Header>
-                </controls:SectionCard>
             </StackPanel>
         </ui:DynamicScrollViewer>
-        <controls:CommandStrip controls:FloatingNotificationChrome.IsBottomChrome="True" Grid.Row="2" Margin="0,8,0,0">
+        <controls:CommandStrip controls:FloatingNotificationChrome.IsBottomChrome="True" Grid.Row="2" Margin="0,12,0,0" Padding="12">
             <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,12,0">
                     <ui:ProgressRing Width="18" Height="18" Margin="0,0,8,0" IsIndeterminate="True" Visibility="{Binding IsSaving, Converter={StaticResource BooleanToVisibilityConverter}}" />

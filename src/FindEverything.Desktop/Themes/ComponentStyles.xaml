@@ -100,7 +100,9 @@
          Their nested editors remain keyboard-focusable, but the passive card
          itself must not become an extra button in the tab sequence. -->
     <Style x:Key="FluentCardStyle" TargetType="ui:CardControl" BasedOn="{StaticResource DefaultUiCardControlStyle}">
-        <Setter Property="CornerRadius" Value="8" />
+        <Setter Property="CornerRadius" Value="{StaticResource SurfaceCornerRadius}" />
+        <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
         <Setter Property="Padding" Value="{StaticResource CardPadding}" />
         <Setter Property="HorizontalAlignment" Value="Stretch" />
         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
@@ -112,6 +114,18 @@
 
     <Style x:Key="FluentToolbarCardStyle" TargetType="ui:CardControl" BasedOn="{StaticResource FluentCardStyle}">
         <Setter Property="Padding" Value="{StaticResource ToolbarPadding}" />
+    </Style>
+
+    <!-- A small family of surfaces communicates purpose without adding
+         effects, animation, or new visuals to each virtualized result row. -->
+    <Style x:Key="WorkspaceToolbarCardStyle" TargetType="ui:CardControl" BasedOn="{StaticResource FluentCardStyle}">
+        <Setter Property="Padding" Value="{StaticResource WorkspaceToolbarPadding}" />
+    </Style>
+    <Style x:Key="WorkspaceResultCardStyle" TargetType="ui:CardControl" BasedOn="{StaticResource FluentCardStyle}">
+        <Setter Property="Padding" Value="{StaticResource WorkspaceResultPadding}" />
+    </Style>
+    <Style x:Key="WorkspaceActionCardStyle" TargetType="ui:CardControl" BasedOn="{StaticResource FluentCardStyle}">
+        <Setter Property="Padding" Value="{StaticResource WorkspaceActionPadding}" />
     </Style>
 
     <Style x:Key="FluentSectionCardStyle" TargetType="ui:CardControl" BasedOn="{StaticResource FluentCardStyle}" />
@@ -157,6 +171,8 @@
         TargetType="ui:TextBox">
         <Setter Property="MinHeight" Value="44" />
         <Setter Property="FontSize" Value="16" />
+        <Setter Property="Border.CornerRadius" Value="{StaticResource WorkspaceControlCornerRadius}" />
+        <Setter Property="Padding" Value="12,8" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
 
@@ -209,7 +225,7 @@
         <Setter Property="Padding" Value="0,0,16,0" />
     </Style>
     <Style x:Key="WorkspacePageHeaderStyle" TargetType="controls:PageHeader">
-        <Setter Property="Margin" Value="0,4,0,4" />
+        <Setter Property="Margin" Value="0,4,0,8" />
         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
         <Setter Property="Template">
             <Setter.Value>
@@ -218,7 +234,7 @@
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                             <TextBlock Style="{StaticResource PageTitleTextStyle}" Text="{TemplateBinding Title}" AutomationProperties.HeadingLevel="Level1" />
-                            <ui:Button x:Name="HelpButton" Margin="8,0,0,0" Width="28" Height="28" Padding="0" Appearance="Transparent" Icon="{ui:SymbolIcon Symbol=QuestionCircle20}"
+                            <ui:Button x:Name="HelpButton" Margin="8,0,0,0" Width="28" Height="28" Padding="0" Appearance="Transparent" BorderThickness="0" Icon="{ui:SymbolIcon Symbol=QuestionCircle20}"
                                 AutomationProperties.Name="{TemplateBinding Description}" ToolTip="{TemplateBinding Description}" ToolTipService.ShowOnDisabled="True" />
                         </StackPanel>
                         <ContentPresenter Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center" Content="{TemplateBinding Content}" />
@@ -234,7 +250,7 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="controls:CommandStrip">
-                    <controls:SectionCard Style="{StaticResource FluentToolbarCardStyle}" Padding="{TemplateBinding Padding}">
+                    <controls:SectionCard Style="{StaticResource WorkspaceToolbarCardStyle}" Padding="{TemplateBinding Padding}">
                         <controls:SectionCard.Header>
                             <ContentPresenter Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" HorizontalAlignment="Stretch" />
                         </controls:SectionCard.Header>

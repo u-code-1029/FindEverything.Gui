@@ -36,9 +36,9 @@ public partial class FilesPage
 
     private void ApplyWorkspaceLayout()
     {
-        if (ResultsGrid is null || FileDetailsPanel is null) return;
+        if (FileResultsSurface is null || FileDetailsPanel is null) return;
         var reserveDetails = _viewModel.IsDetailsOpen && FilePageLayout.ActualWidth >= 900;
-        ResultsGrid.Margin = new System.Windows.Thickness(0, 0, reserveDetails ? 348 : 0, 0);
+        FileResultsSurface.Margin = new System.Windows.Thickness(0, 0, reserveDetails ? 348 : 0, 0);
         FileDetailsPanel.Width = Math.Min(340, Math.Max(200, FilePageLayout.ActualWidth));
         var compact = FilePageLayout.ActualWidth < 900;
         Grid.SetRow(SearchBox, 0);

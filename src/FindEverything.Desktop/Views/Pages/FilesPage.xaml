@@ -34,12 +34,12 @@
                 <Grid x:Name="FileCommandLayout">
                     <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                     <Grid.ColumnDefinitions><ColumnDefinition x:Name="FileLocationColumn" Width="220" /><ColumnDefinition x:Name="FileSearchColumn" Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                    <ui:TextBlock x:Name="FileRootPathText" VerticalAlignment="Center" Text="{Binding RootPath, TargetNullValue={StaticResource Loc.Files.Root.None}}" TextTrimming="CharacterEllipsis" ToolTip="{Binding RootPath}" AutomationProperties.Name="{StaticResource Loc.Workspace.Location.Change}" />
-                <ui:TextBox x:Name="SearchBox" Grid.Column="1" Margin="12,0,0,0" MinHeight="36" AutomationProperties.Name="{StaticResource Loc.Workspace.Files.Search}" ClearButtonEnabled="True" Icon="{ui:SymbolIcon Symbol=Search20}" PlaceholderText="{StaticResource Loc.Workspace.Files.Search}" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" ToolTip="{StaticResource Loc.Workspace.Files.Search.Help}" IsEnabled="{Binding CanSearch}" />
+                    <ui:TextBlock x:Name="FileRootPathText" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding RootPath, TargetNullValue={StaticResource Loc.Files.Root.None}}" TextTrimming="CharacterEllipsis" ToolTip="{Binding RootPath}" AutomationProperties.Name="{StaticResource Loc.Workspace.Location.Change}" />
+                <ui:TextBox x:Name="SearchBox" Grid.Column="1" Margin="12,0,0,0" Style="{StaticResource FluentSearchBoxStyle}" MinHeight="36" Padding="12,6" FontSize="15" VerticalContentAlignment="Center" AutomationProperties.Name="{StaticResource Loc.Workspace.Files.Search}" ClearButtonEnabled="True" Icon="{ui:SymbolIcon Symbol=Search20}" PlaceholderText="{StaticResource Loc.Workspace.Files.Search}" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" ToolTip="{StaticResource Loc.Workspace.Files.Search.Help}" IsEnabled="{Binding CanSearch}" />
                     <WrapPanel Grid.Column="2" Margin="8,0,0,0">
-                        <ui:Button MinWidth="76" Margin="0,0,8,0" Command="{Binding BrowseRootCommand}" Content="{StaticResource Loc.Workspace.Location.Change}" Icon="{ui:SymbolIcon Symbol=FolderOpen20}" ToolTip="{StaticResource Loc.Workspace.Location.Change.Help}" ToolTipService.ShowOnDisabled="True" />
+                        <ui:Button MinWidth="76" Margin="0,0,8,0" Appearance="Transparent" Command="{Binding BrowseRootCommand}" Content="{StaticResource Loc.Workspace.Location.Change}" Icon="{ui:SymbolIcon Symbol=FolderOpen20}" ToolTip="{StaticResource Loc.Workspace.Location.Change.Help}" ToolTipService.ShowOnDisabled="True" />
                         <ui:Button MinWidth="92" Margin="0,0,8,0" Appearance="Primary" Command="{Binding RefreshIndexCommand}" Content="{StaticResource Loc.Workspace.Scan}" Icon="{ui:SymbolIcon Symbol=ArrowSync20}" ToolTip="{StaticResource Loc.Workspace.Scan.Files.Help}" ToolTipService.ShowOnDisabled="True" />
-                        <ui:Button Command="{Binding ToggleDetailsCommand}" Content="{Binding DetailsButtonText}" ToolTip="{StaticResource Loc.Workspace.Details.Help}" />
+                        <ui:Button Appearance="Transparent" Command="{Binding ToggleDetailsCommand}" Content="{Binding DetailsButtonText}" ToolTip="{StaticResource Loc.Workspace.Details.Help}" />
                         <ui:Button Margin="8,0,0,0" Command="{Binding CancelCommand}" Content="{StaticResource Loc.Workspace.Cancel}" Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}" ToolTip="{StaticResource Loc.Workspace.Cancel.Help}" />
                     </WrapPanel>
                 </Grid>
@@ -72,7 +72,7 @@
                     Visibility="{Binding CanRetryResultCount, Converter={StaticResource BooleanToVisibilityConverter}, FallbackValue=Collapsed}"
                     AutomationProperties.Name="{StaticResource Loc.Files.Count.Retry}"
                     ToolTip="{StaticResource Loc.Files.Count.Retry.Help}" />
-                <StackPanel HorizontalAlignment="Right" Orientation="Horizontal"><ui:Button MinWidth="84" Padding="8,2" Margin="0,0,8,0" Content="{StaticResource Loc.Selection.All}" Command="{Binding SelectAllCommand}" ToolTip="{StaticResource Loc.Selection.All.ToolTip}" ToolTipService.ShowOnDisabled="True" />
+                <StackPanel HorizontalAlignment="Right" Orientation="Horizontal"><ui:Button MinWidth="84" Padding="8,2" Margin="0,0,8,0" Appearance="Transparent" Content="{StaticResource Loc.Selection.All}" Command="{Binding SelectAllCommand}" ToolTip="{StaticResource Loc.Selection.All.ToolTip}" ToolTipService.ShowOnDisabled="True" />
                     <ui:ProgressRing
                         Width="18"
                         Height="18"
@@ -86,11 +86,15 @@
                 </StackPanel>
             </DockPanel>
 
+            <controls:SectionCard x:Name="FileResultsSurface" Grid.Row="1" Style="{StaticResource WorkspaceResultCardStyle}"
+                Visibility="{Binding HasIndex, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <controls:SectionCard.Header>
             <ui:DataGrid
                 x:Name="ResultsGrid"
                 IsEnabled="{Binding IsResultInteractionEnabled, FallbackValue=True}"
                 Grid.Row="1"
                 Style="{StaticResource FluentDataGridStyle}"
+                BorderThickness="0"
                 AutomationProperties.Name="{StaticResource Loc.View.Files.AutomationName.FileSearchResults}"
 
                 ItemsSource="{Binding Items}"
@@ -175,10 +179,12 @@
                     <DataGridTextColumn Width="90" MinWidth="80" ElementStyle="{StaticResource FileMetadataCellTextStyle}" Binding="{Binding StatusText}" Header="{StaticResource Loc.Catalog.Column.Status}" CanUserSort="False" />
                 </ui:DataGrid.Columns>
             </ui:DataGrid>
+                </controls:SectionCard.Header>
+            </controls:SectionCard>
 
             <controls:SectionCard x:Name="SelectionToolbar" controls:FloatingNotificationChrome.IsBottomChrome="True" Grid.Row="2" Margin="0,8,0,0" Padding="12,4"
                 IsEnabled="{Binding IsResultInteractionEnabled, FallbackValue=True}"
-                Style="{StaticResource FluentToolbarCardStyle}" SizeChanged="OnSelectionToolbarSizeChanged"
+                Style="{StaticResource WorkspaceActionCardStyle}" SizeChanged="OnSelectionToolbarSizeChanged"
                 Visibility="{Binding HasSelection, Converter={StaticResource BooleanToVisibilityConverter}}">
                 <controls:SectionCard.Header>
                     <controls:PurposeFooterPanel>
@@ -200,15 +206,15 @@
                                     </ContextMenu>
                                 </ui:Button.ContextMenu>
                             </ui:Button>
-                            <ui:Button x:Name="SelectAllResultsButton" Margin="0,0,8,0" Padding="8,4" Command="{Binding SelectAllCommand}"
+                            <ui:Button x:Name="SelectAllResultsButton" Margin="0,0,8,0" Padding="8,4" Appearance="Transparent" Command="{Binding SelectAllCommand}"
                                 Content="{StaticResource Loc.Selection.All}" AutomationProperties.Name="{StaticResource Loc.Selection.All}" ToolTip="{StaticResource Loc.Selection.All.ToolTip}" />
-                            <ui:Button x:Name="ClearAllResultsButton" Margin="0,0,8,0" Padding="8,4" Command="{Binding ClearSelectionCommand}"
+                            <ui:Button x:Name="ClearAllResultsButton" Margin="0,0,8,0" Padding="8,4" Appearance="Transparent" Command="{Binding ClearSelectionCommand}"
                                 Content="{StaticResource Loc.Workspace.Selection.Clear}" AutomationProperties.Name="{StaticResource Loc.Workspace.Selection.Clear}" ToolTip="{StaticResource Loc.Workspace.Selection.Clear}" />
-                            <ui:Button x:Name="InvertResultsSelectionButton" Padding="8,4" Command="{Binding InvertSelectionCommand}"
+                            <ui:Button x:Name="InvertResultsSelectionButton" Padding="8,4" Appearance="Transparent" Command="{Binding InvertSelectionCommand}"
                                 Content="{StaticResource Loc.Workspace.Selection.Invert}" AutomationProperties.Name="{StaticResource Loc.Workspace.Selection.Invert}" ToolTip="{StaticResource Loc.Selection.Invert.ToolTip}" />
                         </WrapPanel>
                         <WrapPanel x:Name="SelectionOutputGroup" VerticalAlignment="Center" HorizontalAlignment="Right">
-                            <Label x:Name="FilesOutputFormatLabel" Padding="0" Margin="0,0,8,0" VerticalAlignment="Center"
+                            <Label x:Name="FilesOutputFormatLabel" Padding="0" Margin="0,0,8,0" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                 Content="{StaticResource Loc.Workspace.Output.Format.Label}" Target="{Binding ElementName=FilesOutputFormatComboBox}" />
                             <ComboBox x:Name="FilesOutputFormatComboBox" Width="280" MinWidth="240" Margin="0,0,8,0"
                                 AutomationProperties.Name="{StaticResource Loc.View.Files.AutomationName.SelectionOutputFormat}" DisplayMemberPath="DisplayName"
@@ -314,7 +320,7 @@
 
         <Grid Grid.Row="3" Margin="0,4" Background="Transparent">
             <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                <ui:TextBlock Text="{Binding StatusMessage}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" ToolTip="{Binding StatusMessage}" AutomationProperties.LiveSetting="Polite" />
+                <ui:TextBlock Text="{Binding StatusMessage}" Style="{StaticResource CaptionTextStyle}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" ToolTip="{Binding StatusMessage}" AutomationProperties.LiveSetting="Polite" />
                 <ui:TextBlock Grid.Column="1" MaxWidth="260" Margin="12,0,0,0" Text="{Binding ResultSourceDescription}" Style="{StaticResource CaptionTextStyle}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" ToolTip="{Binding ResultSourceDescription}" AutomationProperties.Name="{StaticResource Loc.Workspace.ResultSource}" />
             </Grid>
         </Grid>

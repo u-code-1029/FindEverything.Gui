@@ -26,7 +26,7 @@
         <ui:NavigationView
             x:Name="RootNavigation"
             IsBackButtonVisible="Collapsed"
-            IsFooterSeparatorVisible="True"
+            IsFooterSeparatorVisible="False"
             IsPaneToggleVisible="True"
             IsTopSeparatorVisible="False"
             OpenPaneLength="220"
@@ -35,6 +35,14 @@
             PaneDisplayMode="Left"
             TitleBar="{Binding ElementName=AppTitleBar}"
             Transition="None">
+            <ui:NavigationView.Resources>
+                <!-- Keep WPF-UI's native navigation template, compact badge
+                     alignment, focus treatment and selection indicator. -->
+                <Style TargetType="ui:NavigationViewItem" BasedOn="{StaticResource NavigationViewItemDefaultStyle}">
+                    <Setter Property="Border.CornerRadius" Value="8" />
+                    <Setter Property="Margin" Value="0,2,0,2" />
+                </Style>
+            </ui:NavigationView.Resources>
             <ui:NavigationView.MenuItems>
                 <ui:NavigationViewItem
                     AutomationProperties.Name="{StaticResource Loc.Home.Nav}"
@@ -152,11 +160,11 @@
                         <ui:InfoBar.Template>
                             <ControlTemplate TargetType="{x:Type ui:InfoBar}">
                                 <Border
-                                    Padding="12,8"
+                                    Padding="16,12"
                                     Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
                                     BorderBrush="{DynamicResource SurfaceStrokeColorDefaultBrush}"
                                     BorderThickness="1"
-                                    CornerRadius="8">
+                                    CornerRadius="{StaticResource SurfaceCornerRadius}">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
@@ -208,8 +216,8 @@
                         Margin="0,0,8,0"
                         Padding="2"
                         VerticalAlignment="Center"
-                        Background="{DynamicResource ControlFillColorSecondaryBrush}"
-                        CornerRadius="6"
+                        Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                        CornerRadius="8"
                         ToolTip="{Binding LanguageRestartHint}">
                         <StackPanel Orientation="Horizontal">
                             <ui:Button

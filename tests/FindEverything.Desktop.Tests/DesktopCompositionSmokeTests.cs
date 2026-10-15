@@ -81,6 +81,7 @@ public sealed class DesktopCompositionSmokeTests
             application = CreateTestApplication();
             CatalogFilteringTests.VerifyHighlightingRendering();
             SectionCardRegressionChecks.Verify();
+            ModernVisualRegressionChecks.VerifySharedStyles();
             GridSizingRegressionChecks.Verify();
             ScanConsoleUiRegressionChecks.Verify();
 
@@ -177,6 +178,7 @@ public sealed class DesktopCompositionSmokeTests
             Assert.True(navigation.Navigate(typeof(FilesPage)));
             VerifyPageScrollContracts(filesPage, catalogPage);
             VerifyCompactSelectionPages(filesPage, catalogPage);
+            ModernVisualRegressionChecks.VerifyResultInputs(filesPage, catalogPage);
             VerifyCoreWorkspaceBounds(provider, window);
             WorkspaceTransferUiChecks.Verify(provider, window, (visual, name) => SaveQaImage(visual, name));
             Assert.True(navigation.Navigate(typeof(CatalogPage)));
@@ -512,6 +514,10 @@ public sealed class DesktopCompositionSmokeTests
         if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("FINDEVERYTHING_QA_DIR"))) return;
         var navigation = provider.GetRequiredService<INavigationService>();
         var appearance = provider.GetRequiredService<IAppearanceService>();
+        var home = provider.GetRequiredService<HomePage>();
+        var editor = Assert.IsType<ProfilesViewModel>(profiles.DataContext);
+        var previousStep = editor.CurrentEditorStep;
+        var previousTheme = ApplicationThemeManager.GetAppTheme();
         var width = window.Width;
         var height = window.Height;
         window.Width = 1360;
@@ -530,11 +536,8 @@ public sealed class DesktopCompositionSmokeTests
             Capture(catalog, new WorkspaceLayoutFixture(isCatalog: true), "catalog-dark.png");
             appearance.Apply(window, new AppearanceOptions { Theme = ThemePreference.Light, Backdrop = BackdropPreference.None });
 
-            var editor = Assert.IsType<ProfilesViewModel>(profiles.DataContext);
-            var previousStep = editor.CurrentEditorStep;
             editor.GoToEditorStepCommand.Execute(ProfileEditorStep.PathAndFields);
             Capture(profiles, null, "profiles-light.png");
-            editor.GoToEditorStepCommand.Execute(previousStep);
 
             var input = @"C:\Archive\Clients\Apollo\2026\0521_Project";
             var rules = new[] { new ProfileRegexRuleManifest
@@ -542,13 +545,44 @@ public sealed class DesktopCompositionSmokeTests
                 Id = "project-folders", Pattern = @".*[\\/](?<client>Apollo)[\\/](?<year>\d{4})[\\/](?<monthDay>\d{4})_(?<project>[^\\/]+)$",
                 MatchMode = ProfileRegexMatchMode.Full, TimeoutMilliseconds = 100,
             } };
-            Capture(playground, new PlaygroundLayoutFixture(input, ProfileRegexDebugBuilder.Build(input, rules)), "playground-light.png");
+            var playgroundFixture = new PlaygroundLayoutFixture(input, ProfileRegexDebugBuilder.Build(input, rules));
+            Capture(playground, playgroundFixture, "playground-light.png");
             Capture(outputFormats, null, "output-formats-light.png");
             Capture(settings, null, "settings-light.png");
+            Capture(home, null, "home-light.png");
+
+            // Complement the existing results-page coverage with the passive
+            // dashboard and editor surfaces. Reuse this shown HWND so live
+            // theme resources update as they do in the app; no extra DI graph
+            // or competing WPF dispatcher is needed for the visual matrix.
+            foreach (var (theme, size, suffix) in new[]
+            {
+                (ThemePreference.Dark, new Size(1360, 860), "dark-wide"),
+                (ThemePreference.Light, new Size(760, 640), "light-small"),
+            })
+            {
+                window.Width = size.Width;
+                window.Height = size.Height;
+                appearance.Apply(window, new AppearanceOptions { Theme = theme, Backdrop = BackdropPreference.None });
+                foreach (var (page, fixture, name) in new (Page Page, object? Fixture, string Name)[]
+                {
+                    (home, null, "home"),
+                    (profiles, null, "profiles"),
+                    (playground, playgroundFixture, "playground"),
+                    (outputFormats, null, "output-formats"),
+                    (settings, null, "settings"),
+                })
+                    Capture(page, fixture, $"{name}-{suffix}.png");
+            }
         }
         finally
         {
-            appearance.Apply(window, new AppearanceOptions { Theme = ThemePreference.Light, Backdrop = BackdropPreference.None });
+            editor.GoToEditorStepCommand.Execute(previousStep);
+            appearance.Apply(window, new AppearanceOptions
+            {
+                Theme = previousTheme == ApplicationTheme.Dark ? ThemePreference.Dark : ThemePreference.Light,
+                Backdrop = BackdropPreference.None,
+            });
             window.Width = width;
             window.Height = height;
             PumpLayout(window, window);
@@ -570,6 +604,7 @@ public sealed class DesktopCompositionSmokeTests
                 // translated/clipped caption, not the settled page layout.
                 PumpDispatcherFor(window.Dispatcher, TimeSpan.FromMilliseconds(page is ProfilePlaygroundPage ? 400 : 80));
                 PumpLayout(window, page);
+                Assert.NotNull(PresentationSource.FromVisual(page));
                 if (fixture is WorkspaceLayoutFixture
                     && page.FindName("ResultsGrid") is System.Windows.Controls.DataGrid sampleGrid)
                 {
@@ -1746,7 +1781,7 @@ public sealed class DesktopCompositionSmokeTests
         var appearanceCard = Assert.IsAssignableFrom<CardControl>(page.FindName("AppearanceSettingsCard"));
         foreach (var card in new[] { indexingCard, notificationsCard, appearanceCard })
         {
-            Assert.Equal(new CornerRadius(8), card.CornerRadius);
+            Assert.Equal(new CornerRadius(12), card.CornerRadius);
             Assert.Equal(new Thickness(1), card.BorderThickness);
             Assert.NotNull(card.Background);
         }
