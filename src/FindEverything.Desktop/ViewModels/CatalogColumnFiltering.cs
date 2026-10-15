@@ -21,6 +21,7 @@ public partial class CatalogViewModel
 
     public void ApplyColumnFilter(CatalogColumnFilter filter, bool debounce = false)
     {
+        if (!IsResultInteractionEnabled) return;
         CatalogColumnFilters.Validate(filter, Fields);
         var next = _queryDefinition.Filters.Where(existing => existing.Target != filter.Target).Append(filter)
             .OrderBy(existing => existing.Target.Kind).ThenBy(existing => existing.Target.FieldId, StringComparer.Ordinal).ToArray();
@@ -36,6 +37,7 @@ public partial class CatalogViewModel
 
     public void ClearColumnFilter(CatalogColumnTarget target)
     {
+        if (!IsResultInteractionEnabled) return;
         var next = _queryDefinition.Filters.Where(existing => existing.Target != target).ToArray();
         if (next.Length == _queryDefinition.Filters.Count) return;
         _queryDefinition = _queryDefinition with { Filters = next };
@@ -44,9 +46,10 @@ public partial class CatalogViewModel
         ApplyFilter();
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(IsResultInteractionEnabled))]
     private void ClearColumnFilters()
     {
+        if (!IsResultInteractionEnabled) return;
         if (_queryDefinition.Filters.Count == 0) return;
         _queryDefinition = _queryDefinition with { Filters = [] };
         RebuildActiveColumnFilters();
@@ -56,6 +59,7 @@ public partial class CatalogViewModel
 
     public void ApplyColumnSort(CatalogColumnTarget target, bool? descending)
     {
+        if (!IsResultInteractionEnabled) return;
         _queryDefinition = _queryDefinition with { SortTarget = descending.HasValue ? target : null,
             SortFieldId = null, Descending = descending ?? false };
         ColumnQueryChanged?.Invoke(this, EventArgs.Empty);

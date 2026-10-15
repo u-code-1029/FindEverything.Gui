@@ -1,6 +1,8 @@
 using System.Collections;
 using System.ComponentModel;
 using System.Reflection;
+using System.Windows.Automation.Peers;
+using System.Windows.Automation.Provider;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
@@ -30,6 +32,58 @@ internal static class UiRenderingLifetimeChecks
         VerifyProfileCardsRecycleWithoutLosingDraftEdits();
         VerifyReadOnlyColumnsUseTheNarrowestBinding();
         VerifySizingCommitsAfterTheWholeSample();
+        VerifyIdleTextCellsDoNotCreateNativeTextViews();
+        VerifyPlainHighlightingKeepsTheSimpleTextPath();
+    }
+
+    private static void VerifyIdleTextCellsDoNotCreateNativeTextViews()
+    {
+        // No HWND/pointer is needed: measuring an untouched result must not
+        // instantiate ScrollViewer/TextBoxView for its transparent input target.
+        var cell = new SelectableCatalogText(new Binding("Value") { Mode = BindingMode.OneWay })
+        {
+            DataContext = new { Value = "Accessible while idle" },
+        };
+        cell.Measure(new Size(300, 40)); cell.Arrange(new Rect(0, 0, 300, 40));
+        var native = Assert.Single(cell.Children.OfType<Wpf.Ui.Controls.TextBox>());
+        native.ApplyTemplate();
+        Assert.False(cell.IsNativeEditorPrepared);
+        Assert.Empty(Descendants<ScrollViewer>(cell));
+        Assert.Equal("Accessible while idle", native.Text);
+        var peer = UIElementAutomationPeer.CreatePeerForElement(native)!;
+        var provider = Assert.IsAssignableFrom<IValueProvider>(peer.GetPattern(PatternInterface.Value));
+        Assert.True(provider.IsReadOnly);
+        Assert.Equal("Accessible while idle", provider.Value);
+
+        cell.DataContext = new { Value = "Recycled while idle" };
+        Pump();
+        Assert.Equal("Recycled while idle", native.Text);
+        Assert.False(cell.IsNativeEditorPrepared);
+        Assert.Empty(Descendants<ScrollViewer>(cell));
+        Assert.Same(native, cell.TextBox);
+        Assert.True(cell.IsNativeEditorPrepared);
+        Assert.Single(Descendants<ScrollViewer>(cell));
+    }
+
+    private static void VerifyPlainHighlightingKeepsTheSimpleTextPath()
+    {
+        var text = new Wpf.Ui.Controls.TextBlock();
+        // This WPF implementation field detects accidental Inlines access,
+        // which would make an otherwise plain cell allocate a rich text tree.
+        var complexContent = typeof(TextBlock).GetField("_complexContent", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        Assert.NotNull(complexContent);
+        TextHighlighting.SetDisplayText(text, "Apollo archive");
+        Assert.Equal("Apollo archive", text.Text);
+        Assert.Null(complexContent.GetValue(text));
+        TextHighlighting.SetHighlightText(text, "unmatched");
+        TextHighlighting.SetDisplayText(text, "Another archive");
+        Assert.Null(complexContent.GetValue(text));
+        TextHighlighting.SetHighlightText(text, "archive");
+        Assert.NotNull(complexContent.GetValue(text));
+        Assert.Single(text.Inlines.OfType<System.Windows.Documents.Run>(), run => run.Background is not null);
+        TextHighlighting.SetHighlightText(text, string.Empty);
+        Assert.Equal("Another archive", text.Text);
+        Assert.DoesNotContain(text.Inlines.OfType<System.Windows.Documents.Run>(), run => run.Background is not null);
     }
 
     private static void VerifySizingCommitsAfterTheWholeSample()
@@ -125,6 +179,21 @@ internal static class UiRenderingLifetimeChecks
             var mapped = Assert.Single(cells, cell => TextHighlighting.GetDisplayText(cell.Highlight) == "Mapped alias");
             AssertPath(plain, "DisplayValues[plain]");
             AssertPath(mapped, "DisplayCells[alias].Value");
+            var plainHost = Assert.IsAssignableFrom<Decorator>(VisualTreeHelper.GetParent(plain));
+            Assert.Same(plain, plainHost.Child);
+            Assert.Empty(Descendants<Wpf.Ui.Controls.SymbolIcon>(plainHost));
+            var errorRow = new CatalogItemViewModel(new CatalogItem(@"C:\Archive", "Archive", "sample", new object(),
+                new Dictionary<string, object?> { ["plain"] = "Unmapped value", ["alias"] = "A" }, false)
+                { FieldErrors = new Dictionary<string, string> { ["plain"] = "Could not read this field" } },
+                fields, new TestAppLocalizer());
+            plainHost.DataContext = errorRow; Pump();
+            var warning = Assert.Single(Descendants<Wpf.Ui.Controls.SymbolIcon>(plainHost));
+            Assert.Equal(Wpf.Ui.Controls.SymbolRegular.Warning20, warning.Symbol);
+            Assert.Equal("Could not read this field", warning.ToolTip);
+            Assert.Equal("Could not read this field", System.Windows.Automation.AutomationProperties.GetName(warning));
+            plainHost.DataContext = row; Pump();
+            Assert.Same(plain, plainHost.Child);
+            Assert.Empty(Descendants<Wpf.Ui.Controls.SymbolIcon>(plainHost));
             row.SetShowOriginalValues(true); Pump();
             Assert.Equal("Unmapped value", plain.TextBox.Text);
             Assert.Equal("A", mapped.TextBox.Text);

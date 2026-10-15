@@ -572,20 +572,6 @@ public static partial class DynamicProfileGrid
 
         private FrameworkElement CreateContent()
         {
-            var panel = new Grid
-            {
-                VerticalAlignment = VerticalAlignment.Center,
-            };
-            panel.ColumnDefinitions.Add(new ColumnDefinition());
-            panel.ColumnDefinitions.Add(new ColumnDefinition
-            {
-                Width = GridLength.Auto,
-            });
-            panel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            if (field.SourceKind == ProfileFieldSourceKind.TextFileContent)
-                panel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            panel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
             // Ordinary projected values are immutable until their row is
             // replaced. Only mapped fields need an observable display cell for
             // the original/alias toggle; editable fields use UserInputValues.
@@ -595,6 +581,17 @@ public static partial class DynamicProfileGrid
             {
                 Mode = BindingMode.OneWay,
             });
+            if (field.ValueMappings.Count == 0 && field.SourceKind != ProfileFieldSourceKind.TextFileContent)
+                return new FieldErrorHost(valueText, fieldId);
+
+            var panel = new Grid { VerticalAlignment = VerticalAlignment.Center };
+            panel.ColumnDefinitions.Add(new ColumnDefinition());
+            panel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            if (field.SourceKind == ProfileFieldSourceKind.TextFileContent)
+            {
+                panel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                panel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            }
             panel.Children.Add(valueText);
 
             if (field.ValueMappings.Count > 0)
@@ -637,25 +634,6 @@ public static partial class DynamicProfileGrid
                 Grid.SetColumn(mappingBadge, 1);
                 panel.Children.Add(mappingBadge);
             }
-            var errorBadge = new Wpf.Ui.Controls.SymbolIcon(Wpf.Ui.Controls.SymbolRegular.Warning20)
-            {
-                Width = 16, Height = 16, Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
-            };
-            errorBadge.SetResourceReference(Control.ForegroundProperty, "SystemFillColorCautionBrush");
-            errorBadge.SetBinding(UIElement.VisibilityProperty, new Binding("FieldErrors")
-            {
-                Converter = ErrorVisibility, ConverterParameter = fieldId,
-            });
-            errorBadge.SetBinding(FrameworkElement.ToolTipProperty, new Binding("FieldErrors")
-            {
-                Converter = ErrorText, ConverterParameter = fieldId,
-            });
-            BindingOperations.SetBinding(errorBadge, System.Windows.Automation.AutomationProperties.NameProperty, new Binding("FieldErrors")
-            {
-                Converter = ErrorText, ConverterParameter = fieldId,
-            });
-            Grid.SetColumn(errorBadge, 2);
-            panel.Children.Add(errorBadge);
             if (field.SourceKind == ProfileFieldSourceKind.TextFileContent)
             {
                 var previewBadge = new Views.Controls.DisplayBadge
@@ -677,7 +655,7 @@ public static partial class DynamicProfileGrid
                 {
                     Converter = ErrorText, ConverterParameter = fieldId,
                 });
-                Grid.SetColumn(previewBadge, 3);
+                Grid.SetColumn(previewBadge, 2);
                 panel.Children.Add(previewBadge);
                 var action = new Wpf.Ui.Controls.Button { Height = 28, Padding = new(8, 0, 8, 0), Margin = new(8, 0, 0, 0),
                     Appearance = Wpf.Ui.Controls.ControlAppearance.Transparent,
@@ -698,9 +676,59 @@ public static partial class DynamicProfileGrid
                     if (action.DataContext is ViewModels.CatalogItemViewModel { IsPlaceholder: false } row)
                         action.RaiseEvent(new ProfileCellActionEventArgs(EditTextFileRequestedEvent, row, fieldId));
                 };
-                Grid.SetColumn(action, 4); panel.Children.Add(action);
+                Grid.SetColumn(action, 3); panel.Children.Add(action);
             }
-            return panel;
+            return new FieldErrorHost(panel, fieldId);
+        }
+    }
+
+    /// <summary>Projected errors are immutable; row replacement is their update boundary.</summary>
+    private sealed class FieldErrorHost : Decorator
+    {
+        private readonly FrameworkElement _content;
+        private readonly string _fieldId;
+        private DockPanel? _errorPanel;
+        private Wpf.Ui.Controls.SymbolIcon? _errorIcon;
+
+        internal FieldErrorHost(FrameworkElement content, string fieldId)
+        {
+            _content = content;
+            _fieldId = fieldId;
+            VerticalAlignment = VerticalAlignment.Center;
+            Child = content;
+            DataContextChanged += (_, _) => RefreshError();
+        }
+
+        private void RefreshError()
+        {
+            var error = (DataContext as ViewModels.CatalogItemViewModel)?.FieldErrors.GetValueOrDefault(_fieldId);
+            if (string.IsNullOrEmpty(error))
+            {
+                if (_errorPanel is null) return;
+                Child = null;
+                _errorPanel.Children.Remove(_content);
+                Child = _content;
+                _errorPanel = null;
+                _errorIcon = null;
+                return;
+            }
+            if (_errorPanel is null)
+            {
+                _errorIcon = new Wpf.Ui.Controls.SymbolIcon(Wpf.Ui.Controls.SymbolRegular.Warning20)
+                {
+                    Width = 16, Height = 16, Margin = new Thickness(6, 0, 0, 0),
+                    VerticalAlignment = VerticalAlignment.Center,
+                };
+                _errorIcon.SetResourceReference(Control.ForegroundProperty, "SystemFillColorCautionBrush");
+                DockPanel.SetDock(_errorIcon, Dock.Right);
+                _errorPanel = new DockPanel();
+                _errorPanel.Children.Add(_errorIcon);
+                Child = null;
+                _errorPanel.Children.Add(_content);
+                Child = _errorPanel;
+            }
+            _errorIcon!.ToolTip = error;
+            System.Windows.Automation.AutomationProperties.SetName(_errorIcon, error);
         }
     }
 

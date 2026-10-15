@@ -32,13 +32,13 @@ public sealed class ScanConsoleViewModelTests
         for (var sequence = 1; sequence <= 100_000; sequence++)
         {
             viewModel.Report(trace with { Sequence = sequence });
-            if (sequence % 500 == 0)
-            {
-                DrainAll(viewModel);
-            }
         }
 
         viewModel.Report(trace with { Kind = CatalogScanTraceKind.Completed, Sequence = 100_001 });
+        // Producer retention is already bounded and current even when no UI
+        // dispatcher has been pumped for the entire scan.
+        Assert.InRange(viewModel.RetainedLineCount, 18_000, 20_000);
+        Assert.Equal(0, viewModel.VisitedCount);
         DrainAll(viewModel);
         timer.Stop();
         _output.WriteLine(
@@ -117,7 +117,7 @@ public sealed class ScanConsoleViewModelTests
     }
 
     [Fact]
-    public void Pending_saturation_keeps_the_new_session_start_and_terminal_marker()
+    public void Burst_under_the_retention_limit_keeps_start_and_terminal_markers_without_pending_queue_loss()
     {
         var viewModel = new ScanConsoleViewModel(static _ => { });
         var trace = CreateEvent(CatalogScanTraceKind.Started, @"C:\Root");
@@ -128,43 +128,49 @@ public sealed class ScanConsoleViewModelTests
         }
 
         viewModel.Report(trace with { Kind = CatalogScanTraceKind.Cancelled, Sequence = 12_001 });
-        Assert.Equal(10_000, viewModel.PendingLineCount);
+        Assert.Equal(12_002, viewModel.RetainedLineCount);
         DrainAll(viewModel);
         viewModel.IsPanelOpen = true;
 
-        Assert.Equal(10_000, viewModel.Lines.Count);
+        Assert.Equal(12_002, viewModel.Lines.Count);
         Assert.Equal(CatalogScanTraceKind.Started, viewModel.Lines[0].Kind);
         Assert.Equal(CatalogScanTraceKind.Cancelled, viewModel.Lines[^1].Kind);
         Assert.Equal("취소됨", viewModel.StatusText);
-        Assert.Contains("생략", viewModel.RetentionSummary, StringComparison.Ordinal);
+        Assert.DoesNotContain("생략", viewModel.RetentionSummary, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void Visible_drain_yields_when_a_row_listener_exceeds_the_time_budget()
+    public void Visible_bursts_publish_one_reset_per_batch_instead_of_one_notification_per_folder()
     {
         var viewModel = new ScanConsoleViewModel(static _ => { }) { IsPanelOpen = true };
-        var notifications = 0;
+        var notifications = new List<NotifyCollectionChangedAction>();
         viewModel.Lines.CollectionChanged += (_, args) =>
         {
-            if (args.Action == NotifyCollectionChangedAction.Add)
-            {
-                notifications++;
-                Thread.Sleep(8);
-            }
+            notifications.Add(args.Action);
         };
         var trace = CreateEvent(CatalogScanTraceKind.DirectoryVisited, @"C:\Root", @"C:\Root\Item");
-        for (var index = 0; index < 10; index++)
+        for (var index = 0; index < 10_000; index++)
         {
             viewModel.Report(trace with { Sequence = index });
         }
 
         var drained = viewModel.DrainPendingLines();
 
-        Assert.Equal(1, drained);
-        Assert.Equal(1, notifications);
-        Assert.Equal(9, viewModel.PendingLineCount);
+        Assert.Equal(10_000, drained);
+        Assert.Equal([NotifyCollectionChangedAction.Reset], notifications);
+        Assert.Equal(0, viewModel.PendingLineCount);
+        Assert.Equal(10_000, viewModel.Lines.Count);
+        Assert.Equal(0, viewModel.DrainPendingLines());
+        Assert.Single(notifications);
+
+        for (var index = 10_000; index < 21_000; index++)
+            viewModel.Report(trace with { Sequence = index });
         DrainAll(viewModel);
-        Assert.Equal(10, viewModel.Lines.Count);
+        Assert.Equal(2, notifications.Count);
+        Assert.All(notifications, action => Assert.Equal(NotifyCollectionChangedAction.Reset, action));
+        Assert.Equal(19_000, viewModel.Lines.Count);
+        Assert.Equal(2000, viewModel.Lines[0].Sequence);
+        Assert.Equal(20_999, viewModel.Lines[^1].Sequence);
     }
 
     [Fact]
@@ -204,8 +210,87 @@ public sealed class ScanConsoleViewModelTests
     {
         while (viewModel.PendingLineCount > 0)
         {
-            Assert.InRange(viewModel.DrainPendingLines(), 1, 500);
+            Assert.InRange(viewModel.DrainPendingLines(), 1, 20_000);
         }
+    }
+
+    [Fact]
+    public async Task Save_includes_the_current_click_time_retention_before_any_ui_publication()
+    {
+        IReadOnlyList<string>? saved = null;
+        var viewModel = new ScanConsoleViewModel(
+            static _ => { }, static _ => @"C:\Logs\current.log",
+            (_, lines, _) => { saved = lines; return Task.CompletedTask; },
+            static (_, _, _) => { }, dispatcher: Dispatcher.CurrentDispatcher);
+        var trace = CreateEvent(CatalogScanTraceKind.Started, @"C:\Root");
+        viewModel.Report(trace);
+        for (var index = 1; index <= 1_000; index++)
+            viewModel.Report(trace with { Kind = CatalogScanTraceKind.DirectoryVisited, Sequence = index });
+
+        Assert.Empty(viewModel.Lines);
+        Assert.True(viewModel.SaveLogCommand.CanExecute(null));
+        await viewModel.SaveLogCommand.ExecuteAsync(null);
+
+        Assert.Equal(1001, saved?.Count);
+        Assert.Contains("[START]", saved![0], StringComparison.Ordinal);
+        Assert.Contains("#001000", saved[^1], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Clearing_a_pending_session_does_not_replay_old_rows_or_lose_lifecycle_and_counters()
+    {
+        var viewModel = new ScanConsoleViewModel(static _ => { }) { IsPanelOpen = true };
+        var trace = CreateEvent(CatalogScanTraceKind.Started, @"C:\Root");
+        viewModel.Report(trace);
+        for (var index = 1; index <= 1_000; index++)
+            viewModel.Report(trace with { Kind = CatalogScanTraceKind.DirectoryVisited, Sequence = index });
+        viewModel.ClearCommand.Execute(null);
+        Assert.Empty(viewModel.Lines);
+        Assert.Equal(0, viewModel.RetainedLineCount);
+        Assert.Equal("탐색 중", viewModel.StatusText);
+        Assert.Equal(1_000, viewModel.VisitedCount);
+        Assert.False(viewModel.CopyAllCommand.CanExecute(null));
+        viewModel.Report(trace with { Kind = CatalogScanTraceKind.Cancelled, Sequence = 1001 });
+        DrainAll(viewModel);
+
+        Assert.Equal(CatalogScanTraceKind.Cancelled, Assert.Single(viewModel.Lines).Kind);
+        Assert.Equal("취소됨", viewModel.StatusText);
+        Assert.Equal(1_000, viewModel.VisitedCount);
+    }
+
+    [Fact]
+    public void Concurrent_reports_keep_exact_counts_and_a_bounded_retained_window_without_ui_work()
+    {
+        var viewModel = new ScanConsoleViewModel(static _ => { });
+        var trace = CreateEvent(CatalogScanTraceKind.DirectoryVisited, @"C:\Root", @"C:\Root\Item");
+        viewModel.Report(trace with { Kind = CatalogScanTraceKind.Started, Sequence = 0 });
+        Parallel.For(1, 40_001, index => viewModel.Report(trace with { Sequence = index }));
+        Assert.Empty(viewModel.Lines);
+        Assert.InRange(viewModel.RetainedLineCount, 18_000, 20_000);
+        viewModel.Report(trace with { Kind = CatalogScanTraceKind.Completed, Sequence = 40_001 });
+        DrainAll(viewModel);
+
+        Assert.Equal(40_000, viewModel.VisitedCount);
+        Assert.Equal(40_000, viewModel.MatchedCount);
+        Assert.Equal("완료", viewModel.StatusText);
+        viewModel.IsPanelOpen = true;
+        Assert.Equal(CatalogScanTraceKind.Completed, viewModel.Lines[^1].Kind);
+    }
+
+    [Fact]
+    public void Disposal_is_idempotent_and_ignores_reports_and_scheduled_publications()
+    {
+        var viewModel = new ScanConsoleViewModel(static _ => { });
+        var trace = CreateEvent(CatalogScanTraceKind.DirectoryVisited, @"C:\Root", @"C:\Root\Item");
+        viewModel.Report(trace);
+        viewModel.Dispose();
+        viewModel.Dispose();
+        Parallel.For(0, 1_000, _ => viewModel.Report(trace));
+
+        Assert.Equal(0, viewModel.RetainedLineCount);
+        Assert.Equal(0, viewModel.PendingLineCount);
+        Assert.Equal(0, viewModel.DrainPendingLines());
+        Assert.Empty(viewModel.Lines);
     }
 
     [Fact]

@@ -54,6 +54,14 @@ public partial class CatalogPage
         viewModel.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(CatalogViewModel.IsDetailsOpen)) ApplyWorkspaceLayout();
+            if (e.PropertyName == nameof(CatalogViewModel.IsScanning) && viewModel.IsScanning)
+            {
+                _pendingRowClick = null;
+                LiveFolderFlyout.Hide(); _directoryBrowser.Stop(); _fileEditCancellation?.Cancel();
+                if (ResultsGrid.ContextMenu is { } menu) menu.IsOpen = false;
+                if (SelectionActionsMenuButton.ContextMenu is { } selectionMenu) selectionMenu.IsOpen = false;
+                if (AdditionalActionsMenuButton.ContextMenu is { } actionsMenu) actionsMenu.IsOpen = false;
+            }
             if (e.PropertyName is nameof(CatalogViewModel.SelectedProfile) or nameof(CatalogViewModel.RootPath) or nameof(CatalogViewModel.IsReadOnlyDataSource))
             { LiveFolderFlyout.Hide(); _directoryBrowser.Stop(); _fileEditCancellation?.Cancel(); }
         };
@@ -62,7 +70,7 @@ public partial class CatalogPage
     private async void OnBrowseFolderRequested(object sender, System.Windows.RoutedEventArgs e)
     {
         if (e is not DynamicProfileGrid.ProfileCellActionEventArgs action || action.Row.IsPlaceholder
-            || e.OriginalSource is not System.Windows.FrameworkElement target || !IsLoaded) return;
+            || e.OriginalSource is not System.Windows.FrameworkElement target || !IsLoaded || !_viewModel.IsResultInteractionEnabled) return;
         e.Handled = true;
         LiveFolderFlyout.Hide(); _directoryBrowser.Stop();
         LiveFolderFlyout.ApplyTemplate();
@@ -78,7 +86,7 @@ public partial class CatalogPage
     private async void OnEditTextFileRequested(object sender, System.Windows.RoutedEventArgs e)
     {
         if (e is not DynamicProfileGrid.ProfileCellActionEventArgs { FieldId: { } fieldId } action
-            || _fileEditorOpen || _dialogs is null || !IsLoaded) return;
+            || _fileEditorOpen || _dialogs is null || !IsLoaded || !_viewModel.IsResultInteractionEnabled) return;
         e.Handled = true; _fileEditorOpen = true;
         using var cancellation = new CancellationTokenSource(); _fileEditCancellation = cancellation;
         try

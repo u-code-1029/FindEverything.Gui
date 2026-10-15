@@ -26,6 +26,52 @@ public sealed class ResultResponsivenessTests
     }
 
     [Fact]
+    public void Progress_waits_a_full_interval_after_a_slow_apply_and_merges_reports_during_it()
+    {
+        var clock = new ProgressClock();
+        var callbacks = new Queue<Action>();
+        var displayed = new List<string>();
+        CoalescingProgressDelivery<string>? progress = null;
+        using (progress = new CoalescingProgressDelivery<string>(callbacks.Enqueue, value =>
+        {
+            displayed.Add(value);
+            if (value != "first") return;
+            progress!.Report("intermediate");
+            clock.Advance(TimeSpan.FromSeconds(1)); // Simulate a slow dispatcher render.
+            progress.Report("latest");
+            Assert.Empty(callbacks);
+        }, timeProvider: clock))
+        {
+            progress.Report("first");
+            clock.Advance(TimeSpan.FromMilliseconds(249)); Assert.Empty(callbacks);
+            clock.Advance(TimeSpan.FromMilliseconds(1)); Assert.Single(callbacks);
+            callbacks.Dequeue()();
+            Assert.Empty(callbacks);
+            clock.Advance(TimeSpan.FromMilliseconds(249)); Assert.Empty(callbacks);
+            clock.Advance(TimeSpan.FromMilliseconds(1)); Assert.Single(callbacks);
+            callbacks.Dequeue()();
+            Assert.Equal(["first", "latest"], displayed);
+        }
+    }
+
+    [Fact]
+    public void Final_progress_flush_keeps_a_warning_change_even_when_counts_are_unchanged()
+    {
+        var clock = new ProgressClock();
+        var callbacks = new Queue<Action>();
+        var displayed = new List<string>();
+        using var progress = new CoalescingProgressDelivery<string>(callbacks.Enqueue, displayed.Add, timeProvider: clock);
+        progress.Report("100 entries, 0 warnings");
+        progress.Report("100 entries, 1 warning");
+        progress.FlushAndClose();
+        Assert.Single(callbacks);
+        callbacks.Dequeue()();
+        clock.Advance(TimeSpan.FromSeconds(1));
+        Assert.Empty(callbacks);
+        Assert.Equal(["100 entries, 1 warning"], displayed);
+    }
+
+    [Fact]
     public async Task Page_loader_never_calls_synchronous_storage_or_formats_rows_on_the_caller_thread()
     {
         var caller = Environment.CurrentManagedThreadId;
@@ -223,6 +269,40 @@ public sealed class ResultResponsivenessTests
             [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
         { await Task.CompletedTask; yield break; }
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    private sealed class ProgressClock : TimeProvider
+    {
+        private long _ticks;
+        private readonly List<ProgressTimer> _timers = [];
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            var timer = new ProgressTimer(this, callback, state);
+            _timers.Add(timer); timer.Change(dueTime, period); return timer;
+        }
+        public void Advance(TimeSpan elapsed)
+        {
+            _ticks += elapsed.Ticks;
+            foreach (var timer in _timers.ToArray()) timer.FireIfDue();
+        }
+        private sealed class ProgressTimer(ProgressClock clock, TimerCallback callback, object? state) : ITimer
+        {
+            private long _due = long.MaxValue;
+            private bool _disposed;
+            public bool Change(TimeSpan dueTime, TimeSpan period)
+            {
+                if (_disposed) return false;
+                _due = dueTime == Timeout.InfiniteTimeSpan ? long.MaxValue : clock._ticks + dueTime.Ticks;
+                return true;
+            }
+            public void FireIfDue()
+            {
+                if (_disposed || _due > clock._ticks) return;
+                _due = long.MaxValue; callback(state);
+            }
+            public void Dispose() => _disposed = true;
+            public ValueTask DisposeAsync() { Dispose(); return ValueTask.CompletedTask; }
+        }
     }
 
     private sealed class BatchedKeys : IQuerySelectionKeySet

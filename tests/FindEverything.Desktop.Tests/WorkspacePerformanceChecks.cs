@@ -162,11 +162,15 @@ internal static class WorkspacePerformanceChecks
                 consoleEvents[key] = consoleEvents.GetValueOrDefault(key) + 1;
             };
             var drain = typeof(ScanConsoleViewModel).GetMethod("OnDrainTimerTick", PrivateInstance)!;
-            var pending = (ICollection)typeof(ScanConsoleViewModel).GetField("_pending", PrivateInstance)!.GetValue(console)!;
+            var pendingCount = typeof(ScanConsoleViewModel).GetProperty("PendingLineCount", PrivateInstance);
+            var pendingQueue = typeof(ScanConsoleViewModel).GetField("_pending", PrivateInstance);
+            int GetPendingCount() => pendingCount is not null
+                ? (int)pendingCount.GetValue(console)!
+                : ((ICollection)pendingQueue!.GetValue(console)!).Count;
             var drainTimer = (DispatcherTimer)typeof(ScanConsoleViewModel).GetField("_drainTimer", PrivateInstance)!.GetValue(console)!;
             void Drain()
             {
-                while (pending.Count > 0) drain.Invoke(console, [null, EventArgs.Empty]);
+                while (GetPendingCount() > 0) drain.Invoke(console, [null, EventArgs.Empty]);
             }
             var trace = new CatalogScanTraceEvent(Guid.NewGuid(), 0, DateTimeOffset.UtcNow,
                 CatalogScanTraceKind.Started, "performance", "Performance", @"C:\Performance", null,

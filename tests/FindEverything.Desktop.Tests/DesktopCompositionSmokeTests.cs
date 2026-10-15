@@ -82,6 +82,7 @@ public sealed class DesktopCompositionSmokeTests
             CatalogFilteringTests.VerifyHighlightingRendering();
             SectionCardRegressionChecks.Verify();
             GridSizingRegressionChecks.Verify();
+            ScanConsoleUiRegressionChecks.Verify();
 
             var configuration = new ConfigurationManager();
             configuration.AddInMemoryCollection(new Dictionary<string, string?>
@@ -164,6 +165,8 @@ public sealed class DesktopCompositionSmokeTests
                     Backdrop = BackdropPreference.None,
                 });
             var navigation = provider.GetRequiredService<INavigationService>();
+            Assert.Equal(Wpf.Ui.Animations.Transition.None,
+                Assert.IsType<NavigationView>(window.FindName("RootNavigation")).Transition);
             CaptureOptionalQaScreenshots(provider, window, filesPage, catalogPage,
                 profilesPage, profilePlaygroundPage, outputFormatsPage, settingsPage);
             Assert.True(navigation.Navigate(typeof(HomePage)));
@@ -876,6 +879,9 @@ public sealed class DesktopCompositionSmokeTests
         provider.GetRequiredService<IProfileCatalogPublisher>().Publish(
             new ProfileCatalogSnapshot([profile], [], DateTimeOffset.UtcNow));
         catalog.RootPath = Path.GetTempPath();
+        catalog.FilterText = "Apollo";
+        PumpDispatcherUntil(mainWindow.Dispatcher, () => catalog.AppliedHighlightQuery == "Apollo",
+            TimeSpan.FromSeconds(3));
         var scanTask = catalog.ScanCommand.ExecuteAsync(null);
 
         Assert.True(catalog.IsScanning);
@@ -889,7 +895,10 @@ public sealed class DesktopCompositionSmokeTests
             () => provider.GetRequiredService<BlockingCatalogService>().HasStarted,
             TimeSpan.FromSeconds(3));
 
-        catalog.FilterText = "Apollo";
+        Assert.False(catalog.IsResultInteractionEnabled);
+        Assert.True(catalog.CancelCommand.CanExecute(null));
+        Assert.False(resultsGrid.IsEnabled);
+        Assert.False(Assert.IsType<Wpf.Ui.Controls.TextBox>(catalogPage.FindName("SearchBox")).IsEnabled);
         var matchingItem = new CatalogItem(
             Path.Combine(Path.GetTempPath(), "live-result-1"),
             "live-result-1",
@@ -924,10 +933,11 @@ public sealed class DesktopCompositionSmokeTests
             Assert.IsType<CatalogItemViewModel>(catalog.Items.GetItemAt(0))
                 .DisplayValues["client"]);
         catalog.FilterText = string.Empty;
-        PumpDispatcherUntil(mainWindow.Dispatcher,
-            () => catalog.Items.Count == 2, TimeSpan.FromSeconds(3));
-        Assert.Equal(2, catalog.Items.Count);
-        Assert.Equal("2개 항목", catalog.FilterSummary);
+        PumpDispatcherFor(mainWindow.Dispatcher,
+            FindEverything.Desktop.Filtering.SearchInputTiming.DebounceDelay + TimeSpan.FromMilliseconds(100));
+        // Result work is paused during a scan even if an API caller changes
+        // draft text. The final publication applies the latest criteria once.
+        Assert.Equal(1, catalog.Items.Count);
 
         var atomicBatchItem = new CatalogItem(
             Path.Combine(Path.GetTempPath(), "live-batch-valid"),
@@ -955,7 +965,7 @@ public sealed class DesktopCompositionSmokeTests
 
         // A failed conversion in the second item must not leave the first item
         // from the same live batch partially inserted into the backing list.
-        Assert.Equal(2, catalog.Items.Count);
+        Assert.Equal(1, catalog.Items.Count);
         Assert.DoesNotContain(
             catalog.Items.Cast<CatalogItemViewModel>(),
             item => item.FullPath == atomicBatchItem.FullPath);
@@ -972,6 +982,8 @@ public sealed class DesktopCompositionSmokeTests
         scanTask.GetAwaiter().GetResult();
         PumpDispatcherFor(mainWindow.Dispatcher, TimeSpan.FromMilliseconds(20));
         Assert.False(catalog.IsScanning);
+        Assert.True(catalog.IsResultInteractionEnabled);
+        Assert.True(resultsGrid.IsEnabled);
         Assert.True(catalog.CanEditWorkspace);
         Assert.Equal(2, catalog.Items.Count);
         Assert.Equal(2, resultsGrid.Items.Count);

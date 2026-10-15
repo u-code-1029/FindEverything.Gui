@@ -8,6 +8,21 @@ namespace FindEverything.Desktop.Tests;
 public sealed class ScanConsoleLogWriterTests
 {
     [Fact]
+    public async Task Export_does_not_enumerate_or_buffer_lines_synchronously_on_the_callers_thread()
+    {
+        using var directory = new TemporaryDirectory();
+        var destinationPath = Path.Combine(directory.Path, "off-ui.log");
+        var callerThread = Environment.CurrentManagedThreadId;
+        var insideCall = true;
+        var lines = new CallerGuardedLines(() => insideCall && Environment.CurrentManagedThreadId == callerThread);
+        Task write;
+        try { write = new ScanConsoleLogWriter().WriteAsync(destinationPath, lines); }
+        finally { insideCall = false; }
+        await write;
+        Assert.Equal("off UI\r\n", await File.ReadAllTextAsync(destinationPath));
+    }
+
+    [Fact]
     public async Task Write_creates_a_new_utf8_bom_file_with_windows_line_endings()
     {
         using var directory = new TemporaryDirectory();
@@ -81,5 +96,17 @@ public sealed class ScanConsoleLogWriterTests
                 Directory.Delete(Path, recursive: true);
             }
         }
+    }
+
+    private sealed class CallerGuardedLines(Func<bool> isInsideCaller) : IReadOnlyList<string>
+    {
+        public int Count => 1;
+        public string this[int index] => index == 0 ? "off UI" : throw new ArgumentOutOfRangeException(nameof(index));
+        public IEnumerator<string> GetEnumerator()
+        {
+            Assert.False(isInsideCaller(), "Buffered disk-export preparation must not run synchronously on the UI caller.");
+            yield return "off UI";
+        }
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
     }
 }

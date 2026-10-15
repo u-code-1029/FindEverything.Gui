@@ -1669,4 +1669,5 @@
     <sys:String x:Key="Loc.View.ScanConsolePanel.Text.Invalid" xml:space="preserve">  ·  invalid </sys:String>
     <sys:String x:Key="Loc.View.ScanConsolePanel.Text.Pruned" xml:space="preserve">  ·  pruned </sys:String>
     <sys:String x:Key="Loc.View.ScanConsolePanel.Text.MATCHMatchedNOMATCHOutsideRulesINVALIDConversion" xml:space="preserve">MATCH matched · NO MATCH outside rules · INVALID conversion error · EXCLUDED name-rule exclusion · PRUNE descendants skipped</sys:String>
+    <sys:String x:Key="Loc.Workspace.Scan.InteractionPaused">Search, sorting and selection are paused during the scan to keep the UI responsive. You can still cancel or switch pages.</sys:String>
 </ResourceDictionary>

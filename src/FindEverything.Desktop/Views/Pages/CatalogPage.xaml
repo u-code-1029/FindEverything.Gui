@@ -22,7 +22,7 @@
             <controls:PageHeader Title="{StaticResource Loc.Shell.Nav.Catalog}" Description="{StaticResource Loc.Workspace.Catalog.Description}">
                 <StackPanel Orientation="Horizontal">
                 <StackPanel Orientation="Horizontal" Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}">
-                    <ui:ProgressRing Width="18" Height="18" Margin="0,0,8,0" IsIndeterminate="True" />
+                    <ui:ProgressRing Width="18" Height="18" Margin="0,0,8,0" IsIndeterminate="{Binding IsBusy}" />
                     <ui:TextBlock x:Name="CatalogHeaderProgressCaption" MaxWidth="240" VerticalAlignment="Center" Text="{Binding ProgressMessage}" Style="{StaticResource CaptionTextStyle}" TextTrimming="CharacterEllipsis" ToolTip="{Binding ProgressMessage}" />
                 </StackPanel>
                 <controls:WorkspaceTransferPanel x:Name="CatalogWorkspaceTransferPanel" Margin="8,0,0,0" DataContext="{Binding WorkspaceTransfer}" ExportOwner="{Binding DataContext, RelativeSource={RelativeSource AncestorType=Page}}" />
@@ -45,7 +45,8 @@
                         <ui:Button Margin="8,0,0,0" Command="{Binding CancelCommand}" Content="{StaticResource Loc.Workspace.Cancel}" Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}" ToolTip="{StaticResource Loc.Workspace.Cancel.Help}" />
                         <ui:Button Margin="8,0,0,0" Command="{Binding OpenSelectionImportCommand}" Content="{StaticResource Loc.SelectionImport.Open}" Icon="{ui:SymbolIcon Symbol=ClipboardTaskListLtr20}" ToolTip="{StaticResource Loc.SelectionImport.Open.Help}" ToolTipService.ShowOnDisabled="True" />
                     </WrapPanel>
-                <Grid Grid.Row="1" Grid.ColumnSpan="3" Margin="0,8,0,0"
+                <Grid x:Name="CatalogFilterBar" Grid.Row="1" Grid.ColumnSpan="3" Margin="0,8,0,0"
+                    IsEnabled="{Binding IsResultInteractionEnabled, FallbackValue=True}"
                     Visibility="{Binding HasLoadedItems, Converter={StaticResource BooleanToVisibilityConverter}}">
                     <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                     <Grid.ColumnDefinitions>
@@ -62,7 +63,7 @@
                 ClearButtonEnabled="True"
                 Icon="{ui:SymbolIcon Symbol=Search12}"
                 PlaceholderText="{StaticResource Loc.View.Catalog.PlaceholderText.SearchAllColumnsAndFolderPaths}"
-                Text="{Binding FilterText, UpdateSourceTrigger=PropertyChanged, Delay=200}"
+                Text="{Binding FilterText, UpdateSourceTrigger=PropertyChanged}"
                 Visibility="{Binding HasLoadedItems, Converter={StaticResource BooleanToVisibilityConverter}}" />
                     <ui:ToggleSwitch
                         Grid.Column="1"
@@ -100,6 +101,10 @@
                     </WrapPanel>
                 </Grid>
                 </Grid>
+                <ui:TextBlock x:Name="ScanInteractionNotice" Margin="0,8,0,0"
+                    Style="{StaticResource CaptionTextStyle}" TextWrapping="Wrap"
+                    Text="{StaticResource Loc.Workspace.Scan.InteractionPaused}"
+                    Visibility="{Binding IsScanning, Converter={StaticResource BooleanToVisibilityConverter}, FallbackValue=Collapsed}" />
                 </StackPanel>
             </controls:CommandStrip>
         <Grid x:Name="CatalogResultsWorkspace" Grid.Row="2">
@@ -108,6 +113,7 @@
 
             <ui:DataGrid
                 x:Name="ResultsGrid"
+                IsEnabled="{Binding IsResultInteractionEnabled, FallbackValue=True}"
                 Grid.Row="0"
                 behaviors:DynamicProfileGrid.Fields="{Binding Fields}"
                 behaviors:DynamicProfileGrid.Localizer="{Binding Localizer}"
@@ -161,6 +167,7 @@
             </ui:DataGrid>
 
             <controls:SectionCard x:Name="SelectionToolbar" controls:FloatingNotificationChrome.IsBottomChrome="True" Grid.Row="1" Margin="0,8,0,0" Padding="12,4"
+                IsEnabled="{Binding IsResultInteractionEnabled, FallbackValue=True}"
                 Style="{StaticResource FluentToolbarCardStyle}" SizeChanged="OnSelectionToolbarSizeChanged"
                 Visibility="{Binding HasSelection, Converter={StaticResource BooleanToVisibilityConverter}}">
                 <controls:SectionCard.Header>
@@ -258,7 +265,7 @@
                     <ui:TextBlock Grid.Column="1" MaxWidth="260" Margin="12,0,0,0" Text="{Binding ResultSourceDescription}" Style="{StaticResource CaptionTextStyle}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" ToolTip="{Binding ResultSourceDescription}" AutomationProperties.Name="{StaticResource Loc.Workspace.ResultSource}" />
                 </Grid>
             </Grid>
-            <controls:SectionCard x:Name="CatalogDetailsPanel" Grid.Row="2" Width="340" HorizontalAlignment="Right" Panel.ZIndex="8" Style="{StaticResource FluentSectionCardStyle}" Visibility="{Binding IsDetailsOpen, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <controls:SectionCard x:Name="CatalogDetailsPanel" Grid.Row="2" Width="340" HorizontalAlignment="Right" Panel.ZIndex="8" Style="{StaticResource FluentSectionCardStyle}" Visibility="{Binding IsDetailsOpen, Converter={StaticResource BooleanToVisibilityConverter}}" IsEnabled="{Binding IsResultInteractionEnabled, FallbackValue=True}">
               <controls:SectionCard.Header>
                 <ui:DynamicScrollViewer Style="{StaticResource FluentGutteredScrollViewerStyle}">
                     <StackPanel>

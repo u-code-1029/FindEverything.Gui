@@ -108,6 +108,7 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
     private bool _isBusy;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsResultInteractionEnabled))]
     private bool _isScanning;
 
     [ObservableProperty]
@@ -133,6 +134,7 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
     private InfoBarSeverity _statusSeverity = InfoBarSeverity.Informational;
 
     public bool CanEditWorkspace => !IsBusy && !IsReadOnlyDataSource && WorkspaceTransfer?.IsBusy != true && WorkspaceTransfer?.IsInitialized != false;
+    public bool IsResultInteractionEnabled => !IsScanning;
 
     public string DetailsButtonText => IsDetailsOpen
         ? L("Loc.Common.Compact", "간단히")
@@ -229,6 +231,23 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
     partial void OnIsScanningChanged(bool value)
     {
         if (_activityState is not null) _activityState.IsScanning = value;
+        SelectAllCommand.NotifyCanExecuteChanged();
+        InvertSelectionCommand.NotifyCanExecuteChanged();
+        ClearSelectionCommand.NotifyCanExecuteChanged();
+        CopySelectionCommand.NotifyCanExecuteChanged();
+        ExportSelectionCommand.NotifyCanExecuteChanged();
+        ClearColumnFiltersCommand.NotifyCanExecuteChanged();
+        ToggleDetailsCommand.NotifyCanExecuteChanged();
+        OpenSelectedCommand.NotifyCanExecuteChanged();
+        OpenSelectedFolderCommand.NotifyCanExecuteChanged();
+        CopySelectedFolderPathCommand.NotifyCanExecuteChanged();
+        if (value)
+        {
+            IsDetailsOpen = false;
+            CancelSelectionRequests();
+            _liveInputRequests.Cancel();
+            _queryCancellation?.Cancel();
+        }
     }
 
     public Task ActivateAsync(CancellationToken cancellationToken = default)
@@ -402,6 +421,7 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
 
     partial void OnShowOriginalValuesChanged(bool value)
     {
+        if (IsScanning) return;
         foreach (var item in _loadedItems)
         {
             item.SetShowOriginalValues(value);
@@ -586,8 +606,11 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
         }
     }
 
-    [RelayCommand]
-    private void ToggleDetails() => IsDetailsOpen = !IsDetailsOpen;
+    [RelayCommand(CanExecute = nameof(IsResultInteractionEnabled))]
+    private void ToggleDetails()
+    {
+        if (IsResultInteractionEnabled) IsDetailsOpen = !IsDetailsOpen;
+    }
 
     [RelayCommand(CanExecute = nameof(CanScan))]
     private async Task ScanAsync()
@@ -743,6 +766,7 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
     [RelayCommand(CanExecute = nameof(CanCopySelection))]
     private async Task CopySelectionAsync()
     {
+        if (!CanCopySelection()) return;
         if (UsesQuerySelection) { await CopyQuerySelectionAsync(); return; }
         var format = SelectedOutputFormat
             ?? SelectionOutputFormatDefaults.CreateFullPathLines(_localizer);
@@ -784,6 +808,7 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
     [RelayCommand(CanExecute = nameof(CanCopySelection))]
     private async Task ExportSelectionAsync()
     {
+        if (!CanCopySelection()) return;
         if (UsesQuerySelection) { await ExportQuerySelectionAsync(); return; }
         var destination = _pickerService.PickCatalogExportPath(
             $"FindEverything-catalog-{DateTime.Now:yyyyMMdd-HHmmss}.xlsx");
@@ -886,9 +911,9 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
 
     private bool CanCancel() => IsBusy || _pendingScanCancellation is not null;
 
-    private bool CanOpenSelected() => SelectedItem is { IsPlaceholder: false };
+    private bool CanOpenSelected() => IsResultInteractionEnabled && SelectedItem is { IsPlaceholder: false };
 
-    private bool CanCopySelection() => !_disposed && SelectedCount > 0;
+    private bool CanCopySelection() => !_disposed && IsResultInteractionEnabled && SelectedCount > 0;
 
     private void RefreshOutputFormats()
     {
@@ -1018,7 +1043,7 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
         {
             // Capture UI-bound values before the coordinator moves the operation
             // to its background scheduler.
-            var workspace = ValidateWorkspace();
+            var workspace = ValidateWorkspace(requireExistingRoot: false);
             CancelWorkspacePersistenceDebounce();
             var workspaceVersion = Interlocked.Increment(ref _workspaceDraftVersion);
             var operationWorkspaceAttempt = CreateWorkspaceSaveAttempt(
@@ -1040,6 +1065,8 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
                 try
                 {
                     operationToken.ThrowIfCancellationRequested();
+                    if (!Directory.Exists(workspace.RootPath))
+                        throw new DirectoryNotFoundException(workspace.RootPath);
                     if (mode == CatalogOperationMode.Scan)
                     {
                         EnsureDatabaseDirectory(workspace.DatabasePath);
@@ -1379,6 +1406,7 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
 
         if (matchedItems.Count == 0)
         {
+            if (progress?.AttemptReset == true) ApplyFilter(captureCurrentCriteria: false);
             return;
         }
 
@@ -1389,7 +1417,7 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
         var selectedPath = SelectedItem?.FullPath;
         session.Items.AddRange(viewModels);
         HasLoadedItems = true;
-        ApplyFilter(selectedPath);
+        ApplyFilter(selectedPath, captureCurrentCriteria: false);
     }
 
     private string FormatProgress(
@@ -1632,7 +1660,7 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
             displayed.Values.TryGetValue(pair.Key, out var displayedValue)
             && Equals(displayedValue, pair.Value));
 
-    private void ApplyFilter(string? preferredSelectedPath = null)
+    private void ApplyFilter(string? preferredSelectedPath = null, bool captureCurrentCriteria = true)
     {
         if (_projectionSnapshot is not null && ActiveProjectionStore is not null)
         {
@@ -1640,15 +1668,18 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
             return;
         }
         var selectedPath = preferredSelectedPath ?? SelectedItem?.FullPath;
-        AppliedHighlightQuery = FilterText;
-        _liveFilterTerms = TextFilter.Terms(AppliedHighlightQuery);
-        ScheduleLiveFilterRefresh(criteriaChanged: true);
+        if (captureCurrentCriteria)
+        {
+            AppliedHighlightQuery = FilterText;
+            _liveFilterTerms = TextFilter.Terms(AppliedHighlightQuery);
+            ScheduleLiveFilterRefresh(criteriaChanged: true);
+        }
         Items.Refresh();
         SelectedItem = selectedPath is null
             ? null
             : Items.Cast<CatalogItemViewModel>().FirstOrDefault(item =>
                 string.Equals(item.FullPath, selectedPath, StringComparison.OrdinalIgnoreCase));
-        FilterSummary = TextFilter.Normalize(FilterText).Length == 0 && !HasColumnFilters
+        FilterSummary = _liveFilterTerms.Count == 0 && !HasColumnFilters
             ? F("Loc.Catalog.Filter.Empty", "{0:N0}개 항목", _loadedItems.Count)
             : F(
                 "Loc.Catalog.Filter.Active",
@@ -1657,7 +1688,7 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
                 _loadedItems.Count);
     }
 
-    private ListCollectionView CreateItemsView(List<CatalogItemViewModel> items)
+    private ListCollectionView CreateItemsView(System.Collections.IList items)
     {
         var view = new ListCollectionView(items)
         {
@@ -2232,7 +2263,7 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
     private sealed class CatalogOperationProgressPump : IProgress<CatalogOperationProgress>
     {
         private const int DrainBatchSize = 500;
-        private static readonly TimeSpan DrainInterval = TimeSpan.FromMilliseconds(50);
+        private static readonly TimeSpan DrainInterval = TimeSpan.FromMilliseconds(250);
         private readonly object _gate = new();
         private readonly Queue<CatalogItem> _pendingItems = new();
         private readonly Dispatcher _dispatcher;

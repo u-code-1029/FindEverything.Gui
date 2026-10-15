@@ -55,40 +55,45 @@
         <Setter Property="SnapsToDevicePixels" Value="True" />
         <Setter Property="Template">
             <Setter.Value>
+                <!-- Keep the real TextBox as the native input and automation
+                     target, but do not instantiate its text view until input. -->
                 <ControlTemplate TargetType="ui:TextBox">
-                    <!-- This drawing is the native editor's hit surface while
-                         its expensive text view is collapsed, not an editor card. -->
-                    <Border x:Name="PART_InputSurface" Background="{TemplateBinding Background}">
-                        <ScrollViewer x:Name="PART_ContentHost" Style="{StaticResource CatalogReadOnlyContentHostStyle}"
-                            CanContentScroll="True" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden"
-                            Visibility="Collapsed"
-                            Focusable="False" IsTabStop="False" Background="{TemplateBinding Background}"
-                            TextElement.Foreground="{TemplateBinding Foreground}" />
-                    </Border>
-                    <ControlTemplate.Triggers>
-                        <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="PART_ContentHost" Property="Visibility" Value="Visible" />
-                        </Trigger>
-                        <Trigger Property="IsKeyboardFocusWithin" Value="True">
-                            <Setter TargetName="PART_ContentHost" Property="Visibility" Value="Visible" />
-                        </Trigger>
-                        <Trigger Property="IsMouseCaptured" Value="True">
-                            <Setter TargetName="PART_ContentHost" Property="Visibility" Value="Visible" />
-                        </Trigger>
-                        <Trigger Property="IsStylusOver" Value="True">
-                            <Setter TargetName="PART_ContentHost" Property="Visibility" Value="Visible" />
-                        </Trigger>
-                        <Trigger Property="AreAnyTouchesOver" Value="True">
-                            <Setter TargetName="PART_ContentHost" Property="Visibility" Value="Visible" />
-                        </Trigger>
-                        <Trigger Property="AreAnyTouchesCaptured" Value="True">
-                            <Setter TargetName="PART_ContentHost" Property="Visibility" Value="Visible" />
-                        </Trigger>
-                    </ControlTemplate.Triggers>
+                    <Border x:Name="PART_InputSurface" Background="{TemplateBinding Background}" />
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
     </Style>
+    <ControlTemplate x:Key="CatalogReadOnlyTextBoxActiveTemplate" TargetType="ui:TextBox">
+        <!-- This drawing is the native editor's hit surface while its expensive
+             text view is collapsed, not an editor card. -->
+        <Border x:Name="PART_InputSurface" Background="{TemplateBinding Background}">
+            <ScrollViewer x:Name="PART_ContentHost" Style="{StaticResource CatalogReadOnlyContentHostStyle}"
+                CanContentScroll="True" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden"
+                Visibility="Collapsed"
+                Focusable="False" IsTabStop="False" Background="{TemplateBinding Background}"
+                TextElement.Foreground="{TemplateBinding Foreground}" />
+        </Border>
+        <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="PART_ContentHost" Property="Visibility" Value="Visible" />
+            </Trigger>
+            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                <Setter TargetName="PART_ContentHost" Property="Visibility" Value="Visible" />
+            </Trigger>
+            <Trigger Property="IsMouseCaptured" Value="True">
+                <Setter TargetName="PART_ContentHost" Property="Visibility" Value="Visible" />
+            </Trigger>
+            <Trigger Property="IsStylusOver" Value="True">
+                <Setter TargetName="PART_ContentHost" Property="Visibility" Value="Visible" />
+            </Trigger>
+            <Trigger Property="AreAnyTouchesOver" Value="True">
+                <Setter TargetName="PART_ContentHost" Property="Visibility" Value="Visible" />
+            </Trigger>
+            <Trigger Property="AreAnyTouchesCaptured" Value="True">
+                <Setter TargetName="PART_ContentHost" Property="Visibility" Value="Visible" />
+            </Trigger>
+        </ControlTemplate.Triggers>
+    </ControlTemplate>
 
     <!-- Keep WPF-UI's native card template and theme states. Editor groups use
          Header (the stretching column) rather than the auto-width action slot.

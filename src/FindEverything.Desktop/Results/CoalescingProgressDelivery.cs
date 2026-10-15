@@ -6,18 +6,20 @@ internal sealed class CoalescingProgressDelivery<T> : IProgress<T>, IDisposable 
     private readonly object _gate = new();
     private readonly Action<Action> _dispatch;
     private readonly Action<T> _apply;
-    private readonly Timer _timer;
+    private readonly ITimer _timer;
     private readonly TimeSpan _interval;
     private T? _latest;
     private bool _scheduled;
     private bool _posted;
     private bool _closed;
 
-    public CoalescingProgressDelivery(Action<Action> dispatch, Action<T> apply, TimeSpan? interval = null)
+    public CoalescingProgressDelivery(Action<Action> dispatch, Action<T> apply, TimeSpan? interval = null,
+        TimeProvider? timeProvider = null)
     {
         _dispatch = dispatch; _apply = apply;
-        _interval = interval ?? TimeSpan.FromMilliseconds(100);
-        _timer = new Timer(_ => PostDrain(), null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+        _interval = interval ?? TimeSpan.FromMilliseconds(250);
+        _timer = (timeProvider ?? TimeProvider.System).CreateTimer(_ => PostDrain(), null,
+            Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
     }
 
     public void Report(T value)
@@ -48,9 +50,29 @@ internal sealed class CoalescingProgressDelivery<T> : IProgress<T>, IDisposable 
         lock (_gate)
         {
             latest = _latest; _latest = null;
-            _scheduled = false; _posted = false;
         }
-        if (latest is not null) _apply(latest);
+        try { if (latest is not null) _apply(latest); }
+        finally
+        {
+            var flushPending = false;
+            lock (_gate)
+            {
+                // Reports arriving during a slow render only replace _latest.
+                // Start the next interval after that render completes, rather
+                // than allowing an already-queued callback to run back-to-back.
+                _scheduled = false; _posted = false;
+                if (_latest is not null)
+                {
+                    if (_closed) flushPending = true;
+                    else
+                    {
+                        _scheduled = true;
+                        _timer.Change(_interval, Timeout.InfiniteTimeSpan);
+                    }
+                }
+            }
+            if (flushPending) PostDrain();
+        }
     }
 
     public void FlushAndClose()

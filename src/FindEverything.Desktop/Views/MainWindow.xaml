@@ -34,7 +34,7 @@
             Padding="0"
             PaneDisplayMode="Left"
             TitleBar="{Binding ElementName=AppTitleBar}"
-            Transition="FadeInWithSlide">
+            Transition="None">
             <ui:NavigationView.MenuItems>
                 <ui:NavigationViewItem
                     AutomationProperties.Name="{StaticResource Loc.Home.Nav}"
@@ -86,7 +86,7 @@
                                         Width="16"
                                         Height="16"
                                         HorizontalAlignment="Center"
-                                        IsIndeterminate="True"
+                                        IsIndeterminate="{Binding Catalog.IsScanning}"
                                         VerticalAlignment="Center" />
                                 </ControlTemplate>
                             </ui:InfoBadge.Template>

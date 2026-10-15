@@ -23,6 +23,12 @@ public partial class FilesPage
         viewModel.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(FileSearchViewModel.IsDetailsOpen)) ApplyWorkspaceLayout();
+            if (e.PropertyName == nameof(FileSearchViewModel.IsBusy) && viewModel.IsBusy)
+            {
+                if (ResultsGrid.ContextMenu is { } menu) menu.IsOpen = false;
+                if (SelectionActionsMenuButton.ContextMenu is { } selectionMenu) selectionMenu.IsOpen = false;
+                if (AdditionalActionsMenuButton.ContextMenu is { } actionsMenu) actionsMenu.IsOpen = false;
+            }
         };
     }
 

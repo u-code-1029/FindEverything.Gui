@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Collections.Concurrent;
+using System.Collections.ObjectModel;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text;
@@ -12,6 +13,7 @@ using FindEverything.Application.Indexing;
 using FindEverything.Application.Results;
 using FindEverything.Desktop.Results;
 using FindEverything.Desktop.Configuration;
+using FindEverything.Desktop.Filtering;
 using FindEverything.Desktop.Localization;
 using FindEverything.Desktop.Services;
 using FindEverything.Profile.Runtime;
@@ -108,10 +110,13 @@ public partial class CatalogViewModel
         var scanFields = Fields.ToArray();
         var scanShowsOriginal = ShowOriginalValues;
         var liveRows = new ConcurrentDictionary<string, CatalogItemViewModel>(StringComparer.OrdinalIgnoreCase);
+        ObservableCollection<CatalogItemViewModel>? livePreview = null;
         var operationProfile = SelectedProfile?.Profile;
         var hadPublishedResults = _displayedProjectionSnapshot is not null;
         var liveVersion = Interlocked.Increment(ref _resultSessionVersion);
         ResetLiveFilters();
+        AppliedHighlightQuery = FilterText;
+        _liveFilterTerms = TextFilter.Terms(AppliedHighlightQuery);
         var followUp = CatalogMissingDataDecision.Later;
         WorkspaceSelection? requestedWorkspace = null;
         try
@@ -154,29 +159,47 @@ public partial class CatalogViewModel
                 // receives every match synchronously on the scan worker.
                 using var liveDelivery = new CoalescingProgressDelivery<Action>(
                     action => _dispatcher.BeginInvoke(DispatcherPriority.Background, action), action => action());
+                var previewSnapshotPending = false;
                 var delivery = new CatalogProgressDelivery(liveDelivery.Report, batch =>
                 {
                     if (_disposed || liveVersion != Volatile.Read(ref _resultSessionVersion)) return;
                     if (!hadPublishedResults && _projectionSnapshot is not null) return;
                     ProgressMessage = FormatProgress(batch.Latest, batch.Latest.MatchedCount);
-                    if (!hadPublishedResults && batch.Latest.AttemptReset) _loadedItems.Clear();
+                    var previewChanged = false;
+                    if (!hadPublishedResults && batch.Latest.AttemptReset)
+                    {
+                        _loadedItems.Clear();
+                        livePreview?.Clear();
+                        if (livePreview is null && Items.Count > 0) Items = CreateItemsView(_loadedItems);
+                        previewChanged = true;
+                    }
                     if (!hadPublishedResults && batch.Matches.Count > 0)
                     {
                         foreach (var value in batch.Matches.Take(Math.Max(0, 500 - _loadedItems.Count)))
                         {
                             if (!liveRows.TryRemove(value.MatchedItem!.FullPath, out var row)) continue;
                             _loadedItems.Add(row);
+                            livePreview?.Add(row);
+                            previewChanged = true;
+                        }
+                        if (livePreview is null && _loadedItems.Count > 0)
+                        {
+                            livePreview = new ObservableCollection<CatalogItemViewModel>(_loadedItems);
+                            Items = CreateItemsView(livePreview);
                         }
                         HasLoadedItems = _loadedItems.Count > 0;
                         FilterSummary = F("Loc.Catalog.Filter.Empty", "{0:N0}개 항목", batch.Latest.MatchedCount);
                     }
-                    if (!hadPublishedResults && (batch.Latest.AttemptReset || batch.Matches.Count > 0)) Items.Refresh();
+                    if (previewChanged) _livePreviewVersion++;
                     if (!hadPublishedResults) ScheduleLiveFilterRefresh();
                 });
                 var progress = new CatalogProgressBatcher(_indexingSettings?.Current.UiUpdateBatchSize ?? 10, batch =>
                 {
                     if (batch.Latest.AttemptReset) liveRows.Clear();
-                    if (!hadPublishedResults) CaptureLiveFilterSnapshot(writer, scope, scanFields, liveVersion);
+                    previewSnapshotPending |= batch.Latest.AttemptReset || batch.Matches.Count > 0;
+                    if (!hadPublishedResults && (previewSnapshotPending
+                        || Volatile.Read(ref _liveSnapshotFilterVersion) != Volatile.Read(ref _liveFilterVersion)))
+                        previewSnapshotPending = !CaptureLiveFilterSnapshot(writer, scope, scanFields, liveVersion);
                     var previews = batch.Matches.Select(value =>
                     {
                         var fullItem = value.MatchedItem!;
@@ -290,6 +313,7 @@ public partial class CatalogViewModel
             if (!hadPublishedResults && _projectionQuery is null)
             {
                 _loadedItems.Clear();
+                livePreview?.Clear();
                 Items.Refresh();
                 HasLoadedItems = false;
                 SetSelection([]);
@@ -305,6 +329,7 @@ public partial class CatalogViewModel
             if (!hadPublishedResults && _projectionQuery is null)
             {
                 _loadedItems.Clear();
+                livePreview?.Clear();
                 Items.Refresh();
                 HasLoadedItems = false;
                 SetSelection([]);
@@ -367,6 +392,7 @@ public partial class CatalogViewModel
     private async Task RefreshProjectionQueryAsync(bool preserveSelection = false, bool force = false,
         CancellationToken cancellationToken = default, bool allowRevisionChange = false, bool debounce = false)
     {
+        if (IsScanning && !force) return;
         if (ActiveProjectionStore is null || _projectionSnapshot is not { } snapshot) return;
         if (_activeNoteEdits > 0 && !force)
         {
@@ -387,7 +413,7 @@ public partial class CatalogViewModel
         {
             // Debounce query construction, not the user's text input. Superseded
             // definitions never allocate a grid or queue a count query.
-            if (debounce) await Task.Delay(250, source.Token);
+            if (debounce) await Task.Delay(SearchInputTiming.DebounceDelay, source.Token);
             query = await OpenProjectionQueryAsync(snapshot, definition, source.Token);
             var localizer = _localizer;
             var loader = new ResultPageLoader<CatalogProjectionRow, CatalogItemViewModel>(query,
@@ -586,7 +612,7 @@ public partial class CatalogViewModel
         ApplyColumnSort(target, direction == EntrySortDirection.Descending);
     }
 
-    private bool CanSelectAllResults() => !UsesQuerySelection || _hasExactResultCount;
+    private bool CanSelectAllResults() => IsResultInteractionEnabled && (!UsesQuerySelection || _hasExactResultCount);
     [RelayCommand(CanExecute = nameof(CanSelectAllResults))] private void SelectAll()
     {
         CancelSelectionRequests();
@@ -594,8 +620,9 @@ public partial class CatalogViewModel
         if (UsesQuerySelection) { _querySelection.SelectAll(); UpdateProjectionSelection(); }
         else SetSelection(Items.Cast<CatalogItemViewModel>());
     }
-    [RelayCommand] private void ClearSelection()
+    [RelayCommand(CanExecute = nameof(IsResultInteractionEnabled))] private void ClearSelection()
     {
+        if (!IsResultInteractionEnabled) return;
         CancelSelectionRequests();
         _querySelection.Clear(); _selectionAnchor = -1;
         if (UsesQuerySelection) UpdateProjectionSelection(); else SetSelection([]);
@@ -609,6 +636,7 @@ public partial class CatalogViewModel
     }
     public async Task SelectRowAsync(object value, bool additive, bool range)
     {
+        if (!IsResultInteractionEnabled) return;
         try
         {
             if (value is not CatalogItemViewModel { IsPlaceholder: false } row) return;

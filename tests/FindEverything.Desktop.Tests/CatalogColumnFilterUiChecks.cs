@@ -167,6 +167,19 @@ internal static class CatalogColumnFilterUiChecks
             Assert.Equal(hostCount, workspace.Children.Count);
             Show(2);
             flyout.Hide();
+            Show(4);
+            body = Assert.IsType<StackPanel>(flyout.Content);
+            mode = body.Children.OfType<ComboBox>().Single(); mode.SelectedIndex = 1;
+            var lockedCalendar = body.Children.OfType<StackPanel>()
+                .SelectMany(panel => panel.Children.OfType<Ui.CalendarDatePicker>()).First();
+            lockedCalendar.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent, lockedCalendar));
+            lockedCalendar.SetCurrentValue(Ui.CalendarDatePicker.IsCalendarOpenProperty, true);
+            PumpUntil(() => lockedCalendar.IsCalendarOpen);
+            grid.IsEnabled = false;
+            PumpUntil(() => !flyout.IsOpen && !lockedCalendar.IsCalendarOpen);
+            Assert.True(((CancellationTokenSource)state.GetType().GetField("EditorCancellation")!.GetValue(state)!).IsCancellationRequested);
+            Assert.Null(state.GetType().GetField("PressedHeader")!.GetValue(state));
+            grid.IsEnabled = true;
             VerifyLoadedSchemaReplacementWhilePaging(grid, owner, fields);
         }
         finally { window.Close(); }

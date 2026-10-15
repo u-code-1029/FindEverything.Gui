@@ -19,17 +19,22 @@ public partial class CatalogViewModel
     private bool _liveRefreshPending;
     private bool _liveRefreshQueued;
     private long _liveFilterVersion;
+    private long _liveSnapshotFilterVersion = -1;
+    private long _livePreviewVersion;
+    private long _liveAppliedPreviewVersion = -1;
+    private long _liveAppliedFilterVersion = -1;
     private readonly LatestRequestController _liveInputRequests = new();
     private IReadOnlyList<string> _liveFilterTerms = [];
 
     private void ScheduleTextFilter()
     {
+        if (IsScanning) return;
         if (_projectionSnapshot is not null && ActiveProjectionStore is not null)
         {
             _ = RefreshProjectionQueryAsync(debounce: true);
             return;
         }
-        _ = _liveInputRequests.RunAsync(TimeSpan.FromMilliseconds(250), token =>
+        _ = _liveInputRequests.RunAsync(SearchInputTiming.DebounceDelay, token =>
         {
             if (!_disposed) ApplyFilter();
             return Task.CompletedTask;
@@ -38,21 +43,28 @@ public partial class CatalogViewModel
 
     /// <summary>Called only by the scan worker, never by a UI query. Flushing is
     /// coalesced so full-text filter eligibility can be read without retaining text.</summary>
-    private void CaptureLiveFilterSnapshot(ICatalogProjectionWriter writer, CatalogProjectionScope scope,
+    private bool CaptureLiveFilterSnapshot(ICatalogProjectionWriter writer, CatalogProjectionScope scope,
         IReadOnlyList<ProfileFieldDescriptor> fields, long sessionVersion)
     {
-        if (_disposed || sessionVersion != Volatile.Read(ref _resultSessionVersion) || writer.Count == 0) return;
-        if (_queryDefinition.Filters.Count == 0 && string.IsNullOrWhiteSpace(FilterText)) return;
+        if (_disposed || sessionVersion != Volatile.Read(ref _resultSessionVersion) || writer.Count == 0) return false;
+        var filterVersion = Volatile.Read(ref _liveFilterVersion);
+        if (_queryDefinition.Filters.Count == 0 && string.IsNullOrWhiteSpace(AppliedHighlightQuery))
+        {
+            Volatile.Write(ref _liveSnapshotFilterVersion, filterVersion);
+            return true;
+        }
         var existing = Volatile.Read(ref _liveProjectionState);
         var now = Stopwatch.GetTimestamp();
         if (existing?.Snapshot.Generation == writer.Generation && existing.SessionVersion == sessionVersion
-            && Stopwatch.GetElapsedTime(_liveLastFlushTimestamp, now) < TimeSpan.FromMilliseconds(250)) return;
+            && Stopwatch.GetElapsedTime(_liveLastFlushTimestamp, now) < TimeSpan.FromMilliseconds(250)) return false;
         writer.Flush();
         _liveLastFlushTimestamp = now;
         var snapshot = new CatalogProjectionSnapshot(writer.Generation, scope,
             new(writer.Count, writer.Count, 0, 0, 0, true, null, DateTimeOffset.UtcNow), fields)
         { IsBuilding = true, BuildingRevision = writer.Revision };
         Volatile.Write(ref _liveProjectionState, new(snapshot, sessionVersion));
+        Volatile.Write(ref _liveSnapshotFilterVersion, filterVersion);
+        return true;
     }
 
     private bool MatchesLiveItem(CatalogItemViewModel item)
@@ -64,7 +76,8 @@ public partial class CatalogViewModel
     }
 
     private static bool SameLiveRevision(LiveProjectionState? left, LiveProjectionState? right) =>
-        SameLiveGeneration(left, right) && left!.Snapshot.BuildingRevision == right!.Snapshot.BuildingRevision;
+        SameLiveGeneration(left, right) && left!.Snapshot.BuildingRevision == right!.Snapshot.BuildingRevision
+        && left.Snapshot.Summary.MatchedCount == right.Snapshot.Summary.MatchedCount;
     private static bool SameLiveGeneration(LiveProjectionState? left, LiveProjectionState? right) =>
         left is not null && right is not null && left.SessionVersion == right.SessionVersion
         && left.Snapshot.Generation == right.Snapshot.Generation;
@@ -72,8 +85,9 @@ public partial class CatalogViewModel
     private void ScheduleLiveFilterRefresh(bool criteriaChanged = false)
     {
         if (_disposed || _projectionSnapshot is not null || _projectionStore is null) return;
-        if (_queryDefinition.Filters.Count == 0 && string.IsNullOrWhiteSpace(FilterText))
+        if (_queryDefinition.Filters.Count == 0 && string.IsNullOrWhiteSpace(AppliedHighlightQuery))
         {
+            if (!criteriaChanged && _liveFilterCancellation is null && _liveMatchingPaths is null && _liveAppliedState is null) return;
             _liveFilterCancellation?.Cancel();
             _liveFilterCancellation = null; _liveRefreshPending = false; _liveRefreshQueued = false;
             _liveMatchingPaths = null; _liveAppliedState = null; Interlocked.Increment(ref _liveFilterVersion);
@@ -89,13 +103,18 @@ public partial class CatalogViewModel
         if (_liveRefreshPending) { _liveRefreshQueued = true; return; }
         var live = Volatile.Read(ref _liveProjectionState);
         if (live is null || live.SessionVersion != Volatile.Read(ref _resultSessionVersion)) return;
+        // Once the bounded preview and criteria are unchanged, later scan
+        // counters cannot change its eligibility. Do not re-query/reset the grid.
+        if (SameLiveRevision(live, _liveAppliedState)
+            && _liveAppliedPreviewVersion == _livePreviewVersion
+            && _liveAppliedFilterVersion == Volatile.Read(ref _liveFilterVersion)) return;
         _liveRefreshPending = true;
         var cancellation = new CancellationTokenSource();
         _liveFilterCancellation = cancellation;
-        _ = RefreshLiveFilterAsync(live, cancellation, Volatile.Read(ref _liveFilterVersion));
+        _ = RefreshLiveFilterAsync(live, _livePreviewVersion, cancellation, Volatile.Read(ref _liveFilterVersion));
     }
 
-    private async Task RefreshLiveFilterAsync(LiveProjectionState live,
+    private async Task RefreshLiveFilterAsync(LiveProjectionState live, long previewVersion,
         CancellationTokenSource cancellation, long version)
     {
         var token = cancellation.Token;
@@ -108,9 +127,19 @@ public partial class CatalogViewModel
             token.ThrowIfCancellationRequested();
             if (_disposed || version != Volatile.Read(ref _liveFilterVersion) || live.SessionVersion != Volatile.Read(ref _resultSessionVersion)
                 || !SameLiveRevision(live, Volatile.Read(ref _liveProjectionState))) return;
-            if (matches is null) return; // Non-SQL test/custom providers retain their bounded in-memory predicate.
+            _liveAppliedPreviewVersion = previewVersion;
+            _liveAppliedFilterVersion = version;
+            if (matches is null)
+            {
+                var hadEligibility = _liveMatchingPaths is not null;
+                _liveMatchingPaths = null;
+                _liveAppliedState = live; // Custom providers retain the bounded in-memory predicate.
+                if (hadEligibility) Items.Refresh();
+                return;
+            }
+            var visibilityChanged = _loadedItems.Any(item => MatchesLiveItem(item) != matches.Contains(item.FullPath));
             _liveMatchingPaths = matches; _liveAppliedState = live;
-            Items.Refresh();
+            if (visibilityChanged) Items.Refresh();
             FilterSummary = F("Loc.Catalog.Filter.Active", "{0:N0} / {1:N0}개 항목", Items.Count, _loadedItems.Count);
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
@@ -144,6 +173,8 @@ public partial class CatalogViewModel
         _liveFilterCancellation?.Cancel(); _liveFilterCancellation = null;
         Volatile.Write(ref _liveProjectionState, null);
         _liveLastFlushTimestamp = 0; _liveMatchingPaths = null; _liveAppliedState = null;
+        Volatile.Write(ref _liveSnapshotFilterVersion, -1);
+        _livePreviewVersion = 0; _liveAppliedPreviewVersion = -1; _liveAppliedFilterVersion = -1;
         _liveRefreshPending = false; _liveRefreshQueued = false; Interlocked.Increment(ref _liveFilterVersion);
     }
 }

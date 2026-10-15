@@ -10,14 +10,19 @@ namespace FindEverything.Desktop.Views.Controls;
 /// <summary>A selectable, read-only cell with a lightweight highlighted idle view.</summary>
 internal sealed class SelectableCatalogText : Grid
 {
-    internal Wpf.Ui.Controls.TextBox TextBox { get; }
+    private readonly Wpf.Ui.Controls.TextBox _textBox;
+    private bool _nativeEditorPrepared;
+    // Explicit programmatic access has the same semantics as user input.
+    // Normal result rendering never calls this accessor.
+    internal Wpf.Ui.Controls.TextBox TextBox { get { PrepareNativeEditor(); return _textBox; } }
+    internal bool IsNativeEditorPrepared => _nativeEditorPrepared;
     internal Wpf.Ui.Controls.TextBlock Highlight { get; }
 
     internal SelectableCatalogText(BindingBase displayBinding)
     {
         VerticalAlignment = VerticalAlignment.Center;
         MinWidth = 0;
-        TextBox = new Wpf.Ui.Controls.TextBox
+        _textBox = new Wpf.Ui.Controls.TextBox
         {
             IsReadOnly = true, IsTextSelectionEnabled = true, ClearButtonEnabled = false,
             MinHeight = 0, MinWidth = 0, Padding = new Thickness(0), BorderThickness = new Thickness(0),
@@ -27,8 +32,8 @@ internal sealed class SelectableCatalogText : Grid
             TextWrapping = TextWrapping.NoWrap,
             Opacity = 0,
         };
-        TextBox.SetResourceReference(StyleProperty, "CatalogReadOnlyTextBoxStyle");
-        TextBox.PlaceholderEnabled = false;
+        _textBox.SetResourceReference(StyleProperty, "CatalogReadOnlyTextBoxStyle");
+        _textBox.PlaceholderEnabled = false;
         Highlight = new Wpf.Ui.Controls.TextBlock
         {
             VerticalAlignment = VerticalAlignment.Center,
@@ -38,7 +43,7 @@ internal sealed class SelectableCatalogText : Grid
         Highlight.SetBinding(TextHighlighting.DisplayTextProperty, displayBinding);
         // TextBox.Text defaults to TwoWay even when IsReadOnly is true. Bind
         // through the display property's OneWay bridge, never back to a DTO.
-        TextBox.SetBinding(System.Windows.Controls.TextBox.TextProperty, new Binding
+        _textBox.SetBinding(System.Windows.Controls.TextBox.TextProperty, new Binding
         {
             Source = Highlight, Path = new PropertyPath(TextHighlighting.DisplayTextProperty), Mode = BindingMode.OneWay,
         });
@@ -48,35 +53,48 @@ internal sealed class SelectableCatalogText : Grid
             RelativeSource = new(RelativeSourceMode.FindAncestor, typeof(DataGrid), 1),
         });
         SetBinding(ToolTipProperty, displayBinding);
-        TextBox.GotKeyboardFocus += (_, _) => RefreshFocus();
-        TextBox.LostKeyboardFocus += (_, _) => RefreshFocus();
+        _textBox.PreviewGotKeyboardFocus += (_, _) => PrepareNativeEditor();
+        _textBox.GotKeyboardFocus += (_, _) => RefreshFocus();
+        _textBox.LostKeyboardFocus += (_, _) => RefreshFocus();
+        _textBox.MouseEnter += (_, _) => PrepareNativeEditor();
+        _textBox.StylusEnter += (_, _) => PrepareNativeEditor();
         // The collapsed idle text view must be laid out before the original
         // native down event reaches TextEditorMouse/TextEditorTyping. Retain
         // that event and its capture/drag behavior; never synthesize a replay.
-        TextBox.PreviewMouseLeftButtonDown += (_, _) => PreparePointerInput();
-        TextBox.PreviewStylusDown += (_, _) => PreparePointerInput();
-        TextBox.PreviewTouchDown += (_, _) => PreparePointerInput();
-        DataContextChanged += (_, _) => TextBox.Select(0, 0);
-        Unloaded += (_, _) => TextBox.Select(0, 0);
+        _textBox.PreviewMouseLeftButtonDown += (_, _) => PreparePointerInput();
+        _textBox.PreviewMouseRightButtonDown += (_, _) => PrepareNativeEditor();
+        _textBox.PreviewStylusDown += (_, _) => PreparePointerInput();
+        _textBox.PreviewTouchDown += (_, _) => PreparePointerInput();
+        DataContextChanged += (_, _) => _textBox.Select(0, 0);
+        Unloaded += (_, _) => _textBox.Select(0, 0);
         // Recycled cells need a menu owner, but allocating four menu items for
         // every visible cell penalizes scrolling even when no menu is opened.
-        TextBox.ContextMenu = new ContextMenu();
-        TextBox.ContextMenuOpening += (_, _) => PrepareContextMenu();
-        Children.Add(TextBox);
+        _textBox.ContextMenu = new ContextMenu();
+        _textBox.ContextMenuOpening += (_, _) => PrepareContextMenu();
+        Children.Add(_textBox);
         Children.Add(Highlight);
     }
 
     private void RefreshFocus()
     {
-        TextBox.Opacity = TextBox.IsKeyboardFocusWithin ? 1 : 0;
-        Highlight.Visibility = TextBox.IsKeyboardFocusWithin ? Visibility.Collapsed : Visibility.Visible;
+        _textBox.Opacity = _textBox.IsKeyboardFocusWithin ? 1 : 0;
+        Highlight.Visibility = _textBox.IsKeyboardFocusWithin ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private void PrepareNativeEditor()
+    {
+        if (_nativeEditorPrepared) return;
+        if (TryFindResource("CatalogReadOnlyTextBoxActiveTemplate") is not ControlTemplate template) return;
+        _nativeEditorPrepared = true;
+        _textBox.Template = template;
+        _textBox.ApplyTemplate();
     }
 
     private void PreparePointerInput()
     {
-        TextBox.Focus();
-        TextBox.ApplyTemplate();
-        TextBox.UpdateLayout();
+        PrepareNativeEditor();
+        _textBox.Focus();
+        _textBox.UpdateLayout();
     }
 
     internal void PrepareContextMenu()

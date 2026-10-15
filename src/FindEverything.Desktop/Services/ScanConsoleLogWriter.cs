@@ -21,13 +21,23 @@ public sealed class ScanConsoleLogWriter : IScanConsoleLogWriter
     public ScanConsoleLogWriter(IAppLocalizer? localizer = null) =>
         _localizer = localizer;
 
-    public async Task WriteAsync(
+    public Task WriteAsync(
         string path,
         IReadOnlyList<string> lines,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         ArgumentNullException.ThrowIfNull(lines);
+
+        // FileStream construction, buffered WriteLine calls and the durable final
+        // Flush can all complete synchronously. Keep the whole export off the UI,
+        // not just the occasional await that happens to require an actual I/O.
+        return Task.Run(() => WriteCoreAsync(path, lines, cancellationToken), cancellationToken);
+    }
+
+    private async Task WriteCoreAsync(string path, IReadOnlyList<string> lines, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
 
         var destinationPath = Path.GetFullPath(path);
         var directory = Path.GetDirectoryName(destinationPath);
@@ -53,7 +63,7 @@ public sealed class ScanConsoleLogWriter : IScanConsoleLogWriter
                              FileAccess.Write,
                              FileShare.None,
                              16 * 1024,
-                             FileOptions.Asynchronous | FileOptions.WriteThrough))
+                             FileOptions.Asynchronous | FileOptions.SequentialScan))
             {
                 await using (var writer = new StreamWriter(
                                  stream,

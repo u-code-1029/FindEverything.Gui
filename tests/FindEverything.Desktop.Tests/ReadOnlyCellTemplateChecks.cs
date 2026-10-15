@@ -149,6 +149,48 @@ internal static class ReadOnlyCellTemplateChecks
             Assert.Equal(Visibility.Visible, host.Visibility);
             Assert.Equal(0, rowToggleRequests);
             Assert.False(ApplicationCommands.Cut.CanExecute(null, editor));
+
+            // A never-activated recycled cell must also work on its very first
+            // native drag. Do not use cell.TextBox here: that accessor explicitly
+            // prepares a native editor for programmatic clients.
+            MovePointer(window, other.PointToScreen(new Point(8, other.ActualHeight / 2)));
+            other.Focus(); PumpInput(window);
+            var fresh = new SelectableCatalogText(new Binding(nameof(CellValue.Value)) { Mode = BindingMode.OneWay })
+            {
+                DataContext = value, Width = 180, VerticalAlignment = VerticalAlignment.Center,
+            };
+            panel.Children[0] = fresh; PumpInput(window);
+            var freshEditor = Assert.Single(fresh.Children.OfType<Wpf.Ui.Controls.TextBox>());
+            Assert.False(fresh.IsNativeEditorPrepared);
+            Assert.Empty(Descendants<ScrollViewer>(fresh));
+            MovePointer(window, freshEditor.PointToScreen(new Point(3, freshEditor.ActualHeight / 2)));
+            PumpUntil(window, () => fresh.IsNativeEditorPrepared,
+                () => "First hover did not prepare the native editor; " + InputDiagnostics(window));
+            SendMouse(window, MouseLeftDown); pointerDown = true; PumpInput(window);
+            MovePointer(window, freshEditor.PointToScreen(new Point(90, freshEditor.ActualHeight / 2)));
+            PumpInput(window); SendMouse(window, MouseLeftUp); pointerDown = false; PumpInput(window);
+            Assert.True(freshEditor.SelectionLength > 0);
+            Assert.True(ApplicationCommands.Copy.CanExecute(null, freshEditor));
+            Assert.Equal(0, rowToggleRequests);
+
+            // Keyboard entry prepares the missing native view before WPF's
+            // TextEditor keyboard-focus handler needs it, without a hover.
+            MovePointer(window, other.PointToScreen(new Point(8, other.ActualHeight / 2)));
+            other.Focus(); PumpInput(window);
+            var keyboardCell = new SelectableCatalogText(new Binding(nameof(CellValue.Value)) { Mode = BindingMode.OneWay })
+            {
+                DataContext = value, Width = 180, VerticalAlignment = VerticalAlignment.Center,
+            };
+            panel.Children[0] = keyboardCell; PumpInput(window);
+            Assert.False(keyboardCell.IsNativeEditorPrepared);
+            Assert.True(other.MoveFocus(new TraversalRequest(FocusNavigationDirection.Previous)));
+            PumpInput(window);
+            Assert.True(keyboardCell.IsNativeEditorPrepared);
+            var keyboardEditor = Assert.Single(keyboardCell.Children.OfType<Wpf.Ui.Controls.TextBox>());
+            Assert.True(keyboardEditor.IsKeyboardFocusWithin);
+            keyboardEditor.Select(0, 6);
+            Assert.Equal("A long", keyboardEditor.SelectedText);
+            Assert.True(ApplicationCommands.Copy.CanExecute(null, keyboardEditor));
         }
         finally
         {

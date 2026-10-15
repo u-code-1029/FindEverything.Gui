@@ -2,6 +2,7 @@ using System.Collections.Specialized;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Threading;
 using FindEverything.Desktop.ViewModels;
 
@@ -11,10 +12,17 @@ public partial class ScanConsolePanel
 {
     private ScanConsoleViewModel? _viewModel;
     private bool _scrollScheduled;
+    private ScrollViewer? _traceScrollViewer;
+    private ScanConsoleLineViewModel? _pausedAnchor;
+    private double _pausedFraction;
+    private double _pausedHorizontalOffset;
+    private long _attachmentVersion;
 
     public ScanConsolePanel()
     {
         InitializeComponent();
+        // Viewport anchors are logical rows, independently of display DPI/font.
+        VirtualizingPanel.SetScrollUnit(TraceList, ScrollUnit.Item);
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
         DataContextChanged += OnDataContextChanged;
@@ -69,8 +77,10 @@ public partial class ScanConsolePanel
     {
         if (IsVisible)
         {
-            ScheduleScrollToEnd();
+            if (_viewModel is { AutoScroll: false }) RestorePausedViewport();
+            else ScheduleScrollToEnd();
         }
+        else CapturePausedViewport();
     }
 
     private void Attach(ScanConsoleViewModel? viewModel)
@@ -84,6 +94,7 @@ public partial class ScanConsolePanel
         _viewModel = viewModel;
         if (_viewModel is not null)
         {
+            _viewModel.VisibleLinesChanging += OnVisibleLinesChanging;
             _viewModel.Lines.CollectionChanged += OnLinesCollectionChanged;
         }
     }
@@ -92,16 +103,66 @@ public partial class ScanConsolePanel
     {
         if (_viewModel is not null)
         {
+            _viewModel.VisibleLinesChanging -= OnVisibleLinesChanging;
             _viewModel.Lines.CollectionChanged -= OnLinesCollectionChanged;
             _viewModel = null;
         }
+        _attachmentVersion++;
+        _pausedAnchor = null;
+        _traceScrollViewer = null;
+        _scrollScheduled = false;
+    }
+
+    private void OnVisibleLinesChanging(object? sender, EventArgs eventArgs)
+    {
+        // Opening publishes before the Visibility binding is updated. Keep the
+        // anchor captured when closing instead of replacing it while collapsed.
+        if (IsVisible) CapturePausedViewport();
+    }
+
+    private void CapturePausedViewport()
+    {
+        if (_viewModel is not { AutoScroll: false } viewModel) return;
+        _traceScrollViewer ??= FindScrollViewer(TraceList);
+        if (_traceScrollViewer is not { } viewer) return;
+        _pausedAnchor = null;
+        var index = Math.Max(0, (int)Math.Floor(viewer.VerticalOffset));
+        if (index < viewModel.Lines.Count) _pausedAnchor = viewModel.Lines[index];
+        _pausedFraction = viewer.VerticalOffset - index;
+        _pausedHorizontalOffset = viewer.HorizontalOffset;
     }
 
     private void OnLinesCollectionChanged(
         object? sender,
         NotifyCollectionChangedEventArgs eventArgs)
     {
-        ScheduleScrollToEnd();
+        if (_viewModel is { AutoScroll: false }) RestorePausedViewport();
+        else ScheduleScrollToEnd();
+    }
+
+    private void RestorePausedViewport()
+    {
+        if (!IsLoaded || !IsVisible || _traceScrollViewer is null) return;
+        var version = _attachmentVersion;
+        var anchor = _pausedAnchor;
+        var fraction = _pausedFraction;
+        var horizontal = _pausedHorizontalOffset;
+        _ = Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
+        {
+            if (version != _attachmentVersion || !IsLoaded || !IsVisible
+                || _viewModel is not { AutoScroll: false } viewModel || _traceScrollViewer is not { } viewer) return;
+            var index = anchor is null ? 0 : viewModel.Lines.IndexOf(anchor);
+            viewer.ScrollToVerticalOffset(Math.Max(0, index) + fraction);
+            viewer.ScrollToHorizontalOffset(horizontal);
+        });
+    }
+
+    private static ScrollViewer? FindScrollViewer(DependencyObject element)
+    {
+        if (element is ScrollViewer viewer) return viewer;
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(element); index++)
+            if (FindScrollViewer(VisualTreeHelper.GetChild(element, index)) is { } child) return child;
+        return null;
     }
 
     private void OnTraceListPreviewMouseRightButtonDown(
@@ -136,10 +197,12 @@ public partial class ScanConsolePanel
         }
 
         _scrollScheduled = true;
+        var version = _attachmentVersion;
         _ = Dispatcher.BeginInvoke(
             DispatcherPriority.ContextIdle,
             () =>
             {
+                if (version != _attachmentVersion) return;
                 _scrollScheduled = false;
                 if (IsLoaded
                     && IsVisible

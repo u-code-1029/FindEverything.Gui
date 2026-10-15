@@ -99,6 +99,16 @@ public static partial class DynamicProfileGrid
         }
         grid.Loaded += (_, _) => ScheduleHost();
         grid.DataContextChanged += (_, _) => ScheduleHost();
+        grid.IsEnabledChanged += (_, _) =>
+        {
+            if (grid.IsEnabled) return;
+            // Popup windows are hosted outside the disabled grid's visual
+            // subtree. Dismiss both levels when scanning locks interaction.
+            CloseActiveCalendar(state);
+            state.Flyout.Hide();
+            state.EditorCancellation?.Cancel();
+            state.PressedHeader = null;
+        };
         grid.Unloaded += (_, _) =>
         {
             state.EditorCancellation?.Cancel();
@@ -314,7 +324,7 @@ public static partial class DynamicProfileGrid
     private static async Task OpenColumnFlyoutAsync(DataGrid grid, ColumnFiltersState state, CatalogViewModel owner,
         DataGridColumnHeader header, CatalogColumnTarget target)
     {
-        if (!ReferenceEquals(state.Owner, owner) || !EnsureFlyoutHost(grid, state)) return;
+        if (!grid.IsEnabled || !ReferenceEquals(state.Owner, owner) || !EnsureFlyoutHost(grid, state)) return;
         CloseActiveCalendar(state);
         state.Flyout.Hide();
         state.EditorCancellation?.Cancel();

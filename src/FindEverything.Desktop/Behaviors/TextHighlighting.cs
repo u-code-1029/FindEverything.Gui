@@ -33,6 +33,7 @@ public static class TextHighlighting
         public string? Source;
         public string? Query;
         public bool HighContrast;
+        public bool HasFormattedInlines;
     }
 
     public static void SetDisplayText(DependencyObject element, string? value) =>
@@ -71,8 +72,7 @@ public static class TextHighlighting
 
         if (terms.Count == 0 || source.Length == 0)
         {
-            textBlock.Inlines.Clear();
-            textBlock.Text = source;
+            SetPlainText(textBlock, state, source);
             return;
         }
 
@@ -97,13 +97,13 @@ public static class TextHighlighting
 
         if (matches is null)
         {
-            textBlock.Inlines.Clear();
-            textBlock.Text = source;
+            SetPlainText(textBlock, state, source);
             return;
         }
 
         matches.Sort(static (left, right) => left.Start.CompareTo(right.Start));
         textBlock.Inlines.Clear();
+        state.HasFormattedInlines = true;
         var position = 0;
         for (var index = 0; index < matches.Count; index++)
         {
@@ -131,6 +131,19 @@ public static class TextHighlighting
             position = end;
         }
         if (position < source.Length) textBlock.Inlines.Add(new Run(source[position..]));
+    }
+
+    private static void SetPlainText(TextBlock textBlock, RenderState state, string source)
+    {
+        // Accessing Inlines alone promotes TextBlock to a TextContainer-backed
+        // rich-text element. Most result cells have no highlight; let them keep
+        // WPF's much cheaper simple-string layout path through row recycling.
+        if (state.HasFormattedInlines)
+        {
+            textBlock.Inlines.Clear();
+            state.HasFormattedInlines = false;
+        }
+        textBlock.Text = source;
     }
 
     private static IReadOnlyList<string> GetTerms(string query)

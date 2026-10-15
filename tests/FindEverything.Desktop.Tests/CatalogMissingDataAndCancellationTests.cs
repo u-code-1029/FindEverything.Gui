@@ -21,7 +21,7 @@ namespace FindEverything.Desktop.Tests;
 public sealed class CatalogAsyncUiSafetyCollection { }
 
 [Collection("Catalog async UI safety")]
-public sealed class CatalogMissingDataAndCancellationTests
+public sealed partial class CatalogMissingDataAndCancellationTests
 {
     [Fact]
     public Task Cancel_interrupts_cached_count_even_when_the_provider_ignores_cancellation() => OnStaAsync(async () =>
@@ -425,12 +425,14 @@ public sealed class CatalogMissingDataAndCancellationTests
         public int LoadCalls { get; private set; }
         public int ScanCalls { get; private set; }
         public Func<CatalogRequest, CancellationToken, Task<CatalogResult>>? ScanOverride { get; set; }
+        public Func<CatalogRequest, IProgress<CatalogOperationProgress>?, CancellationToken, Task<CatalogResult>>? StreamingScanOverride { get; set; }
         public Task<CatalogResult> LoadExistingAsync(CatalogRequest request,
             IProgress<CatalogOperationProgress>? progress = null, CancellationToken cancellationToken = default)
         { LoadCalls++; return Result(request); }
         public Task<CatalogResult> ScanAndLoadAsync(CatalogRequest request,
             IProgress<CatalogOperationProgress>? progress = null, CancellationToken cancellationToken = default)
-        { ScanCalls++; return ScanOverride?.Invoke(request, cancellationToken) ?? Result(request); }
+        { ScanCalls++; return StreamingScanOverride?.Invoke(request, progress, cancellationToken)
+            ?? ScanOverride?.Invoke(request, cancellationToken) ?? Result(request); }
         public Task<CatalogResult> DiscoverAsync(CatalogRequest request,
             IProgress<CatalogOperationProgress>? progress = null, CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException("The missing-data dialog must never invoke legacy discovery.");
@@ -520,29 +522,33 @@ public sealed class CatalogMissingDataAndCancellationTests
     private sealed class FileService : IFileSearchService
     {
         public FileQuery Query { get; set; } = new();
+        public EntrySearchRequest? LastRequest { get; private set; }
+        public FileSearchScope? LastScope { get; private set; }
+        public Func<FileSearchScope, CancellationToken, Task<IndexScanReport>>? ScanOverride { get; set; }
         public int OpenCalls { get; private set; }
         public int ScanCalls { get; private set; }
         public Task<IResultQuerySession<IndexedPathEntry>> OpenQueryAsync(FileSearchScope scope, EntrySearchRequest query, CancellationToken cancellationToken = default)
-        { OpenCalls++; return Task.FromResult<IResultQuerySession<IndexedPathEntry>>(Query); }
+        { OpenCalls++; LastRequest = query; LastScope = scope; return Task.FromResult<IResultQuerySession<IndexedPathEntry>>(Query); }
         public Task<IndexRootStatus> GetStatusAsync(FileSearchScope scope, CancellationToken cancellationToken = default) =>
             Task.FromResult(new IndexRootStatus(scope.RootPath, IndexRootAvailability.Available, null, null,
                 IndexScanStatus.Completed, DateTimeOffset.UtcNow, 1, 0, false));
         public Task<IndexScanReport> ScanAsync(FileSearchScope scope, IProgress<IndexScanProgress>? progress = null, CancellationToken cancellationToken = default)
-        { ScanCalls++; throw new NotSupportedException(); }
-        public Task<IndexScanReport> RefreshScopeAsync(FileSearchScope scope, string refreshPath, IProgress<IndexScanProgress>? progress = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        { ScanCalls++; return ScanOverride?.Invoke(scope, cancellationToken) ?? throw new NotSupportedException(); }
+        public Task<IndexScanReport> RefreshScopeAsync(FileSearchScope scope, string refreshPath, IProgress<IndexScanProgress>? progress = null, CancellationToken cancellationToken = default) => ScanAsync(scope, progress, cancellationToken);
         public Task<EntrySearchResult> SearchAsync(FileSearchScope scope, EntrySearchRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 
     private sealed class FileQuery : IResultQuerySession<IndexedPathEntry>
     {
         public string Identity => "file-count-fixture";
+        public string RootPath { get; init; } = Path.GetTempPath();
         public bool IsDisposed { get; private set; }
         public TaskCompletionSource CountStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource<long> ReleaseCount { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public Task<long> CountAsync(CancellationToken cancellationToken = default)
         { CountStarted.TrySetResult(); return ReleaseCount.Task; }
         public Task<ResultPage<IndexedPathEntry>> ReadRangeAsync(int offset, int limit, CancellationToken cancellationToken = default) =>
-            Task.FromResult(new ResultPage<IndexedPathEntry>([new(Path.Combine(Path.GetTempPath(), "count-row.txt"), "count-row.txt", ".txt",
+            Task.FromResult(new ResultPage<IndexedPathEntry>([new(Path.Combine(RootPath, "count-row.txt"), "count-row.txt", ".txt",
                 IndexedPathKind.File, 12, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, false)], offset, true));
         public async IAsyncEnumerable<IndexedPathEntry> EnumerateSelectionAsync(QuerySelection selection,
             [EnumeratorCancellation] CancellationToken cancellationToken = default)

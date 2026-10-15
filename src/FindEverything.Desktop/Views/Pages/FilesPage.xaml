@@ -45,6 +45,10 @@
                 </Grid>
 
             </Grid>
+            <ui:TextBlock x:Name="ScanInteractionNotice" Margin="0,8,0,0"
+                Style="{StaticResource CaptionTextStyle}" TextWrapping="Wrap"
+                Text="{StaticResource Loc.Workspace.Scan.InteractionPaused}"
+                Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}" />
             </StackPanel>
         </controls:CommandStrip>
         <Grid Grid.Row="2">
@@ -73,7 +77,7 @@
                         Width="18"
                         Height="18"
                         Margin="0,0,8,0"
-                        IsIndeterminate="True"
+                        IsIndeterminate="{Binding IsSearching}"
                         Visibility="{Binding IsSearching, Converter={StaticResource BooleanToVisibilityConverter}}" />
                     <ui:TextBlock
                         VerticalAlignment="Center"
@@ -84,6 +88,7 @@
 
             <ui:DataGrid
                 x:Name="ResultsGrid"
+                IsEnabled="{Binding IsResultInteractionEnabled, FallbackValue=True}"
                 Grid.Row="1"
                 Style="{StaticResource FluentDataGridStyle}"
                 AutomationProperties.Name="{StaticResource Loc.View.Files.AutomationName.FileSearchResults}"
@@ -172,6 +177,7 @@
             </ui:DataGrid>
 
             <controls:SectionCard x:Name="SelectionToolbar" controls:FloatingNotificationChrome.IsBottomChrome="True" Grid.Row="2" Margin="0,8,0,0" Padding="12,4"
+                IsEnabled="{Binding IsResultInteractionEnabled, FallbackValue=True}"
                 Style="{StaticResource FluentToolbarCardStyle}" SizeChanged="OnSelectionToolbarSizeChanged"
                 Visibility="{Binding HasSelection, Converter={StaticResource BooleanToVisibilityConverter}}">
                 <controls:SectionCard.Header>
@@ -312,7 +318,7 @@
                 <ui:TextBlock Grid.Column="1" MaxWidth="260" Margin="12,0,0,0" Text="{Binding ResultSourceDescription}" Style="{StaticResource CaptionTextStyle}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" ToolTip="{Binding ResultSourceDescription}" AutomationProperties.Name="{StaticResource Loc.Workspace.ResultSource}" />
             </Grid>
         </Grid>
-        <controls:SectionCard x:Name="FileDetailsPanel" Grid.Row="2" Width="340" HorizontalAlignment="Right" VerticalAlignment="Stretch" Panel.ZIndex="8" Style="{StaticResource FluentSectionCardStyle}" Visibility="{Binding IsDetailsOpen, Converter={StaticResource BooleanToVisibilityConverter}}">
+        <controls:SectionCard x:Name="FileDetailsPanel" Grid.Row="2" Width="340" HorizontalAlignment="Right" VerticalAlignment="Stretch" Panel.ZIndex="8" Style="{StaticResource FluentSectionCardStyle}" Visibility="{Binding IsDetailsOpen, Converter={StaticResource BooleanToVisibilityConverter}}" IsEnabled="{Binding IsResultInteractionEnabled, FallbackValue=True}">
           <controls:SectionCard.Header>
             <ui:DynamicScrollViewer x:Name="FileDetailsScrollViewer" Style="{StaticResource FluentGutteredScrollViewerStyle}">
                 <StackPanel>
