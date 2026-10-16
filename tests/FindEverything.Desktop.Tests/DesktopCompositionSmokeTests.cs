@@ -188,6 +188,7 @@ public sealed class DesktopCompositionSmokeTests
             WorkspaceTransferUiChecks.Verify(provider, window, (visual, name) => SaveQaImage(visual, name));
             ResultPaneUiChecks.Verify(provider, window);
             CatalogSearchLayoutChecks.Verify(provider, (visual, name) => SaveQaImage(visual, name));
+            MultiRootEntryPathsUiChecks.Verify(provider, (visual, name) => SaveQaImage(visual, name));
             Assert.True(navigation.Navigate(typeof(CatalogPage)));
             Assert.True(navigation.Navigate(typeof(ProfilesPage)));
             VerifyProfilesScrolling(window, profilesPage);

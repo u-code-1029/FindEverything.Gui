@@ -24,14 +24,22 @@ public sealed class ProfileWorkspaceInstallation(Func<Task<bool>> rollback)
 /// </summary>
 public sealed class ProfileWorkspaceSettingsService(AppPaths paths, ISelectionOutputFormatStore formats,
     IProfilePresentationStore presentations, IGridLayoutStore layouts, IProfileOutputPreferenceStore preferences,
-    ISelectionOutputFormatter formatter, IAppLocalizer? localizer = null) : IProfileWorkspaceSettingsService
+    ISelectionOutputFormatter formatter, IAppLocalizer? localizer = null,
+    IWorkspaceContext? workspaceContext = null) : IProfileWorkspaceSettingsService
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
 
     public async Task<ProfileManifest> CreateExportSnapshotAsync(ProfileManifest manifest, CancellationToken cancellationToken = default)
     {
         var copy = Clone(manifest);
-        // External/in-memory manifests have no local settings to overwrite their embedded snapshot.
+        var localEntryPaths = string.IsNullOrWhiteSpace(copy.Id) ? null
+            : ProfileEntryPathSnapshots.Get(workspaceContext?.Current.ProfileEntryPaths, copy.Id);
+        if (localEntryPaths is not null)
+        {
+            copy.Workspace ??= new();
+            copy.Workspace.EntryPaths = localEntryPaths.ToList();
+        }
+        // External/in-memory manifests keep their embedded presentation and output settings.
         if (string.IsNullOrWhiteSpace(copy.Id) || !File.Exists(Path.Combine(paths.UserProfilesDirectory, copy.Id, "profile.json")))
         {
             Validate(copy);
@@ -68,6 +76,7 @@ public sealed class ProfileWorkspaceSettingsService(AppPaths paths, ISelectionOu
             }
             copy.Workspace = new()
             {
+                EntryPaths = copy.Workspace?.EntryPaths?.ToList(),
                 OutputFormats = owned.Select(f => new ProfileOutputFormatManifest
                 { Id = f.Id, DisplayName = f.DisplayName, Template = f.Template, ItemSeparator = f.ItemSeparator, Prefix = f.Prefix, Suffix = f.Suffix }).ToList(),
                 SelectedOutputFormatId = owned.Any(f => string.Equals(f.Id, selected, StringComparison.OrdinalIgnoreCase))
@@ -85,6 +94,8 @@ public sealed class ProfileWorkspaceSettingsService(AppPaths paths, ISelectionOu
         Validate(manifest);
         if (manifest.Workspace is not { } workspace) return null;
         var id = manifest.Id ?? throw new InvalidDataException("A profile identifier is required.");
+        var newEntryPaths = workspace.EntryPaths is null ? null
+            : ProfileEntryPathSnapshots.Normalize(workspace.EntryPaths.ToArray());
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -103,7 +114,25 @@ public sealed class ProfileWorkspaceSettingsService(AppPaths paths, ISelectionOu
             var newLayoutSnapshot = newLayout.ToDictionary(c => c.FieldId, StringComparer.OrdinalIgnoreCase);
             var newPreference = workspace.SelectedOutputFormatId is { } selected && idMap.TryGetValue(selected, out var mapped)
                 ? mapped : SelectionOutputFormatDefaults.FullPathLinesId;
+            IReadOnlyList<string>? oldEntryPaths = null;
+            var wroteEntryPaths = false;
             var wroteFormats = false; var wrotePresentation = false; var wroteLayout = false; var wrotePreference = false;
+            async Task<bool> RestoreEntryPaths()
+            {
+                if (workspaceContext is null) return true;
+                var restored = false;
+                await workspaceContext.UpdateAsync(current =>
+                {
+                    if (!ProfileEntryPathSnapshots.Equal(
+                        ProfileEntryPathSnapshots.Get(current.ProfileEntryPaths, id), newEntryPaths)) return current;
+                    restored = true;
+                    return current with
+                    {
+                        ProfileEntryPaths = ProfileEntryPathSnapshots.Replace(current.ProfileEntryPaths, id, oldEntryPaths),
+                    };
+                }, CancellationToken.None).ConfigureAwait(false);
+                return restored;
+            }
             async Task<bool> Rollback()
             {
                 var failures = new List<Exception>();
@@ -114,11 +143,24 @@ public sealed class ProfileWorkspaceSettingsService(AppPaths paths, ISelectionOu
                 if (wrotePresentation) await Undo(() => presentations.TryReplaceAsync(id, newPresentation, oldPresentation, CancellationToken.None, resetManualWidths: false)).ConfigureAwait(false);
                 if (wrotePreference) await Undo(() => preferences.TryReplaceAsync(id, newPreference, oldPreference, CancellationToken.None)).ConfigureAwait(false);
                 if (wroteFormats) await Undo(() => formats.TryReplaceProfileFormatsAsync(id, newFormats, oldFormats, CancellationToken.None)).ConfigureAwait(false);
+                if (wroteEntryPaths) await Undo(RestoreEntryPaths).ConfigureAwait(false);
                 if (failures.Count > 0) throw new AggregateException("Some imported profile settings could not be restored.", failures);
                 return restored;
             }
             try
             {
+                if (newEntryPaths is not null && workspaceContext is not null)
+                {
+                    await workspaceContext.UpdateAsync(current =>
+                    {
+                        oldEntryPaths = ProfileEntryPathSnapshots.Get(current.ProfileEntryPaths, id)?.ToArray();
+                        return current with
+                        {
+                            ProfileEntryPaths = ProfileEntryPathSnapshots.Replace(current.ProfileEntryPaths, id, newEntryPaths),
+                        };
+                    }, cancellationToken).ConfigureAwait(false);
+                    wroteEntryPaths = true;
+                }
                 // Publish formats last, after their selected-ID dependency has been committed.
                 if (!await preferences.TryReplaceAsync(id, oldPreference, newPreference, cancellationToken).ConfigureAwait(false))
                     throw new InvalidOperationException("The selected output format changed while importing the profile.");

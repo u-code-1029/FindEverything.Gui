@@ -306,6 +306,44 @@
                 </controls:SectionCard.Header>
             </controls:SectionCard>
         </DataTemplate>
+        <DataTemplate x:Key="ProfileEditor.Item.Profile.EntryPathsHeader">
+            <controls:SectionCard Style="{StaticResource EditorSectionStyle}">
+                <controls:SectionCard.Header>
+                    <StackPanel>
+                        <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{StaticResource Loc.Profiles.EntryPaths.Title}" />
+                        <ui:TextBlock Margin="0,4,0,12" Style="{StaticResource CaptionTextStyle}"
+                            TextWrapping="Wrap" Text="{StaticResource Loc.Profiles.EntryPaths.Help}" />
+                        <WrapPanel>
+                            <ui:Button Margin="0,0,8,8" Command="{Binding BrowseEntryPathCommand}" Content="{StaticResource Loc.Profiles.EntryPaths.Browse}"
+                                Icon="{ui:SymbolIcon Symbol=FolderAdd20}" />
+                            <ui:Button Margin="0,0,8,8" Command="{Binding AddEntryPathCommand}" Content="{StaticResource Loc.Profiles.EntryPaths.Add}"
+                                Icon="{ui:SymbolIcon Symbol=Add20}" />
+                            <ui:TextBlock Margin="0,0,0,8" VerticalAlignment="Center" Text="{Binding EntryPathsSummary}" Style="{StaticResource CaptionTextStyle}" />
+                        </WrapPanel>
+                    </StackPanel>
+                </controls:SectionCard.Header>
+            </controls:SectionCard>
+        </DataTemplate>
+        <DataTemplate x:Key="ProfileEditor.Item.Profile.EntryPath">
+            <controls:SectionCard Style="{StaticResource FieldCardStyle}">
+                <controls:SectionCard.Header>
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <ui:TextBox x:Name="ProfileEntryPathInput" Margin="0,0,8,0" ClearButtonEnabled="True"
+                            Text="{Binding Path, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="{StaticResource Loc.Profiles.EntryPaths.Path}"
+                            AutomationProperties.Name="{StaticResource Loc.Profiles.EntryPaths.Path}" ToolTip="{Binding Path}" />
+                        <ui:Button Grid.Column="1" Margin="0,0,4,0" Style="{StaticResource IconOnlyButtonStyle}"
+                            Command="{Binding DataContext.BrowseEntryPathCommand, RelativeSource={RelativeSource AncestorType={x:Type Page}}}"
+                            CommandParameter="{Binding}" Icon="{ui:SymbolIcon Symbol=FolderOpen20}"
+                            AutomationProperties.Name="{StaticResource Loc.Profiles.EntryPaths.BrowsePath}" ToolTip="{StaticResource Loc.Profiles.EntryPaths.BrowsePath}" />
+                        <ui:Button Grid.Column="2" Style="{StaticResource IconOnlyButtonStyle}"
+                            Command="{Binding DataContext.RemoveEntryPathCommand, RelativeSource={RelativeSource AncestorType={x:Type Page}}}"
+                            CommandParameter="{Binding}" Icon="{ui:SymbolIcon Symbol=Delete20}"
+                            AutomationProperties.Name="{StaticResource Loc.Profiles.EntryPaths.Remove}" ToolTip="{StaticResource Loc.Profiles.EntryPaths.Remove}" />
+                    </Grid>
+                </controls:SectionCard.Header>
+            </controls:SectionCard>
+        </DataTemplate>
         <DataTemplate x:Key="ProfileEditor.Item.PathGuided.1">
             <controls:SectionCard Style="{StaticResource EditorSectionStyle}" IsEnabled="{Binding IsEditorReady}"><controls:SectionCard.Header><StackPanel>
             <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Text.PasteARealPath}" />
@@ -1478,6 +1516,8 @@
                 <controls:ProfileEditorSection Template="{StaticResource ProfileEditor.Item.Profile.1}" />
                 <controls:ProfileEditorSection Template="{StaticResource ProfileEditor.Item.Profile.2}" />
                 <controls:ProfileEditorSection Template="{StaticResource ProfileEditor.Item.Profile.3}" />
+                <controls:ProfileEditorSection Template="{StaticResource ProfileEditor.Item.Profile.EntryPathsHeader}" Id="EntryPathSettings" />
+                <controls:ProfileEditorSection Template="{StaticResource ProfileEditor.Item.Profile.EntryPath}" Id="EntryPaths" IsCollection="True" ItemsSource="{Binding DraftEntryPaths}" />
             </controls:ProfileEditorList>
         </DataTemplate>
         <DataTemplate x:Key="ProfileEditor.PathGuided">

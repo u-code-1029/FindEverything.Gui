@@ -108,6 +108,7 @@ public partial class ProfilesViewModel
 
     internal static ProfileEditorStep GetValidationStep(string code)
     {
+        if (code == "workspace_entry_paths_invalid") return ProfileEditorStep.Profile;
         if (code == "regex_timeout_budget_exceeded") return ProfileEditorStep.Review;
         // Stable diagnostic codes, not localized message text, determine the target step.
         if (code.StartsWith("selection_", StringComparison.Ordinal)) return ProfileEditorStep.SelectionRules;

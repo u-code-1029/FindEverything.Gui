@@ -1,5 +1,6 @@
 using FindEverything.Application.Options;
 using System.Collections.ObjectModel;
+using FindEverything.Profile.Runtime;
 
 namespace FindEverything.Desktop.Services;
 
@@ -7,7 +8,8 @@ public sealed record WorkspaceSnapshot(
     string? SelectedProfileId,
     string? RootPath,
     string? DatabasePath,
-    IReadOnlyDictionary<string, string>? ProfileDatabasePaths = null);
+    IReadOnlyDictionary<string, string>? ProfileDatabasePaths = null,
+    IReadOnlyDictionary<string, IReadOnlyList<string>>? ProfileEntryPaths = null);
 
 public sealed class WorkspaceChangedEventArgs(
     WorkspaceSnapshot previous,
@@ -36,6 +38,10 @@ public interface IWorkspaceContext
         string profileId,
         string? databasePath,
         CancellationToken cancellationToken = default);
+
+    Task SetProfileEntryPathsAsync(string profileId, IReadOnlyList<string>? entryPaths,
+        CancellationToken cancellationToken = default) => UpdateAsync(current => current with
+        { ProfileEntryPaths = ProfileEntryPathSnapshots.Replace(current.ProfileEntryPaths, profileId, entryPaths) }, cancellationToken);
 }
 
 /// <summary>
@@ -65,7 +71,9 @@ public sealed class WorkspaceContext : IWorkspaceContext, IDisposable
             // isolated and resolved through ProfileDatabasePaths.
             NormalizeOptionalPath(
                 FirstNonBlank(workspace.FileSearchDatabasePath, workspace.DatabasePath)),
-            NormalizeProfileDatabasePaths(workspace.ProfileDatabasePaths));
+            NormalizeProfileDatabasePaths(workspace.ProfileDatabasePaths),
+            NormalizeProfileEntryPaths(workspace.ProfileEntryPaths?.ToDictionary(pair => pair.Key,
+                pair => (IReadOnlyList<string>)pair.Value, StringComparer.OrdinalIgnoreCase)));
     }
 
     public WorkspaceSnapshot Current => Volatile.Read(ref _current);
@@ -89,6 +97,7 @@ public sealed class WorkspaceContext : IWorkspaceContext, IDisposable
             {
                 ProfileDatabasePaths = snapshot.ProfileDatabasePaths
                     ?? current.ProfileDatabasePaths,
+                ProfileEntryPaths = snapshot.ProfileEntryPaths ?? current.ProfileEntryPaths,
             });
             await _settingsWriter.SaveAsync(
                 new UserSettingsUpdate(
@@ -119,7 +128,11 @@ public sealed class WorkspaceContext : IWorkspaceContext, IDisposable
             var previous = Volatile.Read(ref _current);
             var requested = update(previous)
                 ?? throw new InvalidOperationException("The workspace update returned null.");
-            var normalized = NormalizeSnapshot(requested);
+            var normalized = NormalizeSnapshot(requested with
+            {
+                ProfileDatabasePaths = requested.ProfileDatabasePaths ?? previous.ProfileDatabasePaths,
+                ProfileEntryPaths = requested.ProfileEntryPaths ?? previous.ProfileEntryPaths,
+            });
             if (SnapshotsEqual(previous, normalized))
             {
                 return;
@@ -175,6 +188,10 @@ public sealed class WorkspaceContext : IWorkspaceContext, IDisposable
 
     public void Dispose() => _saveGate.Dispose();
 
+    public Task SetProfileEntryPathsAsync(string profileId, IReadOnlyList<string>? entryPaths,
+        CancellationToken cancellationToken = default) => UpdateAsync(current => current with
+        { ProfileEntryPaths = ProfileEntryPathSnapshots.Replace(current.ProfileEntryPaths, profileId, entryPaths) }, cancellationToken);
+
     private static string? NormalizeOptional(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
@@ -188,7 +205,8 @@ public sealed class WorkspaceContext : IWorkspaceContext, IDisposable
             NormalizeOptional(snapshot.SelectedProfileId),
             NormalizeOptionalPath(snapshot.RootPath),
             NormalizeOptionalPath(snapshot.DatabasePath),
-            NormalizeProfileDatabasePaths(snapshot.ProfileDatabasePaths));
+            NormalizeProfileDatabasePaths(snapshot.ProfileDatabasePaths),
+            NormalizeProfileEntryPaths(snapshot.ProfileEntryPaths));
 
     private static WorkspaceOptions CreatePersistedOptions(WorkspaceSnapshot snapshot) =>
         new()
@@ -203,6 +221,8 @@ public sealed class WorkspaceContext : IWorkspaceContext, IDisposable
                 : new Dictionary<string, string>(
                     snapshot.ProfileDatabasePaths,
                     StringComparer.OrdinalIgnoreCase),
+            ProfileEntryPaths = snapshot.ProfileEntryPaths?.ToDictionary(pair => pair.Key,
+                pair => pair.Value.ToList(), StringComparer.OrdinalIgnoreCase),
         };
 
     private static IReadOnlyDictionary<string, string> NormalizeProfileDatabasePaths(
@@ -230,11 +250,29 @@ public sealed class WorkspaceContext : IWorkspaceContext, IDisposable
             ? EmptyProfileDatabasePaths.Instance
             : new ReadOnlyDictionary<string, string>(paths);
 
+    private static IReadOnlyDictionary<string, IReadOnlyList<string>> NormalizeProfileEntryPaths(
+        IReadOnlyDictionary<string, IReadOnlyList<string>>? paths)
+    {
+        var normalized = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
+        if (paths is not null)
+        {
+            if (paths.Count > 256) throw new ArgumentException("At most 256 profile location sets are supported.", nameof(paths));
+            foreach (var (profileId, entries) in paths)
+            {
+                ArgumentException.ThrowIfNullOrWhiteSpace(profileId);
+                if (profileId.Trim().Length > 128) throw new ArgumentException("Profile identifiers must not exceed 128 characters.", nameof(paths));
+                normalized.Add(profileId.Trim(), ProfileEntryPathSnapshots.Normalize(entries));
+            }
+        }
+        return new ReadOnlyDictionary<string, IReadOnlyList<string>>(normalized);
+    }
+
     private static bool SnapshotsEqual(WorkspaceSnapshot left, WorkspaceSnapshot right) =>
         string.Equals(left.SelectedProfileId, right.SelectedProfileId, StringComparison.Ordinal)
         && PathsEqual(left.RootPath, right.RootPath)
         && PathsEqual(left.DatabasePath, right.DatabasePath)
-        && DictionariesEqual(left.ProfileDatabasePaths, right.ProfileDatabasePaths);
+        && DictionariesEqual(left.ProfileDatabasePaths, right.ProfileDatabasePaths)
+        && ProfileEntryPathSnapshots.Equal(left.ProfileEntryPaths, right.ProfileEntryPaths);
 
     private static bool DictionariesEqual(
         IReadOnlyDictionary<string, string>? left,
@@ -297,4 +335,48 @@ public sealed class WorkspaceContext : IWorkspaceContext, IDisposable
             new ReadOnlyDictionary<string, string>(
                 new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
     }
+}
+
+/// <summary>Copies profile-specific lists so callers cannot mutate a published workspace snapshot.</summary>
+public static class ProfileEntryPathSnapshots
+{
+    public static IReadOnlyList<string> Normalize(IReadOnlyList<string> entries)
+    {
+        ArgumentNullException.ThrowIfNull(entries);
+        if (entries.Count > ProfileWorkspaceManifestValidator.MaximumEntryPaths)
+            throw new ArgumentException("At most 64 starting locations are supported for one profile.", nameof(entries));
+        var values = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in entries)
+        {
+            var value = entry?.Trim();
+            if (!ProfileWorkspaceManifestValidator.IsAbsoluteEntryPath(value))
+                throw new ArgumentException("Starting locations must be fully qualified drive or UNC paths.", nameof(entries));
+            var path = Path.TrimEndingDirectorySeparator(Path.GetFullPath(value!));
+            if (seen.Add(path)) values.Add(path);
+        }
+        return Array.AsReadOnly(values.ToArray());
+    }
+
+    public static IReadOnlyList<string>? Get(IReadOnlyDictionary<string, IReadOnlyList<string>>? values, string profileId) =>
+        values?.FirstOrDefault(pair => pair.Key.Equals(profileId, StringComparison.OrdinalIgnoreCase)).Value;
+
+    public static IReadOnlyDictionary<string, IReadOnlyList<string>> Replace(
+        IReadOnlyDictionary<string, IReadOnlyList<string>>? values, string profileId, IReadOnlyList<string>? paths)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(profileId);
+        var copy = values?.ToDictionary(pair => pair.Key,
+            pair => (IReadOnlyList<string>)Array.AsReadOnly(pair.Value.ToArray()), StringComparer.OrdinalIgnoreCase)
+            ?? new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
+        copy.Remove(profileId.Trim());
+        if (paths is not null) copy[profileId.Trim()] = Array.AsReadOnly(paths.ToArray());
+        return new ReadOnlyDictionary<string, IReadOnlyList<string>>(copy);
+    }
+
+    public static bool Equal(IReadOnlyList<string>? left, IReadOnlyList<string>? right) =>
+        left is null ? right is null : right is not null && left.SequenceEqual(right, StringComparer.OrdinalIgnoreCase);
+
+    public static bool Equal(IReadOnlyDictionary<string, IReadOnlyList<string>>? left,
+        IReadOnlyDictionary<string, IReadOnlyList<string>>? right) => (left?.Count ?? 0) == (right?.Count ?? 0)
+        && (left is null || left.All(pair => Equal(pair.Value, Get(right, pair.Key))));
 }

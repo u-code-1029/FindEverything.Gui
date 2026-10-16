@@ -85,7 +85,7 @@ public partial class CatalogViewModel : IWorkspaceExportSource
                 if (selected is not null)
                 {
                     SelectedProfile = Profiles.FirstOrDefault(x => x.Id.Equals(selected.ProfileId, StringComparison.OrdinalIgnoreCase));
-                    RootPath = selected.EffectiveRoot; DatabasePath = selected.MetadataDatabasePath;
+                    ReplaceEntryPaths([selected.EffectiveRoot], false); DatabasePath = selected.MetadataDatabasePath;
                     // Even if this profile has subsequently been edited, a shared snapshot retains its frozen columns.
                     if (selected.CatalogSnapshot is { } snapshot)
                     {

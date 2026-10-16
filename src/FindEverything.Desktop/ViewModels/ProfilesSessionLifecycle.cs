@@ -49,6 +49,7 @@ public partial class ProfilesViewModel
     {
         if (_disposed) return;
         _disposed = true;
+        DetachEntryPathSubscriptions();
         _editorSession.Dispose();
         _profileCatalog.Changed -= OnProfileCatalogChanged;
         DetachRows();

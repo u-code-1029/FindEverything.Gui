@@ -1,10 +1,15 @@
 using System.ComponentModel.DataAnnotations;
+using FindEverything.Profile.Runtime;
 
 namespace FindEverything.Application.Options;
 
 public sealed class WorkspaceOptions : IValidatableObject
 {
     public const string SectionName = "Workspace";
+
+    public const int MaximumProfileEntryPathProfiles = 256;
+
+    public const int MaximumProfileEntryPathProfileIdLength = 128;
 
     public string? SelectedProfileId { get; set; }
 
@@ -29,15 +34,18 @@ public sealed class WorkspaceOptions : IValidatableObject
     /// </summary>
     public Dictionary<string, string>? ProfileDatabasePaths { get; set; }
 
+    /// <summary>
+    /// Machine-local scan entry paths keyed by profile id. Null leaves existing
+    /// workspace settings unspecified; an empty list explicitly clears a profile's paths.
+    /// Profile lists are stored independently from parser descriptors. The legacy/file-search
+    /// RootPath fallback may still follow the most recently selected location.
+    /// </summary>
+    public Dictionary<string, List<string>>? ProfileEntryPaths { get; set; }
+
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
-        if (ProfileDatabasePaths is null)
-        {
-            yield break;
-        }
-
         var profileIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var (profileId, databasePath) in ProfileDatabasePaths)
+        foreach (var (profileId, databasePath) in ProfileDatabasePaths ?? [])
         {
             if (string.IsNullOrWhiteSpace(profileId))
             {
@@ -61,7 +69,69 @@ public sealed class WorkspaceOptions : IValidatableObject
                     [nameof(ProfileDatabasePaths)]);
             }
         }
+
+        foreach (var result in ValidateProfileEntryPaths())
+        {
+            yield return result;
+        }
     }
+
+    private IEnumerable<ValidationResult> ValidateProfileEntryPaths()
+    {
+        if (ProfileEntryPaths is null)
+        {
+            yield break;
+        }
+
+        if (ProfileEntryPaths.Count > MaximumProfileEntryPathProfiles)
+        {
+            yield return EntryPathError(
+                $"Entry paths can be stored for at most {MaximumProfileEntryPathProfiles} profiles.");
+            yield break;
+        }
+
+        var profileIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (profileId, entryPaths) in ProfileEntryPaths)
+        {
+            if (string.IsNullOrWhiteSpace(profileId)
+                || profileId.Length > MaximumProfileEntryPathProfileIdLength)
+            {
+                yield return EntryPathError(
+                    $"Entry path keys must contain a profile id of at most {MaximumProfileEntryPathProfileIdLength} characters.");
+            }
+            else if (!profileIds.Add(profileId.Trim()))
+            {
+                yield return EntryPathError(
+                    $"Entry path profile ids must be unique ignoring case: {profileId}");
+            }
+
+            if (entryPaths is null)
+            {
+                yield return EntryPathError(
+                    $"Entry paths for profile '{profileId}' must be a list; use an empty list to clear them.");
+                continue;
+            }
+
+            if (entryPaths.Count > ProfileWorkspaceManifestValidator.MaximumEntryPaths)
+            {
+                yield return EntryPathError(
+                    $"Profile '{profileId}' can have at most {ProfileWorkspaceManifestValidator.MaximumEntryPaths} entry paths.");
+                continue;
+            }
+
+            foreach (var path in entryPaths)
+            {
+                if (!ProfileWorkspaceManifestValidator.IsAbsoluteEntryPath(path))
+                {
+                    yield return EntryPathError(
+                        $"Every entry path for profile '{profileId}' must be a nonempty absolute path of at most {ProfileWorkspaceManifestValidator.MaximumEntryPathLength} characters.");
+                }
+            }
+        }
+    }
+
+    private static ValidationResult EntryPathError(string message) =>
+        new(message, [nameof(ProfileEntryPaths)]);
 }
 
 public sealed class IndexingOptions

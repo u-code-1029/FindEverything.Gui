@@ -162,6 +162,7 @@ public sealed partial class SqliteCatalogProjectionStore
             ObjectDisposedException.ThrowIf(_disposed, this);
             if (_published) throw new InvalidOperationException("The generation is already published.");
             var finalScope = publishedScope ?? scope;
+            finalScope.ValidateRootPaths();
             if (finalScope with { IndexScanId = scope.IndexScanId } != scope)
                 throw new ArgumentException("Only the final index generation can change when publishing.", nameof(publishedScope));
             Flush();

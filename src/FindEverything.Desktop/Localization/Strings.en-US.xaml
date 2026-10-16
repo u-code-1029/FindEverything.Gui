@@ -1843,4 +1843,26 @@
     <sys:String x:Key="Loc.Ux.Authoring.Validate.Help">Check the rules without saving. Saving also validates automatically.</sys:String>
     <sys:String x:Key="Loc.Ux.Authoring.Save.Help">Validate and save. You can test a real path later.</sys:String>
     <sys:String x:Key="Loc.Common.Save">Save</sys:String>
+    <sys:String x:Key="Loc.Catalog.Entries.Title">Profile entry paths</sys:String>
+    <sys:String x:Key="Loc.Catalog.Entries.Count">{0} entry paths</sys:String>
+    <sys:String x:Key="Loc.Catalog.Entries.Help">Add the starting folders for this profile. All paths are scanned into one list and database. Overlapping folders appear once; rules always receive the full absolute path. Up to 64 paths.</sys:String>
+    <sys:String x:Key="Loc.Catalog.Entries.Placeholder">e.g. D:\Projects or \\server\share</sys:String>
+    <sys:String x:Key="Loc.Catalog.Entries.Add">Add path</sys:String>
+    <sys:String x:Key="Loc.Catalog.Entries.Browse">Browse and add…</sys:String>
+    <sys:String x:Key="Loc.Catalog.Entries.Remove">Remove this entry path</sys:String>
+    <sys:String x:Key="Loc.Catalog.Entries.Absolute">Enter an absolute path beginning with a drive letter or UNC address.</sys:String>
+    <sys:String x:Key="Loc.Catalog.Entries.Duplicate">This entry path is already registered.</sys:String>
+    <sys:String x:Key="Loc.Catalog.Entries.Limit">You can register up to {0} entry paths.</sys:String>
+    <sys:String x:Key="Loc.Catalog.Entries.Progress">Path {0}/{1} · </sys:String>
+    <sys:String x:Key="Loc.Transfer.MultiRoot.Unsupported">Multi-root structured results cannot currently be exported as a workspace package. Export a single-root result instead.</sys:String>
+    <sys:String x:Key="Loc.Profiles.EntryPaths.Title">Starting locations</sys:String>
+    <sys:String x:Key="Loc.Profiles.EntryPaths.Help">Add every folder this profile should scan. Results from all locations appear in one list. These are separate from the rule-authoring sample path and are included in exported JSON.</sys:String>
+    <sys:String x:Key="Loc.Profiles.EntryPaths.Summary">Starting locations {0} / {1}</sys:String>
+    <sys:String x:Key="Loc.Profiles.EntryPaths.Add">Add path</sys:String>
+    <sys:String x:Key="Loc.Profiles.EntryPaths.Browse">Add folder</sys:String>
+    <sys:String x:Key="Loc.Profiles.EntryPaths.Path">Absolute starting folder path</sys:String>
+    <sys:String x:Key="Loc.Profiles.EntryPaths.BrowsePath">Change this starting location</sys:String>
+    <sys:String x:Key="Loc.Profiles.EntryPaths.Remove">Remove starting location</sys:String>
+    <sys:String x:Key="Loc.Catalog.Entries.IndexChanged">Another operation changed the index while loading. Previous results are preserved. Load the results again.</sys:String>
+    <sys:String x:Key="Loc.ProfileDiagnostic.workspace_entry_paths_invalid">Starting locations must be unique, valid absolute paths, with at most 64 per profile.</sys:String>
 </ResourceDictionary>

@@ -7,6 +7,43 @@ namespace FindEverything.Profile.Runtime.Tests;
 
 public sealed class ProfileWorkspaceManifestTests
 {
+    [Theory]
+    [InlineData(@"C:\Data", "c:/data/")]
+    [InlineData(@"\\server\share\Data", "//SERVER/share/data/")]
+    public void Starting_locations_reject_case_separator_and_trailing_separator_duplicates(string first, string duplicate)
+    {
+        var manifest = Manifest();
+        manifest.Workspace = new() { EntryPaths = [first, duplicate] };
+        Assert.Contains(ProfileWorkspaceManifestValidator.Validate(manifest),
+            issue => issue.Code == "workspace_entry_paths_invalid");
+        manifest.Workspace.EntryPaths = [first, first + "base"];
+        Assert.Empty(ProfileWorkspaceManifestValidator.Validate(manifest));
+    }
+    [Theory]
+    [InlineData(@"C:\Does not need to exist")]
+    [InlineData(@"\\192.0.2.20\Shared Folder\Data")]
+    public void Portable_starting_locations_validate_as_windows_absolute_paths_without_filesystem_access(string path)
+    {
+        var manifest = Manifest();
+        manifest.Workspace = new() { EntryPaths = [path] };
+        Assert.Empty(ProfileWorkspaceManifestValidator.Validate(manifest));
+        var copy = JsonSerializer.Deserialize<ProfileManifest>(JsonSerializer.Serialize(manifest))!;
+        Assert.Equal([path], copy.Workspace!.EntryPaths);
+    }
+
+    [Theory]
+    [InlineData(@"relative\Data")]
+    [InlineData(@"C:relative")]
+    [InlineData(@"\\server")]
+    [InlineData(@"\\?\C:\Device")]
+    [InlineData("")]
+    public void Invalid_starting_locations_are_actionable_profile_errors(string path)
+    {
+        var manifest = Manifest();
+        manifest.Workspace = new() { EntryPaths = [path] };
+        Assert.Contains(ProfileWorkspaceManifestValidator.Validate(manifest),
+            issue => issue.Code == "workspace_entry_paths_invalid");
+    }
     [Fact]
     public void Desktop_settings_round_trip_without_changing_parser_descriptor_or_cache_identity()
     {

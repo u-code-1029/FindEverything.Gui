@@ -13,7 +13,9 @@ public partial class CatalogViewModel
         ? L("Loc.Ux.Results.Refresh", "다시 스캔") : L("Loc.Workspace.Scan", "스캔 시작");
     public string BusyProgressCaption => IsScanning && _displayedProjectionSnapshot is not null
         ? L("Loc.Ux.Results.PreviousRefreshing", "이전 결과 · 갱신 중") + " · " + ProgressMessage : ProgressMessage;
-    public string ResultScopePath => _displayedProjectionSnapshot?.Scope.RootPath ?? string.Empty;
+    public string ResultScopePath => _displayedProjectionSnapshot?.Scope is { } scope
+        ? scope.IsMultiRoot ? F("Loc.Catalog.Entries.Count", "시작 경로 {0}개", scope.EffectiveRootPaths.Count) : scope.RootPath
+        : string.Empty;
     public string ResultProvenance => _displayedProjectionSnapshot is { } snapshot
         ? ResultScopePath + " · " + F("Loc.Ux.Results.Source", "{0} · {1} 갱신", IsReadOnlyDataSource
             ? L("Loc.Ux.Results.Source.Shared", "가져온 결과") : L("Loc.Ux.Results.Source.Saved", "저장된 결과"),

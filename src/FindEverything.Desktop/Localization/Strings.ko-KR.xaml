@@ -1405,4 +1405,26 @@
     <sys:String x:Key="Loc.Ux.Authoring.Validate.Help">저장하지 않고 규칙을 확인합니다. 저장할 때도 자동으로 검증합니다.</sys:String>
     <sys:String x:Key="Loc.Ux.Authoring.Save.Help">검증 후 저장합니다. 실제 경로 테스트는 나중에 실행할 수 있습니다.</sys:String>
     <sys:String x:Key="Loc.Common.Save">저장</sys:String>
+    <sys:String x:Key="Loc.Catalog.Entries.Title">프로필 시작 경로</sys:String>
+    <sys:String x:Key="Loc.Catalog.Entries.Count">시작 경로 {0}개</sys:String>
+    <sys:String x:Key="Loc.Catalog.Entries.Help">이 프로필로 탐색할 시작 폴더를 추가하세요. 모든 경로를 탐색해 하나의 목록과 DB에 모읍니다. 겹치는 폴더는 한 번만 표시하며, 규칙에는 전체 절대경로를 입력합니다. 최대 64개입니다.</sys:String>
+    <sys:String x:Key="Loc.Catalog.Entries.Placeholder">예: D:\Projects 또는 \\server\share</sys:String>
+    <sys:String x:Key="Loc.Catalog.Entries.Add">경로 추가</sys:String>
+    <sys:String x:Key="Loc.Catalog.Entries.Browse">폴더 찾아 추가…</sys:String>
+    <sys:String x:Key="Loc.Catalog.Entries.Remove">이 시작 경로 제거</sys:String>
+    <sys:String x:Key="Loc.Catalog.Entries.Absolute">드라이브 문자 또는 UNC 주소로 시작하는 절대경로를 입력하세요.</sys:String>
+    <sys:String x:Key="Loc.Catalog.Entries.Duplicate">이미 등록된 시작 경로입니다.</sys:String>
+    <sys:String x:Key="Loc.Catalog.Entries.Limit">시작 경로는 최대 {0}개까지 등록할 수 있습니다.</sys:String>
+    <sys:String x:Key="Loc.Catalog.Entries.Progress">경로 {0}/{1} · </sys:String>
+    <sys:String x:Key="Loc.Transfer.MultiRoot.Unsupported">여러 시작 경로의 결과는 아직 공유 패키지로 내보낼 수 없습니다. 단일 시작 경로로 스캔한 결과를 내보내세요.</sys:String>
+    <sys:String x:Key="Loc.Profiles.EntryPaths.Title">시작 경로</sys:String>
+    <sys:String x:Key="Loc.Profiles.EntryPaths.Help">이 프로필로 스캔할 폴더를 모두 추가하세요. 각 경로 아래를 탐색하고 결과를 한 목록에 모읍니다. 규칙을 만드는 예제 경로와는 별개이며, JSON 내보내기에도 포함됩니다.</sys:String>
+    <sys:String x:Key="Loc.Profiles.EntryPaths.Summary">시작 경로 {0} / {1}개</sys:String>
+    <sys:String x:Key="Loc.Profiles.EntryPaths.Add">경로 입력 추가</sys:String>
+    <sys:String x:Key="Loc.Profiles.EntryPaths.Browse">폴더 추가</sys:String>
+    <sys:String x:Key="Loc.Profiles.EntryPaths.Path">시작 폴더의 절대 경로</sys:String>
+    <sys:String x:Key="Loc.Profiles.EntryPaths.BrowsePath">이 시작 경로 변경</sys:String>
+    <sys:String x:Key="Loc.Profiles.EntryPaths.Remove">시작 경로 삭제</sys:String>
+    <sys:String x:Key="Loc.Catalog.Entries.IndexChanged">불러오는 동안 다른 작업에서 인덱스를 변경했습니다. 이전 결과는 유지됩니다. 다시 불러오세요.</sys:String>
+    <sys:String x:Key="Loc.ProfileDiagnostic.workspace_entry_paths_invalid">시작 경로는 중복 없는 올바른 절대 경로여야 하며 프로필당 최대 64개입니다.</sys:String>
 </ResourceDictionary>

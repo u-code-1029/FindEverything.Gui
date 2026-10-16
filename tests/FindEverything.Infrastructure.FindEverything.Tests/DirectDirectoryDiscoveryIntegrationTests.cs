@@ -13,6 +13,97 @@ namespace FindEverything.Infrastructure.FindEverything.Tests;
 
 public sealed class DirectDirectoryDiscoveryIntegrationTests
 {
+    [Theory]
+    [InlineData(1)]
+    [InlineData(8)]
+    public async Task Multiple_roots_and_an_overlapping_entry_survive_reopened_database_without_duplicate_results(int maxDepth)
+    {
+        using var workspace = new TestWorkspace();
+        var rootA = Path.Combine(workspace.SourcePath, "A");
+        var rootB = Path.Combine(workspace.SourcePath, "B");
+        var nestedRoot = Path.Combine(rootA, "nested");
+        var nestedChild = Path.Combine(nestedRoot, "child");
+        var otherChild = Path.Combine(rootB, "other");
+        Directory.CreateDirectory(nestedChild);
+        Directory.CreateDirectory(otherChild);
+        string[] roots = [rootA, rootB, nestedRoot];
+        string[] expected = [rootA, rootB, nestedRoot, nestedChild, otherChild];
+        var request = new CatalogRequest("multiple-roots", rootA, workspace.DatabasePath) { EntryPaths = roots };
+        Dictionary<string, Guid> publishedScanIds;
+
+        await using (var provider = CreateMultiRootProvider())
+        {
+            var result = await provider.GetRequiredService<ICatalogService>().ScanAndLoadAsync(request);
+            Assert.True(File.Exists(workspace.DatabasePath));
+            Assert.Equal(5, result.CandidateCount);
+            Assert.Equal(5, result.MatchedCount);
+            Assert.Equal(expected.Order(), result.Items.Select(static item => item.FullPath).Order());
+            Assert.Equal(3, result.ScanReports.Count);
+            Assert.All(result.ScanReports, static report => Assert.Equal(
+                global::FindEverything.Application.Indexing.IndexScanStatus.Completed, report.Status));
+            publishedScanIds = result.ScanReports.ToDictionary(static report => report.RootPath, static report => report.ScanId);
+
+            await using var session = provider.GetRequiredService<global::FindEverything.Application.Indexing.IIndexSessionFactory>()
+                .Create(workspace.DatabasePath);
+            foreach (var root in roots)
+            {
+                var status = await session.GetRootStatusAsync(root);
+                Assert.Equal(global::FindEverything.Application.Indexing.IndexRootAvailability.Available, status.Availability);
+                Assert.Equal(publishedScanIds[root], status.LastScanId);
+            }
+        }
+
+        // A fresh host and fresh engine sessions prove that no live accumulator,
+        // retained model, or in-memory root metadata is required for loading.
+        await using (var reopened = CreateMultiRootProvider())
+        {
+            var loaded = await reopened.GetRequiredService<ICatalogService>().LoadExistingAsync(request);
+            Assert.Null(loaded.ScanReport);
+            Assert.Empty(loaded.ScanReports);
+            Assert.Equal(5, loaded.CandidateCount);
+            Assert.Equal(5, loaded.MatchedCount);
+            Assert.Equal(expected.Order(), loaded.Items.Select(static item => item.FullPath).Order());
+            Assert.False(loaded.HasPendingScopes);
+            await using var session = reopened.GetRequiredService<global::FindEverything.Application.Indexing.IIndexSessionFactory>()
+                .Create(workspace.DatabasePath);
+            foreach (var root in roots)
+            {
+                var status = await session.GetRootStatusAsync(root);
+                Assert.Equal(global::FindEverything.Application.Indexing.IndexRootAvailability.Available, status.Availability);
+                Assert.Equal(publishedScanIds[root], status.LastScanId);
+            }
+        }
+
+        ServiceProvider CreateMultiRootProvider()
+        {
+            var services = new ServiceCollection();
+            services.AddSingleton(typeof(ILogger<>), typeof(NoOpLogger<>));
+            services.AddFindEverythingApplication(new ConfigurationBuilder().Build())
+                .AddFindEverythingInfrastructure().AddProfileRuntime();
+            var provider = services.BuildServiceProvider(new ServiceProviderOptions
+            { ValidateOnBuild = true, ValidateScopes = true });
+            var review = provider.GetRequiredService<IProfileDefinitionCompiler>().Validate(new()
+            {
+                ContractVersion = ProfileContract.CurrentMajor,
+                Kind = ProfileKind.Declarative,
+                Id = "multiple-roots",
+                Version = "1",
+                DisplayName = "Multiple roots",
+                MaxScanDepth = maxDepth,
+                Fields = [new() { FieldId = "name", GroupName = "name", Header = "Name", Required = true }],
+                Rules = [new()
+                {
+                    Id = "all",
+                    Pattern = Regex.Escape(workspace.SourcePath + Path.DirectorySeparatorChar) + "(?<name>.+)",
+                    MatchMode = ProfileRegexMatchMode.Full,
+                }],
+            });
+            Assert.True(review.IsValid, string.Join(Environment.NewLine, review.Diagnostics.Select(static value => value.Message)));
+            provider.GetRequiredService<IProfileCatalogPublisher>().Publish(new([review.Profile!], [], DateTimeOffset.UtcNow));
+            return provider;
+        }
+    }
+
     [Fact]
     public async Task Required_missing_text_keeps_the_matched_row_and_reports_a_separate_field_issue_count()
     {

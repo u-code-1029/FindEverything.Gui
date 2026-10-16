@@ -9,7 +9,7 @@ using Xunit;
 
 namespace FindEverything.Desktop.Tests;
 
-public sealed class HomeViewModelTests
+public sealed partial class HomeViewModelTests
 {
     [Fact]
     public void Updates_use_the_injected_scheduler_and_queued_updates_after_disposal_are_ignored()

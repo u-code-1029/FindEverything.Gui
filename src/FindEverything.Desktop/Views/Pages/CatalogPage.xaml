@@ -61,12 +61,12 @@
                         <ui:Button x:Name="ImportCatalogProfileButton" Grid.Column="2" Margin="4,0,8,0" Padding="8,4" Appearance="Transparent" Command="{Binding ImportProfileCommand}" Icon="{ui:SymbolIcon Symbol=FolderOpen20}" AutomationProperties.Name="{StaticResource Loc.Ux.Catalog.ImportProfile}" ToolTip="{StaticResource Loc.Ux.Catalog.ImportProfile.Help}" ToolTipService.ShowOnDisabled="True">
                             <ui:Button.Content><ui:TextBlock x:Name="ImportCatalogProfileLabel" Text="{StaticResource Loc.Ux.Catalog.ImportProfile}" /></ui:Button.Content>
                         </ui:Button>
-                        <ui:Button x:Name="CatalogLocationButton" Grid.Column="3" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Padding="8,4" Appearance="Transparent" Command="{Binding BrowseRootCommand}" Icon="{ui:SymbolIcon Symbol=FolderOpen20}" AutomationProperties.Name="{StaticResource Loc.Workspace.Location.Change}" ToolTipService.ShowOnDisabled="True">
+                        <ui:Button x:Name="CatalogLocationButton" Grid.Column="3" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Padding="8,4" Appearance="Transparent" Command="{Binding OpenEntryPathsCommand}" IsEnabled="{Binding CanEditWorkspace}" Icon="{ui:SymbolIcon Symbol=FolderOpen20}" AutomationProperties.Name="{StaticResource Loc.Catalog.Entries.Title}" ToolTipService.ShowOnDisabled="True">
                             <ui:Button.Content><DockPanel>
                                 <ui:TextBlock DockPanel.Dock="Left" Margin="0,0,6,0" Text="{StaticResource Loc.Ux.Results.Location}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
-                                <ui:TextBlock Text="{Binding RootPath, TargetNullValue={StaticResource Loc.Catalog.Root.None}}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                <ui:TextBlock Text="{Binding EntryPathsSummary}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                             </DockPanel></ui:Button.Content>
-                            <ui:Button.ToolTip><StackPanel MaxWidth="480"><ui:TextBlock Text="{Binding RootPath}" TextWrapping="Wrap" /><ui:TextBlock Margin="0,4,0,0" Text="{StaticResource Loc.Workspace.Location.Change.Help}" TextWrapping="Wrap" /></StackPanel></ui:Button.ToolTip>
+                            <ui:Button.ToolTip><StackPanel MaxWidth="480"><ui:TextBlock Text="{Binding EntryPathsDescription}" TextWrapping="Wrap" /><ui:TextBlock Margin="0,4,0,0" Text="{StaticResource Loc.Catalog.Entries.Help}" TextWrapping="Wrap" /></StackPanel></ui:Button.ToolTip>
                         </ui:Button>
                         <controls:WorkspaceTransferPanel x:Name="CatalogWorkspaceTransferPanel" Grid.Column="4" Margin="8,0,0,0" DataContext="{Binding WorkspaceTransfer}" ExportOwner="{Binding DataContext, RelativeSource={RelativeSource AncestorType=Page}}" />
                     </Grid>
@@ -276,7 +276,28 @@
 
                 <ui:DynamicScrollViewer Grid.Row="1" Style="{StaticResource FluentGutteredScrollViewerStyle}">
                     <StackPanel>
-                        <StackPanel IsEnabled="{Binding IsResultInteractionEnabled, FallbackValue=True}">
+                        <StackPanel IsEnabled="{Binding CanEditWorkspace, FallbackValue=True}">
+                        <ui:TextBlock Text="{StaticResource Loc.Catalog.Entries.Title}" FontWeight="SemiBold" Margin="0,0,0,8" />
+                        <ui:TextBlock Text="{StaticResource Loc.Catalog.Entries.Help}" Style="{StaticResource CaptionTextStyle}" TextWrapping="Wrap" Margin="0,0,0,12" />
+                        <ItemsControl ItemsSource="{Binding EntryPaths}" Margin="0,0,0,8">
+                            <ItemsControl.ItemTemplate><DataTemplate>
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <ui:TextBlock Text="{Binding}" ToolTip="{Binding}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                    <ui:Button Grid.Column="1" Appearance="Transparent" Padding="6" Icon="{ui:SymbolIcon Symbol=Dismiss20}"
+                                        Command="{Binding DataContext.RemoveEntryPathCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding}"
+                                        AutomationProperties.Name="{StaticResource Loc.Catalog.Entries.Remove}" ToolTip="{StaticResource Loc.Catalog.Entries.Remove}" />
+                                </Grid>
+                            </DataTemplate></ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <ui:TextBox Text="{Binding NewEntryPath, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="{StaticResource Loc.Catalog.Entries.Placeholder}" AutomationProperties.Name="{StaticResource Loc.Catalog.Entries.Title}">
+                            <ui:TextBox.InputBindings><KeyBinding Key="Enter" Command="{Binding AddEntryPathCommand}" /></ui:TextBox.InputBindings>
+                        </ui:TextBox>
+                        <WrapPanel Margin="0,8,0,16">
+                            <ui:Button Command="{Binding AddEntryPathCommand}" Content="{StaticResource Loc.Catalog.Entries.Add}" Margin="0,0,8,8" />
+                            <ui:Button Command="{Binding BrowseEntryPathCommand}" Content="{StaticResource Loc.Catalog.Entries.Browse}" Margin="0,0,0,8" />
+                        </WrapPanel>
+                        <ui:TextBlock Text="{StaticResource Loc.Workspace.Database.Path}" FontWeight="SemiBold" Margin="0,0,0,8" />
                         <ui:TextBlock Margin="0,4,0,12" Style="{StaticResource CaptionTextStyle}" Text="{StaticResource Loc.Workspace.Catalog.Database.Help}" />
                         <ui:TextBox AutomationProperties.Name="{StaticResource Loc.Workspace.Database.Path}" LostKeyboardFocus="OnWorkspacePathLostKeyboardFocus" PlaceholderText="{StaticResource Loc.Workspace.Database.Path}" Text="{Binding DatabasePath, UpdateSourceTrigger=PropertyChanged}" />
                         <WrapPanel Margin="0,8,0,0">

@@ -208,9 +208,18 @@ public partial class HomeViewModel : ObservableObject, IDisposable
         if (!CanChooseLocation) return;
         try
         {
+            var profileId = _displayedLocalProfileId;
             var selected = await _picker!.PickRootDirectoryAsync(_workspaceContext.Current.RootPath);
             if (selected is null || !CanChooseLocation) return;
-            await _workspaceContext.UpdateAsync(current => current with { RootPath = selected }, CancellationToken.None);
+            if (profileId != _displayedLocalProfileId) return;
+            await _workspaceContext.UpdateAsync(current => current with
+            {
+                RootPath = selected,
+                ProfileEntryPaths = profileId is null ? current.ProfileEntryPaths
+                    : ProfileEntryPathSnapshots.Replace(current.ProfileEntryPaths, profileId,
+                        (ProfileEntryPathSnapshots.Get(current.ProfileEntryPaths, profileId) ?? [])
+                            .Append(selected).Distinct(StringComparer.OrdinalIgnoreCase).ToArray()),
+            }, CancellationToken.None);
         }
         catch (Exception exception)
         {
@@ -273,15 +282,19 @@ public partial class HomeViewModel : ObservableObject, IDisposable
         WorkspaceSnapshot workspace,
         ProfileCatalogSnapshot catalog)
     {
-        HasRoot = !string.IsNullOrWhiteSpace(workspace.RootPath);
+        var selectedProfile = ResolveSelectedProfile(workspace.SelectedProfileId, catalog);
+        var entryPaths = selectedProfile is null ? null
+            : ProfileEntryPathSnapshots.Get(workspace.ProfileEntryPaths, selectedProfile.Descriptor.Id);
+        entryPaths ??= (workspace.ProfileEntryPaths?.Count ?? 0) == 0 && !string.IsNullOrWhiteSpace(workspace.RootPath)
+            ? [workspace.RootPath] : [];
+        HasRoot = entryPaths.Count > 0;
         RootPathText = HasRoot
-            ? workspace.RootPath!
+            ? entryPaths.Count == 1 ? entryPaths[0] : F("Loc.Catalog.Entries.Count", "시작 경로 {0}개", entryPaths.Count)
             : L("Loc.Home.State.Root.Empty", "아직 검색 위치를 선택하지 않았습니다.");
         RootStateText = HasRoot
             ? L("Loc.Home.State.Configured", "설정됨")
             : L("Loc.Home.State.Required", "선택 필요");
 
-        var selectedProfile = ResolveSelectedProfile(workspace.SelectedProfileId, catalog);
         _displayedLocalProfileId = selectedProfile?.Descriptor.Id;
         HasProfile = selectedProfile is not null;
         ProfileName = selectedProfile?.Descriptor.DisplayName

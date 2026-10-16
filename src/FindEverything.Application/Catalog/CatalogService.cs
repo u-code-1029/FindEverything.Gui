@@ -22,13 +22,8 @@ internal sealed class CatalogService(
         CancellationToken cancellationToken = default) =>
         ExecuteLockedAsync(
             request,
-            (normalizedRequest, profileRootPath, profile, token) =>
-                LoadFromIndexAsync(
-                    normalizedRequest,
-                    profileRootPath,
-                    profile,
-                    progress,
-                    token),
+            CatalogOperation.Load,
+            progress,
             requireDatabase: true,
             cancellationToken);
 
@@ -38,13 +33,8 @@ internal sealed class CatalogService(
         CancellationToken cancellationToken = default) =>
         ExecuteLockedAsync(
             request,
-            (normalizedRequest, profileRootPath, profile, token) =>
-                DiscoverDirectoriesAsync(
-                    normalizedRequest,
-                    profileRootPath,
-                    profile,
-                    progress,
-                    token),
+            CatalogOperation.Discover,
+            progress,
             requireDatabase: false,
             cancellationToken);
 
@@ -54,19 +44,15 @@ internal sealed class CatalogService(
         CancellationToken cancellationToken = default) =>
         ExecuteLockedAsync(
             request,
-            (normalizedRequest, profileRootPath, profile, token) =>
-                ScanAndLoadFromIndexAsync(
-                    normalizedRequest,
-                    profileRootPath,
-                    profile,
-                    progress,
-                    token),
+            CatalogOperation.Scan,
+            progress,
             requireDatabase: true,
             cancellationToken);
 
     private async Task<CatalogResult> ExecuteLockedAsync(
         CatalogRequest request,
-        Func<CatalogRequest, string, ILoadedProfile, CancellationToken, Task<CatalogResult>> operation,
+        CatalogOperation operation,
+        IProgress<CatalogOperationProgress>? progress,
         bool requireDatabase,
         CancellationToken cancellationToken)
     {
@@ -78,18 +64,78 @@ internal sealed class CatalogService(
             if (!profileResolver.TryResolve(request.ProfileId, out var profile))
                 throw new InvalidOperationException($"Profile '{request.ProfileId}' is not loaded.");
 
-            var scanRootPath = absolutePathCanonicalizer.Canonicalize(request.RootPath);
-            var profileRootPath = pathCanonicalizer.Canonicalize(scanRootPath);
-            var normalizedRequest = request with
+            // Preserve explicit descendant roots: depth limits and root-name exclusions
+            // are relative to each starting path, not to their common ancestor.
+            var roots = NormalizeEntryPaths(request);
+            for (var attempt = 1; ; attempt++)
             {
-                RootPath = scanRootPath,
-            };
-            return await operation(
-                    normalizedRequest,
-                    profileRootPath,
-                    profile,
-                    cancellationToken)
-                .ConfigureAwait(false);
+                var state = new MappingState();
+                var scanReports = new List<IndexScanReport>();
+                var discoveryReports = new List<DirectoryDiscoveryReport>();
+                CatalogResult? result = null;
+                try
+                {
+                    for (var index = 0; index < roots.Count; index++)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        var (scanRootPath, profileRootPath) = roots[index];
+                        var normalizedRequest = request with { RootPath = scanRootPath };
+                        var entryIndex = index + 1;
+                        var completedProgress = SumScanProgress(scanReports);
+                        state.Trace.IsLastRoot = index == roots.Count - 1;
+                        state.CompletedScanProgress = completedProgress;
+                        state.CompletedDiscoveryProgress = AggregateDiscoveryReports(discoveryReports)?.Progress
+                            ?? new DirectoryDiscoveryProgress(0, 0, 0, 0, 0, TimeSpan.Zero);
+                        var rootProgress = progress is null ? null
+                            : new InlineProgress<CatalogOperationProgress>(value =>
+                            {
+                                var scanProgress = value.ScanProgress is null ? null
+                                    : AddScanProgress(completedProgress, value.ScanProgress);
+                                progress.Report(value with
+                                {
+                                    EntryIndex = entryIndex,
+                                    EntryCount = roots.Count,
+                                    EntryPath = scanRootPath,
+                                    AttemptId = attempt,
+                                    MatchedCount = state.MatchedCount,
+                                    ScanProgress = scanProgress,
+                                    ProcessedItems = scanProgress?.Entries ?? value.ProcessedItems,
+                                });
+                            });
+                        result = operation switch
+                        {
+                            CatalogOperation.Load => await LoadFromIndexAsync(normalizedRequest, profileRootPath,
+                                profile, rootProgress, state, attempt, cancellationToken).ConfigureAwait(false),
+                            CatalogOperation.Discover => await DiscoverDirectoriesAsync(normalizedRequest, profileRootPath,
+                                profile, rootProgress, state, cancellationToken).ConfigureAwait(false),
+                            _ => await ScanAndLoadFromIndexAsync(normalizedRequest, profileRootPath,
+                                profile, rootProgress, state, cancellationToken).ConfigureAwait(false),
+                        };
+                        if (result.ScanReport is { } scanReport) scanReports.Add(scanReport);
+                        if (result.DiscoveryReport is { } discoveryReport) discoveryReports.Add(discoveryReport);
+                    }
+
+                    cancellationToken.ThrowIfCancellationRequested();
+                    return result! with
+                    {
+                        ScanReport = AggregateScanReports(scanReports),
+                        ScanReports = scanReports.AsReadOnly(),
+                        DiscoveryReport = AggregateDiscoveryReports(discoveryReports),
+                        DiscoveryReports = discoveryReports.AsReadOnly(),
+                        HasPendingScopes = result.HasPendingScopes
+                            || scanReports.Any(static report => report.PendingScopes.Count > 0),
+                    };
+                }
+                catch (IndexSnapshotChangedException) when (operation == CatalogOperation.Load && attempt == 1)
+                {
+                    // No mixed generation may escape, including rows from preceding roots.
+                    cancellationToken.ThrowIfCancellationRequested();
+                    request.ResultWriter?.Reset();
+                    progress?.Report(new CatalogOperationProgress(CatalogOperationPhase.Preparing,
+                        "인덱스가 변경되어 모든 시작 경로의 이전 결과를 지우고 다시 불러옵니다.")
+                    { AttemptReset = true, AttemptId = 2, EntryCount = roots.Count });
+                }
+            }
         }
         finally
         {
@@ -97,17 +143,76 @@ internal sealed class CatalogService(
         }
     }
 
+    private enum CatalogOperation { Load, Discover, Scan }
+
+    private static IndexScanProgress AddScanProgress(IndexScanProgress left, IndexScanProgress right) => new(
+        left.Entries + right.Entries, left.Directories + right.Directories,
+        left.ExcludedEntries + right.ExcludedEntries, left.SkippedLinks + right.SkippedLinks,
+        left.ErrorCount + right.ErrorCount, left.Elapsed + right.Elapsed,
+        left.PendingDirectories + right.PendingDirectories);
+
+    private static IndexScanProgress SumScanProgress(IEnumerable<IndexScanReport> reports) =>
+        reports.Aggregate(new IndexScanProgress(0, 0, 0, 0, 0, TimeSpan.Zero, 0),
+            static (total, report) => AddScanProgress(total, report.Progress));
+
+    private static IndexScanReport? AggregateScanReports(IReadOnlyList<IndexScanReport> reports) => reports.Count switch
+    {
+        0 => null,
+        1 => reports[0],
+        // This operation identity is not the scan generation of any individual root.
+        _ => new IndexScanReport(Guid.NewGuid(), reports[0].RootPath, reports[0].ScopePath,
+            reports.All(static report => report.Status == IndexScanStatus.Completed)
+                ? IndexScanStatus.Completed : IndexScanStatus.Partial,
+            SumScanProgress(reports), reports.SelectMany(static report => report.Errors).ToArray(),
+            reports.SelectMany(static report => report.PendingScopes).ToArray()),
+    };
+
+    private static DirectoryDiscoveryReport? AggregateDiscoveryReports(IReadOnlyList<DirectoryDiscoveryReport> reports)
+    {
+        if (reports.Count <= 1) return reports.FirstOrDefault();
+        var total = reports.Aggregate(new DirectoryDiscoveryProgress(0, 0, 0, 0, 0, TimeSpan.Zero),
+            static (sum, report) => AddDiscoveryProgress(sum, report.Progress));
+        return new DirectoryDiscoveryReport(reports[0].RootPath,
+            reports.All(static report => report.Status == DirectoryDiscoveryStatus.Completed)
+                ? DirectoryDiscoveryStatus.Completed : DirectoryDiscoveryStatus.Partial,
+            total, reports.SelectMany(static report => report.Errors).ToArray());
+    }
+
+    private static DirectoryDiscoveryProgress AddDiscoveryProgress(
+        DirectoryDiscoveryProgress left, DirectoryDiscoveryProgress right) => new(
+        left.Entries + right.Entries, left.Directories + right.Directories,
+        left.PrunedDirectories + right.PrunedDirectories, left.SkippedLinks + right.SkippedLinks,
+        left.ErrorCount + right.ErrorCount, left.Elapsed + right.Elapsed);
+
+    private IReadOnlyList<(string ScanPath, string ProfilePath)> NormalizeEntryPaths(CatalogRequest request)
+    {
+        var paths = request.EntryPaths.Count > 0 ? request.EntryPaths : [request.RootPath];
+        if (paths.Count > 64)
+            throw new ArgumentException("시작 경로는 최대 64개까지 지정할 수 있습니다.", nameof(request));
+        var seen = new HashSet<string>(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+        var roots = new List<(string, string)>();
+        foreach (var path in paths)
+        {
+            var scanPath = absolutePathCanonicalizer.Canonicalize(path);
+            var profilePath = absolutePathCanonicalizer.Canonicalize(pathCanonicalizer.Canonicalize(scanPath));
+            if (seen.Add(profilePath)) roots.Add((scanPath, profilePath));
+        }
+        return roots;
+    }
+
     private async Task<CatalogResult> DiscoverDirectoriesAsync(
         CatalogRequest request,
         string profileRootPath,
         ILoadedProfile profile,
         IProgress<CatalogOperationProgress>? progress,
+        MappingState state,
         CancellationToken cancellationToken)
     {
         var trace = new ScanTraceWriter(
             scanTraceSink,
             request,
-            profile.Descriptor);
+            profile.Descriptor,
+            state.Trace);
         trace.Report(
             CatalogScanTraceKind.Started,
             message: "DB에 저장하지 않는 바로 스캔을 시작했습니다.");
@@ -121,6 +226,7 @@ internal sealed class CatalogService(
             var operationSettings = indexingSettings.Current;
             var accumulator = new MappingAccumulator(
                 profile,
+                state,
                 request.RootPath,
                 profileRootPath,
                 pathCanonicalizer,
@@ -132,11 +238,13 @@ internal sealed class CatalogService(
                 uiUpdateBatchSize: operationSettings.UiUpdateBatchSize);
             var discoveryProgress = progress is null
                 ? null
-                : new InlineProgress<DirectoryDiscoveryProgress>(value => progress.Report(new(
-                    CatalogOperationPhase.Scanning,
-                    $"폴더 {value.Directories:N0}개를 확인하고 하위 탐색 {value.PrunedDirectories:N0}개를 생략했습니다."
-                    + $" · 소요 {CatalogElapsedTimeFormatter.Format(value.Elapsed)}",
-                    value.Directories)));
+                : new InlineProgress<DirectoryDiscoveryProgress>(value =>
+                {
+                    var total = AddDiscoveryProgress(state.CompletedDiscoveryProgress, value);
+                    progress.Report(new(CatalogOperationPhase.Scanning,
+                        $"폴더 {total.Directories:N0}개를 확인하고 하위 탐색 {total.PrunedDirectories:N0}개를 생략했습니다."
+                        + $" · 소요 {CatalogElapsedTimeFormatter.Format(total.Elapsed)}", total.Directories));
+                });
 
             var report = await directoryDiscovery.DiscoverAsync(
                 new DirectoryDiscoveryRequest(request.RootPath)
@@ -164,7 +272,8 @@ internal sealed class CatalogService(
             };
             trace.Report(
                 CatalogScanTraceKind.Completed,
-                message: CreateCompletionMessage(result, report));
+                message: CreateCompletionMessage(result, report with
+                { Progress = AddDiscoveryProgress(state.CompletedDiscoveryProgress, report.Progress) }));
             return result;
         }
         catch (OperationCanceledException)
@@ -188,6 +297,8 @@ internal sealed class CatalogService(
         string profileRootPath,
         ILoadedProfile profile,
         IProgress<CatalogOperationProgress>? progress,
+        MappingState state,
+        int attemptId,
         CancellationToken cancellationToken)
     {
         progress?.Report(new(
@@ -207,7 +318,7 @@ internal sealed class CatalogService(
                 request.RootPath);
         }
 
-        return await LoadFromIndexSessionAsync(
+        return await LoadFromIndexSessionAttemptAsync(
             request,
             profileRootPath,
             profile,
@@ -216,7 +327,9 @@ internal sealed class CatalogService(
             progress,
             scanReport: null,
             trace: null,
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken,
+            state,
+            attemptId).ConfigureAwait(false);
     }
 
     private async Task<CatalogResult> ScanAndLoadFromIndexAsync(
@@ -224,12 +337,14 @@ internal sealed class CatalogService(
         string profileRootPath,
         ILoadedProfile profile,
         IProgress<CatalogOperationProgress>? progress,
+        MappingState state,
         CancellationToken cancellationToken)
     {
         var trace = new ScanTraceWriter(
             scanTraceSink,
             request,
-            profile.Descriptor);
+            profile.Descriptor,
+            state.Trace);
         trace.Report(
             CatalogScanTraceKind.Started,
             message: "스캔한 파일과 폴더 메타데이터를 DB에 저장하는 탐색을 시작했습니다.");
@@ -244,6 +359,7 @@ internal sealed class CatalogService(
             await using var session = sessionFactory.Create(request.DatabasePath);
             var accumulator = new MappingAccumulator(
                 profile,
+                state,
                 request.RootPath,
                 profileRootPath,
                 pathCanonicalizer,
@@ -290,7 +406,8 @@ internal sealed class CatalogService(
                 scanReport);
             trace.Report(
                 CatalogScanTraceKind.Completed,
-                message: CreateCompletionMessage(result, scanReport));
+                message: CreateCompletionMessage(result, scanReport with
+                { Progress = AddScanProgress(state.CompletedScanProgress, scanReport.Progress) }));
             return result;
         }
         catch (OperationCanceledException)
@@ -309,55 +426,6 @@ internal sealed class CatalogService(
         }
     }
 
-    private async Task<CatalogResult> LoadFromIndexSessionAsync(
-        CatalogRequest request,
-        string profileRootPath,
-        ILoadedProfile profile,
-        IIndexSession session,
-        IndexingOptions operationSettings,
-        IProgress<CatalogOperationProgress>? progress,
-        IndexScanReport? scanReport,
-        ScanTraceWriter? trace,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            return await LoadFromIndexSessionAttemptAsync(
-                request,
-                profileRootPath,
-                profile,
-                session,
-                operationSettings,
-                progress,
-                scanReport,
-                trace,
-                cancellationToken).ConfigureAwait(false);
-        }
-        catch (IndexSnapshotChangedException)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            request.ResultWriter?.Reset();
-            progress?.Report(new CatalogOperationProgress(
-                CatalogOperationPhase.Preparing,
-                "인덱스가 변경되어 이전 시도의 결과를 지우고 다시 불러옵니다.")
-            {
-                AttemptReset = true,
-                AttemptId = 2,
-            });
-            return await LoadFromIndexSessionAttemptAsync(
-                request,
-                profileRootPath,
-                profile,
-                session,
-                operationSettings,
-                progress,
-                scanReport,
-                trace,
-                cancellationToken,
-                attemptId: 2).ConfigureAwait(false);
-        }
-    }
-
     private async Task<CatalogResult> LoadFromIndexSessionAttemptAsync(
         CatalogRequest request,
         string profileRootPath,
@@ -368,10 +436,12 @@ internal sealed class CatalogService(
         IndexScanReport? scanReport,
         ScanTraceWriter? trace,
         CancellationToken cancellationToken,
+        MappingState state,
         int attemptId = 1)
     {
         var accumulator = new MappingAccumulator(
             profile,
+            state,
             request.RootPath,
             profileRootPath,
             pathCanonicalizer,
@@ -456,7 +526,9 @@ internal sealed class CatalogService(
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentException.ThrowIfNullOrWhiteSpace(request.ProfileId);
-        ArgumentException.ThrowIfNullOrWhiteSpace(request.RootPath);
+        ArgumentNullException.ThrowIfNull(request.EntryPaths);
+        if (request.EntryPaths.Count == 0)
+            ArgumentException.ThrowIfNullOrWhiteSpace(request.RootPath);
         if (requireDatabase)
             ArgumentException.ThrowIfNullOrWhiteSpace(request.DatabasePath);
     }
@@ -487,8 +559,42 @@ internal sealed class CatalogService(
         public void Report(T value) => report(value);
     }
 
+    private sealed class MappingState
+    {
+        public ScanTraceState Trace { get; } = new();
+        public IndexScanProgress CompletedScanProgress { get; set; } = new(0, 0, 0, 0, 0, TimeSpan.Zero, 0);
+        public DirectoryDiscoveryProgress CompletedDiscoveryProgress { get; set; } = new(0, 0, 0, 0, 0, TimeSpan.Zero);
+        public List<CatalogItem> Items { get; } = [];
+        public List<CatalogInvalidItem> InvalidItems { get; } = [];
+        public List<CatalogDirectoryExclusionIssue> DirectoryExclusionIssues { get; } = [];
+        // Only path identity and traversal semantics are retained when models are streamed.
+        public Dictionary<string, bool> MappedPaths { get; } = new(
+            OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+        public HashSet<string> ExcludedPaths { get; } = new(
+            OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+        public HashSet<string> ExclusionIssuePaths { get; } = new(
+            OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+        public int CandidateCount;
+        public int NoMatchCount;
+        public int ExcludedDirectoryCount;
+        public int MatchedCount;
+        public int InvalidCount;
+        public int FieldIssueRowCount;
+        public int DirectoryExclusionIssueCount;
+        public bool HasPendingCoverage;
+    }
+
+    private sealed class ScanTraceState
+    {
+        public Guid OperationId { get; } = Guid.NewGuid();
+        public long Sequence;
+        public bool Started;
+        public bool IsLastRoot = true;
+    }
+
     private sealed class MappingAccumulator(
         ILoadedProfile profile,
+        MappingState state,
         string rootPath,
         string profileRootPath,
         IProfilePathCanonicalizer pathCanonicalizer,
@@ -501,17 +607,6 @@ internal sealed class CatalogService(
         int uiUpdateBatchSize = 10)
     {
         private const int MaximumDetailedIssues = 5000;
-        private readonly List<CatalogItem> _items = [];
-        private readonly List<CatalogInvalidItem> _invalidItems = [];
-        private readonly List<CatalogDirectoryExclusionIssue> _directoryExclusionIssues = [];
-        private int _candidateCount;
-        private int _noMatchCount;
-        private int _excludedDirectoryCount;
-        private int _matchedCount;
-        private int _invalidCount;
-        private int _fieldIssueRowCount;
-        private int _directoryExclusionIssueCount;
-        private bool _hasPendingCoverage;
 
         public DirectoryTraversalDecision Visit(DiscoveredDirectory directory) =>
             Visit(directory, coveragePending: false);
@@ -521,6 +616,7 @@ internal sealed class CatalogService(
             bool coveragePending)
         {
             var relativePath = Path.GetRelativePath(rootPath, directory.FullPath);
+            var absolutePath = ResolveProfileInputPath(directory.FullPath, relativePath);
             if (applyDirectoryNameExclusions && directory.Depth > profile.Descriptor.MaxScanDepth)
                 return DirectoryTraversalDecision.ExcludeSubtree;
             // The selected root is an explicit boundary, not one of its own
@@ -529,11 +625,11 @@ internal sealed class CatalogService(
             if (applyDirectoryNameExclusions && relativePath != ".")
             {
                 var exclusion = profile.EvaluateDirectoryName(directory.Name);
-                if (exclusion.Issues.Count > 0)
+                if (exclusion.Issues.Count > 0 && state.ExclusionIssuePaths.Add(absolutePath))
                 {
-                    _directoryExclusionIssueCount++;
-                    if (_directoryExclusionIssues.Count < MaximumDetailedIssues)
-                        _directoryExclusionIssues.Add(new CatalogDirectoryExclusionIssue(
+                    state.DirectoryExclusionIssueCount++;
+                    if (state.DirectoryExclusionIssues.Count < MaximumDetailedIssues)
+                        state.DirectoryExclusionIssues.Add(new CatalogDirectoryExclusionIssue(
                             directory.FullPath,
                             relativePath,
                             exclusion.Issues));
@@ -546,7 +642,7 @@ internal sealed class CatalogService(
 
                 if (exclusion.IsExcluded)
                 {
-                    _excludedDirectoryCount++;
+                    if (state.ExcludedPaths.Add(absolutePath)) state.ExcludedDirectoryCount++;
                     trace?.ReportDirectoryExcluded(
                         directory.FullPath,
                         relativePath,
@@ -556,10 +652,20 @@ internal sealed class CatalogService(
                 }
             }
 
-            _hasPendingCoverage |= coveragePending;
-            var absolutePath = ResolveProfileInputPath(directory.FullPath, relativePath);
+            state.HasPendingCoverage |= coveragePending;
+            if (state.MappedPaths.TryGetValue(absolutePath, out var shouldPruneDescendants))
+            {
+                // Do not cache the earlier depth decision: an explicit nested root
+                // gets its own traversal budget even when this path was already mapped.
+                var duplicateDecision = shouldPruneDescendants
+                    || (applyDirectoryNameExclusions && directory.Depth >= profile.Descriptor.MaxScanDepth)
+                    ? DirectoryTraversalDecision.SkipDescendants : DirectoryTraversalDecision.Continue;
+                trace?.ReportPreviouslyMappedDirectory(directory.FullPath, absolutePath, relativePath, duplicateDecision);
+                return duplicateDecision;
+            }
             var mapping = profile.Map(new ProfilePathCandidate(absolutePath));
-            _candidateCount++;
+            state.MappedPaths.Add(absolutePath, mapping.ShouldPruneDescendants);
+            state.CandidateCount++;
             switch (mapping.Status)
             {
                 case ProfileMapStatus.Success when mapping.Item is not null:
@@ -572,38 +678,38 @@ internal sealed class CatalogService(
                         coveragePending)
                     { Resources = mapping.Item.Resources, FieldErrors = mapping.Item.FieldErrors };
                     resultWriter?.Append(item);
-                    _matchedCount++;
-                    if (item.FieldErrors.Count > 0) _fieldIssueRowCount++;
-                    if (retainItems) _items.Add(item);
+                    state.MatchedCount++;
+                    if (item.FieldErrors.Count > 0) state.FieldIssueRowCount++;
+                    if (retainItems) state.Items.Add(item);
                     progress?.Report(new CatalogOperationProgress(
                         CatalogOperationPhase.Mapping,
-                        $"일치 {_matchedCount:N0}개 · 경로 {_candidateCount:N0}개를 판별했습니다.",
-                        _candidateCount)
+                        $"일치 {state.MatchedCount:N0}개 · 경로 {state.CandidateCount:N0}개를 판별했습니다.",
+                        state.CandidateCount)
                     {
                         MatchedItem = item,
-                        MatchedCount = _matchedCount,
+                        MatchedCount = state.MatchedCount,
                         AttemptId = attemptId,
                     });
                     break;
                 case ProfileMapStatus.Invalid:
-                    _invalidCount++;
-                    if (_invalidItems.Count < MaximumDetailedIssues)
-                        _invalidItems.Add(new CatalogInvalidItem(
+                    state.InvalidCount++;
+                    if (state.InvalidItems.Count < MaximumDetailedIssues)
+                        state.InvalidItems.Add(new CatalogInvalidItem(
                             absolutePath,
                             relativePath,
                             mapping.Issues));
                     break;
                 case ProfileMapStatus.NoMatch:
-                    _noMatchCount++;
+                    state.NoMatchCount++;
                     break;
             }
 
-            if (_candidateCount % Math.Max(1, uiUpdateBatchSize) == 0)
+            if (state.CandidateCount % Math.Max(1, uiUpdateBatchSize) == 0)
             {
                 progress?.Report(new CatalogOperationProgress(
                     CatalogOperationPhase.Mapping,
-                    $"경로 {_candidateCount:N0}개를 프로필 규칙으로 판별했습니다.",
-                    _candidateCount) { AttemptId = attemptId, MatchedCount = _matchedCount });
+                    $"경로 {state.CandidateCount:N0}개를 프로필 규칙으로 판별했습니다.",
+                    state.CandidateCount) { AttemptId = attemptId, MatchedCount = state.MatchedCount });
             }
 
             var traversalDecision = mapping.ShouldPruneDescendants
@@ -641,36 +747,38 @@ internal sealed class CatalogService(
             return pathCanonicalizer.Canonicalize(discoveredPath);
         }
 
-        public CatalogResult BuildResult(bool hasPendingScopes, IndexScanReport? scanReport) =>
-            new(
+        public CatalogResult BuildResult(bool hasPendingScopes, IndexScanReport? scanReport)
+        {
+            state.HasPendingCoverage |= hasPendingScopes;
+            return new(
                 profile.Descriptor,
-                _items.AsReadOnly(),
-                _invalidItems.AsReadOnly(),
-                _candidateCount,
-                _noMatchCount,
-                hasPendingScopes || _hasPendingCoverage,
+                state.Items.AsReadOnly(),
+                state.InvalidItems.AsReadOnly(),
+                state.CandidateCount,
+                state.NoMatchCount,
+                hasPendingScopes || state.HasPendingCoverage,
                 scanReport)
             {
-                ExcludedDirectoryCount = _excludedDirectoryCount,
-                MatchedCount = _matchedCount,
-                InvalidCount = _invalidCount,
-                FieldIssueRowCount = _fieldIssueRowCount,
-                DirectoryExclusionIssueCount = _directoryExclusionIssueCount,
-                DirectoryExclusionIssues = _directoryExclusionIssues.AsReadOnly(),
+                ExcludedDirectoryCount = state.ExcludedDirectoryCount,
+                MatchedCount = state.MatchedCount,
+                InvalidCount = state.InvalidCount,
+                FieldIssueRowCount = state.FieldIssueRowCount,
+                DirectoryExclusionIssueCount = state.DirectoryExclusionIssueCount,
+                DirectoryExclusionIssues = state.DirectoryExclusionIssues.AsReadOnly(),
             };
+        }
     }
 
     private sealed class ScanTraceWriter(
         ICatalogScanTraceSink sink,
         CatalogRequest request,
-        ProfileDescriptor profile)
+        ProfileDescriptor profile,
+        ScanTraceState state)
     {
         private static readonly IReadOnlyDictionary<string, object?> EmptyValues =
             new ReadOnlyDictionary<string, object?>(new Dictionary<string, object?>());
         private static readonly IReadOnlyList<ProfileMappingIssue> EmptyIssues =
             Array.Empty<ProfileMappingIssue>();
-        private readonly Guid _operationId = Guid.NewGuid();
-        private long _sequence;
 
         public void ReportDirectoryVisited(
             string discoveredPath,
@@ -690,8 +798,8 @@ internal sealed class CatalogService(
                     : Array.AsReadOnly(mapping.Issues.ToArray());
 
                 ReportCore(new CatalogScanTraceEvent(
-                    _operationId,
-                    Interlocked.Increment(ref _sequence),
+                    state.OperationId,
+                    Interlocked.Increment(ref state.Sequence),
                     DateTimeOffset.UtcNow,
                     CatalogScanTraceKind.DirectoryVisited,
                     profile.Id,
@@ -714,6 +822,16 @@ internal sealed class CatalogService(
             }
         }
 
+        public void ReportPreviouslyMappedDirectory(
+            string discoveredPath,
+            string absolutePath,
+            string relativePath,
+            DirectoryTraversalDecision decision) =>
+            ReportCore(new CatalogScanTraceEvent(state.OperationId, Interlocked.Increment(ref state.Sequence),
+                DateTimeOffset.UtcNow, CatalogScanTraceKind.DirectoryVisited, profile.Id, profile.DisplayName,
+                request.RootPath, discoveredPath, relativePath, absolutePath, null, null, EmptyValues, EmptyIssues,
+                decision, "다른 시작 경로에서 이미 판별한 폴더입니다. 결과를 중복 추가하지 않고 현재 시작 경로의 탐색 범위를 적용합니다."));
+
         public void ReportDirectoryExcluded(
             string discoveredPath,
             string relativePath,
@@ -726,8 +844,8 @@ internal sealed class CatalogService(
                     ? EmptyIssues
                     : Array.AsReadOnly(exclusion.Issues.ToArray());
                 ReportCore(new CatalogScanTraceEvent(
-                    _operationId,
-                    Interlocked.Increment(ref _sequence),
+                    state.OperationId,
+                    Interlocked.Increment(ref state.Sequence),
                     DateTimeOffset.UtcNow,
                     CatalogScanTraceKind.DirectoryExcluded,
                     profile.Id,
@@ -761,8 +879,8 @@ internal sealed class CatalogService(
                     ? EmptyIssues
                     : Array.AsReadOnly(exclusionIssues.ToArray());
                 ReportCore(new CatalogScanTraceEvent(
-                    _operationId,
-                    Interlocked.Increment(ref _sequence),
+                    state.OperationId,
+                    Interlocked.Increment(ref state.Sequence),
                     DateTimeOffset.UtcNow,
                     CatalogScanTraceKind.DirectoryExclusionIssue,
                     profile.Id,
@@ -832,10 +950,17 @@ internal sealed class CatalogService(
             CatalogScanTraceKind kind,
             string? fullPath = null,
             string? relativePath = null,
-            string? message = null) =>
+            string? message = null)
+        {
+            if (kind == CatalogScanTraceKind.Started)
+            {
+                if (state.Started) return;
+                state.Started = true;
+            }
+            if (kind == CatalogScanTraceKind.Completed && !state.IsLastRoot) return;
             ReportCore(new CatalogScanTraceEvent(
-                _operationId,
-                Interlocked.Increment(ref _sequence),
+                state.OperationId,
+                Interlocked.Increment(ref state.Sequence),
                 DateTimeOffset.UtcNow,
                 kind,
                 profile.Id,
@@ -850,6 +975,7 @@ internal sealed class CatalogService(
                 EmptyIssues,
                 null,
                 message ?? string.Empty));
+        }
 
         private void ReportCore(CatalogScanTraceEvent value)
         {

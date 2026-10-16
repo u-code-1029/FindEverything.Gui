@@ -30,6 +30,11 @@ public sealed record CatalogOperationProgress(
 
     /// <summary>Consumers ignore late item batches from earlier attempts.</summary>
     public int AttemptId { get; init; } = 1;
+
+    /// <summary>One-based position of the current starting path in this operation.</summary>
+    public int EntryIndex { get; init; } = 1;
+    public int EntryCount { get; init; } = 1;
+    public string? EntryPath { get; init; }
 }
 
 public sealed record CatalogRequest(
@@ -37,6 +42,9 @@ public sealed record CatalogRequest(
     string RootPath,
     string DatabasePath)
 {
+    /// <summary>Explicit starting paths. An empty list keeps the single RootPath behavior.</summary>
+    public IReadOnlyList<string> EntryPaths { get; init; } = [];
+
     /// <summary>Compatibility default. Large callers persist rows without retaining all models.</summary>
     public bool RetainItems { get; init; } = true;
 
@@ -85,6 +93,10 @@ public sealed record CatalogResult(
     public int DirectoryExclusionIssueCount { get; init; }
 
     public DirectoryDiscoveryReport? DiscoveryReport { get; init; }
+
+    /// <summary>Physical reports for each starting path; ScanReport is an aggregate for multiple paths.</summary>
+    public IReadOnlyList<IndexScanReport> ScanReports { get; init; } = [];
+    public IReadOnlyList<DirectoryDiscoveryReport> DiscoveryReports { get; init; } = [];
 
     public int ExcludedDirectoryCount { get; init; }
 

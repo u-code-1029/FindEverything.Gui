@@ -107,6 +107,10 @@ public sealed class IndexedDatasetTransferService(AppPaths paths, ProfileTransfe
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        if (request.CatalogSnapshot?.Scope.IsMultiRoot == true)
+            throw new InvalidOperationException(ReceiverCultureName.StartsWith("ko", StringComparison.OrdinalIgnoreCase)
+                ? "여러 시작 경로의 결과는 아직 공유 패키지로 내보낼 수 없습니다. 단일 시작 경로로 스캔한 결과를 내보내세요."
+                : "Multi-root structured results cannot currently be exported as a workspace package. Export a single-root result instead.");
         // Resolve caller input before taking the gate. Every task-owned staging operation below is inside its finally.
         var destination = Path.GetFullPath(request.DestinationPath);
         var temporary = destination + "." + Guid.NewGuid().ToString("N") + ".tmp";

@@ -17,6 +17,8 @@ public sealed partial class SqliteCatalogProjectionStore
         string profileId, string metadataDatabasePath, string cultureName,
         IProgress<WorkspaceTransferProgress>? progress = null, CancellationToken cancellationToken = default)
     {
+        if (snapshot.Scope.IsMultiRoot)
+            throw new InvalidOperationException("Multi-root structured results cannot currently be exported as a workspace package. Export a single-root result instead.");
         if (snapshot.IsBuilding) throw new InvalidDataException("Only published structured results can be exported.");
         if (File.Exists(destination)) throw new IOException("The snapshot destination already exists.");
         originalRoot = WorkspacePathMapping.NormalizeRoot(originalRoot);
@@ -114,6 +116,9 @@ public sealed partial class SqliteCatalogProjectionStore
         var snapshot = new CatalogProjectionSnapshot(reader.GetString(0), Deserialize<CatalogProjectionScope>(reader.GetString(1)),
             Deserialize<CatalogProjectionSummary>(reader.GetString(2)), Deserialize<ProfileFieldDescriptor[]>(reader.GetString(3)))
             { Revision = reader.GetInt64(6) };
+        snapshot.Scope.ValidateRootPaths();
+        if (snapshot.Scope.IsMultiRoot)
+            throw new InvalidDataException("This workspace package format supports exactly one catalog root.");
         if (snapshot.Summary.MatchedCount != reader.GetInt64(5)) throw new InvalidDataException("The structured summary does not match its rows.");
         if (reader.Read()) throw new InvalidDataException("A package contains multiple catalog publications.");
         return snapshot;

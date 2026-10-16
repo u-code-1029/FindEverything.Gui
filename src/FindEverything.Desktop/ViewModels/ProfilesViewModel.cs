@@ -160,12 +160,16 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
         ILogger<ProfilesViewModel> logger,
         IDraftProtectionService? draftProtection = null,
         IUiScheduler? uiScheduler = null,
-        IProfilePresentationStore? presentationStore = null)
+        IProfilePresentationStore? presentationStore = null,
+        IWorkspaceContext? workspaceContext = null,
+        IDesktopPickerService? pickerService = null)
     {
         _profileCatalog = profileCatalog;
         _authoringService = authoringService;
         _pathTemplateCompiler = pathTemplateCompiler;
         _pathCanonicalizer = pathCanonicalizer;
+        _entryPathWorkspace = workspaceContext;
+        _entryPathPicker = pickerService;
         _pathLauncher = pathLauncher;
         _operationCoordinator = operationCoordinator;
         _snackbarService = snackbarService;
@@ -215,6 +219,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
         ApplySnapshot(profileCatalog.Current, preferredProfileId: null);
         _profileCatalog.Changed += OnProfileCatalogChanged;
         NewDraftCore();
+        if (_entryPathWorkspace is not null) _entryPathWorkspace.Changed += OnEntryPathsWorkspaceChanged;
     }
 
     public IReadOnlyList<SettingChoice<ProfileFieldValueKind>> FieldKindChoices { get; }
@@ -390,6 +395,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
 
     partial void OnIsEditorBusyChanged(bool value)
     {
+        NotifyEntryPathAvailability();
         OnPropertyChanged(nameof(IsEditorReady));
         NewDraftCommand.NotifyCanExecuteChanged();
         LoadDraftCommand.NotifyCanExecuteChanged();
@@ -458,6 +464,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
             _originalProfileId = null;
             _savedRuleDefinition = null;
             _portableWorkspace = null;
+            ResetDraftEntryPaths(null);
             CurrentEditorStep = ProfileEditorStep.Profile;
             _draftVersion = "1.0.0";
             CanEditDraftId = true;
@@ -1271,14 +1278,15 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
         _ = _playgroundNavigator.Navigate(_originalProfileId);
     }
 
-    private Task SavePresentationAsync(string profileId)
+    private async Task SavePresentationAsync(string profileId)
     {
-        if (_presentationStore is null) return Task.CompletedTask;
+        await SaveEntryPathsAsync(profileId).ConfigureAwait(true);
+        if (_presentationStore is null) return;
         var fields = DraftFields.Select(static f => (f.FieldId, f.WidthPreset))
             .Concat(DraftTextFileFields.Select(static f => (f.FieldId, f.WidthPreset)))
             .Concat(DraftUserInputFields.Select(static f => (f.FieldId, f.WidthPreset)))
             .ToDictionary(static f => f.FieldId.Trim(), static f => f.WidthPreset, StringComparer.OrdinalIgnoreCase);
-        return _presentationStore.SaveAsync(profileId, fields);
+        await _presentationStore.SaveAsync(profileId, fields).ConfigureAwait(true);
     }
 
     [RelayCommand]
@@ -1437,6 +1445,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
             DetachRows();
             _originalProfileId = manifest.Id?.Trim();
             _portableWorkspace = manifest.Workspace is null ? null : JsonSerializer.Deserialize<ProfileWorkspaceManifest>(JsonSerializer.Serialize(manifest.Workspace));
+            LoadDraftEntryPaths(manifest);
             CurrentEditorStep = ProfileEditorStep.Profile;
             _draftVersion = string.IsNullOrWhiteSpace(manifest.Version)
                 ? "1.0.0"

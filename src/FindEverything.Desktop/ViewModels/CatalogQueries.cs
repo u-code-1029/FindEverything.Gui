@@ -69,7 +69,7 @@ public partial class CatalogViewModel
 
     public bool UsesQuerySelection => _projectionQuery is not null;
     public string ResultSourceDescription => _displayedProjectionSnapshot is { } snapshot
-        ? $"{snapshot.Scope.RootPath} · {snapshot.Scope.DatabasePath} · {snapshot.Summary.UpdatedUtc.ToLocalTime():g}"
+        ? $"{string.Join(Environment.NewLine, snapshot.Scope.EffectiveRootPaths)} · {snapshot.Scope.DatabasePath} · {snapshot.Summary.UpdatedUtc.ToLocalTime():g}"
             + (HasCompletedScanElapsed ? " · " + LastCompletedScanElapsedText : string.Empty)
         : LastCompletedScanElapsedText;
 
@@ -78,9 +78,10 @@ public partial class CatalogViewModel
         var fingerprint = CatalogDataFingerprint.Create(profile.Descriptor, profile.CacheIdentity);
         var identity = string.Join("|", workspace.ProfileId, workspace.RootPath.ToUpperInvariant(),
             workspace.DatabasePath.ToUpperInvariant(), fingerprint, _localizer.Culture.Name);
+        if (workspace.RootPathsIdentity is not null) identity += "|roots:" + workspace.RootPathsIdentity.ToUpperInvariant();
         return new(Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(identity))),
             workspace.ProfileId, workspace.RootPath, workspace.DatabasePath, fingerprint,
-            _localizer.Culture.Name, scanId);
+            _localizer.Culture.Name, scanId) { RootPathsIdentity = workspace.RootPathsIdentity };
     }
 
     private async Task RunProjectionOperationAsync(string name, CatalogOperationMode mode, bool automatic,
@@ -135,21 +136,38 @@ public partial class CatalogViewModel
                 if (mode == CatalogOperationMode.Scan)
                 {
                     token.ThrowIfCancellationRequested();
-                    if (!Directory.Exists(workspace.RootPath))
-                        throw new DirectoryNotFoundException(workspace.RootPath);
+                    foreach (var root in workspace.EntryPaths)
+                    {
+                        token.ThrowIfCancellationRequested();
+                        if (!Directory.Exists(root)) throw new DirectoryNotFoundException(root);
+                    }
                     EnsureDatabaseDirectory(workspace.DatabasePath);
                 }
                 token.ThrowIfCancellationRequested();
                 try { await PersistWorkspaceAsync(save, token).ConfigureAwait(false); }
                 catch { AbandonWorkspaceSaveAttempt(save); throw; }
                 Guid? previousScan = null;
+                scope = CreateProjectionScope(workspace, null, operationProfile!);
+                if (mode == CatalogOperationMode.ExistingIndex && scope.IsMultiRoot)
+                {
+                    // A later multi-root attempt may have published only some raw
+                    // indexes before cancellation. Keep loading the last complete
+                    // structured publication, even with disconnected entry drives.
+                    published = await _projectionStore!.FindLastPublishedAsync(scope, token).ConfigureAwait(false);
+                    if (published is not null && published.Summary.MatchedCount > 0) return;
+                }
                 if (_indexSessions is not null)
                 {
                     await using var index = _indexSessions.Create(workspace.DatabasePath);
-                    var status = await index.GetRootStatusAsync(workspace.RootPath, token).ConfigureAwait(false);
-                    previousScan = status.LastScanId;
-                    if (mode == CatalogOperationMode.ExistingIndex && status.Availability != IndexRootAvailability.Available)
-                        throw new MissingProjectionException(false);
+                    var versions = new List<KeyValuePair<string, Guid?>>();
+                    foreach (var root in workspace.EntryPaths)
+                    {
+                        var status = await index.GetRootStatusAsync(root, token).ConfigureAwait(false);
+                        versions.Add(new(root, status.LastScanId));
+                        if (mode == CatalogOperationMode.ExistingIndex && status.Availability != IndexRootAvailability.Available)
+                            throw new MissingProjectionException(false);
+                    }
+                    previousScan = CatalogProjectionScope.CreateIndexVersion(versions);
                 }
                 scope = CreateProjectionScope(workspace, previousScan, operationProfile!);
                 if (mode == CatalogOperationMode.ExistingIndex)
@@ -237,7 +255,29 @@ public partial class CatalogViewModel
                     : await _catalogService.LoadExistingAsync(request, progress, token).ConfigureAwait(false);
                 progress.FlushAndClose();
                 token.ThrowIfCancellationRequested();
-                var finalScope = scope with { IndexScanId = result.ScanReport?.ScanId ?? previousScan };
+                var finalVersion = result.ScanReport?.ScanId ?? previousScan;
+                if (workspace.RootPathsIdentity is not null && mode == CatalogOperationMode.Scan && result.ScanReports.Count > 0)
+                {
+                    // Stamp the versions that actually produced these rows, not a
+                    // later publication another process may have made meanwhile.
+                    finalVersion = CatalogProjectionScope.CreateIndexVersion(result.ScanReports
+                        .Select(report => new KeyValuePair<string, Guid?>(report.RootPath, report.ScanId)));
+                }
+                else if (workspace.RootPathsIdentity is not null && _indexSessions is not null)
+                {
+                    await using var index = _indexSessions.Create(workspace.DatabasePath);
+                    var versions = new List<KeyValuePair<string, Guid?>>();
+                    foreach (var root in workspace.EntryPaths)
+                    {
+                        var status = await index.GetRootStatusAsync(root, token).ConfigureAwait(false);
+                        versions.Add(new(root, status.LastScanId));
+                    }
+                    finalVersion = CatalogProjectionScope.CreateIndexVersion(versions);
+                    if (mode == CatalogOperationMode.ExistingIndex && finalVersion != previousScan)
+                        throw new InvalidOperationException(L("Loc.Catalog.Entries.IndexChanged",
+                            "불러오는 동안 다른 작업에서 인덱스를 변경했습니다. 이전 결과는 유지됩니다. 다시 불러오세요."));
+                }
+                var finalScope = scope with { IndexScanId = finalVersion };
                 published = writer.Publish(new(result.CandidateCount, result.MatchedCount,
                     result.InvalidCount, result.NoMatchCount, result.ExcludedDirectoryCount,
                     result.HasPendingScopes || result.ScanReport?.Errors.Count > 0 ||
@@ -256,6 +296,13 @@ public partial class CatalogViewModel
             }
             catch { AbandonWorkspaceSaveAttempt(save); throw; }
             cancellation.Token.ThrowIfCancellationRequested();
+            // Another page can update the profile's location list while this
+            // background read finishes. Its old scope must not become the new UI.
+            if (!ReferenceEquals(SelectedProfile?.Profile, operationProfile) || !MatchesRequestedWorkspace(workspace))
+            {
+                _lastAutomaticLoadKey = null;
+                return;
+            }
             await CommitTrackedNotesAsync();
             cancellation.Token.ThrowIfCancellationRequested();
             _projectionSnapshot = published ?? throw new InvalidOperationException("No catalog projection was published.");
@@ -297,7 +344,8 @@ public partial class CatalogViewModel
         {
             ProgressMessage = L("Loc.Catalog.Missing.None", "저장된 구조화 결과가 없습니다.");
             SetStatus(L("Loc.Common.Ready", "준비"), ProgressMessage, InfoBarSeverity.Informational);
-            if (_missingDataPrompt is not null && !cancellation.IsCancellationRequested && (_isActive || !automatic))
+            if (_missingDataPrompt is not null && !cancellation.IsCancellationRequested && (_isActive || !automatic)
+                && requestedWorkspace is { } missingWorkspace && MatchesRequestedWorkspace(missingWorkspace))
             {
                 try
                 {

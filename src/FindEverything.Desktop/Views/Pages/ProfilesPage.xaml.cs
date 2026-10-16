@@ -21,6 +21,29 @@ public partial class ProfilesPage
         viewModel.AssignmentPickerRequested += OnAssignmentPickerRequested;
         viewModel.EditorStepChanged += OnEditorStepChanged;
         viewModel.ValidationIssuesRequested += OnEditorStepChanged;
+        viewModel.EntryPathEditorRequested += OnEntryPathEditorRequested;
+    }
+
+    private void OnEntryPathEditorRequested(ProfileEntryPathDraftViewModel row)
+    {
+        if (Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished) return;
+        _ = Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, new Action(() =>
+        {
+            if (_activeEditorList?.Items.OfType<ProfileEditorEntry>()
+                .FirstOrDefault(entry => ReferenceEquals(entry.Value, row)) is not { } entry) return;
+            _activeEditorList.ScrollIntoView(entry);
+            _activeEditorList.UpdateLayout();
+            var container = _activeEditorList.ItemContainerGenerator.ContainerFromItem(entry) as System.Windows.FrameworkElement;
+            if (container is not null) FindEntryPathTextBox(container)?.Focus();
+        }));
+    }
+
+    private static System.Windows.Controls.TextBox? FindEntryPathTextBox(System.Windows.DependencyObject root)
+    {
+        if (root is System.Windows.Controls.TextBox { Name: "ProfileEntryPathInput" } input) return input;
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(root); index++)
+            if (FindEntryPathTextBox(VisualTreeHelper.GetChild(root, index)) is { } found) return found;
+        return null;
     }
 
     private void OnProfileWorkspaceSizeChanged(object sender, System.Windows.SizeChangedEventArgs e) => ApplyWorkspaceLayout();

@@ -8,6 +8,65 @@ namespace FindEverything.Desktop.Tests;
 public sealed class WorkspaceContextTests
 {
     [Fact]
+    public async Task Profile_entry_paths_are_normalized_deeply_copied_and_preserved_for_older_callers()
+    {
+        var first = Path.Combine(Path.GetTempPath(), "profile-entry-first");
+        var second = Path.Combine(Path.GetTempPath(), "profile-entry-second");
+        var mutable = new List<string> { first + Path.DirectorySeparatorChar, first, second };
+        var writer = new RecordingSettingsWriter();
+        using var context = new WorkspaceContext(new StubSettingsState<WorkspaceOptions>(new()
+        { RootPath = first, ProfileEntryPaths = new() { ["profile"] = mutable } }), writer);
+        mutable.Clear();
+        var published = context.Current.ProfileEntryPaths!["profile"];
+        Assert.Equal([first, second], published);
+        Assert.Throws<NotSupportedException>(() => ((IList<string>)published).Add("unpublished"));
+
+        await context.SaveAsync(new("profile", second, null));
+        Assert.Equal([first, second], context.Current.ProfileEntryPaths!["profile"]);
+        writer.Updates[0].Workspace!.ProfileEntryPaths!["profile"].Clear();
+        Assert.Equal([first, second], context.Current.ProfileEntryPaths["profile"]);
+        await context.UpdateAsync(current => new(current.SelectedProfileId, current.RootPath, current.DatabasePath));
+        Assert.Equal([first, second], context.Current.ProfileEntryPaths["profile"]);
+        await context.SetProfileEntryPathsAsync("OTHER", [second]);
+        await context.SetProfileEntryPathsAsync("PROFILE", []);
+        Assert.Empty(context.Current.ProfileEntryPaths["profile"]);
+        Assert.Equal([second], context.Current.ProfileEntryPaths["other"]);
+        Assert.Equal(second, context.Current.RootPath);
+        await context.SetProfileEntryPathsAsync("profile", null);
+        Assert.False(context.Current.ProfileEntryPaths.ContainsKey("profile"));
+        Assert.Equal([second], context.Current.ProfileEntryPaths["other"]);
+    }
+
+    [Fact]
+    public async Task Equivalent_entry_path_lists_do_not_write_or_raise_change_events()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "profile-entry-equal");
+        var writer = new RecordingSettingsWriter();
+        using var context = new WorkspaceContext(new StubSettingsState<WorkspaceOptions>(new()), writer);
+        var changes = 0;
+        context.Changed += (_, _) => changes++;
+        await context.SetProfileEntryPathsAsync("profile", [path]);
+        await context.SetProfileEntryPathsAsync("PROFILE", [path + Path.DirectorySeparatorChar, path]);
+        Assert.Single(writer.Updates);
+        Assert.Equal(1, changes);
+    }
+
+    [Fact]
+    public async Task Concurrent_profile_location_updates_merge_without_changing_the_global_file_search_root()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "profile-entry-concurrent");
+        var writer = new GatedSettingsWriter();
+        using var context = new WorkspaceContext(new StubSettingsState<WorkspaceOptions>(new() { RootPath = path }), writer);
+        var first = context.SetProfileEntryPathsAsync("first", [Path.Combine(path, "first")]);
+        await writer.FirstSaveStarted.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        var second = context.SetProfileEntryPathsAsync("second", [Path.Combine(path, "second")]);
+        writer.ReleaseFirstSave.TrySetResult();
+        await Task.WhenAll(first, second).WaitAsync(TimeSpan.FromSeconds(3));
+        Assert.Equal([Path.Combine(path, "first")], context.Current.ProfileEntryPaths!["first"]);
+        Assert.Equal([Path.Combine(path, "second")], context.Current.ProfileEntryPaths["second"]);
+        Assert.Equal(path, context.Current.RootPath);
+    }
+    [Fact]
     public async Task UpdateAsync_merges_against_the_snapshot_published_by_an_earlier_save()
     {
         var testRoot = Path.Combine(Path.GetTempPath(), $"workspace-context-{Guid.NewGuid():N}");

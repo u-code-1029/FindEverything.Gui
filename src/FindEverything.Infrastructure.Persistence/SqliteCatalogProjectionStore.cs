@@ -70,10 +70,15 @@ public sealed partial class SqliteCatalogProjectionStore : ICatalogProjectionSto
         CancellationToken cancellationToken = default) => Task.Run(() => SqliteReadCancellation.RunAsync(
             token => FindCoreAsync(scope, token), cancellationToken), cancellationToken);
 
+    public Task<CatalogProjectionSnapshot?> FindLastPublishedAsync(CatalogProjectionScope scope,
+        CancellationToken cancellationToken = default) => Task.Run(() => SqliteReadCancellation.RunAsync(
+            token => FindCoreAsync(scope, token, ignoreIndexVersion: true), cancellationToken), cancellationToken);
+
     private async Task<CatalogProjectionSnapshot?> FindCoreAsync(CatalogProjectionScope scope,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, bool ignoreIndexVersion = false)
     {
         ArgumentNullException.ThrowIfNull(scope);
+        scope.ValidateRootPaths();
         using var connection = OpenConnection(readOperation: true);
         using var interrupt = new SqliteReadCancellation(connection, cancellationToken);
         using var command = connection.CreateCommand();
@@ -86,7 +91,8 @@ public sealed partial class SqliteCatalogProjectionStore : ICatalogProjectionSto
         using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
         if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false)) return null;
         var savedScope = Deserialize<CatalogProjectionScope>(reader.GetString(1));
-        if (!Equals(savedScope, scope)) return null;
+        savedScope.ValidateRootPaths();
+        if (!Equals(ignoreIndexVersion ? savedScope with { IndexScanId = scope.IndexScanId } : savedScope, scope)) return null;
         return new CatalogProjectionSnapshot(reader.GetString(0), savedScope,
             Deserialize<CatalogProjectionSummary>(reader.GetString(2)),
             Deserialize<ProfileFieldDescriptor[]>(reader.GetString(3))) { Revision = reader.GetInt64(4) };
@@ -97,6 +103,7 @@ public sealed partial class SqliteCatalogProjectionStore : ICatalogProjectionSto
     {
         ArgumentNullException.ThrowIfNull(scope);
         ArgumentNullException.ThrowIfNull(fields);
+        scope.ValidateRootPaths();
         var generation = Guid.NewGuid().ToString("N");
         _writeGate.Wait();
         try
@@ -124,6 +131,7 @@ public sealed partial class SqliteCatalogProjectionStore : ICatalogProjectionSto
         CatalogProjectionQuery query)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
+        snapshot.Scope.ValidateRootPaths();
         return new ProjectionQuery(this, snapshot.Generation, snapshot.Scope, snapshot.Fields, query,
             snapshot.IsBuilding, snapshot.IsBuilding ? snapshot.BuildingRevision : snapshot.Revision);
     }
@@ -364,9 +372,13 @@ public sealed partial class SqliteCatalogProjectionStore : ICatalogProjectionSto
 
     private static T Deserialize<T>(string json) => JsonSerializer.Deserialize<T>(json)
         ?? throw new InvalidDataException("The catalog contains invalid serialized data.");
-    private static string LogicalScopeKey(CatalogProjectionScope scope) => Convert.ToHexString(SHA256.HashData(
-        JsonSerializer.SerializeToUtf8Bytes(new[]
-        { ProfileKey(scope.ProfileId), PathKey(scope.RootPath), PathKey(scope.DatabasePath), scope.CultureName.ToLowerInvariant() })));
+    private static string LogicalScopeKey(CatalogProjectionScope scope)
+    {
+        var roots = scope.RootPathsIdentity is null ? PathKey(scope.RootPath)
+            : JsonSerializer.Serialize(scope.EffectiveRootPaths.Select(PathKey).Order(StringComparer.Ordinal));
+        return Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(new[]
+            { ProfileKey(scope.ProfileId), roots, PathKey(scope.DatabasePath), scope.CultureName.ToLowerInvariant() })));
+    }
     private static string ProfileKey(string profileId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(profileId);

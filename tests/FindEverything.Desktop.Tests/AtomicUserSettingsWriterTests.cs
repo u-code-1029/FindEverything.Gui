@@ -12,6 +12,65 @@ namespace FindEverything.Desktop.Tests;
 public sealed class AtomicUserSettingsWriterTests
 {
     [Fact]
+    public async Task Profile_entry_paths_round_trip_and_survive_unrelated_settings_updates()
+    {
+        using var directory = new TemporaryDirectory();
+        var paths = CreatePaths(directory.Path);
+        using var provider = CreateProvider(paths);
+        var writer = provider.GetRequiredService<IUserSettingsWriter>();
+        var update = CreateUpdate();
+        var firstPaths = new List<string> { @"C:\Projects", @"\\server\share\Archive" };
+        update.Workspace!.ProfileEntryPaths = new()
+        {
+            ["first-profile"] = firstPaths,
+            ["second-profile"] = [],
+        };
+
+        await writer.SaveAsync(update);
+        await writer.SaveAsync(new UserSettingsUpdate(
+            Appearance: new AppearanceOptions { Theme = ThemePreference.Light }));
+
+        using var document = JsonDocument.Parse(await File.ReadAllTextAsync(paths.UserSettingsFile));
+        var workspaceJson = document.RootElement.GetProperty("Workspace");
+        var roundTrip = workspaceJson.Deserialize<WorkspaceOptions>()!;
+        Assert.Equal(firstPaths, roundTrip.ProfileEntryPaths!["first-profile"]);
+        Assert.Empty(roundTrip.ProfileEntryPaths["second-profile"]);
+        Assert.Equal(@"C:\Data", roundTrip.RootPath);
+        Assert.Equal(@"C:\Data\index.db", roundTrip.DatabasePath);
+        Assert.Same(firstPaths, update.Workspace.ProfileEntryPaths["first-profile"]);
+        Assert.Equal(firstPaths,
+            provider.GetRequiredService<IValidatedSettingsState<WorkspaceOptions>>().Current.ProfileEntryPaths!["first-profile"]);
+
+        var configuration = new ConfigurationBuilder().AddJsonFile(paths.UserSettingsFile).Build();
+        using var reloaded = new ServiceCollection().AddFindEverythingApplication(configuration).BuildServiceProvider();
+        var reloadedWorkspace = reloaded.GetRequiredService<IValidatedSettingsState<WorkspaceOptions>>().Current;
+        Assert.Equal(firstPaths, reloadedWorkspace.ProfileEntryPaths!["first-profile"]);
+        Assert.Empty(reloadedWorkspace.ProfileEntryPaths["second-profile"]);
+    }
+
+    [Fact]
+    public async Task Invalid_profile_entry_paths_do_not_replace_or_publish_saved_workspace()
+    {
+        using var directory = new TemporaryDirectory();
+        var paths = CreatePaths(directory.Path);
+        using var provider = CreateProvider(paths);
+        var writer = provider.GetRequiredService<IUserSettingsWriter>();
+        await writer.SaveAsync(CreateUpdate());
+        var settings = provider.GetRequiredService<IValidatedSettingsState<WorkspaceOptions>>();
+        var previous = settings.Current;
+        var content = await File.ReadAllTextAsync(paths.UserSettingsFile);
+
+        await Assert.ThrowsAsync<System.ComponentModel.DataAnnotations.ValidationException>(() =>
+            writer.SaveAsync(new UserSettingsUpdate(Workspace: new WorkspaceOptions
+            {
+                ProfileEntryPaths = new() { ["profile"] = [@"relative\folder"] },
+            })));
+
+        Assert.Equal(content, await File.ReadAllTextAsync(paths.UserSettingsFile));
+        Assert.Same(previous, settings.Current);
+    }
+
+    [Fact]
     public async Task Notification_update_is_validated_persisted_and_published_without_overwriting_other_sections()
     {
         using var directory = new TemporaryDirectory();

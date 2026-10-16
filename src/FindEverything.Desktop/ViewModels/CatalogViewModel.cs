@@ -344,6 +344,7 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
 
     partial void OnSelectedProfileChanged(ProfileChoiceViewModel? value)
     {
+        NewEntryPath = string.Empty;
         SetSelectedOnlyMode(false); _displayedSelectedOnly = false;
         NotifySelectionImportAvailability();
         ResetLiveFilters();
@@ -376,6 +377,13 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
         SetSelection([]);
         RefreshOutputFormats(preferSaved: true);
         RefreshEffectiveDatabasePath(_workspaceContext.Current);
+        if (!_applyingSharedSource)
+        {
+            var applying = _isApplyingWorkspaceSnapshot;
+            _isApplyingWorkspaceSnapshot = true;
+            try { RestoreEntryPaths(_workspaceContext.Current); }
+            finally { _isApplyingWorkspaceSnapshot = applying; }
+        }
         ScanCommand.NotifyCanExecuteChanged();
         LoadCommand.NotifyCanExecuteChanged();
         ScheduleAutomaticLoad();
@@ -383,6 +391,9 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
 
     partial void OnRootPathChanged(string? oldValue, string? newValue)
     {
+        if (_updatingEntryPaths) return;
+        ReplaceEntryPaths(string.IsNullOrWhiteSpace(newValue) ? []
+            : new[] { newValue }.Concat(EntryPaths.Skip(1)), false);
         if (!SameWorkspacePath(oldValue, newValue))
         {
             _automaticLoadSuppressed = false;
@@ -1084,12 +1095,12 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
             // Reject an unavailable root before replacing completed results.
             // A network path may take a long time to answer; keep the probe off
             // the dispatcher and allow ScanAsync's preparation token to abandon it.
-            var rootExists = await Task.Run(() => Directory.Exists(workspace.RootPath), cancellationToken)
+            var missingRoot = await Task.Run(() => workspace.EntryPaths.FirstOrDefault(path => !Directory.Exists(path)), cancellationToken)
                 .WaitAsync(cancellationToken).ConfigureAwait(true);
             cancellationToken.ThrowIfCancellationRequested();
-            if (!rootExists)
+            if (missingRoot is not null)
                 throw new DirectoryNotFoundException(F("Loc.Catalog.Error.RootNotFound",
-                    "루트 폴더를 찾을 수 없습니다: {0}", workspace.RootPath));
+                    "루트 폴더를 찾을 수 없습니다: {0}", missingRoot));
             CancelWorkspacePersistenceDebounce();
             var workspaceVersion = Interlocked.Increment(ref _workspaceDraftVersion);
             var operationWorkspaceAttempt = CreateWorkspaceSaveAttempt(
@@ -1303,11 +1314,12 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
         string databasePath;
         try
         {
-            rootPath = Path.TrimEndingDirectorySeparator(Path.GetFullPath(RootPath));
+            var workspace = ValidateWorkspace(requireExistingRoot: false);
+            rootPath = workspace.RootPathsIdentity ?? workspace.RootPath;
             databasePath = Path.GetFullPath(DatabasePath);
         }
         catch (Exception exception) when (
-            exception is ArgumentException or NotSupportedException or PathTooLongException)
+            exception is ArgumentException or NotSupportedException or PathTooLongException or InvalidOperationException)
         {
             return;
         }
@@ -1365,7 +1377,7 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
     }
 
     private static CatalogRequest CreateRequest(WorkspaceSelection workspace) =>
-        new(workspace.ProfileId, workspace.RootPath, workspace.DatabasePath);
+        new(workspace.ProfileId, workspace.RootPath, workspace.DatabasePath) { EntryPaths = workspace.EntryPaths };
 
     private string CreatePartialResultMessage(int partialResultCount) =>
         partialResultCount > 0
@@ -1469,7 +1481,11 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
 
     private string FormatProgress(
         CatalogOperationProgress progress,
-        int matchedCount) =>
+        int matchedCount) => (progress.EntryCount > 1
+            ? F("Loc.Catalog.Entries.Progress", "경로 {0}/{1} · ", progress.EntryIndex, progress.EntryCount) : string.Empty)
+            + FormatProgressCore(progress, matchedCount);
+
+    private string FormatProgressCore(CatalogOperationProgress progress, int matchedCount) =>
         progress.Phase switch
         {
             CatalogOperationPhase.Preparing
@@ -1857,14 +1873,22 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
                 L("Loc.Catalog.Error.SelectRoot", "검색할 루트 폴더를 선택하세요."));
         }
 
-        var rootPath = Path.GetFullPath(RootPath);
-        if (requireExistingRoot && !Directory.Exists(rootPath))
+        var paths = (EntryPaths.Count > 0 ? EntryPaths : [RootPath]).Select(path =>
+        {
+            if (!Path.IsPathFullyQualified(path))
+                throw new ArgumentException(L("Loc.Catalog.Entries.Absolute", "드라이브 문자 또는 UNC 주소로 시작하는 절대경로를 입력하세요."));
+            return Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+        }).Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase).ToArray();
+        var identity = CatalogProjectionScope.CreateRootPathsIdentity(paths);
+        var rootPath = paths[0];
+        var missingRoot = requireExistingRoot ? paths.FirstOrDefault(path => !Directory.Exists(path)) : null;
+        if (missingRoot is not null)
         {
             throw new DirectoryNotFoundException(
                 F(
                     "Loc.Catalog.Error.RootNotFound",
                     "루트 폴더를 찾을 수 없습니다: {0}",
-                    rootPath));
+                    missingRoot));
         }
 
         var databasePath = string.IsNullOrWhiteSpace(DatabasePath)
@@ -1875,7 +1899,7 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
 
         var normalizedRoot = Path.TrimEndingDirectorySeparator(rootPath);
 
-        return new WorkspaceSelection(SelectedProfile.Id, normalizedRoot, databasePath);
+        return new WorkspaceSelection(SelectedProfile.Id, normalizedRoot, databasePath, identity);
     }
 
     private async Task PersistWorkspaceAsync(
@@ -1899,7 +1923,7 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
         {
             if (!preservedFields.HasFlag(WorkspaceDraftFields.RootPath))
             {
-                RootPath = snapshot.RootPath;
+                RestoreEntryPaths(snapshot);
             }
 
             if (!preservedFields.HasFlag(WorkspaceDraftFields.DatabasePath))
@@ -2075,7 +2099,11 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
                 profileId,
                 normalizedRoot,
                 current.DatabasePath,
-                profileDatabasePaths));
+                profileDatabasePaths,
+                fields.HasFlag(WorkspaceDraftFields.RootPath) && !string.IsNullOrWhiteSpace(profileId)
+                    ? ProfileEntryPathSnapshots.Replace(current.ProfileEntryPaths, profileId,
+                        EntryPaths.Select(path => Path.TrimEndingDirectorySeparator(Path.GetFullPath(path))).ToArray())
+                    : current.ProfileEntryPaths));
     }
 
     private static WorkspaceSnapshot MergeWorkspaceDraft(
@@ -2091,7 +2119,9 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
             current.DatabasePath,
             attempt.Fields.HasFlag(WorkspaceDraftFields.DatabasePath)
                 ? MergeProfileDatabaseOverride(current, attempt.Snapshot)
-                : current.ProfileDatabasePaths);
+                : current.ProfileDatabasePaths,
+            attempt.Fields.HasFlag(WorkspaceDraftFields.RootPath)
+                ? MergeProfileEntryPaths(current, attempt.Snapshot) : current.ProfileEntryPaths);
 
     private static IReadOnlyDictionary<string, string>? MergeProfileDatabaseOverride(
         WorkspaceSnapshot current,
@@ -2131,7 +2161,11 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
                 current.SelectedProfileId,
                 StringComparison.OrdinalIgnoreCase))
         && (!attempt.Fields.HasFlag(WorkspaceDraftFields.RootPath)
-            || PathsEqual(attempt.Snapshot.RootPath, current.RootPath))
+            || (PathsEqual(attempt.Snapshot.RootPath, current.RootPath)
+                && (attempt.Snapshot.SelectedProfileId is not { } profileId
+                    || ProfileEntryPathSnapshots.Equal(
+                        ProfileEntryPathSnapshots.Get(attempt.Snapshot.ProfileEntryPaths, profileId),
+                        ProfileEntryPathSnapshots.Get(current.ProfileEntryPaths, profileId)))))
         && (!attempt.Fields.HasFlag(WorkspaceDraftFields.DatabasePath)
             || PathsEqual(
                 GetProfileDatabaseOverride(
@@ -2541,7 +2575,12 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
     private sealed record WorkspaceSelection(
         string ProfileId,
         string RootPath,
-        string DatabasePath);
+        string DatabasePath,
+        string? RootPathsIdentity = null)
+    {
+        public IReadOnlyList<string> EntryPaths => RootPathsIdentity is null ? [RootPath]
+            : System.Text.Json.JsonSerializer.Deserialize<string[]>(RootPathsIdentity)!;
+    }
 
     private sealed record WorkspaceSaveAttempt(
         long Version,

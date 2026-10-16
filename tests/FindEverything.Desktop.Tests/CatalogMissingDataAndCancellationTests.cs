@@ -342,7 +342,8 @@ public sealed partial class CatalogMissingDataAndCancellationTests
             Service = new CatalogService();
             // The composition smoke test owns the process-wide Application.
             // Keep this fixture's callbacks on its own running STA dispatcher.
-            ViewModel = new CatalogViewModel(Service, new Profiles(), new Workspace(_databasePath),
+            Workspace = new Workspace(_databasePath);
+            ViewModel = new CatalogViewModel(Service, new Profiles(), Workspace,
                 new DatabaseResolver(_databasePath), null!, null!,
                 new ApplicationOperationCoordinator(NullLogger<ApplicationOperationCoordinator>.Instance),
                 new Notifier(), new Snackbar(), new Formats(), null!, null!, null!,
@@ -351,6 +352,7 @@ public sealed partial class CatalogMissingDataAndCancellationTests
         }
 
         public CatalogViewModel ViewModel { get; }
+        public Workspace Workspace { get; }
         public Query Query { get; }
         public Store Store { get; }
         public Prompt Prompt { get; }
@@ -449,6 +451,7 @@ public sealed partial class CatalogMissingDataAndCancellationTests
     private sealed class Store(bool cacheExists, int cacheCount, Query query) : ICatalogProjectionStore
     {
         public int FindCalls { get; private set; }
+        public int FindLastPublishedCalls { get; private set; }
         public int OpenQueryCalls { get; private set; }
         public int BeginCalls { get; private set; }
         public int LiveFilterCalls { get; private set; }
@@ -465,6 +468,8 @@ public sealed partial class CatalogMissingDataAndCancellationTests
                 ? new("cached", scope, new(cacheCount, cacheCount, 0, 0, 0, false, CachedScanElapsed, DateTimeOffset.UtcNow),
                     CachedFields ?? new SampleProfile().Descriptor.Fields) : null);
         }
+        public Task<CatalogProjectionSnapshot?> FindLastPublishedAsync(CatalogProjectionScope scope, CancellationToken cancellationToken = default)
+        { FindLastPublishedCalls++; return FindAsync(scope, cancellationToken); }
         public ICatalogProjectionWriter Begin(CatalogProjectionScope scope, IReadOnlyList<ProfileFieldDescriptor> fields)
         { BeginCalls++; return WriterFactory?.Invoke(scope, fields) ?? new Writer(scope, fields); }
         public IResultQuerySession<CatalogProjectionRow> OpenQuery(CatalogProjectionSnapshot snapshot, CatalogProjectionQuery definition)
