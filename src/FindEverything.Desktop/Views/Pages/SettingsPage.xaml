@@ -74,7 +74,7 @@
                             <ComboBox Style="{StaticResource ContentAwareComboBoxStyle}" HorizontalAlignment="Stretch" DisplayMemberPath="DisplayName" ItemsSource="{Binding CatalogRowDensityChoices}" SelectedItem="{Binding SelectedCatalogRowDensity}" AutomationProperties.Name="{DynamicResource Loc.Settings.Density.Title}" ToolTip="{DynamicResource Loc.Settings.Density.Help}" />
                         </controls:SettingRowCard>
                         <controls:SettingRowCard Style="{StaticResource GroupedSettingRowStyle}" BorderThickness="0" Title="{DynamicResource Loc.Workspace.Settings.Language}" Description="{DynamicResource Loc.Workspace.Settings.Language.Help}">
-                            <ui:TextBlock Style="{StaticResource CaptionTextStyle}" Text="{DynamicResource Loc.Workspace.Settings.Language.Action}" />
+                            <ui:TextBlock x:Name="SettingsLanguageGuidance" Style="{StaticResource CaptionTextStyle}" TextWrapping="Wrap" Text="{DynamicResource Loc.Workspace.Settings.Language.Action}" />
                         </controls:SettingRowCard>
                     </StackPanel>
                     </controls:SectionCard.Header>

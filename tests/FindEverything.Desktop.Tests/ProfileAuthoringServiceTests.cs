@@ -10,6 +10,38 @@ namespace FindEverything.Desktop.Tests;
 
 public sealed class ProfileAuthoringServiceTests
 {
+    [Theory]
+    [InlineData(ProfileRegexMatchMode.Full, @"C:\Archive\name", true)]
+    [InlineData(ProfileRegexMatchMode.Full, @"C:\Other\name", false)]
+    [InlineData(ProfileRegexMatchMode.Full, @"C:\Archive\name\child", false)]
+    [InlineData(ProfileRegexMatchMode.Partial, @"C:\Other\name", true)]
+    [InlineData(ProfileRegexMatchMode.Partial, @"C:\Archive\name\child", false)]
+    [InlineData(ProfileRegexMatchMode.Full, @"\\192.0.2.10\Share\Archive\name", true)]
+    [InlineData(ProfileRegexMatchMode.Full, @"\\192.0.2.10\Share\Other\name", false)]
+    [InlineData(ProfileRegexMatchMode.Partial, @"\\192.0.2.10\Share\Other\name", true)]
+    public void Authored_exclusions_apply_full_or_partial_matching_to_the_entire_absolute_path(
+        ProfileRegexMatchMode mode, string absolutePath, bool expectedExcluded)
+    {
+        using var directory = new TemporaryDirectory();
+        using var provider = CreateProvider(directory.Path, CreatePaths(directory.Path));
+        var manifest = CreateValidManifest();
+        manifest.DirectoryExclusionRules = [new()
+        {
+            Id = "skip-path",
+            Pattern = mode == ProfileRegexMatchMode.Full
+                ? @"(?:C:\\Archive|\\\\192\.0\.2\.10\\Share\\Archive)\\(?<folder>name)"
+                : @"[\\/](?<folder>name)$",
+            MatchMode = mode,
+            TimeoutMilliseconds = 100,
+        }];
+        var review = provider.GetRequiredService<IProfileAuthoringService>().Validate(manifest);
+
+        Assert.True(review.IsValid);
+        Assert.NotNull(review.Profile);
+        Assert.Equal(expectedExcluded, review.Profile.EvaluateDirectoryPath(absolutePath).IsExcluded);
+        Assert.Throws<ArgumentException>(() => review.Profile.EvaluateDirectoryPath("name"));
+    }
+
     [Fact]
     public async Task SaveAndApplyAsync_PersistsDeclarativeProfileAndPublishesItImmediately()
     {
@@ -45,15 +77,16 @@ public sealed class ProfileAuthoringServiceTests
         Assert.True(File.Exists(expectedManifestPath));
         var savedJson = await File.ReadAllTextAsync(expectedManifestPath);
         Assert.DoesNotContain("pathInput", savedJson, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("excludedDirectoryNameRules", savedJson, StringComparison.Ordinal);
+        Assert.Contains("directoryExclusionRules", savedJson, StringComparison.Ordinal);
 
         var profile = Assert.Single(snapshot.Profiles);
         Assert.Equal("gui-sample", profile.Descriptor.Id);
         Assert.Equal("GUI Sample", profile.Descriptor.DisplayName);
         Assert.Equal(ProfileKind.Declarative, profile.Descriptor.Kind);
-        var exclusion = Assert.Single(profile.Descriptor.ExcludedDirectoryNameRules);
+        var exclusion = Assert.Single(profile.Descriptor.DirectoryExclusionRules);
         Assert.Equal("skip-node-modules", exclusion.Id);
-        Assert.Equal("node_modules", exclusion.Pattern);
+        Assert.Equal(@"[\\/]node_modules$", exclusion.Pattern);
+        Assert.Equal(ProfileRegexMatchMode.Partial, exclusion.MatchMode);
         var userInput = Assert.Single(profile.Descriptor.UserInputFields);
         Assert.Equal("review-note", userInput.FieldId);
         Assert.Equal("Enter a review note", userInput.Placeholder);
@@ -73,7 +106,7 @@ public sealed class ProfileAuthoringServiceTests
         Assert.Equal("GUI Sample", savedManifest.DisplayName);
         Assert.Equal(
             "skip-node-modules",
-            Assert.Single(savedManifest.ExcludedDirectoryNameRules!).Id);
+            Assert.Single(savedManifest.DirectoryExclusionRules!).Id);
         Assert.Equal(
             "review-note",
             Assert.Single(savedManifest.UserInputFields!).FieldId);
@@ -84,9 +117,12 @@ public sealed class ProfileAuthoringServiceTests
         Assert.Equal(ProfileMapStatus.Success, sample.Mapping?.Status);
         Assert.Equal("Beta", sample.Mapping?.Item?.Values["client"]);
         Assert.Equal(2025, sample.Mapping?.Item?.Values["year"]);
-        var loadedExclusion = sample.Review.Profile!.EvaluateDirectoryName("node_modules");
+        var loadedExclusion = sample.Review.Profile!.EvaluateDirectoryPath(@"C:\Projects\node_modules");
         Assert.True(loadedExclusion.IsExcluded);
         Assert.Equal("skip-node-modules", loadedExclusion.MatchedRuleId);
+        Assert.False(sample.Review.Profile.EvaluateDirectoryPath(@"C:\Projects\node_modules-backup").IsExcluded);
+        Assert.False(sample.Review.Profile.EvaluateDirectoryPath(@"C:\node_modules\Projects").IsExcluded);
+        Assert.True(sample.Review.Profile.EvaluateDirectoryPath(@"\\192.0.2.10\Share\Projects\node_modules").IsExcluded);
 
         savedManifest.DisplayName = "Updated GUI Sample";
         var updated = await service.SaveAndApplyAsync(savedManifest, "gui-sample");
@@ -313,13 +349,13 @@ public sealed class ProfileAuthoringServiceTests
             Version = "1.0.0",
             DisplayName = "GUI Sample",
             CandidateKind = ProfileCandidateKind.Directory,
-            ExcludedDirectoryNameRules =
+            DirectoryExclusionRules =
             [
-                new ProfileDirectoryNameExclusionRuleManifest
+                new ProfileDirectoryExclusionRuleManifest
                 {
                     Id = "skip-node-modules",
-                    Pattern = "node_modules",
-                    MatchMode = ProfileRegexMatchMode.Full,
+                    Pattern = @"[\\/]node_modules$",
+                    MatchMode = ProfileRegexMatchMode.Partial,
                     IgnoreCase = true,
                     TimeoutMilliseconds = 100,
                 },

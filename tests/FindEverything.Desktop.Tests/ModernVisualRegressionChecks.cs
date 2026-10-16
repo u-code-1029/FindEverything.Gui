@@ -44,6 +44,24 @@ internal static class ModernVisualRegressionChecks
         Assert.True(search.Focusable);
         Assert.True(search.IsTabStop);
         Assert.Null(search.Effect);
+
+        var selector = new ComboBox { Style = Assert.IsType<Style>(resources["ContentAwareComboBoxStyle"]) };
+        Assert.Equal(40, selector.MinHeight);
+        Assert.True(double.IsNaN(selector.Height), "Font metrics, not a fixed height, own selector growth.");
+        Assert.Equal(new Thickness(12, 8, 12, 8), selector.Padding);
+        Assert.Equal(VerticalAlignment.Center, selector.VerticalContentAlignment);
+
+        var action = new Ui.Button { Style = Assert.IsType<Style>(resources["CompactActionButtonStyle"]) };
+        Assert.Equal(32, action.MinHeight);
+        Assert.True(double.IsNaN(action.Height));
+        Assert.Equal(new Thickness(10, 4, 10, 4), action.Padding);
+        var icon = new Ui.Button { Style = Assert.IsType<Style>(resources["CompactIconButtonStyle"]) };
+        Assert.Equal(32, icon.Width);
+        Assert.Equal(32, icon.Height);
+        Assert.Equal(new Thickness(4), icon.Padding);
+        Assert.True(icon.Height - icon.Padding.Top - icon.Padding.Bottom
+            - icon.BorderThickness.Top - icon.BorderThickness.Bottom >= 20,
+            "A 20 DIP Fluent icon must fit inside its 32 DIP hit target.");
     }
 
     internal static void VerifyResultInputs(FilesPage files, CatalogPage catalog)

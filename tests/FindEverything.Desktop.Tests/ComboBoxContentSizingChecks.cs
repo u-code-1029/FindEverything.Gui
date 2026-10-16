@@ -1,9 +1,11 @@
 using System.ComponentModel;
+using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Data;
 using System.Windows.Markup;
+using System.Windows.Media;
 using System.Windows.Threading;
 using FindEverything.Desktop.Behaviors;
 using Xunit;
@@ -93,8 +95,136 @@ internal static class ComboBoxContentSizingChecks
             Pump(host);
             Assert.Equal("Explicit accessible label", ComboBoxContentSizing.GetFullSelectedText(combo));
             VerifyAutoSizedContainers(host, combo.Style);
+            VerifySelectedTextGeometry(host, combo.Style);
         }
         finally { host.Close(); }
+    }
+
+    private static void VerifySelectedTextGeometry(Window host, Style style)
+    {
+        var original = host.Content;
+        var originalWidth = host.Width;
+        var originalHeight = host.Height;
+        var choice = new Choice("프로젝트 담당자 김민수");
+        var combo = new ComboBox
+        {
+            Style = style, ItemsSource = new[] { choice, new Choice("Other choice") },
+            SelectedItem = choice, DisplayMemberPath = nameof(Choice.Label),
+            HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
+        };
+        var surface = new Grid { Margin = new Thickness(16) };
+        surface.Children.Add(combo);
+        host.Content = surface;
+        host.Width = 1000;
+        host.Height = 320;
+        try
+        {
+            Pump(host);
+            var nativeTemplate = combo.Template;
+            Assert.NotNull(nativeTemplate);
+            Assert.True(combo.Focusable && combo.IsTabStop, "Content sizing must preserve native keyboard/tab accessibility.");
+            Assert.True(combo.MinHeight >= 40, "The selected label needs a padded minimum hit target.");
+            Assert.True(combo.Padding.Top >= 8 && combo.Padding.Bottom >= 8);
+            Assert.Equal(VerticalAlignment.Center, combo.VerticalContentAlignment);
+
+            // LayoutTransform checks logical layout scaling, not a monitor-DPI
+            // switch. Actual 100/150/200% per-monitor DPI still needs Windows QA.
+            foreach (var scale in new[] { 1d, 1.5d, 2d })
+            foreach (var fontSize in new[] { 14d, 18d, 22d })
+            foreach (var label in new[] { "프로젝트 담당자 김민수", "Project owner gjpqy" })
+            {
+                surface.LayoutTransform = new ScaleTransform(scale, scale);
+                combo.FontSize = fontSize;
+                choice.Label = label;
+                Pump(host);
+                var context = $"{label}, font {fontSize}, logical scale {scale:P0}";
+                AssertSelectedContentFits(combo, requireFullTextWidth: true, context);
+                Assert.Same(nativeTemplate, combo.Template);
+            }
+
+            // Popup items use a separate native template/presentation source.
+            // Check the selected item too, without opening the 1,000-item fixture.
+            surface.LayoutTransform = Transform.Identity;
+            combo.FontSize = 22;
+            combo.IsDropDownOpen = true;
+            Pump(host);
+            var selectedContainer = Assert.IsType<ComboBoxItem>(combo.ItemContainerGenerator.ContainerFromIndex(0));
+            Assert.True(selectedContainer.IsSelected);
+            var selectedText = Descendants(selectedContainer).OfType<TextBlock>()
+                .FirstOrDefault(text => text.IsVisible && text.Text == choice.Label);
+            Assert.NotNull(selectedText);
+            AssertTextFitsVertically(selectedText, selectedContainer, "Native selected dropdown item");
+        }
+        finally
+        {
+            combo.IsDropDownOpen = false;
+            host.Content = original;
+            host.Width = originalWidth;
+            host.Height = originalHeight;
+            Pump(host);
+        }
+    }
+
+    internal static void AssertSelectedContentFits(ComboBox combo, bool requireFullTextWidth, string context)
+    {
+        var presenter = combo.Template?.FindName("ContentSite", combo) as ContentPresenter
+            ?? Descendants(combo).OfType<ContentPresenter>()
+                .FirstOrDefault(candidate => Equals(candidate.Content, combo.SelectionBoxItem));
+        Assert.NotNull(presenter);
+        Assert.True(presenter.ActualHeight > 0, $"{context}: selected ContentPresenter must have a usable height.");
+        var texts = Descendants(presenter).OfType<TextBlock>()
+            .Where(static text => text.IsVisible && !string.IsNullOrWhiteSpace(text.Text)).ToArray();
+        Assert.NotEmpty(texts);
+        foreach (var text in texts)
+        {
+            AssertTextFitsVertically(text, combo, context);
+            if (!requireFullTextWidth) continue; // Long profile labels may intentionally ellipsize horizontally.
+            var formatted = MeasureText(text);
+            Assert.True(text.ActualWidth + 1 >= formatted.WidthIncludingTrailingWhitespace,
+                $"{context}: selected text width {text.ActualWidth} must accommodate {formatted.WidthIncludingTrailingWhitespace}.");
+            var bounds = text.TransformToAncestor(presenter).TransformBounds(new Rect(text.RenderSize));
+            Assert.True(bounds.Left >= -1 && bounds.Right <= presenter.ActualWidth + 1,
+                $"{context}: selected text must fit the native ContentPresenter horizontally.");
+        }
+    }
+
+    internal static void AssertTextFitsVertically(TextBlock text, FrameworkElement boundary, string context)
+    {
+        var formatted = MeasureText(text);
+        var ink = formatted.BuildGeometry(new Point()).Bounds;
+        Assert.True(text.ActualHeight + 1 >= formatted.Height,
+            $"{context}: text height {text.ActualHeight} clips the natural line height {formatted.Height}.");
+        Assert.True(ink.IsEmpty || (ink.Top >= -1 && ink.Bottom <= text.ActualHeight + 1),
+            $"{context}: native glyph bounds {ink} must fit, including lower-case descenders.");
+        DependencyObject? ancestor = text;
+        while (ancestor is not null && !ReferenceEquals(ancestor, boundary))
+        {
+            ancestor = VisualTreeHelper.GetParent(ancestor);
+            if (ancestor is not FrameworkElement parent || parent.ActualHeight <= 0) continue;
+            var bounds = text.TransformToAncestor(parent).TransformBounds(new Rect(text.RenderSize));
+            Assert.True(bounds.Top >= -1 && bounds.Bottom <= parent.ActualHeight + 1,
+                $"{context}: {text.GetType().Name} vertically exceeds native ancestor {parent.GetType().Name} ({bounds} vs {parent.ActualHeight}).");
+        }
+        Assert.Same(boundary, ancestor);
+    }
+
+    private static FormattedText MeasureText(TextBlock text)
+    {
+        var formatted = new FormattedText(text.Text, CultureInfo.CurrentUICulture, text.FlowDirection,
+            new Typeface(text.FontFamily, text.FontStyle, text.FontWeight, text.FontStretch), text.FontSize,
+            text.Foreground ?? Brushes.Black, VisualTreeHelper.GetDpi(text).PixelsPerDip);
+        if (double.IsFinite(text.LineHeight) && text.LineHeight > 0) formatted.LineHeight = text.LineHeight;
+        return formatted;
+    }
+
+    private static IEnumerable<DependencyObject> Descendants(DependencyObject root)
+    {
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(root); index++)
+        {
+            var child = VisualTreeHelper.GetChild(root, index);
+            yield return child;
+            foreach (var descendant in Descendants(child)) yield return descendant;
+        }
     }
 
     private static void VerifyAutoSizedContainers(Window host, Style style)

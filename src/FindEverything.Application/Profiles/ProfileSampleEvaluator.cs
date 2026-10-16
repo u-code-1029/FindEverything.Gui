@@ -6,7 +6,7 @@ public sealed record ProfileSampleResult(
     string CanonicalPath,
     string LeafName,
     ProfileMapResult Mapping,
-    ProfileDirectoryNameExclusionResult? DirectoryExclusion);
+    ProfileDirectoryExclusionResult? DirectoryExclusion);
 
 public interface IProfileSampleEvaluator
 {
@@ -34,8 +34,8 @@ public sealed class ProfileSampleEvaluator(IProfilePathCanonicalizer pathCanonic
         var canonicalPath = pathCanonicalizer.Canonicalize(inputPath.Trim());
         cancellationToken.ThrowIfCancellationRequested();
         var leaf = GetDirectoryLeafName(canonicalPath);
-        var exclusion = leaf.Length == 0 || profile.Descriptor.ExcludedDirectoryNameRules.Count == 0
-            ? null : profile.EvaluateDirectoryName(leaf);
+        var exclusion = profile.Descriptor.DirectoryExclusionRules.Count == 0
+            ? null : profile.EvaluateDirectoryPath(canonicalPath);
         cancellationToken.ThrowIfCancellationRequested();
         return new(canonicalPath, leaf, profile.Map(new ProfilePathCandidate(canonicalPath), cancellationToken), exclusion);
     }

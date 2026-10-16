@@ -1646,7 +1646,7 @@ public partial class CatalogViewModel : ObservableObject, IPageSession
         var exclusionSummary = discoveredDirectly
             ? F(
                 "Loc.Catalog.Result.ExclusionSummary",
-                " · 이름 규칙 제외 {0:N0}{1}",
+                " · 경로 규칙 제외 {0:N0}{1}",
                 result.ExcludedDirectoryCount,
                 exclusionIncomplete
                     ? F(

@@ -342,8 +342,8 @@ public sealed class OutputFormatsViewModelTests
             [new ProfileFieldDescriptor("Client", "client", "Client name", 0, true,
                 ProfileFieldValueKind.String, false, null, null)], []);
         public ProfileMapResult Map(ProfilePathCandidate candidate) => ProfileMapResult.NoMatch();
-        public ProfileDirectoryNameExclusionResult EvaluateDirectoryName(string directoryName) =>
-            ProfileDirectoryNameExclusionResult.NotExcluded();
+        public ProfileDirectoryExclusionResult EvaluateDirectoryPath(string directoryName) =>
+            ProfileDirectoryExclusionResult.NotExcluded();
     }
 
     private sealed class MemoryFormatStore : ISelectionOutputFormatStore

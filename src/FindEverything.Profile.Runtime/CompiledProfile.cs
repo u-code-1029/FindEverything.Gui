@@ -11,7 +11,7 @@ internal sealed class CompiledProfile : ILoadedProfile
     private readonly Func<IReadOnlyDictionary<string, object?>, object> _createModel;
     private readonly CompiledField[] _fields;
     private readonly CompiledRegexRule[] _rules;
-    private readonly CompiledDirectoryNameExclusionRule[] _excludedDirectoryNameRules;
+    private readonly CompiledDirectoryExclusionRule[] _directoryExclusionRules;
     private readonly CompiledTextFileField[] _textFileFields;
 
     public CompiledProfile(
@@ -19,7 +19,7 @@ internal sealed class CompiledProfile : ILoadedProfile
         Func<IReadOnlyDictionary<string, object?>, object> createModel,
         CompiledField[] fields,
         CompiledRegexRule[] rules,
-        CompiledDirectoryNameExclusionRule[] excludedDirectoryNameRules,
+        CompiledDirectoryExclusionRule[] directoryExclusionRules,
         CompiledTextFileField[] textFileFields,
         string? modelCacheIdentity = null)
     {
@@ -27,7 +27,7 @@ internal sealed class CompiledProfile : ILoadedProfile
         _createModel = createModel;
         _fields = fields;
         _rules = rules;
-        _excludedDirectoryNameRules = excludedDirectoryNameRules;
+        _directoryExclusionRules = directoryExclusionRules;
         _textFileFields = textFileFields;
         CacheIdentity = typeof(CompiledProfile).Module.ModuleVersionId.ToString("N")
             + "|" + (modelCacheIdentity ?? "declarative");
@@ -63,17 +63,17 @@ internal sealed class CompiledProfile : ILoadedProfile
         return new(value, issues.AsReadOnly()) { Resource = resource };
     }
 
-    public ProfileDirectoryNameExclusionResult EvaluateDirectoryName(string directoryName)
+    public ProfileDirectoryExclusionResult EvaluateDirectoryPath(string absolutePath)
     {
-        ArgumentException.ThrowIfNullOrEmpty(directoryName);
+        ProfilePathCandidate.ValidateAbsolutePath(absolutePath);
 
-        foreach (var rule in _excludedDirectoryNameRules)
+        foreach (var rule in _directoryExclusionRules)
         {
             try
             {
-                if (rule.Regex.IsMatch(directoryName))
+                if (rule.Regex.IsMatch(absolutePath))
                 {
-                    return ProfileDirectoryNameExclusionResult.Excluded(rule.Id);
+                    return ProfileDirectoryExclusionResult.Excluded(rule.Id);
                 }
             }
             catch (RegexMatchTimeoutException exception)
@@ -82,17 +82,17 @@ internal sealed class CompiledProfile : ILoadedProfile
                 // cannot multiply the per-rule timeout into a minutes-long,
                 // non-cancellable traversal callback. This is intentionally
                 // fail-open: the directory is still mapped and traversed.
-                return new ProfileDirectoryNameExclusionResult(
+                return new ProfileDirectoryExclusionResult(
                     false,
                     null,
                     [new ProfileMappingIssue(
                         "directory_exclusion_regex_timeout",
                         null,
-                        $"폴더 이름 제외 규칙 '{rule.Id}'의 실행 시간이 제한을 초과했습니다: {exception.MatchTimeout.TotalMilliseconds:0} ms")]);
+                        $"폴더 경로 제외 규칙 '{rule.Id}'의 실행 시간이 제한을 초과했습니다: {exception.MatchTimeout.TotalMilliseconds:0} ms")]);
             }
         }
 
-        return ProfileDirectoryNameExclusionResult.NotExcluded();
+        return ProfileDirectoryExclusionResult.NotExcluded();
     }
 
     public ProfileMapResult Map(ProfilePathCandidate candidate) => Map(candidate, CancellationToken.None);

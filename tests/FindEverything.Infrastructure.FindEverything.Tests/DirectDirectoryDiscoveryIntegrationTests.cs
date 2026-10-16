@@ -14,6 +14,48 @@ namespace FindEverything.Infrastructure.FindEverything.Tests;
 public sealed class DirectDirectoryDiscoveryIntegrationTests
 {
     [Theory]
+    [InlineData(ProfileRegexMatchMode.Full)]
+    [InlineData(ProfileRegexMatchMode.Partial)]
+    public async Task Absolute_path_exclusions_distinguish_identical_leaf_names_and_are_persisted(ProfileRegexMatchMode mode)
+    {
+        using var workspace = new TestWorkspace();
+        var excluded = Path.Combine(workspace.SourcePath, "private", "cache");
+        var visible = Path.Combine(workspace.SourcePath, "public", "cache");
+        Directory.CreateDirectory(Path.Combine(excluded, "hidden-child"));
+        Directory.CreateDirectory(Path.Combine(visible, "visible-child"));
+        var services = new ServiceCollection();
+        services.AddSingleton(typeof(ILogger<>), typeof(NoOpLogger<>));
+        services.AddFindEverythingApplication(new ConfigurationBuilder().Build())
+            .AddFindEverythingInfrastructure().AddProfileRuntime();
+        await using var provider = services.BuildServiceProvider();
+        var review = provider.GetRequiredService<IProfileDefinitionCompiler>().Validate(new()
+        {
+            ContractVersion = ProfileContract.CurrentMajor, Kind = ProfileKind.Declarative,
+            Id = "path-exclusion", Version = "1", DisplayName = "Path exclusion",
+            Fields = [new() { FieldId = "path", GroupName = "path", Header = "Path", Required = true }],
+            Rules = [new() { Id = "all", Pattern = "(?<path>.+)", MatchMode = ProfileRegexMatchMode.Full }],
+            DirectoryExclusionRules = [new()
+            {
+                Id = "private-only", MatchMode = mode,
+                Pattern = mode == ProfileRegexMatchMode.Full ? Regex.Escape(excluded)
+                    : Regex.Escape(Path.Combine(workspace.SourcePath, "private") + Path.DirectorySeparatorChar),
+            }],
+        });
+        Assert.True(review.IsValid, string.Join(Environment.NewLine, review.Diagnostics.Select(static value => value.Message)));
+        provider.GetRequiredService<IProfileCatalogPublisher>().Publish(new([review.Profile!], [], DateTimeOffset.UtcNow));
+        var request = new CatalogRequest("path-exclusion", workspace.SourcePath, workspace.DatabasePath);
+        var service = provider.GetRequiredService<ICatalogService>();
+        var scanned = await service.ScanAndLoadAsync(request);
+        Assert.Equal(1, scanned.ExcludedDirectoryCount);
+        Assert.Equal(5, scanned.MatchedCount);
+        Assert.Contains(scanned.Items, item => item.FullPath == visible);
+        Assert.Contains(scanned.Items, item => item.FullPath == Path.Combine(visible, "visible-child"));
+        Assert.DoesNotContain(scanned.Items, item => item.FullPath == excluded || item.FullPath == Path.Combine(excluded, "hidden-child"));
+        var loaded = await service.LoadExistingAsync(request);
+        Assert.Equal(scanned.Items.Select(static item => item.FullPath).Order(), loaded.Items.Select(static item => item.FullPath).Order());
+    }
+
+    [Theory]
     [InlineData(1)]
     [InlineData(8)]
     public async Task Multiple_roots_and_an_overlapping_entry_survive_reopened_database_without_duplicate_results(int maxDepth)
@@ -217,12 +259,12 @@ public sealed class DirectDirectoryDiscoveryIntegrationTests
             ValidateScopes = true,
         });
         var manifest = CreateManifest(scanRoot);
-        manifest.ExcludedDirectoryNameRules =
+        manifest.DirectoryExclusionRules =
         [
-            new ProfileDirectoryNameExclusionRuleManifest
+            new ProfileDirectoryExclusionRuleManifest
             {
                 Id = "skip-name",
-                Pattern = "name",
+                Pattern = Regex.Escape(scanRoot) + @"(?:[\\/]name)?",
                 MatchMode = ProfileRegexMatchMode.Full,
                 TimeoutMilliseconds = 100,
             },
@@ -331,7 +373,7 @@ public sealed class DirectDirectoryDiscoveryIntegrationTests
     }
 
     [Fact]
-    public async Task Discover_excludes_a_matching_leaf_directory_and_descendants_but_continues_with_siblings()
+    public async Task Discover_excludes_a_matching_absolute_directory_path_and_descendants_but_continues_with_siblings()
     {
         using var workspace = new TestWorkspace();
         var excludedPath = Path.Combine(workspace.SourcePath, "name");
@@ -356,12 +398,12 @@ public sealed class DirectDirectoryDiscoveryIntegrationTests
             ValidateScopes = true,
         });
         var manifest = CreateManifest(workspace.SourcePath);
-        manifest.ExcludedDirectoryNameRules =
+        manifest.DirectoryExclusionRules =
         [
-            new ProfileDirectoryNameExclusionRuleManifest
+            new ProfileDirectoryExclusionRuleManifest
             {
                 Id = "skip-name",
-                Pattern = "name",
+                Pattern = Regex.Escape(excludedPath),
                 MatchMode = ProfileRegexMatchMode.Full,
                 TimeoutMilliseconds = 100,
             },
@@ -399,7 +441,7 @@ public sealed class DirectDirectoryDiscoveryIntegrationTests
             trace.Events,
             static entry => entry.Kind == CatalogScanTraceKind.DirectoryExcluded);
         Assert.Equal(excludedPath, excludedTrace.FullPath);
-        Assert.Equal("name", excludedTrace.MatchInput);
+        Assert.Equal(excludedPath, excludedTrace.MatchInput);
         Assert.Equal("skip-name", excludedTrace.MatchedRuleId);
         Assert.Equal(
             global::FindEverything.Application.Indexing.DirectoryTraversalDecision.ExcludeSubtree,

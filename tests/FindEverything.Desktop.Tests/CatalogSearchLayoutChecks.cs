@@ -44,8 +44,13 @@ internal static class CatalogSearchLayoutChecks
                 Pump(host);
                 var rows = Named<Grid>(page, "CatalogCommandRows");
                 Assert.Equal(2, rows.RowDefinitions.Count);
-                Assert.Equal(44, rows.RowDefinitions[0].ActualHeight);
-                Assert.Equal(40, rows.RowDefinitions[1].ActualHeight);
+                Assert.True(rows.RowDefinitions[0].Height.IsAuto && rows.RowDefinitions[1].Height.IsAuto,
+                    "Both command rows must measure content instead of clipping text to a fixed height.");
+                Assert.True(rows.RowDefinitions[0].MinHeight >= 44);
+                Assert.True(rows.RowDefinitions[1].MinHeight >= 48,
+                    "The context row must reserve its 8-DIP top gap in addition to a 40-DIP selector.");
+                Assert.True(rows.RowDefinitions[0].ActualHeight >= 44);
+                Assert.True(rows.RowDefinitions[1].ActualHeight >= 48);
                 var search = Named<Ui.TextBox>(page, "SearchBox");
                 Assert.True(search.ActualHeight >= 44 && search.FontSize >= 17);
                 Assert.True(search.ActualWidth >= 220, "Search must remain the largest primary control at the minimum viewport.");
@@ -56,11 +61,35 @@ internal static class CatalogSearchLayoutChecks
                 Assert.False(string.IsNullOrWhiteSpace(AutomationProperties.GetName(import)));
                 Assert.NotNull(import.ToolTip);
                 Assert.True(profile.ActualWidth >= 96, "Long profile names must not displace the JSON or location action.");
+                ComboBoxContentSizingChecks.AssertSelectedContentFits(profile, requireFullTextWidth: false,
+                    $"Catalog profile at {size.Width} × {size.Height}");
+                var contextRow = Named<Grid>(page, "CatalogContextRow");
+                Assert.True(contextRow.ActualHeight >= 40, "The context selector must retain its full padded height after the row gap.");
+                foreach (var name in new[] { "CatalogProfileComboBox", "ImportCatalogProfileButton", "CatalogLocationButton", "CatalogWorkspaceTransferPanel" })
+                    AssertInside(Named<FrameworkElement>(page, name), contextRow);
+                AssertInside(Named<Grid>(page, "CatalogSearchRow"), rows);
+                AssertInside(contextRow, rows);
+                var location = Named<Ui.Button>(page, "CatalogLocationButton");
+                Assert.Equal(Ui.SymbolRegular.FolderAdd20, Assert.IsType<Ui.SymbolIcon>(location.Icon).Symbol);
+                Assert.Same(fixture.OpenEntryPathsCommand, location.Command);
+                var locationLabel = Named<Ui.TextBlock>(page, "CatalogLocationActionLabel");
+                Assert.Equal(page.FindResource("Loc.Catalog.Entries.ManageShort"), locationLabel.Text);
+                Assert.True(locationLabel.IsVisible && locationLabel.ActualWidth > 0);
+                AssertInside(locationLabel, location);
+                var locationSummary = Named<Ui.TextBlock>(page, "CatalogLocationSummary");
+                Assert.Equal(fixture.EntryPathsSummary, locationSummary.Text);
+                Assert.Equal(location.ActualWidth >= 240 ? Visibility.Visible : Visibility.Collapsed,
+                    locationSummary.Visibility);
+                if (locationSummary.IsVisible) AssertInside(locationSummary, location);
                 foreach (var name in new[] { "SearchBox", "CatalogProfileComboBox", "ImportCatalogProfileButton", "CatalogLocationButton", "CatalogDataManagementButton", "CatalogWorkspaceTransferPanel" })
                     AssertInside(Named<FrameworkElement>(page, name), page);
 
                 var commandHeight = Named<CommandStrip>(page, "CatalogCommandStrip").ActualHeight;
                 var resultsTop = Named<Grid>(page, "CatalogResultsWorkspace").TranslatePoint(new Point(), page).Y;
+                var statusRow = Named<Grid>(page, "CatalogStatusRow");
+                Assert.True(double.IsNaN(statusRow.Height), "Status content must be measured, not forced into a fixed row height.");
+                Assert.True(statusRow.MinHeight >= 36);
+                var statusHeight = statusRow.ActualHeight;
                 var searchWidth = search.ActualWidth;
                 foreach (var state in new[]
                 {
@@ -76,11 +105,14 @@ internal static class CatalogSearchLayoutChecks
                     Assert.Equal(commandHeight, Named<CommandStrip>(page, "CatalogCommandStrip").ActualHeight);
                     Assert.Equal(resultsTop, Named<Grid>(page, "CatalogResultsWorkspace").TranslatePoint(new Point(), page).Y);
                     Assert.Equal(searchWidth, search.ActualWidth);
-                    Assert.Equal(32, Named<Grid>(page, "CatalogStatusRow").ActualHeight);
+                    Assert.Equal(statusHeight, statusRow.ActualHeight);
+                    Assert.True(statusRow.ActualHeight >= 36);
                     var elapsed = Named<Ui.TextBlock>(page, "CatalogScanElapsedCaption");
                     Assert.Equal(fixture.LastCompletedScanElapsedText, elapsed.Text);
                     Assert.Equal(TextWrapping.NoWrap, elapsed.TextWrapping);
                     AssertInside(elapsed, page);
+                    AssertInside(elapsed, statusRow);
+                    ComboBoxContentSizingChecks.AssertTextFitsVertically(elapsed, statusRow, "Catalog elapsed caption");
                     Assert.Equal("LastCompletedScanElapsedText", BindingOperations.GetBinding(elapsed, TextBlock.TextProperty)?.Path.Path);
                     foreach (var name in new[] { "CatalogProgressCaption", "CatalogStateCaption" })
                     {
@@ -88,6 +120,12 @@ internal static class CatalogSearchLayoutChecks
                         Assert.Equal(TextWrapping.NoWrap, caption.TextWrapping);
                         Assert.Equal(TextTrimming.CharacterEllipsis, caption.TextTrimming);
                         Assert.NotNull(caption.ToolTip);
+                        if (caption.IsVisible)
+                        {
+                            AssertInside(caption, statusRow);
+                            ComboBoxContentSizingChecks.AssertTextFitsVertically(caption, statusRow,
+                                $"{name} in busy/pending/preserving/review state");
+                        }
                     }
                     Assert.Equal(state.Busy ? Visibility.Visible : Visibility.Collapsed,
                         Named<Ui.TextBlock>(page, "CatalogProgressCaption").Visibility);
@@ -175,6 +213,8 @@ internal static class CatalogSearchLayoutChecks
         public string FilterText { get; set; } = string.Empty;
         public string ScanActionText => "Refresh results";
         public string RootPath => @"\\files.example.test\Team archives\Engineering\Projects\2026\Very long location name";
+        public string EntryPathsSummary => "2 starting locations";
+        public string EntryPathsDescription => RootPath + Environment.NewLine + @"D:\Another long starting location";
         public string FilterSummary => "100,000 / 1,000,000";
         public string ProgressMessage => "100,000 folders examined — " + new string('W', 500);
         public string BusyProgressCaption => "Previous results · refreshing · " + ProgressMessage;
@@ -197,6 +237,7 @@ internal static class CatalogSearchLayoutChecks
             RemoveCommand = new RelayCommand(static () => { }),
         }).ToArray();
         public IRelayCommand ImportProfileCommand { get; } = new RelayCommand(static () => { });
+        public IRelayCommand OpenEntryPathsCommand { get; } = new RelayCommand(static () => { });
         public IRelayCommand ClearColumnFiltersCommand { get; } = new RelayCommand(static () => { });
         public LayoutFixture() => SelectedProfile = Profiles[0];
         public void SetState(bool busy, bool pending, bool preserving, bool review)

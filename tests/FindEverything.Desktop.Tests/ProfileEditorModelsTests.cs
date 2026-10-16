@@ -121,10 +121,10 @@ public sealed class ProfileEditorModelsTests
     }
 
     [Fact]
-    public void Directory_name_exclusion_draft_preserves_regex_options()
+    public void Directory_path_exclusion_draft_preserves_regex_options()
     {
-        var draft = new ProfileDirectoryNameExclusionRuleDraftViewModel(
-            new ProfileDirectoryNameExclusionRuleManifest
+        var draft = new ProfileDirectoryExclusionRuleDraftViewModel(
+            new ProfileDirectoryExclusionRuleManifest
             {
                 Id = "skip-cache",
                 Pattern = "temp|cache",
@@ -138,7 +138,9 @@ public sealed class ProfileEditorModelsTests
         Assert.Equal(ProfileRegexMatchMode.Partial, draft.MatchMode);
         Assert.True(draft.IgnoreCase);
         Assert.Equal(250, draft.TimeoutMilliseconds);
-        Assert.Equal("폴더 이름 일부 일치", draft.MatchModeDisplayName);
+        Assert.Equal("절대경로 부분 일치", draft.MatchModeDisplayName);
+        draft.MatchMode = ProfileRegexMatchMode.Full;
+        Assert.Equal("절대경로 전체 일치", draft.MatchModeDisplayName);
     }
 
     [Fact]

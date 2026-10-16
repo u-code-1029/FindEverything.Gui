@@ -194,11 +194,14 @@ public sealed class DesktopCompositionSmokeTests
             VerifyProfilesScrolling(window, profilesPage);
             Assert.True(navigation.Navigate(typeof(ProfilePlaygroundPage)));
             VerifyProfilePlaygroundLayout(window, profilePlaygroundPage);
+            FormSpacingUiChecks.VerifyPlaygroundFooter(window, profilePlaygroundPage);
             Assert.True(navigation.Navigate(typeof(OutputFormatsPage)));
             VerifyOutputFormatEditor(provider, window, outputFormatsPage);
             OutputFormatsViewportChecks.Verify(window, outputFormatsPage);
+            FormSpacingUiChecks.VerifyOutputHeading(window, outputFormatsPage);
             Assert.True(navigation.Navigate(typeof(SettingsPage)));
             VerifySettingsLayout(window, settingsPage);
+            FormSpacingUiChecks.VerifySettings(settingsPage);
             VerifyOperationInfoBar(provider, window);
             VerifyScanConsole(provider, window, catalogPage);
             VerifyProjectionQueries(provider, window);
@@ -206,6 +209,7 @@ public sealed class DesktopCompositionSmokeTests
             SelectionImportUiChecks.Verify();
             ProfilesValidationUiChecks.Verify((visual, name) => SaveQaImage(visual, name));
             ProfileColumnEditorUiChecks.Verify((visual, name) => SaveQaImage(visual, name));
+            FormSpacingUiChecks.VerifyProfiles((visual, name) => SaveQaImage(visual, name));
             UiRenderingLifetimeChecks.Verify();
             ReadOnlyCellTemplateChecks.Verify();
             WorkspacePerformanceChecks.Verify(provider);
@@ -1613,10 +1617,10 @@ public sealed class DesktopCompositionSmokeTests
                 new(2, "optional-text", "선택 텍스트", @"^optional\.txt$",
                     ProfileRegexMatchMode.Full, true, 250, false, 1024),
             ],
-            ExcludedDirectoryNameRules =
+            DirectoryExclusionRules =
             [
-                new(1, "sensitive", "temp", ProfileRegexMatchMode.Full, false, 250),
-                new(2, "insensitive", "cache", ProfileRegexMatchMode.Full, true, 250),
+                new(1, "sensitive", @"C:\\Projects\\temp", ProfileRegexMatchMode.Full, false, 250),
+                new(2, "insensitive", @"[\\/]cache$", ProfileRegexMatchMode.Partial, true, 250),
             ],
         };
         var inspectionProfile = new ProfileSummaryViewModel(descriptor);
@@ -1681,9 +1685,10 @@ public sealed class DesktopCompositionSmokeTests
         PumpDispatcherFor(page.Dispatcher, TimeSpan.FromMilliseconds(30));
         var exclusionScopeDescription = Assert.IsAssignableFrom<System.Windows.Controls.TextBlock>(
             page.FindEditorElement<FrameworkElement>("DirectoryExclusionScopeDescription"));
-        Assert.Contains("마지막 폴더 이름(leaf)", exclusionScopeDescription.Text, StringComparison.Ordinal);
-        Assert.Contains("절대경로 전체가 아니라", exclusionScopeDescription.Text, StringComparison.Ordinal);
-        Assert.Contains("상위 폴더는 비교하지 않습니다", exclusionScopeDescription.Text, StringComparison.Ordinal);
+        Assert.Contains("전체 절대경로", exclusionScopeDescription.Text, StringComparison.Ordinal);
+        Assert.Contains("UNC", exclusionScopeDescription.Text, StringComparison.Ordinal);
+        Assert.Contains("시작 경로 자체는 제외하지 않습니다", exclusionScopeDescription.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain("마지막 폴더 이름(leaf)", exclusionScopeDescription.Text, StringComparison.Ordinal);
         vm.GoToEditorStepCommand.Execute(previousStep);
         PumpDispatcherFor(page.Dispatcher, TimeSpan.FromMilliseconds(30));
 
@@ -1803,8 +1808,8 @@ public sealed class DesktopCompositionSmokeTests
         viewModel.RemoveFieldCommand.Execute(changedWhilePicking);
 
         viewModel.AddDirectoryExclusionRuleCommand.Execute(null);
-        var exclusion = Assert.Single(viewModel.DraftExcludedDirectoryNameRules);
-        exclusion.Pattern = @"(?<excludedLeaf>0521_Project-A)";
+        var exclusion = Assert.Single(viewModel.DraftDirectoryExclusionRules);
+        exclusion.Pattern = @"[\\/](?<excludedFolder>0521_Project-A)$";
         Assert.Equal(ProfileRegexMatchMode.Partial, exclusion.MatchMode);
     }
 

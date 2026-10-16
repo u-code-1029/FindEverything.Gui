@@ -45,7 +45,7 @@ public partial class ProfilesViewModel
         if (_isPopulatingDraft) return;
         var state = (Files: DraftTextFileFields.Count, Directories: DraftChildDirectoryFields.Count,
             Inputs: DraftUserInputFields.Count, Mappings: DraftFields.Sum(static field => field.ValueMappings.Count),
-            Selection: DraftSelectionRules.Count, Exclusions: DraftExcludedDirectoryNameRules.Count,
+            Selection: DraftSelectionRules.Count, Exclusions: DraftDirectoryExclusionRules.Count,
             Stops: IsGuidedMode ? (GuidedTerminalGroups()?.Count > 0 ? 1 : 0)
                 : DraftRules.Count(static rule => ProfileFieldDraftViewModel.ParseGroupNames(rule.StopTraversalGroupsText).Count > 0),
             Depth: DraftMaxScanDepthText.Trim());

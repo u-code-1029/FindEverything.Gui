@@ -231,7 +231,7 @@ internal sealed class CatalogService(
                 profileRootPath,
                 pathCanonicalizer,
                 progress,
-                applyDirectoryNameExclusions: true,
+                applyDirectoryExclusions: true,
                 retainItems: request.RetainItems,
                 resultWriter: request.ResultWriter,
                 trace: trace,
@@ -364,7 +364,7 @@ internal sealed class CatalogService(
                 profileRootPath,
                 pathCanonicalizer,
                 progress,
-                applyDirectoryNameExclusions: true,
+                applyDirectoryExclusions: true,
                 retainItems: request.RetainItems,
                 resultWriter: request.ResultWriter,
                 trace: trace,
@@ -446,7 +446,7 @@ internal sealed class CatalogService(
             profileRootPath,
             pathCanonicalizer,
             progress,
-            applyDirectoryNameExclusions: false,
+            applyDirectoryExclusions: false,
             retainItems: request.RetainItems,
             resultWriter: request.ResultWriter,
             attemptId: attemptId,
@@ -599,7 +599,7 @@ internal sealed class CatalogService(
         string profileRootPath,
         IProfilePathCanonicalizer pathCanonicalizer,
         IProgress<CatalogOperationProgress>? progress,
-        bool applyDirectoryNameExclusions,
+        bool applyDirectoryExclusions,
         bool retainItems = true,
         ICatalogProjectionWriter? resultWriter = null,
         int attemptId = 1,
@@ -617,14 +617,14 @@ internal sealed class CatalogService(
         {
             var relativePath = Path.GetRelativePath(rootPath, directory.FullPath);
             var absolutePath = ResolveProfileInputPath(directory.FullPath, relativePath);
-            if (applyDirectoryNameExclusions && directory.Depth > profile.Descriptor.MaxScanDepth)
+            if (applyDirectoryExclusions && directory.Depth > profile.Descriptor.MaxScanDepth)
                 return DirectoryTraversalDecision.ExcludeSubtree;
             // The selected root is an explicit boundary, not one of its own
-            // descendants. Skipping it would also require passing a drive/UNC root
-            // in place of a leaf name on some file systems.
-            if (applyDirectoryNameExclusions && relativePath != ".")
+            // descendants. Every explicitly selected entry keeps this protection,
+            // even when another entry has previously excluded it as a descendant.
+            if (applyDirectoryExclusions && relativePath != ".")
             {
-                var exclusion = profile.EvaluateDirectoryName(directory.Name);
+                var exclusion = profile.EvaluateDirectoryPath(absolutePath);
                 if (exclusion.Issues.Count > 0 && state.ExclusionIssuePaths.Add(absolutePath))
                 {
                     state.DirectoryExclusionIssueCount++;
@@ -636,7 +636,7 @@ internal sealed class CatalogService(
                     trace?.ReportDirectoryExclusionIssue(
                         directory.FullPath,
                         relativePath,
-                        directory.Name,
+                        absolutePath,
                         exclusion.Issues);
                 }
 
@@ -646,7 +646,7 @@ internal sealed class CatalogService(
                     trace?.ReportDirectoryExcluded(
                         directory.FullPath,
                         relativePath,
-                        directory.Name,
+                        absolutePath,
                         exclusion);
                     return DirectoryTraversalDecision.ExcludeSubtree;
                 }
@@ -658,7 +658,7 @@ internal sealed class CatalogService(
                 // Do not cache the earlier depth decision: an explicit nested root
                 // gets its own traversal budget even when this path was already mapped.
                 var duplicateDecision = shouldPruneDescendants
-                    || (applyDirectoryNameExclusions && directory.Depth >= profile.Descriptor.MaxScanDepth)
+                    || (applyDirectoryExclusions && directory.Depth >= profile.Descriptor.MaxScanDepth)
                     ? DirectoryTraversalDecision.SkipDescendants : DirectoryTraversalDecision.Continue;
                 trace?.ReportPreviouslyMappedDirectory(directory.FullPath, absolutePath, relativePath, duplicateDecision);
                 return duplicateDecision;
@@ -713,7 +713,7 @@ internal sealed class CatalogService(
             }
 
             var traversalDecision = mapping.ShouldPruneDescendants
-                || (applyDirectoryNameExclusions && directory.Depth >= profile.Descriptor.MaxScanDepth)
+                || (applyDirectoryExclusions && directory.Depth >= profile.Descriptor.MaxScanDepth)
                 ? DirectoryTraversalDecision.SkipDescendants
                 : DirectoryTraversalDecision.Continue;
             trace?.ReportDirectoryVisited(
@@ -835,8 +835,8 @@ internal sealed class CatalogService(
         public void ReportDirectoryExcluded(
             string discoveredPath,
             string relativePath,
-            string directoryName,
-            ProfileDirectoryNameExclusionResult exclusion)
+            string absolutePath,
+            ProfileDirectoryExclusionResult exclusion)
         {
             try
             {
@@ -853,13 +853,13 @@ internal sealed class CatalogService(
                     request.RootPath,
                     discoveredPath,
                     relativePath,
-                    directoryName,
+                    absolutePath,
                     null,
                     exclusion.MatchedRuleId,
                     EmptyValues,
                     issues,
                     DirectoryTraversalDecision.ExcludeSubtree,
-                    "폴더 이름 제외 규칙과 일치해 현재 폴더와 하위 탐색을 생략합니다."));
+                    "전체 절대경로가 폴더 경로 제외 규칙과 일치해 현재 폴더와 하위 탐색을 생략합니다."));
             }
             catch (Exception)
             {
@@ -870,7 +870,7 @@ internal sealed class CatalogService(
         public void ReportDirectoryExclusionIssue(
             string discoveredPath,
             string relativePath,
-            string directoryName,
+            string absolutePath,
             IReadOnlyList<ProfileMappingIssue> exclusionIssues)
         {
             try
@@ -888,13 +888,13 @@ internal sealed class CatalogService(
                     request.RootPath,
                     discoveredPath,
                     relativePath,
-                    directoryName,
+                    absolutePath,
                     null,
                     null,
                     EmptyValues,
                     issues,
                     DirectoryTraversalDecision.Continue,
-                    "폴더 이름 제외 규칙을 평가하는 중 문제가 발생해 안전하게 탐색을 계속합니다."));
+                    "폴더 경로 제외 규칙을 평가하는 중 문제가 발생해 안전하게 탐색을 계속합니다."));
             }
             catch (Exception)
             {

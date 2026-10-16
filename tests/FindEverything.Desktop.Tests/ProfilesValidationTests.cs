@@ -26,7 +26,8 @@ public sealed class ProfilesValidationTests
     [InlineData("user_input_field_id_duplicate", ProfileEditorStep.DataSources)]
     [InlineData("capture_value_mapping_source_duplicate", ProfileEditorStep.DataSources)]
     [InlineData("selection_match_rule_invalid", ProfileEditorStep.SelectionRules)]
-    [InlineData("excluded_directory_name_regex_invalid", ProfileEditorStep.ScanOptions)]
+    [InlineData("directory_exclusion_regex_invalid", ProfileEditorStep.ScanOptions)]
+    [InlineData("directory_name_exclusion_removed", ProfileEditorStep.ScanOptions)]
     [InlineData("scan_depth_invalid", ProfileEditorStep.ScanOptions)]
     [InlineData("custom_plugin_failure", ProfileEditorStep.Review)]
     public void Stable_codes_route_to_the_actual_editor_section(string code, ProfileEditorStep expected)

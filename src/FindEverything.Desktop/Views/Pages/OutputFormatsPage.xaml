@@ -3,8 +3,8 @@
     xmlns:controls="clr-namespace:FindEverything.Desktop.Views.Controls" xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
     Title="{DynamicResource Loc.Shell.Nav.OutputFormats}" Background="Transparent" Foreground="{DynamicResource TextFillColorPrimaryBrush}" ScrollViewer.CanContentScroll="False">
     <Page.Resources>
-        <Style x:Key="OutputTokenButtonStyle" TargetType="ui:Button" BasedOn="{StaticResource {x:Type ui:Button}}">
-            <Setter Property="Margin" Value="0,0,8,8" /><Setter Property="Padding" Value="8,4" />
+        <Style x:Key="OutputTokenButtonStyle" TargetType="ui:Button" BasedOn="{StaticResource CompactActionButtonStyle}">
+            <Setter Property="Margin" Value="0,0,8,8" />
             <Setter Property="Appearance" Value="Transparent" /><Setter Property="Background" Value="{DynamicResource ControlFillColorSecondaryBrush}" />
         </Style>
     </Page.Resources>
@@ -76,10 +76,10 @@
                 <controls:SectionCard x:Name="OutputPreviewCard" Style="{StaticResource WorkspaceResultCardStyle}" Padding="12" VerticalContentAlignment="Stretch">
                     <controls:SectionCard.Header>
                         <Grid x:Name="OutputPreviewContent"><Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
-                            <DockPanel>
-                                <ui:TextBlock x:Name="OutputPreviewTitle" DockPanel.Dock="Left" FontWeight="SemiBold" Text="{DynamicResource Loc.Workspace.Output.Preview}" />
-                                <CheckBox Margin="12,0,0,0" HorizontalAlignment="Right" Content="{DynamicResource Loc.Ux.Output.UseTestSample}" IsChecked="{Binding UseTestSample}" Visibility="{Binding HasTestSample, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                            </DockPanel>
+                            <WrapPanel x:Name="OutputPreviewHeading">
+                                <ui:TextBlock x:Name="OutputPreviewTitle" Margin="0,2,12,2" VerticalAlignment="Center" FontWeight="SemiBold" Text="{DynamicResource Loc.Workspace.Output.Preview}" />
+                                <CheckBox x:Name="OutputUseTestSampleCheckBox" Margin="0,2,0,2" VerticalAlignment="Center" Content="{DynamicResource Loc.Ux.Output.UseTestSample}" IsChecked="{Binding UseTestSample}" Visibility="{Binding HasTestSample, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            </WrapPanel>
                             <ui:TextBlock Grid.Row="1" Margin="0,4,0,8" Text="{Binding PreviewSourceDescription}" Style="{StaticResource CaptionTextStyle}" TextWrapping="Wrap" />
                             <ui:TextBox x:Name="OutputPreviewTextBox" Grid.Row="2" Padding="8" Background="{DynamicResource ControlFillColorSecondaryBrush}" BorderThickness="0" Text="{Binding PreviewText, Mode=OneWay}" IsReadOnly="True" AcceptsReturn="True" FontFamily="Consolas" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" AutomationProperties.Name="{DynamicResource Loc.Workspace.Output.Preview}" ToolTip="{DynamicResource Loc.Workspace.Output.Preview.Help}" />
                         </Grid>

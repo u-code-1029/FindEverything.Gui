@@ -13,7 +13,7 @@ internal sealed class ProfileEditorSession : IDisposable
     public bool HasUserChanges { get; set; }
     public ObservableCollection<ProfileFieldDraftViewModel> Fields { get; } = [];
     public ObservableCollection<ProfileRuleDraftViewModel> Rules { get; } = [];
-    public ObservableCollection<ProfileDirectoryNameExclusionRuleDraftViewModel> Exclusions { get; } = [];
+    public ObservableCollection<ProfileDirectoryExclusionRuleDraftViewModel> Exclusions { get; } = [];
     public ObservableCollection<ProfileTextFileFieldDraftViewModel> TextFiles { get; } = [];
     public ObservableCollection<ProfileUserInputFieldDraftViewModel> UserInputs { get; } = [];
     public ObservableCollection<ProfileChildDirectoryFieldDraftViewModel> ChildDirectories { get; } = [];

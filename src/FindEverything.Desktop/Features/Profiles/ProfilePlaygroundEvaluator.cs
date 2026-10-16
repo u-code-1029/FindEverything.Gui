@@ -78,9 +78,8 @@ public sealed class ProfilePlaygroundEvaluator(
         var regexDebugRules = ProfileRegexDebugBuilder.Build(canonicalPath, pathRules);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var leafName = sample.LeafName;
-        var exclusionRules = descriptor.ExcludedDirectoryNameRules
-            .Select(static rule => new ProfileDirectoryNameExclusionRuleManifest
+        var exclusionRules = descriptor.DirectoryExclusionRules
+            .Select(static rule => new ProfileDirectoryExclusionRuleManifest
             {
                 Id = rule.Id,
                 Pattern = rule.Pattern,
@@ -89,11 +88,9 @@ public sealed class ProfilePlaygroundEvaluator(
                 TimeoutMilliseconds = rule.TimeoutMilliseconds,
             })
             .ToArray();
-        var exclusionDebugRules = string.IsNullOrEmpty(leafName)
-            ? Array.Empty<ProfileRegexDebugRuleViewModel>()
-            : ProfileRegexDebugBuilder.BuildDirectoryName(leafName, exclusionRules);
+        var exclusionDebugRules = ProfileRegexDebugBuilder.BuildDirectoryPath(canonicalPath, exclusionRules);
         var exclusionResult = BuildDirectoryExclusionTestResult(
-            leafName,
+            canonicalPath,
             exclusionRules.Length,
             profile,
             localizer,
@@ -209,35 +206,24 @@ public sealed class ProfilePlaygroundEvaluator(
 
     internal static ProfileDirectoryExclusionTestResultViewModel
         BuildDirectoryExclusionTestResult(
-            string directoryName,
+            string absolutePath,
             int ruleCount,
             ILoadedProfile? profile,
             IAppLocalizer? localizer = null,
-            ProfileDirectoryNameExclusionResult? evaluationResult = null)
+            ProfileDirectoryExclusionResult? evaluationResult = null)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(absolutePath);
         var scanScope = Get(
             localizer,
             "Loc.Playground.Exclusion.Scope",
-            "이 판정은 구조화 보기의 스캔에서 검색 루트 아래 폴더의 마지막 이름(leaf)에 적용됩니다. "
+            "이 판정은 구조화 보기의 스캔에서 폴더의 전체 절대경로(네트워크는 UNC)에 적용됩니다. "
             + "일치한 폴더와 그 하위 폴더는 인덱싱하지 않습니다. 검색 루트 자체는 예외 규칙으로 제외하지 않습니다. "
             + "기존 DB 불러오기는 저장된 인덱스를 사용하므로 새 규칙을 반영하려면 다시 스캔하세요.");
-
-        if (string.IsNullOrEmpty(directoryName))
-        {
-            return new ProfileDirectoryExclusionTestResultViewModel(
-                Get(localizer, "Loc.Playground.Exclusion.Root", "(드라이브 또는 공유 루트)"),
-                Get(
-                    localizer,
-                    "Loc.Playground.Exclusion.NoLeaf",
-                    "leaf 폴더 이름이 없어 제외 판정을 생략했습니다."),
-                scanScope,
-                InfoBarSeverity.Informational);
-        }
 
         if (ruleCount == 0)
         {
             return new ProfileDirectoryExclusionTestResultViewModel(
-                directoryName,
+                absolutePath,
                 Get(
                     localizer,
                     "Loc.Playground.Exclusion.NoRules",
@@ -249,7 +235,7 @@ public sealed class ProfilePlaygroundEvaluator(
         if (profile is null)
         {
             return new ProfileDirectoryExclusionTestResultViewModel(
-                directoryName,
+                absolutePath,
                 Get(
                     localizer,
                     "Loc.Playground.Exclusion.ProfileInvalid",
@@ -262,11 +248,11 @@ public sealed class ProfilePlaygroundEvaluator(
                 InfoBarSeverity.Error);
         }
 
-        var evaluation = evaluationResult ?? profile.EvaluateDirectoryName(directoryName);
+        var evaluation = evaluationResult ?? profile.EvaluateDirectoryPath(absolutePath);
         if (evaluation.IsExcluded)
         {
             return new ProfileDirectoryExclusionTestResultViewModel(
-                directoryName,
+                absolutePath,
                 Format(
                     localizer,
                     "Loc.Playground.Exclusion.Matched",
@@ -282,7 +268,7 @@ public sealed class ProfilePlaygroundEvaluator(
         if (evaluation.Issues.Count > 0)
         {
             return new ProfileDirectoryExclusionTestResultViewModel(
-                directoryName,
+                absolutePath,
                 Get(
                     localizer,
                     "Loc.Playground.Exclusion.Unsafe",
@@ -297,7 +283,7 @@ public sealed class ProfilePlaygroundEvaluator(
         }
 
         return new ProfileDirectoryExclusionTestResultViewModel(
-            directoryName,
+            absolutePath,
             Get(
                 localizer,
                 "Loc.Playground.Exclusion.NoMatch",

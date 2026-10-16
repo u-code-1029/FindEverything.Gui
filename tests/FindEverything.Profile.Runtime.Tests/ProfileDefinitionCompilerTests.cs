@@ -1,5 +1,6 @@
 using FindEverything.Profile.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Xunit;
 
@@ -180,32 +181,32 @@ public sealed class ProfileDefinitionCompilerTests
     }
 
     [Fact]
-    public void Directory_exclusion_rules_match_only_the_supplied_leaf_name()
+    public void Directory_exclusion_full_match_compares_the_complete_absolute_path()
     {
         using var provider = BuildProvider();
         var manifest = CompositeDateManifest();
-        manifest.ExcludedDirectoryNameRules =
+        manifest.DirectoryExclusionRules =
         [
-            new ProfileDirectoryNameExclusionRuleManifest
+            new ProfileDirectoryExclusionRuleManifest
             {
                 Id = "generated-folder",
-                Pattern = "name",
+                Pattern = Regex.Escape(AbsolutePath("parent", "name")),
                 MatchMode = ProfileRegexMatchMode.Full,
                 TimeoutMilliseconds = 100,
             },
         ];
         var profile = Compile(provider, manifest);
 
-        var excluded = profile.EvaluateDirectoryName("name");
-        var similarName = profile.EvaluateDirectoryName("name-backup");
-        var parentPathText = profile.EvaluateDirectoryName("C:-abc-def-name");
+        var excluded = profile.EvaluateDirectoryPath(AbsolutePath("parent", "name"));
+        var similarName = profile.EvaluateDirectoryPath(AbsolutePath("parent", "name-backup"));
+        var otherParent = profile.EvaluateDirectoryPath(AbsolutePath("different-parent", "name"));
 
         Assert.True(excluded.IsExcluded);
         Assert.Equal("generated-folder", excluded.MatchedRuleId);
         Assert.False(similarName.IsExcluded);
-        Assert.False(parentPathText.IsExcluded);
-        var descriptor = Assert.Single(profile.Descriptor.ExcludedDirectoryNameRules);
-        Assert.Equal("name", descriptor.Pattern);
+        Assert.False(otherParent.IsExcluded);
+        var descriptor = Assert.Single(profile.Descriptor.DirectoryExclusionRules);
+        Assert.Equal(Regex.Escape(AbsolutePath("parent", "name")), descriptor.Pattern);
         Assert.Equal(ProfileRegexMatchMode.Full, descriptor.MatchMode);
     }
 
@@ -214,9 +215,9 @@ public sealed class ProfileDefinitionCompilerTests
     {
         using var provider = BuildProvider();
         var manifest = CompositeDateManifest();
-        manifest.ExcludedDirectoryNameRules =
+        manifest.DirectoryExclusionRules =
         [
-            new ProfileDirectoryNameExclusionRuleManifest
+            new ProfileDirectoryExclusionRuleManifest
             {
                 Id = "cache",
                 Pattern = "cache",
@@ -227,7 +228,7 @@ public sealed class ProfileDefinitionCompilerTests
         ];
         var profile = Compile(provider, manifest);
 
-        var result = profile.EvaluateDirectoryName("Project-CACHE-v2");
+        var result = profile.EvaluateDirectoryPath(AbsolutePath("Project-CACHE-v2", "unrelated-child"));
 
         Assert.True(result.IsExcluded);
         Assert.Equal("cache", result.MatchedRuleId);
@@ -238,16 +239,16 @@ public sealed class ProfileDefinitionCompilerTests
     {
         using var provider = BuildProvider();
         var manifest = CompositeDateManifest();
-        manifest.ExcludedDirectoryNameRules =
+        manifest.DirectoryExclusionRules =
         [
-            new ProfileDirectoryNameExclusionRuleManifest
+            new ProfileDirectoryExclusionRuleManifest
             {
                 Id = "pathological",
-                Pattern = "(a+)+$",
+                Pattern = Regex.Escape(AbsolutePath() + Path.DirectorySeparatorChar) + "(a+)+$",
                 MatchMode = ProfileRegexMatchMode.Full,
                 TimeoutMilliseconds = 1,
             },
-            new ProfileDirectoryNameExclusionRuleManifest
+            new ProfileDirectoryExclusionRuleManifest
             {
                 Id = "later-catch-all",
                 Pattern = ".*",
@@ -257,7 +258,7 @@ public sealed class ProfileDefinitionCompilerTests
         ];
         var profile = Compile(provider, manifest);
 
-        var result = profile.EvaluateDirectoryName(new string('a', 100_000) + "!");
+        var result = profile.EvaluateDirectoryPath(AbsolutePath() + Path.DirectorySeparatorChar + new string('a', 100_000) + "!");
 
         Assert.False(result.IsExcluded);
         Assert.Null(result.MatchedRuleId);
@@ -267,20 +268,51 @@ public sealed class ProfileDefinitionCompilerTests
     }
 
     [Fact]
-    public void Directory_exclusion_allows_a_whitespace_leaf_name()
+    public void Directory_exclusion_requires_an_absolute_path_but_allows_spaces_in_a_folder_name()
     {
         using var provider = BuildProvider();
         var profile = Compile(provider, CompositeDateManifest());
 
-        var exception = Record.Exception(() => profile.EvaluateDirectoryName("   "));
+        var exception = Record.Exception(() => profile.EvaluateDirectoryPath(AbsolutePath("   ")));
 
         Assert.Null(exception);
+        Assert.Throws<ArgumentException>(() => profile.EvaluateDirectoryPath("relative"));
+        Assert.Throws<ArgumentException>(() => profile.EvaluateDirectoryPath("   "));
+    }
+
+    [Fact]
+    public void Directory_exclusion_receives_the_full_unc_server_share_and_parent_path_on_Windows()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        using var provider = BuildProvider();
+        var manifest = CompositeDateManifest();
+        const string path = @"\\192.168.10.20\archives\private\project";
+        manifest.DirectoryExclusionRules = [new() { Id = "private-share", Pattern = Regex.Escape(path), MatchMode = ProfileRegexMatchMode.Full }];
+        var profile = Compile(provider, manifest);
+        Assert.True(profile.EvaluateDirectoryPath(path).IsExcluded);
+        Assert.False(profile.EvaluateDirectoryPath(@"\\192.168.10.21\archives\private\project").IsExcluded);
+    }
+
+    [Fact]
+    public void Removed_leaf_name_json_contract_is_rejected_instead_of_silently_disabling_exclusions()
+    {
+        using var provider = BuildProvider();
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        var manifest = CompositeDateManifest();
+        var json = JsonSerializer.SerializeToNode(manifest, options)!.AsObject();
+        json["excludedDirectoryNameRules"] = JsonSerializer.SerializeToNode(new[] { new { id = "old-rule", pattern = "name" } });
+        var legacy = JsonSerializer.Deserialize<ProfileManifest>(json.ToJsonString(), options)!;
+        var review = provider.GetRequiredService<IProfileDefinitionCompiler>().Validate(legacy);
+        Assert.False(review.IsValid);
+        Assert.Contains(review.Diagnostics, static diagnostic => diagnostic.Code == "directory_name_exclusion_removed");
+        Assert.Contains("directoryExclusionRules", Assert.Single(review.Diagnostics,
+            static diagnostic => diagnostic.Code == "directory_name_exclusion_removed").Message, StringComparison.Ordinal);
     }
 
     [Theory]
-    [InlineData("(", "excluded_directory_name_regex_invalid", 100)]
-    [InlineData("valid", "excluded_directory_name_timeout_invalid", 0)]
-    [InlineData("valid", "excluded_directory_name_timeout_invalid", 10001)]
+    [InlineData("(", "directory_exclusion_regex_invalid", 100)]
+    [InlineData("valid", "directory_exclusion_timeout_invalid", 0)]
+    [InlineData("valid", "directory_exclusion_timeout_invalid", 10001)]
     public void Validation_rejects_invalid_directory_exclusion_regex_settings(
         string pattern,
         string expectedCode,
@@ -288,9 +320,9 @@ public sealed class ProfileDefinitionCompilerTests
     {
         using var provider = BuildProvider();
         var manifest = CompositeDateManifest();
-        manifest.ExcludedDirectoryNameRules =
+        manifest.DirectoryExclusionRules =
         [
-            new ProfileDirectoryNameExclusionRuleManifest
+            new ProfileDirectoryExclusionRuleManifest
             {
                 Id = "exclude",
                 Pattern = pattern,
@@ -311,15 +343,15 @@ public sealed class ProfileDefinitionCompilerTests
     {
         using var provider = BuildProvider();
         var manifest = CompositeDateManifest();
-        manifest.ExcludedDirectoryNameRules = Enumerable
-            .Range(1, ProfileManifestLimits.MaximumExcludedDirectoryNameRuleCount + 1)
-            .Select(index => new ProfileDirectoryNameExclusionRuleManifest
+        manifest.DirectoryExclusionRules = Enumerable
+            .Range(1, ProfileManifestLimits.MaximumDirectoryExclusionRuleCount + 1)
+            .Select(index => new ProfileDirectoryExclusionRuleManifest
             {
                 Id = $"exclude-{index}",
                 Pattern = index == 1
                     ? new string(
                         'x',
-                        ProfileManifestLimits.MaximumExcludedDirectoryNamePatternLength + 1)
+                        ProfileManifestLimits.MaximumDirectoryExclusionPatternLength + 1)
                     : $"folder-{index}",
                 TimeoutMilliseconds = 100,
             })
@@ -332,10 +364,10 @@ public sealed class ProfileDefinitionCompilerTests
         Assert.False(review.IsValid);
         Assert.Contains(
             review.Diagnostics,
-            static diagnostic => diagnostic.Code == "excluded_directory_name_rule_limit_exceeded");
+            static diagnostic => diagnostic.Code == "directory_exclusion_rule_limit_exceeded");
         Assert.Contains(
             review.Diagnostics,
-            static diagnostic => diagnostic.Code == "excluded_directory_name_pattern_too_long");
+            static diagnostic => diagnostic.Code == "directory_exclusion_pattern_too_long");
     }
 
     [Fact]
@@ -423,9 +455,9 @@ public sealed class ProfileDefinitionCompilerTests
         var exclusionTimeout =
             ProfileManifestLimits.MaximumAggregateRegexTimeoutMilliseconds - pathTimeout + 1;
         manifest.Rules![0].TimeoutMilliseconds = pathTimeout;
-        manifest.ExcludedDirectoryNameRules =
+        manifest.DirectoryExclusionRules =
         [
-            new ProfileDirectoryNameExclusionRuleManifest
+            new ProfileDirectoryExclusionRuleManifest
             {
                 Id = "slow-exclusion",
                 Pattern = "slow",
@@ -447,7 +479,7 @@ public sealed class ProfileDefinitionCompilerTests
             diagnostic.Message,
             StringComparison.Ordinal);
         Assert.Contains(
-            $"폴더 이름 제외: {exclusionTimeout:N0}ms",
+            $"폴더 경로 제외: {exclusionTimeout:N0}ms",
             diagnostic.Message,
             StringComparison.Ordinal);
     }
@@ -459,9 +491,9 @@ public sealed class ProfileDefinitionCompilerTests
         var manifest = CompositeDateManifest();
         const int pathTimeout = 100;
         manifest.Rules![0].TimeoutMilliseconds = pathTimeout;
-        manifest.ExcludedDirectoryNameRules =
+        manifest.DirectoryExclusionRules =
         [
-            new ProfileDirectoryNameExclusionRuleManifest
+            new ProfileDirectoryExclusionRuleManifest
             {
                 Id = "bounded-exclusion",
                 Pattern = "bounded",
@@ -484,15 +516,15 @@ public sealed class ProfileDefinitionCompilerTests
         using var provider = BuildProvider();
         var manifest = CompositeDateManifest();
         manifest.Rules![0].TimeoutMilliseconds = 1;
-        manifest.ExcludedDirectoryNameRules =
+        manifest.DirectoryExclusionRules =
         [
-            new ProfileDirectoryNameExclusionRuleManifest
+            new ProfileDirectoryExclusionRuleManifest
             {
                 Id = "first-exclusion",
                 Pattern = "first",
                 TimeoutMilliseconds = 5_000,
             },
-            new ProfileDirectoryNameExclusionRuleManifest
+            new ProfileDirectoryExclusionRuleManifest
             {
                 Id = "second-exclusion",
                 Pattern = "second",
@@ -508,7 +540,7 @@ public sealed class ProfileDefinitionCompilerTests
         var diagnostic = Assert.Single(
             review.Diagnostics,
             static diagnostic => diagnostic.Code == "regex_timeout_budget_exceeded");
-        Assert.Contains("폴더 이름 제외: 10,000ms", diagnostic.Message, StringComparison.Ordinal);
+        Assert.Contains("폴더 경로 제외: 10,000ms", diagnostic.Message, StringComparison.Ordinal);
         Assert.Contains("현재 합계: 10,001ms", diagnostic.Message, StringComparison.Ordinal);
     }
 

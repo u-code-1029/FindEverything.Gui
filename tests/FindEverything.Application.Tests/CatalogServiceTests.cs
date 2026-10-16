@@ -257,6 +257,30 @@ public sealed class CatalogServiceTests
     }
 
     [Fact]
+    public async Task Discover_evaluates_exclusions_against_the_canonical_absolute_path_instead_of_a_leaf_or_raw_drive()
+    {
+        var root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "catalog-raw-drive"));
+        var child = Path.Combine(root, "same-leaf");
+        var canonicalRoot = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "unc", "192.168.10.20", "private-share"));
+        var canonicalChild = Path.Combine(canonicalRoot, "same-leaf");
+        var trace = new RecordingTraceSink();
+        var services = new ServiceCollection();
+        services.AddFindEverythingApplication(new ConfigurationBuilder().Build());
+        services.AddSingleton<IProfilePathCanonicalizer>(new PrefixCanonicalizer(root, canonicalRoot));
+        services.AddSingleton<IIndexSessionFactory, ThrowingSessionFactory>();
+        services.AddSingleton<IDirectoryDiscoveryService>(new SingleChildDiscoveryService(root, child));
+        services.AddSingleton<IProfileResolver>(new FakeProfileResolver(new DirectoryExclusionProfile(excludedPath: canonicalChild)));
+        services.AddSingleton<ICatalogScanTraceSink>(trace);
+        await using var provider = services.BuildServiceProvider();
+        var result = await provider.GetRequiredService<ICatalogService>().DiscoverAsync(new("test", root, "unused.db"));
+        Assert.Equal(1, result.CandidateCount);
+        Assert.Equal(1, result.ExcludedDirectoryCount);
+        var excluded = Assert.Single(trace.Events, static value => value.Kind == CatalogScanTraceKind.DirectoryExcluded);
+        Assert.Equal(child, excluded.FullPath);
+        Assert.Equal(canonicalChild, excluded.MatchInput);
+    }
+
+    [Fact]
     public async Task Discover_publishes_directory_exclusion_issues_and_continues_mapping()
     {
         var root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "catalog-exclusion-issue"));
@@ -286,7 +310,7 @@ public sealed class CatalogServiceTests
             trace.Events,
             static entry => entry.Kind == CatalogScanTraceKind.DirectoryExclusionIssue);
         Assert.Equal(childPath, issueTrace.FullPath);
-        Assert.Equal("slow-name", issueTrace.MatchInput);
+        Assert.Equal(childPath, issueTrace.MatchInput);
         Assert.Equal(
             "directory_exclusion_regex_timeout",
             Assert.Single(issueTrace.Issues).Code);
@@ -569,7 +593,7 @@ public sealed class CatalogServiceTests
         ]));
         services.AddSingleton<IDirectoryDiscoveryService, UnsupportedDiscoveryService>();
         services.AddSingleton<IProfileResolver>(new FakeProfileResolver(
-            new DirectoryExclusionProfile(excludedName: "excluded")));
+            new DirectoryExclusionProfile(excludedPath: directoryPath)));
 
         await using var provider = services.BuildServiceProvider();
         var result = await provider.GetRequiredService<ICatalogService>().LoadExistingAsync(
@@ -639,10 +663,10 @@ public sealed class CatalogServiceTests
     }
 
     [Fact]
-    public async Task ScanAndLoad_preserves_profile_leaf_exclusion_semantics_and_mapping_trace()
+    public async Task ScanAndLoad_preserves_absolute_path_exclusions_root_protection_and_mapping_trace()
     {
-        // The selected root intentionally has the excluded leaf name. Direct discovery treats
-        // it as the explicit boundary while still excluding matching descendants.
+        // Explicit roots remain protected even if the predicate also matches the
+        // selected root. Descendants receive their complete absolute paths.
         var root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "catalog-scan-root", "cache"));
         var directoryPath = Path.Combine(root, "good");
         var excludedPath = Path.Combine(root, "cache");
@@ -670,7 +694,7 @@ public sealed class CatalogServiceTests
         services.AddSingleton<IIndexSessionFactory>(sessionFactory);
         services.AddSingleton<IDirectoryDiscoveryService, UnsupportedDiscoveryService>();
         services.AddSingleton<IProfileResolver>(new FakeProfileResolver(
-            new DirectoryExclusionProfile(excludedName: "cache")));
+            new DirectoryExclusionProfile(excludedPath: excludedPath, protectedRootPath: root)));
         services.AddSingleton<ICatalogScanTraceSink>(trace);
 
         await using var provider = services.BuildServiceProvider();
@@ -706,6 +730,7 @@ public sealed class CatalogServiceTests
             trace.Events,
             static entry => entry.Kind == CatalogScanTraceKind.DirectoryExcluded);
         Assert.Equal(excludedPath, excludedTrace.FullPath);
+        Assert.Equal(excludedPath, excludedTrace.MatchInput);
         Assert.Equal("test-exclusion", excludedTrace.MatchedRuleId);
         Assert.Equal(
             DirectoryTraversalDecision.ExcludeSubtree,
@@ -714,7 +739,7 @@ public sealed class CatalogServiceTests
     }
 
     [Fact]
-    public async Task ScanAndLoad_publishes_leaf_exclusion_issues_and_fails_open()
+    public async Task ScanAndLoad_publishes_path_exclusion_issues_and_fails_open()
     {
         var root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "catalog-index-exclusion-issue"));
         var childPath = Path.Combine(root, "slow-name");
@@ -1516,7 +1541,8 @@ public sealed class CatalogServiceTests
     }
 
     private sealed class DirectoryExclusionProfile(
-        string? excludedName = null,
+        string? excludedPath = null,
+        string? protectedRootPath = null,
         bool reportIssue = false) : ILoadedProfile
     {
         private readonly FakeProfile _inner = new();
@@ -1525,11 +1551,11 @@ public sealed class CatalogServiceTests
 
         public ProfileMapResult Map(ProfilePathCandidate candidate) => _inner.Map(candidate);
 
-        public ProfileDirectoryNameExclusionResult EvaluateDirectoryName(string directoryName)
+        public ProfileDirectoryExclusionResult EvaluateDirectoryPath(string absolutePath)
         {
             if (reportIssue)
             {
-                return new ProfileDirectoryNameExclusionResult(
+                return new ProfileDirectoryExclusionResult(
                     false,
                     null,
                     [new ProfileMappingIssue(
@@ -1538,9 +1564,10 @@ public sealed class CatalogServiceTests
                         "Test timeout.")]);
             }
 
-            return string.Equals(directoryName, excludedName, StringComparison.Ordinal)
-                ? ProfileDirectoryNameExclusionResult.Excluded("test-exclusion")
-                : ProfileDirectoryNameExclusionResult.NotExcluded();
+            return string.Equals(absolutePath, excludedPath, StringComparison.Ordinal)
+                || string.Equals(absolutePath, protectedRootPath, StringComparison.Ordinal)
+                ? ProfileDirectoryExclusionResult.Excluded("test-exclusion")
+                : ProfileDirectoryExclusionResult.NotExcluded();
         }
     }
 }

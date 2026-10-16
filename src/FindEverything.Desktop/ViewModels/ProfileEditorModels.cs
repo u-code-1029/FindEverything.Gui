@@ -1040,9 +1040,9 @@ public partial class ProfileRuleDraftViewModel : ObservableObject
 
 /// <summary>
 /// An editable rule that prevents direct discovery from entering a directory.
-/// Only the directory's leaf name is supplied to this regular expression.
+/// The canonical absolute directory path is supplied to this regular expression.
 /// </summary>
-public partial class ProfileDirectoryNameExclusionRuleDraftViewModel : ObservableObject
+public partial class ProfileDirectoryExclusionRuleDraftViewModel : ObservableObject
 {
     [ObservableProperty]
     private string _id = string.Empty;
@@ -1075,17 +1075,17 @@ public partial class ProfileDirectoryNameExclusionRuleDraftViewModel : Observabl
 
     public string MatchModeDisplayName => MatchMode switch
     {
-        ProfileRegexMatchMode.Full => ProfileEditorText.Get("Loc.Profiles.Match.FolderFull", "폴더 이름 전체 일치"),
-        ProfileRegexMatchMode.Partial => ProfileEditorText.Get("Loc.Profiles.Match.FolderPartial", "폴더 이름 일부 일치"),
+        ProfileRegexMatchMode.Full => ProfileEditorText.Get("Loc.Profiles.Match.FolderFull", "절대경로 전체 일치"),
+        ProfileRegexMatchMode.Partial => ProfileEditorText.Get("Loc.Profiles.Match.FolderPartial", "절대경로 부분 일치"),
         _ => MatchMode.ToString(),
     };
 
-    public ProfileDirectoryNameExclusionRuleDraftViewModel()
+    public ProfileDirectoryExclusionRuleDraftViewModel()
     {
     }
 
-    public ProfileDirectoryNameExclusionRuleDraftViewModel(
-        ProfileDirectoryNameExclusionRuleManifest rule)
+    public ProfileDirectoryExclusionRuleDraftViewModel(
+        ProfileDirectoryExclusionRuleManifest rule)
     {
         ArgumentNullException.ThrowIfNull(rule);
 

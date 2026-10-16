@@ -22,7 +22,9 @@
             <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
             <controls:CommandStrip x:Name="CatalogCommandStrip" Grid.Row="0" Padding="12,8" AutomationProperties.HelpText="{StaticResource Loc.Workspace.Catalog.Description}">
                 <Grid x:Name="CatalogCommandRows">
-                    <Grid.RowDefinitions><RowDefinition Height="44" /><RowDefinition Height="40" /></Grid.RowDefinitions>
+                    <!-- Margins are part of the row's layout budget. The context
+                         row needs 40 DIP of control space plus its 8 DIP gap. -->
+                    <Grid.RowDefinitions><RowDefinition Height="Auto" MinHeight="44" /><RowDefinition Height="Auto" MinHeight="48" /></Grid.RowDefinitions>
                     <Grid x:Name="CatalogSearchRow">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                         <ui:TextBox x:Name="SearchBox" MinHeight="44" Padding="14,8" FontSize="17"
@@ -61,10 +63,10 @@
                         <ui:Button x:Name="ImportCatalogProfileButton" Grid.Column="2" Margin="4,0,8,0" Padding="8,4" Appearance="Transparent" Command="{Binding ImportProfileCommand}" Icon="{ui:SymbolIcon Symbol=FolderOpen20}" AutomationProperties.Name="{StaticResource Loc.Ux.Catalog.ImportProfile}" ToolTip="{StaticResource Loc.Ux.Catalog.ImportProfile.Help}" ToolTipService.ShowOnDisabled="True">
                             <ui:Button.Content><ui:TextBlock x:Name="ImportCatalogProfileLabel" Text="{StaticResource Loc.Ux.Catalog.ImportProfile}" /></ui:Button.Content>
                         </ui:Button>
-                        <ui:Button x:Name="CatalogLocationButton" Grid.Column="3" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Padding="8,4" Appearance="Transparent" Command="{Binding OpenEntryPathsCommand}" IsEnabled="{Binding CanEditWorkspace}" Icon="{ui:SymbolIcon Symbol=FolderOpen20}" AutomationProperties.Name="{StaticResource Loc.Catalog.Entries.Title}" ToolTipService.ShowOnDisabled="True">
-                            <ui:Button.Content><DockPanel>
-                                <ui:TextBlock DockPanel.Dock="Left" Margin="0,0,6,0" Text="{StaticResource Loc.Ux.Results.Location}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
-                                <ui:TextBlock Text="{Binding EntryPathsSummary}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                        <ui:Button x:Name="CatalogLocationButton" Grid.Column="3" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Padding="8,4" Appearance="Transparent" Command="{Binding OpenEntryPathsCommand}" IsEnabled="{Binding CanEditWorkspace}" Icon="{ui:SymbolIcon Symbol=FolderAdd20}" SizeChanged="OnLocationButtonSizeChanged" AutomationProperties.Name="{StaticResource Loc.Catalog.Entries.Manage}" AutomationProperties.HelpText="{StaticResource Loc.Catalog.Entries.Help}" ToolTipService.ShowOnDisabled="True">
+                            <ui:Button.Content><DockPanel ClipToBounds="True">
+                                <ui:TextBlock x:Name="CatalogLocationActionLabel" DockPanel.Dock="Left" Text="{StaticResource Loc.Catalog.Entries.ManageShort}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                <ui:TextBlock x:Name="CatalogLocationSummary" Margin="8,0,0,0" Text="{Binding EntryPathsSummary}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                             </DockPanel></ui:Button.Content>
                             <ui:Button.ToolTip><StackPanel MaxWidth="480"><ui:TextBlock Text="{Binding EntryPathsDescription}" TextWrapping="Wrap" /><ui:TextBlock Margin="0,4,0,0" Text="{StaticResource Loc.Catalog.Entries.Help}" TextWrapping="Wrap" /></StackPanel></ui:Button.ToolTip>
                         </ui:Button>
@@ -75,7 +77,7 @@
         <Grid x:Name="CatalogResultsWorkspace" Grid.Row="1">
             <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
             <StackPanel Margin="0,0,0,4">
-            <Grid x:Name="CatalogStatusRow" Height="32">
+            <Grid x:Name="CatalogStatusRow" MinHeight="36">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" MaxWidth="160" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                 <ui:TextBlock Text="{Binding FilterSummary}" TextTrimming="CharacterEllipsis" ToolTip="{Binding FilterSummary}" FontWeight="SemiBold" VerticalAlignment="Center" AutomationProperties.LiveSetting="Polite" />
                 <Grid x:Name="CatalogStatusSlot" Grid.Column="1" Margin="12,0">
@@ -102,10 +104,10 @@
                         Text="{Binding LastCompletedScanElapsedText}" ToolTip="{Binding LastCompletedScanElapsedText}"
                         Visibility="{Binding HasCompletedScanElapsed, Converter={StaticResource BooleanToVisibilityConverter}}" />
                     <ToggleButton x:Name="SelectedOnlyButton" Style="{StaticResource SelectedOnlyToggleStyle}" />
-                    <ui:Button x:Name="SelectFromDataButton" Height="28" Margin="8,0,4,0" Padding="8,4" Appearance="Transparent"
+                    <ui:Button x:Name="SelectFromDataButton" Style="{StaticResource CompactActionButtonStyle}" Margin="8,0,4,0" Appearance="Transparent"
                         Command="{Binding OpenSelectionImportCommand}" Icon="{ui:SymbolIcon Symbol=ClipboardTaskListLtr20}" AutomationProperties.Name="{StaticResource Loc.SelectionImport.Open}"
                         ToolTip="{StaticResource Loc.SelectionImport.Open.Help}" ToolTipService.ShowOnDisabled="True"><ui:Button.Content><ui:TextBlock x:Name="SelectFromDataLabel" Text="{StaticResource Loc.SelectionImport.Open}" /></ui:Button.Content></ui:Button>
-                    <ui:Button Width="28" Height="24" MinWidth="0" MinHeight="0" Padding="4" Appearance="Transparent" Icon="{ui:SymbolIcon Symbol=ColumnTriple20}" Click="OnColumnsMenuClick" IsEnabled="{Binding IsResultInteractionEnabled, FallbackValue=True}" ToolTip="{StaticResource Loc.Ux.Results.Columns}" AutomationProperties.Name="{StaticResource Loc.Ux.Results.Columns}" />
+                    <ui:Button Style="{StaticResource CompactIconButtonStyle}" Appearance="Transparent" Icon="{ui:SymbolIcon Symbol=ColumnTriple20}" Click="OnColumnsMenuClick" IsEnabled="{Binding IsResultInteractionEnabled, FallbackValue=True}" ToolTip="{StaticResource Loc.Ux.Results.Columns}" AutomationProperties.Name="{StaticResource Loc.Ux.Results.Columns}" />
                 </StackPanel>
             </Grid>
             <ui:DynamicScrollViewer x:Name="CatalogFilterScroller" Style="{StaticResource FluentGutteredScrollViewerStyle}" Height="44" Margin="0,4,0,0" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" CanContentScroll="False" Visibility="{Binding HasColumnFilters, Converter={StaticResource BooleanToVisibilityConverter}}">
@@ -270,33 +272,39 @@
                 <Grid>
                     <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
                         <DockPanel Margin="0,0,0,8">
-                            <ui:Button x:Name="CloseCatalogDetailsButton" Click="OnCloseDetailsClick" DockPanel.Dock="Right" Width="28" Height="28" Padding="4" Appearance="Transparent" Command="{Binding CloseDetailsCommand}" Icon="{ui:SymbolIcon Symbol=Dismiss20}" AutomationProperties.Name="{StaticResource Loc.Common.Close}" ToolTip="{StaticResource Loc.Ux.Pane.CloseHelp}" />
+                            <ui:Button x:Name="CloseCatalogDetailsButton" Style="{StaticResource CompactIconButtonStyle}" Click="OnCloseDetailsClick" DockPanel.Dock="Right" Margin="8,0,0,0" Appearance="Transparent" Command="{Binding CloseDetailsCommand}" Icon="{ui:SymbolIcon Symbol=Dismiss20}" AutomationProperties.Name="{StaticResource Loc.Common.Close}" ToolTip="{StaticResource Loc.Ux.Pane.CloseHelp}" />
                             <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" VerticalAlignment="Center" Text="{StaticResource Loc.Ux.Results.DataManagement}" />
                         </DockPanel>
 
                 <ui:DynamicScrollViewer Grid.Row="1" Style="{StaticResource FluentGutteredScrollViewerStyle}">
                     <StackPanel>
                         <StackPanel IsEnabled="{Binding CanEditWorkspace, FallbackValue=True}">
-                        <ui:TextBlock Text="{StaticResource Loc.Catalog.Entries.Title}" FontWeight="SemiBold" Margin="0,0,0,8" />
+                        <controls:SectionCard x:Name="CatalogEntryPathsCard" Padding="12" Margin="0,0,0,12" Background="{DynamicResource ControlFillColorSecondaryBrush}" Style="{StaticResource FluentSectionCardStyle}">
+                        <controls:SectionCard.Header><StackPanel>
+                        <ui:TextBlock Text="{StaticResource Loc.Catalog.Entries.Manage}" FontWeight="SemiBold" Margin="0,0,0,8" />
                         <ui:TextBlock Text="{StaticResource Loc.Catalog.Entries.Help}" Style="{StaticResource CaptionTextStyle}" TextWrapping="Wrap" Margin="0,0,0,12" />
                         <ItemsControl ItemsSource="{Binding EntryPaths}" Margin="0,0,0,8">
                             <ItemsControl.ItemTemplate><DataTemplate>
                                 <Grid Margin="0,0,0,8">
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                                     <ui:TextBlock Text="{Binding}" ToolTip="{Binding}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Margin="0,0,8,0" />
-                                    <ui:Button Grid.Column="1" Appearance="Transparent" Padding="6" Icon="{ui:SymbolIcon Symbol=Dismiss20}"
+                                    <ui:Button Grid.Column="1" Style="{StaticResource CompactIconButtonStyle}" Appearance="Transparent" Icon="{ui:SymbolIcon Symbol=Dismiss20}"
                                         Command="{Binding DataContext.RemoveEntryPathCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding}"
                                         AutomationProperties.Name="{StaticResource Loc.Catalog.Entries.Remove}" ToolTip="{StaticResource Loc.Catalog.Entries.Remove}" />
                                 </Grid>
                             </DataTemplate></ItemsControl.ItemTemplate>
                         </ItemsControl>
-                        <ui:TextBox Text="{Binding NewEntryPath, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="{StaticResource Loc.Catalog.Entries.Placeholder}" AutomationProperties.Name="{StaticResource Loc.Catalog.Entries.Title}">
+                        <ui:TextBox x:Name="CatalogNewEntryPathInput" Text="{Binding NewEntryPath, UpdateSourceTrigger=PropertyChanged}" PlaceholderText="{StaticResource Loc.Catalog.Entries.Placeholder}" AutomationProperties.Name="{StaticResource Loc.Catalog.Entries.Title}">
                             <ui:TextBox.InputBindings><KeyBinding Key="Enter" Command="{Binding AddEntryPathCommand}" /></ui:TextBox.InputBindings>
                         </ui:TextBox>
-                        <WrapPanel Margin="0,8,0,16">
-                            <ui:Button Command="{Binding AddEntryPathCommand}" Content="{StaticResource Loc.Catalog.Entries.Add}" Margin="0,0,8,8" />
-                            <ui:Button Command="{Binding BrowseEntryPathCommand}" Content="{StaticResource Loc.Catalog.Entries.Browse}" Margin="0,0,0,8" />
+                        <WrapPanel Margin="0,8,0,0">
+                            <ui:Button x:Name="CatalogAddEntryPathButton" Command="{Binding AddEntryPathCommand}" Content="{StaticResource Loc.Catalog.Entries.Add}" Icon="{ui:SymbolIcon Symbol=Add20}" ToolTip="{StaticResource Loc.Catalog.Entries.Help}" Margin="0,0,8,8" />
+                            <ui:Button x:Name="CatalogBrowseEntryPathButton" Command="{Binding BrowseEntryPathCommand}" Content="{StaticResource Loc.Catalog.Entries.Browse}" Icon="{ui:SymbolIcon Symbol=FolderAdd20}" ToolTip="{StaticResource Loc.Catalog.Entries.Help}" Margin="0,0,0,8" />
                         </WrapPanel>
+                        </StackPanel></controls:SectionCard.Header>
+                        </controls:SectionCard>
+                        <controls:SectionCard x:Name="CatalogDatabaseCard" Padding="12" Background="{DynamicResource ControlFillColorSecondaryBrush}" Style="{StaticResource FluentSectionCardStyle}">
+                        <controls:SectionCard.Header><StackPanel>
                         <ui:TextBlock Text="{StaticResource Loc.Workspace.Database.Path}" FontWeight="SemiBold" Margin="0,0,0,8" />
                         <ui:TextBlock Margin="0,4,0,12" Style="{StaticResource CaptionTextStyle}" Text="{StaticResource Loc.Workspace.Catalog.Database.Help}" />
                         <ui:TextBox AutomationProperties.Name="{StaticResource Loc.Workspace.Database.Path}" LostKeyboardFocus="OnWorkspacePathLostKeyboardFocus" PlaceholderText="{StaticResource Loc.Workspace.Database.Path}" Text="{Binding DatabasePath, UpdateSourceTrigger=PropertyChanged}" />
@@ -305,6 +313,8 @@
                             <ui:Button Margin="0,0,0,8" Command="{Binding LoadCommand}" Content="{StaticResource Loc.Workspace.Database.Load}" ToolTip="{StaticResource Loc.Workspace.Database.Load.Help}" ToolTipService.ShowOnDisabled="True" />
                         </WrapPanel>
                         <ui:TextBlock Style="{StaticResource CaptionTextStyle}" Text="{Binding ResultSourceDescription}" TextWrapping="Wrap" />
+                        </StackPanel></controls:SectionCard.Header>
+                        </controls:SectionCard>
                         </StackPanel>
                     </StackPanel>
                 </ui:DynamicScrollViewer>

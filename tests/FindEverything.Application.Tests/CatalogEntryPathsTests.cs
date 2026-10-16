@@ -212,8 +212,9 @@ public sealed class CatalogEntryPathsTests
             return ProfileMapResult.Success(new("test", candidate.AbsolutePath, "all", new object(),
                 new Dictionary<string, object?> { ["name"] = Path.GetFileName(candidate.AbsolutePath) }));
         }
-        public ProfileDirectoryNameExclusionResult EvaluateDirectoryName(string name) => name == ExcludedName
-            ? ProfileDirectoryNameExclusionResult.Excluded("skip") : ProfileDirectoryNameExclusionResult.NotExcluded();
+        public ProfileDirectoryExclusionResult EvaluateDirectoryPath(string absolutePath) =>
+            ExcludedName is not null && absolutePath == Path.Combine(A, ExcludedName)
+            ? ProfileDirectoryExclusionResult.Excluded("skip") : ProfileDirectoryExclusionResult.NotExcluded();
         public bool TryResolve(string id, [NotNullWhen(true)] out ILoadedProfile? profile)
         { profile = id == "test" ? this : null; return profile is not null; }
         public IIndexSession Create(string databasePath) => new Session(this, databasePath);

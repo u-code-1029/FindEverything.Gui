@@ -40,6 +40,9 @@ internal static class MultiRootEntryPathsUiChecks
             host.Show(); Pump(host);
             var details = Assert.IsAssignableFrom<Ui.CardControl>(page.FindName("CatalogDetailsPanel"));
             Assert.True(details.IsVisible);
+            var entryCard = Assert.IsAssignableFrom<Ui.CardControl>(page.FindName("CatalogEntryPathsCard"));
+            var databaseCard = Assert.IsAssignableFrom<Ui.CardControl>(page.FindName("CatalogDatabaseCard"));
+            Assert.NotSame(entryCard, databaseCard);
             var list = Assert.Single(Descendants(details).OfType<ItemsControl>(), candidate =>
                 BindingOperations.GetBinding(candidate, ItemsControl.ItemsSourceProperty)?.Path.Path == "EntryPaths");
             Assert.Equal(fixture.EntryPaths.ToArray(), list.Items.Cast<string>().ToArray());
@@ -59,13 +62,27 @@ internal static class MultiRootEntryPathsUiChecks
             Assert.Equal(UpdateSourceTrigger.PropertyChanged,
                 BindingOperations.GetBinding(input, TextBox.TextProperty)!.UpdateSourceTrigger);
             Assert.False(string.IsNullOrWhiteSpace(AutomationProperties.GetName(input)));
+            Assert.Contains(input, Descendants(entryCard));
+            Assert.DoesNotContain(input, Descendants(databaseCard));
             Assert.Same(fixture.AddEntryPathCommand, Assert.Single(input.InputBindings.OfType<KeyBinding>(), key => key.Key == Key.Enter).Command);
             Assert.Single(Descendants(details).OfType<Ui.Button>(), button => ReferenceEquals(button.Command, fixture.AddEntryPathCommand));
             Assert.Single(Descendants(details).OfType<Ui.Button>(), button => ReferenceEquals(button.Command, fixture.BrowseEntryPathCommand));
 
             var location = Assert.IsType<Ui.Button>(page.FindName("CatalogLocationButton"));
             Assert.Same(fixture.OpenEntryPathsCommand, location.Command);
+            Assert.Equal(Ui.SymbolRegular.FolderAdd20, Assert.IsType<Ui.SymbolIcon>(location.Icon).Symbol);
+            Assert.Equal(page.FindResource("Loc.Catalog.Entries.Manage"), AutomationProperties.GetName(location));
+            Assert.Equal(page.FindResource("Loc.Catalog.Entries.Help"), AutomationProperties.GetHelpText(location));
+            var actionLabel = Assert.IsType<Ui.TextBlock>(page.FindName("CatalogLocationActionLabel"));
+            Assert.Equal(page.FindResource("Loc.Catalog.Entries.ManageShort"), actionLabel.Text);
+            Assert.True(actionLabel.IsVisible && actionLabel.ActualWidth > 0,
+                "The compact location action must visibly advertise adding paths, not only display a folder name.");
+            var summary = Assert.IsType<Ui.TextBlock>(page.FindName("CatalogLocationSummary"));
+            Assert.Equal(fixture.EntryPathsSummary, summary.Text);
+            Assert.Equal("EntryPathsSummary", BindingOperations.GetBinding(summary, TextBlock.TextProperty)?.Path.Path);
             Assert.NotNull(location.ToolTip);
+            Assert.Contains(Descendants(Assert.IsAssignableFrom<DependencyObject>(location.ToolTip)).OfType<Ui.TextBlock>(),
+                text => BindingOperations.GetBinding(text, TextBlock.TextProperty)?.Path.Path == "EntryPathsDescription");
             fixture.CanEditWorkspace = false; fixture.Notify(); Pump(host);
             Assert.False(input.IsEnabled);
             Assert.False(location.IsEnabled);

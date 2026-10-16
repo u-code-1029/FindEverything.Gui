@@ -1,4 +1,5 @@
 using System.IO;
+using System.Text.RegularExpressions;
 using System.Windows.Media;
 using FindEverything.Desktop.ViewModels;
 using FindEverything.Profile.Runtime;
@@ -221,36 +222,65 @@ public sealed class ProfileRegexDebugBuilderTests
     }
 
     [Fact]
-    public void Directory_exclusion_full_rule_uses_leaf_semantics_and_keeps_named_group_highlights()
+    public void Directory_exclusion_full_rule_uses_the_absolute_path_and_keeps_named_group_highlights()
     {
-        var partial = Assert.Single(BuildDirectoryNameSemanticPreview(
-            "project-name-backup",
-            [ExclusionRule("skip-name", "(?<folder>name)", ProfileRegexMatchMode.Full)]));
-        var full = Assert.Single(BuildDirectoryNameSemanticPreview(
-            "name",
-            [ExclusionRule("skip-name", "(?<folder>name)", ProfileRegexMatchMode.Full)]));
+        const string matchingPath = @"C:\Archive\name";
+        var pattern = Regex.Escape(@"C:\Archive\") + "(?<folder>name)";
+        var partial = Assert.Single(BuildDirectoryPathSemanticPreview(
+            matchingPath + "-backup",
+            [ExclusionRule("skip-name", pattern, ProfileRegexMatchMode.Full)]));
+        var full = Assert.Single(BuildDirectoryPathSemanticPreview(
+            matchingPath,
+            [ExclusionRule("skip-name", pattern, ProfileRegexMatchMode.Full)]));
 
-        Assert.Equal("폴더 이름 전체 일치", partial.MatchMode);
+        Assert.Equal("절대경로 전체 일치", partial.MatchMode);
         Assert.Contains("부분 후보", partial.Status, StringComparison.Ordinal);
-        Assert.Contains("폴더 이름 전체가 일치", partial.Status, StringComparison.Ordinal);
+        Assert.Contains("절대경로 전체가 일치", partial.Status, StringComparison.Ordinal);
         Assert.Equal(["패턴", "folder"], partial.Lanes.Select(static lane => lane.Label));
-        Assert.Equal("name", HighlightedText(partial.Lanes[0]));
+        Assert.Equal(matchingPath, HighlightedText(partial.Lanes[0]));
         Assert.Equal("name", HighlightedText(partial.Lanes[1]));
-        Assert.Contains("실제 폴더 이름 전체 일치", full.Status, StringComparison.Ordinal);
+        Assert.Contains("실제 절대경로 전체 일치", full.Status, StringComparison.Ordinal);
+        Assert.Equal(matchingPath, HighlightedText(full.Lanes[0]));
     }
 
-    [Fact]
-    public void Directory_exclusion_test_result_reports_leaf_match_and_direct_scan_scope()
+    [Theory]
+    [InlineData(@"C:\Archive\name")]
+    [InlineData(@"\\192.0.2.10\Share\Archive\name")]
+    public void A_leaf_only_pattern_is_only_a_partial_candidate_within_the_absolute_path(string absolutePath)
     {
-        var result = ProfilePlaygroundEvaluator.BuildDirectoryExclusionTestResult(
-            "name",
-            ruleCount: 1,
-            new ExcludingProfile());
+        var full = Assert.Single(BuildDirectoryPathSemanticPreview(absolutePath,
+            [ExclusionRule("leaf-full", "(?<folder>name)", ProfileRegexMatchMode.Full)]));
+        var partial = Assert.Single(BuildDirectoryPathSemanticPreview(absolutePath,
+            [ExclusionRule("leaf-partial", "(?<folder>name)", ProfileRegexMatchMode.Partial)]));
 
-        Assert.Equal("name", result.LeafName);
+        Assert.Contains("부분 후보", full.Status, StringComparison.Ordinal);
+        Assert.Contains("실제 구조화 스캔에서는 절대경로 전체가 일치해야 합니다.", full.Status, StringComparison.Ordinal);
+        Assert.Contains("부분 일치", partial.Status, StringComparison.Ordinal);
+        Assert.DoesNotContain("부분 후보", partial.Status, StringComparison.Ordinal);
+        Assert.Equal("name", HighlightedText(full.Lanes[0]));
+        Assert.Equal("name", HighlightedText(partial.Lanes[0]));
+        Assert.Equal(absolutePath, string.Concat(full.Lanes[0].Segments.Select(segment => segment.Text)));
+        Assert.Equal(absolutePath, string.Concat(partial.Lanes[0].Segments.Select(segment => segment.Text)));
+    }
+
+    [Theory]
+    [InlineData(@"C:\Archive\name")]
+    [InlineData(@"\\192.0.2.10\Share\Archive\name")]
+    public void Directory_exclusion_test_result_reports_the_absolute_path_match_and_direct_scan_scope(string absolutePath)
+    {
+        var profile = new ExcludingProfile(absolutePath);
+        var result = ProfilePlaygroundEvaluator.BuildDirectoryExclusionTestResult(
+            absolutePath,
+            ruleCount: 1,
+            profile);
+
+        Assert.Equal(absolutePath, profile.EvaluatedPath);
+        Assert.Equal(absolutePath, result.AbsolutePath);
         Assert.Contains("skip-name", result.Title, StringComparison.Ordinal);
         Assert.Contains("현재 폴더와 하위", result.Title, StringComparison.Ordinal);
         Assert.Contains("다음 폴더", result.Message, StringComparison.Ordinal);
+        Assert.Contains("전체 절대경로", result.Message, StringComparison.Ordinal);
+        Assert.Contains("UNC", result.Message, StringComparison.Ordinal);
         Assert.Contains("기존 DB 불러오기", result.Message, StringComparison.Ordinal);
         Assert.Contains("검색 루트", result.Message, StringComparison.Ordinal);
         Assert.Contains("저장된 인덱스", result.Message, StringComparison.Ordinal);
@@ -277,9 +307,9 @@ public sealed class ProfileRegexDebugBuilderTests
         string input, IReadOnlyList<ProfileRegexRuleManifest> rules) =>
         ProfileRegexDebugBuilder.Build(input, rules, SemanticPreviewDuration, maximumDisplayedRuleCount: 32);
 
-    private static IReadOnlyList<ProfileRegexDebugRuleViewModel> BuildDirectoryNameSemanticPreview(
-        string input, IReadOnlyList<ProfileDirectoryNameExclusionRuleManifest> rules) =>
-        ProfileRegexDebugBuilder.BuildDirectoryName(input, rules, SemanticPreviewDuration, maximumDisplayedRuleCount: 32);
+    private static IReadOnlyList<ProfileRegexDebugRuleViewModel> BuildDirectoryPathSemanticPreview(
+        string input, IReadOnlyList<ProfileDirectoryExclusionRuleManifest> rules) =>
+        ProfileRegexDebugBuilder.BuildDirectoryPath(input, rules, SemanticPreviewDuration, maximumDisplayedRuleCount: 32);
 
     private static ProfileRegexRuleManifest Rule(
         string id,
@@ -296,7 +326,7 @@ public sealed class ProfileRegexDebugBuilderTests
             TimeoutMilliseconds = timeoutMilliseconds,
         };
 
-    private static ProfileDirectoryNameExclusionRuleManifest ExclusionRule(
+    private static ProfileDirectoryExclusionRuleManifest ExclusionRule(
         string id,
         string pattern,
         ProfileRegexMatchMode matchMode,
@@ -320,7 +350,7 @@ public sealed class ProfileRegexDebugBuilderTests
     private static Color BrushColor(Brush brush) =>
         Assert.IsType<SolidColorBrush>(brush).Color;
 
-    private sealed class ExcludingProfile : ILoadedProfile
+    private sealed class ExcludingProfile(string expectedAbsolutePath) : ILoadedProfile
     {
         public ProfileDescriptor Descriptor { get; } = new(
             "test",
@@ -333,10 +363,14 @@ public sealed class ProfileRegexDebugBuilderTests
         public ProfileMapResult Map(ProfilePathCandidate candidate) =>
             ProfileMapResult.NoMatch();
 
-        public ProfileDirectoryNameExclusionResult EvaluateDirectoryName(
-            string directoryName) =>
-            directoryName == "name"
-                ? ProfileDirectoryNameExclusionResult.Excluded("skip-name")
-                : ProfileDirectoryNameExclusionResult.NotExcluded();
+        public string? EvaluatedPath { get; private set; }
+
+        public ProfileDirectoryExclusionResult EvaluateDirectoryPath(string absolutePath)
+        {
+            EvaluatedPath = absolutePath;
+            return absolutePath == expectedAbsolutePath
+                ? ProfileDirectoryExclusionResult.Excluded("skip-name")
+                : ProfileDirectoryExclusionResult.NotExcluded();
+        }
     }
 }

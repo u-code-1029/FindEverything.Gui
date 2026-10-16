@@ -66,8 +66,8 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
     private IReadOnlyList<ProfileRuleInspectionViewModel> _rules = [];
 
     [ObservableProperty]
-    private IReadOnlyList<ProfileDirectoryNameExclusionRuleInspectionViewModel>
-        _excludedDirectoryNameRules = [];
+    private IReadOnlyList<ProfileDirectoryExclusionRuleInspectionViewModel>
+        _directoryExclusionRules = [];
 
     [ObservableProperty]
     private IReadOnlyList<ProfileTextFileFieldInspectionViewModel> _textFileFields = [];
@@ -240,7 +240,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
 
     private string BuildNumericValidationMessage() => string.Join(Environment.NewLine,
         DraftRules.Select(static row => row.NumericValidationMessage)
-            .Concat(DraftExcludedDirectoryNameRules.Select(static row => row.NumericValidationMessage))
+            .Concat(DraftDirectoryExclusionRules.Select(static row => row.NumericValidationMessage))
             .Concat(DraftTextFileFields.Select(static row => row.NumericValidationMessage))
             .Concat(DraftUserInputFields.Select(static row => row.NumericValidationMessage))
             .Concat(DraftChildDirectoryFields.Select(static row => row.NumericValidationMessage))
@@ -302,8 +302,8 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
 
     public ObservableCollection<ProfileRuleDraftViewModel> DraftRules => _editorSession.Rules;
 
-    public ObservableCollection<ProfileDirectoryNameExclusionRuleDraftViewModel>
-        DraftExcludedDirectoryNameRules => _editorSession.Exclusions;
+    public ObservableCollection<ProfileDirectoryExclusionRuleDraftViewModel>
+        DraftDirectoryExclusionRules => _editorSession.Exclusions;
 
     public ObservableCollection<ProfileTextFileFieldDraftViewModel>
         DraftTextFileFields => _editorSession.TextFiles;
@@ -325,10 +325,10 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
             .OrderBy(static rule => rule.Order)
             .Select(rule => new ProfileRuleInspectionViewModel(rule, _localizer))
             .ToArray() ?? [];
-        ExcludedDirectoryNameRules = value?.Descriptor.ExcludedDirectoryNameRules
+        DirectoryExclusionRules = value?.Descriptor.DirectoryExclusionRules
             .OrderBy(static rule => rule.Order)
             .Select(static rule =>
-                new ProfileDirectoryNameExclusionRuleInspectionViewModel(rule))
+                new ProfileDirectoryExclusionRuleInspectionViewModel(rule))
             .ToArray() ?? [];
         TextFileFields = value?.Descriptor.TextFileFields
             .OrderBy(static field => field.Order)
@@ -477,7 +477,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
             IsAssignmentPickerOpen = false;
             DraftFields.Clear();
             DraftRules.Clear();
-            DraftExcludedDirectoryNameRules.Clear();
+            DraftDirectoryExclusionRules.Clear();
             DraftTextFileFields.Clear();
             DraftUserInputFields.Clear();
             ResetAdditionalDraft();
@@ -956,11 +956,11 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
         {
             id = $"exclude-{suffix++}";
         }
-        while (DraftExcludedDirectoryNameRules.Any(rule =>
+        while (DraftDirectoryExclusionRules.Any(rule =>
                    string.Equals(rule.Id, id, StringComparison.OrdinalIgnoreCase)));
 
         AddDirectoryExclusionRuleRow(
-            new ProfileDirectoryNameExclusionRuleDraftViewModel
+            new ProfileDirectoryExclusionRuleDraftViewModel
             {
                 Id = id,
                 MatchMode = ProfileRegexMatchMode.Partial,
@@ -972,9 +972,9 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
 
     [RelayCommand]
     private void RemoveDirectoryExclusionRule(
-        ProfileDirectoryNameExclusionRuleDraftViewModel? rule)
+        ProfileDirectoryExclusionRuleDraftViewModel? rule)
     {
-        if (rule is not null && DraftExcludedDirectoryNameRules.Remove(rule))
+        if (rule is not null && DraftDirectoryExclusionRules.Remove(rule))
         {
             rule.PropertyChanged -= OnDraftRowChanged;
             AddDirectoryExclusionRuleCommand.NotifyCanExecuteChanged();
@@ -1317,8 +1317,8 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
 
     private bool CanAddDirectoryExclusionRule() =>
         !IsEditorBusy
-        && DraftExcludedDirectoryNameRules.Count
-            < ProfileManifestLimits.MaximumExcludedDirectoryNameRuleCount;
+        && DraftDirectoryExclusionRules.Count
+            < ProfileManifestLimits.MaximumDirectoryExclusionRuleCount;
 
     private bool CanAddTextFileField() =>
         !IsEditorBusy
@@ -1418,10 +1418,10 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
                         ? null
                         : field.DefaultValue,
                 }).ToList(),
-            ExcludedDirectoryNameRules = DraftExcludedDirectoryNameRules.Count == 0
+            DirectoryExclusionRules = DraftDirectoryExclusionRules.Count == 0
                 ? null
-                : DraftExcludedDirectoryNameRules.Select(rule =>
-                    new ProfileDirectoryNameExclusionRuleManifest
+                : DraftDirectoryExclusionRules.Select(rule =>
+                    new ProfileDirectoryExclusionRuleManifest
                     {
                         Id = rule.Id.Trim(),
                         Pattern = rule.Pattern,
@@ -1435,6 +1435,16 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
 
     private void PopulateDraft(ProfileManifest manifest)
     {
+        // Do not let the editor erase removed rules while rebuilding its draft.
+        // Validation/import rejects these too, but editable-file loading only
+        // deserializes the document and must guard before changing any state.
+        if (manifest.LegacyExcludedDirectoryNameRules is not null)
+        {
+            throw new InvalidOperationException(L(
+                "Loc.ProfileDiagnostic.directory_name_exclusion_removed",
+                "이전 폴더 이름 제외 규칙은 지원하지 않습니다. directoryExclusionRules에 전체 절대경로 기준 정규식을 다시 정의하세요."));
+        }
+
         _editorSession.CancelPreview();
         _previewPending = false;
         _editorSession.Changed();
@@ -1455,7 +1465,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
             DraftId = manifest.Id ?? string.Empty;
             DraftFields.Clear();
             DraftRules.Clear();
-            DraftExcludedDirectoryNameRules.Clear();
+            DraftDirectoryExclusionRules.Clear();
             DraftTextFileFields.Clear();
             DraftUserInputFields.Clear();
             ResetAdditionalDraft();
@@ -1479,10 +1489,10 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
                 AddRuleRow(new ProfileRuleDraftViewModel(rule));
             }
 
-            foreach (var rule in manifest.ExcludedDirectoryNameRules ?? [])
+            foreach (var rule in manifest.DirectoryExclusionRules ?? [])
             {
                 AddDirectoryExclusionRuleRow(
-                    new ProfileDirectoryNameExclusionRuleDraftViewModel(rule));
+                    new ProfileDirectoryExclusionRuleDraftViewModel(rule));
             }
 
             foreach (var field in manifest.TextFileFields ?? [])
@@ -1671,10 +1681,10 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
     }
 
     private void AddDirectoryExclusionRuleRow(
-        ProfileDirectoryNameExclusionRuleDraftViewModel rule)
+        ProfileDirectoryExclusionRuleDraftViewModel rule)
     {
         rule.PropertyChanged += OnDraftRowChanged;
-        DraftExcludedDirectoryNameRules.Add(rule);
+        DraftDirectoryExclusionRules.Add(rule);
         MarkDraftChanged();
     }
 
@@ -1705,7 +1715,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
             rule.PropertyChanged -= OnDraftRowChanged;
         }
 
-        foreach (var rule in DraftExcludedDirectoryNameRules)
+        foreach (var rule in DraftDirectoryExclusionRules)
         {
             rule.PropertyChanged -= OnDraftRowChanged;
         }
@@ -1746,7 +1756,7 @@ public partial class ProfilesViewModel : ObservableObject, IDraftParticipant, IP
             or nameof(ProfileFieldDraftViewModel.GroupNamesText))
             RefreshOptionalStepSummaries();
 
-        if (sender is ProfileDirectoryNameExclusionRuleDraftViewModel
+        if (sender is ProfileDirectoryExclusionRuleDraftViewModel
             or ProfileTextFileFieldDraftViewModel
             or ProfileUserInputFieldDraftViewModel)
         {
@@ -2300,7 +2310,7 @@ public sealed class ProfileSummaryViewModel(
 
     public int FieldCount => Descriptor.Fields.Count;
 
-    public int ExcludedDirectoryRuleCount => Descriptor.ExcludedDirectoryNameRules.Count;
+    public int ExcludedDirectoryRuleCount => Descriptor.DirectoryExclusionRules.Count;
 
     public int TextFileFieldCount => Descriptor.TextFileFields.Count;
 
@@ -2413,8 +2423,8 @@ public sealed class ProfileRuleInspectionViewModel(
         : string.Join(" + ", descriptor.StopTraversalWhenCapturedGroups);
 }
 
-public sealed class ProfileDirectoryNameExclusionRuleInspectionViewModel(
-    ProfileDirectoryNameExclusionRuleDescriptor descriptor)
+public sealed class ProfileDirectoryExclusionRuleInspectionViewModel(
+    ProfileDirectoryExclusionRuleDescriptor descriptor)
 {
     public int Order => descriptor.Order;
 

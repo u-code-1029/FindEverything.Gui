@@ -26,6 +26,13 @@
     <Thickness x:Key="SectionMargin">0,0,0,8</Thickness>
     <Thickness x:Key="LabelGap">0,0,0,4</Thickness>
     <Thickness x:Key="RelatedControlGap">0,0,0,8</Thickness>
+    <!-- Input rows must budget these sizes plus their margins. Use MinHeight,
+         not Height: font fallback and text scaling can need more room. -->
+    <sys:Double x:Key="FormControlMinHeight">40</sys:Double>
+    <sys:Double x:Key="CompactActionMinHeight">32</sys:Double>
+    <sys:Double x:Key="IconActionSize">32</sys:Double>
+    <Thickness x:Key="FormControlPadding">12,8</Thickness>
+    <Thickness x:Key="CompactActionPadding">10,4</Thickness>
     <Thickness x:Key="CatalogPagePadding">24,0,24,8</Thickness>
     <Thickness x:Key="CompactCatalogPagePadding">16,0,16,8</Thickness>
     <sys:Double x:Key="CatalogRowHeight">44</sys:Double>

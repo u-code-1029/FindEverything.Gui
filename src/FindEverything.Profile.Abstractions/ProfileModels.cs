@@ -97,7 +97,7 @@ public sealed record ProfileRegexRuleDescriptor(
         Array.Empty<string>();
 }
 
-public sealed record ProfileDirectoryNameExclusionRuleDescriptor(
+public sealed record ProfileDirectoryExclusionRuleDescriptor(
     int Order,
     string Id,
     string Pattern,
@@ -115,9 +115,9 @@ public sealed record ProfileDescriptor(
 {
     public ProfileKind Kind { get; init; } = ProfileKind.Assembly;
 
-    public IReadOnlyList<ProfileDirectoryNameExclusionRuleDescriptor>
-        ExcludedDirectoryNameRules { get; init; } =
-            Array.Empty<ProfileDirectoryNameExclusionRuleDescriptor>();
+    public IReadOnlyList<ProfileDirectoryExclusionRuleDescriptor>
+        DirectoryExclusionRules { get; init; } =
+            Array.Empty<ProfileDirectoryExclusionRuleDescriptor>();
 
     public IReadOnlyList<ProfileTextFileFieldDescriptor> TextFileFields { get; init; } =
         Array.Empty<ProfileTextFileFieldDescriptor>();
@@ -138,6 +138,13 @@ public sealed record ProfilePathCandidate
 {
     public ProfilePathCandidate(string absolutePath)
     {
+        ValidateAbsolutePath(absolutePath);
+        AbsolutePath = absolutePath;
+    }
+
+    /// <summary>Shared, allocation-free validation for canonical absolute profile inputs.</summary>
+    public static void ValidateAbsolutePath(string absolutePath)
+    {
         ArgumentException.ThrowIfNullOrWhiteSpace(absolutePath);
         if (!Path.IsPathFullyQualified(absolutePath))
         {
@@ -145,8 +152,6 @@ public sealed record ProfilePathCandidate
                 "프로필 입력은 드라이브 또는 UNC 루트를 포함한 절대 경로여야 합니다.",
                 nameof(absolutePath));
         }
-
-        AbsolutePath = absolutePath;
     }
 
     public string AbsolutePath { get; }
@@ -187,15 +192,15 @@ public enum ProfileMapStatus
 
 public sealed record ProfileMappingIssue(string Code, string? FieldId, string Message);
 
-public sealed record ProfileDirectoryNameExclusionResult(
+public sealed record ProfileDirectoryExclusionResult(
     bool IsExcluded,
     string? MatchedRuleId,
     IReadOnlyList<ProfileMappingIssue> Issues)
 {
-    public static ProfileDirectoryNameExclusionResult NotExcluded() =>
+    public static ProfileDirectoryExclusionResult NotExcluded() =>
         new(false, null, Array.Empty<ProfileMappingIssue>());
 
-    public static ProfileDirectoryNameExclusionResult Excluded(string matchedRuleId) =>
+    public static ProfileDirectoryExclusionResult Excluded(string matchedRuleId) =>
         new(true, matchedRuleId, Array.Empty<ProfileMappingIssue>());
 }
 
@@ -326,14 +331,13 @@ public interface ILoadedProfile
     }
 
     /// <summary>
-    /// Evaluates only one directory's leaf name. Callers must not pass a full path.
-    /// Existing binary profiles that do not define exclusion rules remain opt-in and
-    /// therefore never exclude a directory.
+    /// Evaluates one canonical absolute directory path, including its drive/UNC root
+    /// and all parent segments. The scanner separately protects explicit starting roots.
     /// </summary>
-    ProfileDirectoryNameExclusionResult EvaluateDirectoryName(string directoryName)
+    ProfileDirectoryExclusionResult EvaluateDirectoryPath(string absolutePath)
     {
-        ArgumentException.ThrowIfNullOrEmpty(directoryName);
-        return ProfileDirectoryNameExclusionResult.NotExcluded();
+        ProfilePathCandidate.ValidateAbsolutePath(absolutePath);
+        return ProfileDirectoryExclusionResult.NotExcluded();
     }
 }
 

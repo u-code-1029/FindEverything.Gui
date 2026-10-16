@@ -17,14 +17,14 @@ public static class ProfileManifestLimits
     public const int MaximumRegexPatternLength = 4096;
 
     /// <summary>
-    /// Maximum sum of every path-rule, directory-name-exclusion-rule, and text-file
+    /// Maximum sum of every path-rule, directory-exclusion-rule, and text-file
     /// name-rule timeout configured by a single profile.
     /// </summary>
     public const int MaximumAggregateRegexTimeoutMilliseconds = 10_000;
 
-    public const int MaximumExcludedDirectoryNameRuleCount = 64;
+    public const int MaximumDirectoryExclusionRuleCount = 64;
 
-    public const int MaximumExcludedDirectoryNamePatternLength = 4096;
+    public const int MaximumDirectoryExclusionPatternLength = 4096;
 
     public const int MaximumTextFileFieldCount = 16;
 
@@ -76,6 +76,11 @@ public sealed class ProfileManifest
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public JsonElement? LegacyPathInput { get; set; }
 
+    /// <summary>Captured only to reject removed leaf-name rules instead of silently disabling exclusions.</summary>
+    [JsonPropertyName("excludedDirectoryNameRules")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public JsonElement? LegacyExcludedDirectoryNameRules { get; set; }
+
     public string? EntryAssembly { get; set; }
 
     public string? ModelType { get; set; }
@@ -105,10 +110,10 @@ public sealed class ProfileManifest
     public ProfileCandidateKind CandidateKind { get; set; } = ProfileCandidateKind.Directory;
 
     /// <summary>
-    /// Optional regular-expression rules that prune directories by leaf name during
-    /// profile-aware direct discovery. The full path is never supplied to these rules.
+    /// Optional regular-expression rules that prune directories by their canonical
+    /// absolute path during a profile-aware scan. Explicit starting roots stay protected.
     /// </summary>
-    public List<ProfileDirectoryNameExclusionRuleManifest>? ExcludedDirectoryNameRules { get; set; }
+    public List<ProfileDirectoryExclusionRuleManifest>? DirectoryExclusionRules { get; set; }
 
     public List<ProfileRegexRuleManifest>? Rules { get; set; }
 }
@@ -166,7 +171,7 @@ public sealed class ProfileChildDirectoryFieldManifest
     public bool IgnoreCase { get; set; } = true;
 }
 
-public sealed class ProfileDirectoryNameExclusionRuleManifest
+public sealed class ProfileDirectoryExclusionRuleManifest
 {
     public string? Id { get; set; }
 

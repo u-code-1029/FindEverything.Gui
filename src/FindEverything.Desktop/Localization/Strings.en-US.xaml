@@ -246,7 +246,7 @@
     <sys:String x:Key="Loc.Catalog.Result.CompletionNotice">Found {0:N0} folders that match the profile rules.{1}{2}</sys:String>
     <sys:String x:Key="Loc.Catalog.Result.DiscoverySummary"> · Visited folders {0:N0} · Descendant scans skipped {1:N0} · Errors {2:N0}{3}</sys:String>
     <sys:String x:Key="Loc.Catalog.Result.ElapsedSuffix"> · Elapsed {0}</sys:String>
-    <sys:String x:Key="Loc.Catalog.Result.ExclusionSummary"> · Excluded by name rule {0:N0}{1}</sys:String>
+    <sys:String x:Key="Loc.Catalog.Result.ExclusionSummary"> · Path exclusions {0:N0}{1}</sys:String>
     <sys:String x:Key="Loc.Catalog.Result.ExclusionWarningSuffix"> · Exclusion-rule warnings {0:N0}</sys:String>
     <sys:String x:Key="Loc.Catalog.Result.ExistingLoadCompleted">Existing index loaded</sys:String>
     <sys:String x:Key="Loc.Catalog.Result.DirectScanCompleted">Direct scan completed without saving to the DB</sys:String>
@@ -366,9 +366,7 @@
     <sys:String x:Key="Loc.Playground.Result.Invalid">The path matched, but some values could not be converted or read.</sys:String>
     <sys:String x:Key="Loc.Playground.Result.Success">Matched rule '{0}' and loaded {1:N0} values.</sys:String>
     <sys:String x:Key="Loc.Playground.Result.Empty">The profile did not return a result.</sys:String>
-    <sys:String x:Key="Loc.Playground.Exclusion.Scope">This decision applies to the last folder name (leaf) below the structured scan root. A matching folder and all of its descendants are not indexed. The search root itself is never excluded by this rule. Loading an existing database uses its saved index, so scan again after changing a rule.</sys:String>
-    <sys:String x:Key="Loc.Playground.Exclusion.Root">(drive or share root)</sys:String>
-    <sys:String x:Key="Loc.Playground.Exclusion.NoLeaf">Exclusion was skipped because the path has no leaf folder name.</sys:String>
+    <sys:String x:Key="Loc.Playground.Exclusion.Scope">This regex test uses the full absolute path (UNC for network locations). A real scan skips matching folders and their descendants, but protects each explicitly selected starting location. Loading an existing DB uses its saved index; scan again to apply changed rules.</sys:String>
     <sys:String x:Key="Loc.Playground.Exclusion.NoRules">No exclusion rules are defined, so this folder will be scanned.</sys:String>
     <sys:String x:Key="Loc.Playground.Exclusion.ProfileInvalid">The exclusion decision could not be evaluated because the profile definition is invalid.</sys:String>
     <sys:String x:Key="Loc.Playground.Exclusion.CheckRegex">Use the color debugger and validation messages below to find the invalid regular expression. </sys:String>
@@ -397,8 +395,8 @@
     <sys:String x:Key="Loc.Profiles.Groups.Mode.Conflict">The existing definition contains both single and combined groups. Click the mode to keep; the other input will be cleared.</sys:String>
     <sys:String x:Key="Loc.Profiles.Match.FullShort">Full match</sys:String>
     <sys:String x:Key="Loc.Profiles.Match.Partial">Partial match</sys:String>
-    <sys:String x:Key="Loc.Profiles.Match.FolderFull">Match entire folder name</sys:String>
-    <sys:String x:Key="Loc.Profiles.Match.FolderPartial">Match part of folder name</sys:String>
+    <sys:String x:Key="Loc.Profiles.Match.FolderFull">Match entire absolute path</sys:String>
+    <sys:String x:Key="Loc.Profiles.Match.FolderPartial">Match part of absolute path</sys:String>
     <sys:String x:Key="Loc.Profiles.Match.FileFull">Match entire file name</sys:String>
     <sys:String x:Key="Loc.Profiles.Match.FilePartial">Match part of file name</sys:String>
     <sys:String x:Key="Loc.Profiles.Date.Single">Read date from one segment</sys:String>
@@ -533,7 +531,7 @@
     <sys:String x:Key="Loc.Profiles.Date.Error.Invalid">The selected value ‘{1}’ for ‘{0}’ cannot be read using the chosen date format. Choose the matching date format again.</sys:String>
     <sys:String x:Key="Loc.RegexDebug.Limit.Time">The color preview reached its total {0:0.##}-second limit, so the remaining {1:N0} rules are not shown. This limit applies only to the color preview and does not reduce profile validation coverage.</sys:String>
     <sys:String x:Key="Loc.RegexDebug.Limit.Count">Only the first {0:N0} rules are colorized. The remaining {1:N0} rules are still included in profile validation.</sys:String>
-    <sys:String x:Key="Loc.RegexDebug.Mode.FolderFull">Match entire folder name</sys:String>
+    <sys:String x:Key="Loc.RegexDebug.Mode.FolderFull">Match entire absolute path</sys:String>
     <sys:String x:Key="Loc.RegexDebug.Mode.PathFull">Full-path match rule</sys:String>
     <sys:String x:Key="Loc.RegexDebug.Mode.Partial">Partial-match rule</sys:String>
     <sys:String x:Key="Loc.RegexDebug.Error.Empty">The pattern is empty.</sys:String>
@@ -565,9 +563,9 @@
     <sys:String x:Key="Loc.RegexDebug.Notice.Budget">color preview reached its total time limit</sys:String>
     <sys:String x:Key="Loc.RegexDebug.Status.ZeroOnly">The original pattern matches only zero-length positions, so there are no characters to color.{0}</sys:String>
     <sys:String x:Key="Loc.RegexDebug.Status.NoPartial">No section partially matches the original pattern.{0}</sys:String>
-    <sys:String x:Key="Loc.RegexDebug.Status.ActualFolderFull">Actual full folder-name match</sys:String>
+    <sys:String x:Key="Loc.RegexDebug.Status.ActualFolderFull">Actual full absolute-path match</sys:String>
     <sys:String x:Key="Loc.RegexDebug.Status.ActualPathFull">Actual full-path match</sys:String>
-    <sys:String x:Key="Loc.RegexDebug.Status.FolderRequirement">A structured scan requires the entire folder name to match.</sys:String>
+    <sys:String x:Key="Loc.RegexDebug.Status.FolderRequirement">A structured scan requires the entire absolute path to match.</sys:String>
     <sys:String x:Key="Loc.RegexDebug.Status.PathRequirement">An actual scan requires the entire path to match.</sys:String>
     <sys:String x:Key="Loc.RegexDebug.Status.FullMatched">{0} · {1:N0} original-pattern candidates{2}</sys:String>
     <sys:String x:Key="Loc.RegexDebug.Status.PartialCandidates">{0:N0} partial candidates{1}</sys:String>
@@ -1215,26 +1213,26 @@
     <sys:String x:Key="Loc.View.Profiles.PlaceholderText.ExampleMyProjects">Example: my-projects</sys:String>
     <sys:String x:Key="Loc.View.Profiles.AutomationName.AbsolutePathInputGuidance">Absolute-path input guidance</sys:String>
     <sys:String x:Key="Loc.View.Profiles.Title.AlwaysUseAbsolutePaths">Always use absolute paths</sys:String>
-    <sys:String x:Key="Loc.View.Profiles.Text.ScanOptimizationFinalFolderNamesToExclude">Scan optimization · Final folder names to exclude</sys:String>
-    <sys:String x:Key="Loc.View.Profiles.Text.TheFinalFolderNameLeafIsThe">The final folder name (leaf) is the name after the last path separator (\ or /) in an absolute path. Exclusion rules receive only that name—not the full absolute path—so drive letters, UNC addresses, and parent folders are not compared.</sys:String>
-    <sys:String x:Key="Loc.View.Profiles.AutomationName.AddFolderNameExclusionRule">Add folder-name exclusion rule</sys:String>
+    <sys:String x:Key="Loc.View.Profiles.Text.ScanOptimizationFinalFolderNamesToExclude">Scan exclusions · Absolute-path regex</sys:String>
+    <sys:String x:Key="Loc.View.Profiles.Text.TheFinalFolderNameLeafIsThe">Match the complete absolute path, including the drive and parent folders. Mapped network drives are resolved to UNC paths. Partial matches any part of the path; Full requires the entire path to match. Matching folders and descendants are skipped, except the explicitly selected starting locations themselves.</sys:String>
+    <sys:String x:Key="Loc.View.Profiles.AutomationName.AddFolderNameExclusionRule">Add path exclusion rule</sys:String>
     <sys:String x:Key="Loc.View.Profiles.Content.AddRule">Add rule</sys:String>
-    <sys:String x:Key="Loc.View.Profiles.AutomationName.FolderNameExclusionRuleScope">Folder-name exclusion-rule scope</sys:String>
+    <sys:String x:Key="Loc.View.Profiles.AutomationName.FolderNameExclusionRuleScope">Absolute-path exclusion rule scope</sys:String>
     <sys:String x:Key="Loc.View.Profiles.Text.InputExample">Input example: </sys:String>
     <sys:String x:Key="Loc.View.Profiles.Text.ValuePassedToTheRegularExpression"> → value passed to the regular expression: </sys:String>
     <sys:String x:Key="Loc.View.Profiles.Text.Label">.</sys:String>
-    <sys:String x:Key="Loc.View.Profiles.Text.MatchesOnlyWhenTheEntireFinalFolder"> matches only when the entire final folder name is exactly </sys:String>
+    <sys:String x:Key="Loc.View.Profiles.Text.MatchesOnlyWhenTheEntireFinalFolder">requires the entire absolute path to match </sys:String>
     <sys:String x:Key="Loc.View.Profiles.Text.AMatchRemovesThatFolderFromResult">. A match removes that folder from result candidates and skips its descendants, while scanning continues through sibling folders under the same parent.</sys:String>
     <sys:String x:Key="Loc.View.Profiles.Text.RuleID">Rule ID *</sys:String>
     <sys:String x:Key="Loc.View.Profiles.AutomationName.FolderExclusionRuleID">Folder-exclusion rule ID</sys:String>
     <sys:String x:Key="Loc.View.Profiles.PlaceholderText.ExampleSkipCache">Example: skip-cache</sys:String>
-    <sys:String x:Key="Loc.View.Profiles.Text.FolderNameRegularExpression">Folder-name regular expression *</sys:String>
-    <sys:String x:Key="Loc.View.Profiles.AutomationName.ExcludedFolderNameRegularExpression">Excluded folder-name regular expression</sys:String>
-    <sys:String x:Key="Loc.View.Profiles.PlaceholderText.ExampleNameOrTempCache">Example: name or temp|cache</sys:String>
-    <sys:String x:Key="Loc.View.Profiles.AutomationName.DeleteFolderNameExclusionRule">Delete folder-name exclusion rule</sys:String>
+    <sys:String x:Key="Loc.View.Profiles.Text.FolderNameRegularExpression">Absolute-path regular expression *</sys:String>
+    <sys:String x:Key="Loc.View.Profiles.AutomationName.ExcludedFolderNameRegularExpression">Absolute-path exclusion pattern</sys:String>
+    <sys:String x:Key="Loc.View.Profiles.PlaceholderText.ExampleNameOrTempCache">Example: [\\/](?:temp|cache)(?:[\\/]|$)</sys:String>
+    <sys:String x:Key="Loc.View.Profiles.AutomationName.DeleteFolderNameExclusionRule">Delete path exclusion rule</sys:String>
     <sys:String x:Key="Loc.View.Profiles.ToolTip.DeleteRule">Delete rule</sys:String>
     <sys:String x:Key="Loc.View.Profiles.Text.MatchMode">Match mode</sys:String>
-    <sys:String x:Key="Loc.View.Profiles.AutomationName.FolderNameExclusionMatchMode">Folder-name exclusion match mode</sys:String>
+    <sys:String x:Key="Loc.View.Profiles.AutomationName.FolderNameExclusionMatchMode">Absolute-path exclusion match mode</sys:String>
     <sys:String x:Key="Loc.View.Profiles.Text.TimeoutMs">Timeout (ms)</sys:String>
     <sys:String x:Key="Loc.View.Profiles.AutomationName.FolderExclusionRegularExpressionTimeout">Folder-exclusion regular-expression timeout</sys:String>
     <sys:String x:Key="Loc.View.Profiles.Content.IgnoreCase">Ignore case</sys:String>
@@ -1389,22 +1387,22 @@
     <sys:String x:Key="Loc.View.Profiles.Text.PathRules">Path rules</sys:String>
     <sys:String x:Key="Loc.View.Profiles.Header.RegularExpressionPattern261">Regular-expression pattern</sys:String>
     <sys:String x:Key="Loc.View.Profiles.Header.DescendantTraversalStopGroups">Descendant traversal-stop groups</sys:String>
-    <sys:String x:Key="Loc.View.Profiles.Text.ExcludedFolderNameRules">Excluded folder-name rules</sys:String>
+    <sys:String x:Key="Loc.View.Profiles.Text.ExcludedFolderNameRules">Absolute-path exclusion rules</sys:String>
     <sys:String x:Key="Loc.View.Profiles.Text.AppliedOnlyToTheCurrentFolderS">Applied only to the current folder's final name during a structured scan.</sys:String>
-    <sys:String x:Key="Loc.View.Profiles.Header.FolderNameMatching">Folder-name matching</sys:String>
+    <sys:String x:Key="Loc.View.Profiles.Header.FolderNameMatching">Path matching</sys:String>
     <sys:String x:Key="Loc.View.Profiles.Header.AdvancedPlugInAndDeclarativeProfileDiagnostics">Advanced: Plug-in and declarative-profile diagnostics</sys:String>
     <sys:String x:Key="Loc.View.Profiles.Header.ValidationAndDiagnosticMessages">Validation and diagnostic messages</sys:String>
     <sys:String x:Key="Loc.View.Profiles.Header.SourceFolder">Source folder</sys:String>
     <sys:String x:Key="Loc.View.ProfilePlayground.Text.StructuredValues">Structured values</sys:String>
     <sys:String x:Key="Loc.View.ProfilePlayground.Text.TheseValuesComeFromTheSameProfile">These values come from the same profile mapper used by Structured view.</sys:String>
-    <sys:String x:Key="Loc.View.ProfilePlayground.AutomationName.PlaygroundFolderNameExclusionResult">Playground folder-name exclusion result</sys:String>
-    <sys:String x:Key="Loc.View.ProfilePlayground.Text.FolderNameExclusionDecision">Folder-name exclusion decision</sys:String>
-    <sys:String x:Key="Loc.View.ProfilePlayground.Text.OnlyTheFinalFolderNameOfThe">Only the final folder name of the canonical path—not the full path—is passed to the compiled profile.</sys:String>
-    <sys:String x:Key="Loc.View.ProfilePlayground.Text.InputLeaf">Input leaf</sys:String>
+    <sys:String x:Key="Loc.View.ProfilePlayground.AutomationName.PlaygroundFolderNameExclusionResult">Playground absolute-path exclusion result</sys:String>
+    <sys:String x:Key="Loc.View.ProfilePlayground.Text.FolderNameExclusionDecision">Absolute-path exclusion decision</sys:String>
+    <sys:String x:Key="Loc.View.ProfilePlayground.Text.OnlyTheFinalFolderNameOfThe">The compiled profile receives the complete canonical absolute path, just as in a scan. Network locations use UNC paths.</sys:String>
+    <sys:String x:Key="Loc.View.ProfilePlayground.Text.InputLeaf">Input absolute path</sys:String>
     <sys:String x:Key="Loc.View.ProfilePlayground.AutomationName.PathRegexColorDebugger">Path regex color debugger</sys:String>
     <sys:String x:Key="Loc.View.ProfilePlayground.Text.ShowsPartialCandidatesAndNamedGroupsFrom">Shows partial candidates and named groups from the original pattern in color-coded rows, independently of full-match status.</sys:String>
     <sys:String x:Key="Loc.View.ProfilePlayground.AutomationName.FolderExclusionRegexColorDebugger">Folder-exclusion regex color debugger</sys:String>
-    <sys:String x:Key="Loc.View.ProfilePlayground.Text.ShowsPartialCandidatesForEachExclusionPattern">Shows partial candidates for each exclusion pattern and named group against the final folder name.</sys:String>
+    <sys:String x:Key="Loc.View.ProfilePlayground.Text.ShowsPartialCandidatesForEachExclusionPattern">Shows matching segments for each exclusion pattern and named group across the complete absolute path.</sys:String>
     <sys:String x:Key="Loc.Profiles.Numeric.Timeout">Enter a whole-number timeout from 1 to 10,000 ms.</sys:String>
     <sys:String x:Key="Loc.Profiles.Numeric.Order">Enter a whole number for display order.</sys:String>
     <sys:String x:Key="Loc.Profiles.Numeric.MaxBytes">Enter a whole-number read limit from 1 to {0:N0} bytes.</sys:String>
@@ -1674,7 +1672,7 @@
     <sys:String x:Key="Loc.View.ScanConsolePanel.Text.NoMatch" xml:space="preserve">  ·  no match </sys:String>
     <sys:String x:Key="Loc.View.ScanConsolePanel.Text.Invalid" xml:space="preserve">  ·  invalid </sys:String>
     <sys:String x:Key="Loc.View.ScanConsolePanel.Text.Pruned" xml:space="preserve">  ·  pruned </sys:String>
-    <sys:String x:Key="Loc.View.ScanConsolePanel.Text.MATCHMatchedNOMATCHOutsideRulesINVALIDConversion" xml:space="preserve">MATCH matched · NO MATCH outside rules · INVALID conversion error · EXCLUDED name-rule exclusion · PRUNE descendants skipped</sys:String>
+    <sys:String x:Key="Loc.View.ScanConsolePanel.Text.MATCHMatchedNOMATCHOutsideRulesINVALIDConversion" xml:space="preserve">MATCH matched · NO MATCH outside rules · INVALID conversion error · EXCLUDED path-rule exclusion · PRUNE descendants skipped</sys:String>
     <sys:String x:Key="Loc.Workspace.Scan.InteractionPaused">Search, sorting and selection are paused during the scan to keep the UI responsive. You can still cancel or switch pages.</sys:String>
     <sys:String x:Key="Loc.Ux.Authoring.PathMode">Path authoring mode</sys:String>
     <sys:String x:Key="Loc.Ux.Authoring.PathMode.Help">This choice applies to path extraction only. File, exclusion, and external-data rules are optional advanced settings.</sys:String>
@@ -1865,4 +1863,21 @@
     <sys:String x:Key="Loc.Profiles.EntryPaths.Remove">Remove starting location</sys:String>
     <sys:String x:Key="Loc.Catalog.Entries.IndexChanged">Another operation changed the index while loading. Previous results are preserved. Load the results again.</sys:String>
     <sys:String x:Key="Loc.ProfileDiagnostic.workspace_entry_paths_invalid">Starting locations must be unique, valid absolute paths, with at most 64 per profile.</sys:String>
+    <sys:String x:Key="Loc.Catalog.Entries.ManageShort">Add paths</sys:String>
+    <sys:String x:Key="Loc.Catalog.Entries.Manage">Add or manage starting locations</sys:String>
+    <sys:String x:Key="Loc.Profiles.Expert.Columns.Help">Name each column, choose its type, and connect its capture groups below.</sys:String>
+    <sys:String x:Key="Loc.Profiles.Expert.Rules.Help">Define path rules with compact options and a full-width pattern editor.</sys:String>
+    <sys:String x:Key="Loc.Profiles.Expert.StopGroups.Help">When all listed groups capture values, skip that folder’s descendants. Separate multiple groups with commas.</sys:String>
+    <sys:String x:Key="Loc.Profiles.Exclusion.PartialExample">Partial · [\\/]cache([\\/]|$) → Excludes C:\Projects\cache and its descendants.</sys:String>
+    <sys:String x:Key="Loc.Profiles.Exclusion.FullExample">Full · C:\\Projects\\cache → Excludes this folder and its descendants only when the entire absolute path matches.</sys:String>
+    <sys:String x:Key="Loc.ProfileDiagnostic.directory_name_exclusion_removed">Leaf-name exclusion rules are no longer supported. Define directoryExclusionRules again using regular expressions for full absolute paths.</sys:String>
+    <sys:String x:Key="Loc.ProfileDiagnostic.directory_exclusion_regex_invalid">The path-exclusion regular expression is invalid. Check parentheses and escaped backslashes.</sys:String>
+    <sys:String x:Key="Loc.ProfileDiagnostic.directory_exclusion_rule_limit_exceeded">Define no more than 64 path-exclusion rules.</sys:String>
+    <sys:String x:Key="Loc.ProfileDiagnostic.directory_exclusion_rule_id_invalid">Exclusion rule IDs must be 1–64 characters, start with a letter or digit, and contain only letters, digits, dots, underscores, or hyphens.</sys:String>
+    <sys:String x:Key="Loc.ProfileDiagnostic.directory_exclusion_rule_id_duplicate">Exclusion rule IDs must be unique.</sys:String>
+    <sys:String x:Key="Loc.ProfileDiagnostic.directory_exclusion_pattern_missing">Enter an exclusion regular expression for the full absolute path.</sys:String>
+    <sys:String x:Key="Loc.ProfileDiagnostic.directory_exclusion_pattern_too_long">A path-exclusion regular expression may contain up to 4,096 characters.</sys:String>
+    <sys:String x:Key="Loc.ProfileDiagnostic.directory_exclusion_match_mode_invalid">Choose Full or Partial matching for the path-exclusion rule.</sys:String>
+    <sys:String x:Key="Loc.ProfileDiagnostic.directory_exclusion_timeout_invalid">The path-exclusion timeout must be between 1 and 10,000 ms.</sys:String>
+    <sys:String x:Key="Loc.ProfileDiagnostic.directory_exclusion_regex_timeout">A path-exclusion rule timed out. The folder is not excluded and traversal continues.</sys:String>
 </ResourceDictionary>

@@ -142,7 +142,7 @@ C:/Archive/Clients/{customer@customer}/Projects/{project@project}/{year@year}/{r
 
 저장에 성공하면 프로필 카탈로그가 즉시 갱신되므로 앱을 재시작할 필요가 없습니다. GUI 프로필은 다음 사용자 전용 위치에 선언형 `profile.json`으로 저장됩니다.
 
-프로필의 폴더 이름 제외 규칙은 전체 경로가 아닌 leaf 이름만 정규식으로 판정합니다. 예를 들어 `Full` 규칙 `name`은 `C:\abc\def\name` 폴더 자체와 하위를 구조화 보기의 스캔에서 건너뛰고 같은 부모의 다음 폴더로 계속 진행합니다. 경로 규칙과 폴더 이름 제외 규칙의 제한 시간 합계는 프로필당 최대 10초입니다. 규칙 수, 길이, 제한 시간과 JSON 계약은 [프로필 작성 가이드](docs/profile-authoring.md#폴더-이름-제외-규칙)를 참고하세요.
+프로필의 `directoryExclusionRules`는 전체 절대경로(네트워크는 UNC)에 정규식을 적용합니다. `Partial`은 경로 일부, `Full`은 경로 전체 일치이며, 일치한 폴더와 하위를 건너뛰고 형제 폴더를 계속 탐색합니다. 각 시작 경로 자체는 보호합니다. 이전 leaf 전용 정의는 검증 오류로 안내하므로 절대경로 기준으로 다시 정의하세요. 경로·제외·텍스트 파일 규칙의 제한 시간 합계는 프로필당 최대 10초입니다. 자세한 예시는 [프로필 작성 가이드](docs/profile-authoring.md#절대경로-제외-규칙)를 참고하세요.
 
 ```text
 %LOCALAPPDATA%\UCode\FindEverything.Gui\Profiles\<profile-id>\profile.json

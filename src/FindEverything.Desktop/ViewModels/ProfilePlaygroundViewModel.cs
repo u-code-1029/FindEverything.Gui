@@ -10,12 +10,12 @@ using Wpf.Ui.Controls;
 namespace FindEverything.Desktop.ViewModels;
 
 public sealed class ProfileDirectoryExclusionTestResultViewModel(
-    string leafName,
+    string absolutePath,
     string title,
     string message,
     InfoBarSeverity severity)
 {
-    public string LeafName { get; } = leafName;
+    public string AbsolutePath { get; } = absolutePath;
 
     public string Title { get; } = title;
 

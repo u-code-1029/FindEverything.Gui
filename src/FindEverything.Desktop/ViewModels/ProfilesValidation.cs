@@ -83,7 +83,7 @@ public partial class ProfilesViewModel
         // These errors remain visible even while validation/save commands are disabled for invalid numeric input.
         var numeric = new List<ProfileValidationIssueViewModel>();
         foreach (var row in DraftRules) AddNumeric(row.NumericValidationMessage, "regex_numeric_invalid", ProfileEditorStep.PathAndFields, row.Id);
-        foreach (var row in DraftExcludedDirectoryNameRules) AddNumeric(row.NumericValidationMessage, "excluded_directory_numeric_invalid", ProfileEditorStep.ScanOptions, row.Id);
+        foreach (var row in DraftDirectoryExclusionRules) AddNumeric(row.NumericValidationMessage, "directory_exclusion_numeric_invalid", ProfileEditorStep.ScanOptions, row.Id);
         foreach (var row in DraftTextFileFields) AddNumeric(row.NumericValidationMessage, "text_file_numeric_invalid", ProfileEditorStep.DataSources, row.FieldId);
         foreach (var row in DraftUserInputFields) AddNumeric(row.NumericValidationMessage, "user_input_numeric_invalid", ProfileEditorStep.DataSources, row.FieldId);
         foreach (var row in DraftChildDirectoryFields) AddNumeric(row.NumericValidationMessage, "child_directory_numeric_invalid", ProfileEditorStep.DataSources, row.FieldId);
@@ -112,7 +112,8 @@ public partial class ProfilesViewModel
         if (code == "regex_timeout_budget_exceeded") return ProfileEditorStep.Review;
         // Stable diagnostic codes, not localized message text, determine the target step.
         if (code.StartsWith("selection_", StringComparison.Ordinal)) return ProfileEditorStep.SelectionRules;
-        if (code.StartsWith("excluded_directory_", StringComparison.Ordinal) || code == "scan_depth_invalid") return ProfileEditorStep.ScanOptions;
+        if (code.StartsWith("directory_exclusion_", StringComparison.Ordinal)
+            || code is "directory_name_exclusion_removed" or "scan_depth_invalid") return ProfileEditorStep.ScanOptions;
         if (code.StartsWith("text_file_", StringComparison.Ordinal)
             || code.StartsWith("user_input_", StringComparison.Ordinal)
             || code.StartsWith("child_directory_", StringComparison.Ordinal)

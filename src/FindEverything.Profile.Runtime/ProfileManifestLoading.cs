@@ -13,7 +13,7 @@ internal sealed record ValidatedRegexRule(
     int TimeoutMilliseconds,
     IReadOnlyList<string> StopTraversalWhenCapturedGroups);
 
-internal sealed record ValidatedDirectoryNameExclusionRule(
+internal sealed record ValidatedDirectoryExclusionRule(
     string Id,
     string Pattern,
     ProfileRegexMatchMode MatchMode,
@@ -66,7 +66,7 @@ internal sealed record ValidatedProfileManifest(
     IReadOnlyList<ValidatedProfileField> Fields,
     IReadOnlyList<ValidatedTextFileField> TextFileFields,
     IReadOnlyList<ValidatedUserInputField> UserInputFields,
-    IReadOnlyList<ValidatedDirectoryNameExclusionRule> ExcludedDirectoryNameRules,
+    IReadOnlyList<ValidatedDirectoryExclusionRule> DirectoryExclusionRules,
     IReadOnlyList<ValidatedRegexRule> Rules,
     IReadOnlyList<ValidatedChildDirectoryField> ChildDirectoryFields,
     int MaxScanDepth,
@@ -219,6 +219,12 @@ internal sealed class ProfileManifestValidator
                 "pathInput은 계약 버전 2에서 제거되었습니다. 경로 규칙은 항상 절대 경로를 입력받으므로 pathInput 항목을 삭제하고 규칙을 절대 경로 기준으로 확인하세요."));
         }
 
+        if (manifest.LegacyExcludedDirectoryNameRules is not null)
+        {
+            diagnostics.Add(Error("directory_name_exclusion_removed",
+                "excludedDirectoryNameRules는 제거되었습니다. directoryExclusionRules로 바꾸고 정규식이 폴더 이름이 아닌 전체 절대경로에 적용되도록 다시 정의하세요."));
+        }
+
         if (manifest.ContractVersion == 2 && (manifest.ChildDirectoryFields is { Count: > 0 }
             || manifest.SelectionMatchRules is { Count: > 0 } || manifest.MaxScanDepth != 256
             || manifest.TextFileFields?.Any(column => column?.EditOptions is not null) == true))
@@ -337,13 +343,13 @@ internal sealed class ProfileManifestValidator
             }
         }
 
-        var validatedExcludedDirectoryNameRules = ValidateExcludedDirectoryNameRules(
-            manifest.ExcludedDirectoryNameRules,
+        var validatedDirectoryExclusionRules = ValidateDirectoryExclusionRules(
+            manifest.DirectoryExclusionRules,
             diagnostics);
         var validatedRules = ValidateRules(manifest.Rules, diagnostics);
         ValidateAggregateRegexTimeoutBudget(
             manifest.Rules,
-            manifest.ExcludedDirectoryNameRules,
+            manifest.DirectoryExclusionRules,
             manifest.TextFileFields,
             diagnostics);
 
@@ -370,7 +376,7 @@ internal sealed class ProfileManifestValidator
                 Array.AsReadOnly(validatedFields.ToArray()),
                 Array.AsReadOnly(validatedTextFileFields.ToArray()),
                 Array.AsReadOnly(validatedUserInputFields.ToArray()),
-                Array.AsReadOnly(validatedExcludedDirectoryNameRules.ToArray()),
+                Array.AsReadOnly(validatedDirectoryExclusionRules.ToArray()),
                 Array.AsReadOnly(validatedRules.ToArray()),
                 Array.AsReadOnly(validatedChildDirectoryFields.ToArray()),
                 manifest.MaxScanDepth,
@@ -1094,22 +1100,22 @@ internal sealed class ProfileManifestValidator
         return validated;
     }
 
-    private static List<ValidatedDirectoryNameExclusionRule>
-        ValidateExcludedDirectoryNameRules(
-            IReadOnlyList<ProfileDirectoryNameExclusionRuleManifest>? rules,
+    private static List<ValidatedDirectoryExclusionRule>
+        ValidateDirectoryExclusionRules(
+            IReadOnlyList<ProfileDirectoryExclusionRuleManifest>? rules,
             ICollection<ProfileDiagnostic> diagnostics)
     {
-        var validated = new List<ValidatedDirectoryNameExclusionRule>();
+        var validated = new List<ValidatedDirectoryExclusionRule>();
         if (rules is null)
         {
             return validated;
         }
 
-        if (rules.Count > ProfileManifestLimits.MaximumExcludedDirectoryNameRuleCount)
+        if (rules.Count > ProfileManifestLimits.MaximumDirectoryExclusionRuleCount)
         {
             diagnostics.Add(Error(
-                "excluded_directory_name_rule_limit_exceeded",
-                $"폴더 이름 제외 규칙은 최대 {ProfileManifestLimits.MaximumExcludedDirectoryNameRuleCount}개까지 사용할 수 있습니다."));
+                "directory_exclusion_rule_limit_exceeded",
+                $"폴더 경로 제외 규칙은 최대 {ProfileManifestLimits.MaximumDirectoryExclusionRuleCount}개까지 사용할 수 있습니다."));
         }
 
         var ruleIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -1123,53 +1129,53 @@ internal sealed class ProfileManifestValidator
             if (!RuleIdPattern.IsMatch(ruleId))
             {
                 diagnostics.Add(Error(
-                    "excluded_directory_name_rule_id_invalid",
-                    $"폴더 이름 제외 규칙 #{index + 1}의 id가 올바르지 않습니다."));
+                    "directory_exclusion_rule_id_invalid",
+                    $"폴더 경로 제외 규칙 #{index + 1}의 id가 올바르지 않습니다."));
                 valid = false;
             }
             else if (!ruleIds.Add(ruleId))
             {
                 diagnostics.Add(Error(
-                    "excluded_directory_name_rule_id_duplicate",
-                    $"폴더 이름 제외 규칙 id가 중복되었습니다: {ruleId}"));
+                    "directory_exclusion_rule_id_duplicate",
+                    $"폴더 경로 제외 규칙 id가 중복되었습니다: {ruleId}"));
                 valid = false;
             }
 
             if (string.IsNullOrWhiteSpace(pattern))
             {
                 diagnostics.Add(Error(
-                    "excluded_directory_name_pattern_missing",
-                    $"폴더 이름 제외 규칙 '{ruleId}'에 pattern이 필요합니다."));
+                    "directory_exclusion_pattern_missing",
+                    $"폴더 경로 제외 규칙 '{ruleId}'에 pattern이 필요합니다."));
                 valid = false;
             }
             else if (pattern.Length
-                     > ProfileManifestLimits.MaximumExcludedDirectoryNamePatternLength)
+                     > ProfileManifestLimits.MaximumDirectoryExclusionPatternLength)
             {
                 diagnostics.Add(Error(
-                    "excluded_directory_name_pattern_too_long",
-                    $"폴더 이름 제외 규칙 '{ruleId}'의 pattern은 최대 {ProfileManifestLimits.MaximumExcludedDirectoryNamePatternLength:N0}자까지 사용할 수 있습니다."));
+                    "directory_exclusion_pattern_too_long",
+                    $"폴더 경로 제외 규칙 '{ruleId}'의 pattern은 최대 {ProfileManifestLimits.MaximumDirectoryExclusionPatternLength:N0}자까지 사용할 수 있습니다."));
                 valid = false;
             }
 
             if (!Enum.IsDefined(source.MatchMode))
             {
                 diagnostics.Add(Error(
-                    "excluded_directory_name_match_mode_invalid",
-                    $"폴더 이름 제외 규칙 '{ruleId}'의 matchMode가 올바르지 않습니다."));
+                    "directory_exclusion_match_mode_invalid",
+                    $"폴더 경로 제외 규칙 '{ruleId}'의 matchMode가 올바르지 않습니다."));
                 valid = false;
             }
 
             if (source.TimeoutMilliseconds is < 1 or > 10_000)
             {
                 diagnostics.Add(Error(
-                    "excluded_directory_name_timeout_invalid",
-                    $"폴더 이름 제외 규칙 '{ruleId}'의 timeoutMilliseconds는 1~10000이어야 합니다."));
+                    "directory_exclusion_timeout_invalid",
+                    $"폴더 경로 제외 규칙 '{ruleId}'의 timeoutMilliseconds는 1~10000이어야 합니다."));
                 valid = false;
             }
 
             if (valid)
             {
-                validated.Add(new ValidatedDirectoryNameExclusionRule(
+                validated.Add(new ValidatedDirectoryExclusionRule(
                     ruleId,
                     pattern!,
                     source.MatchMode,
@@ -1183,7 +1189,7 @@ internal sealed class ProfileManifestValidator
 
     private static void ValidateAggregateRegexTimeoutBudget(
         IReadOnlyList<ProfileRegexRuleManifest>? pathRules,
-        IReadOnlyList<ProfileDirectoryNameExclusionRuleManifest>? exclusionRules,
+        IReadOnlyList<ProfileDirectoryExclusionRuleManifest>? exclusionRules,
         IReadOnlyList<ProfileTextFileFieldManifest>? textFileFields,
         ICollection<ProfileDiagnostic> diagnostics)
     {
@@ -1207,11 +1213,11 @@ internal sealed class ProfileManifestValidator
 
         diagnostics.Add(Error(
             "regex_timeout_budget_exceeded",
-            "한 프로필의 정규식 제한 시간 합계(경로 규칙 + 폴더 이름 제외 규칙 + 텍스트 파일 이름 규칙)는 최대 "
+            "한 프로필의 정규식 제한 시간 합계(경로 규칙 + 폴더 경로 제외 규칙 + 텍스트 파일 이름 규칙)는 최대 "
             + $"{ProfileManifestLimits.MaximumAggregateRegexTimeoutMilliseconds:N0}ms여야 합니다. "
             + $"현재 합계: {aggregateTimeoutMilliseconds:N0}ms "
             + $"(경로: {pathTimeoutMilliseconds:N0}ms, "
-            + $"폴더 이름 제외: {exclusionTimeoutMilliseconds:N0}ms, "
+            + $"폴더 경로 제외: {exclusionTimeoutMilliseconds:N0}ms, "
             + $"텍스트 파일: {textFileTimeoutMilliseconds:N0}ms)."));
     }
 

@@ -126,6 +126,17 @@ public partial class CatalogPage
 
     private void OnWorkspaceSizeChanged(object sender, System.Windows.SizeChangedEventArgs e) => ApplyWorkspaceLayout();
 
+    private void OnLocationButtonSizeChanged(object sender, System.Windows.SizeChangedEventArgs e)
+    {
+        if (CatalogLocationSummary is null || CatalogLocationActionLabel is null) return;
+        // The action remains legible in the shared star slot. A long path must
+        // not compete with the profile selector or create a second toolbar row;
+        // the complete list is always available in the existing tooltip.
+        CatalogLocationSummary.Visibility = e.NewSize.Width >= 240
+            ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+        CatalogLocationActionLabel.MaxWidth = Math.Max(0, e.NewSize.Width - 52);
+    }
+
     private void ApplyWorkspaceLayout()
     {
         if (ScanConsolePanel is null || CatalogResultsWorkspace is null) return;

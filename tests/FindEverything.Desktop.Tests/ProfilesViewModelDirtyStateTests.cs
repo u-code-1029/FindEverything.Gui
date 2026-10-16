@@ -13,6 +13,31 @@ namespace FindEverything.Desktop.Tests;
 public sealed class ProfilesViewModelDirtyStateTests
 {
     [Fact]
+    public async Task Loading_removed_leaf_exclusions_cannot_silently_drop_rules_from_the_editor()
+    {
+        var manifest = new ProfileManifest
+        {
+            Id = "old-profile", DisplayName = "Old profile",
+            LegacyExcludedDirectoryNameRules = System.Text.Json.JsonSerializer.SerializeToElement(
+                new[] { new { id = "skip-cache", pattern = "cache" } }),
+        };
+        using var vm = new ProfilesViewModel(new StubProfileCatalog(ProfileCatalogSnapshot.Empty),
+            new StubProfileAuthoringService(manifest), new ProfilePathTemplateCompiler(),
+            new FixedPathCanonicalizer(@"C:\Example"), null!, null!, null!, null!, null!,
+            new TestAppLocalizer(), NullLogger<ProfilesViewModel>.Instance)
+        { SelectedEditableProfile = new("old-profile", "Old profile", "unused") };
+        var initialId = vm.DraftId;
+        var initialField = Assert.Single(vm.DraftFields);
+
+        await vm.LoadDraftCommand.ExecuteAsync(null);
+
+        Assert.Equal(initialId, vm.DraftId);
+        Assert.Same(initialField, Assert.Single(vm.DraftFields));
+        Assert.Equal(Wpf.Ui.Controls.InfoBarSeverity.Error, vm.EditorStatusSeverity);
+        Assert.Contains("directoryExclusionRules", vm.EditorStatusMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void New_profile_and_added_regex_rules_use_partial_matching()
     {
         using var vm = CreateFreshDraft(DraftLeaveDecision.Discard);
@@ -27,7 +52,7 @@ public sealed class ProfilesViewModelDirtyStateTests
         vm.AddDirectoryExclusionRuleCommand.Execute(null);
         vm.AddTextFileFieldCommand.Execute(null);
         Assert.All(vm.DraftRules, rule => Assert.Equal(ProfileRegexMatchMode.Partial, rule.MatchMode));
-        Assert.Equal(ProfileRegexMatchMode.Partial, Assert.Single(vm.DraftExcludedDirectoryNameRules).MatchMode);
+        Assert.Equal(ProfileRegexMatchMode.Partial, Assert.Single(vm.DraftDirectoryExclusionRules).MatchMode);
         Assert.Equal(ProfileRegexMatchMode.Partial, Assert.Single(vm.DraftTextFileFields).MatchMode);
     }
 
@@ -207,8 +232,8 @@ public sealed class ProfilesViewModelDirtyStateTests
         Assert.Equal("선택 설정 · 3", vm.OptionalStepsButtonText);
         Assert.Contains("제외 규칙 2", vm.OptionalScanSummary);
 
-        vm.RemoveDirectoryExclusionRuleCommand.Execute(vm.DraftExcludedDirectoryNameRules[0]);
-        vm.RemoveDirectoryExclusionRuleCommand.Execute(vm.DraftExcludedDirectoryNameRules[0]);
+        vm.RemoveDirectoryExclusionRuleCommand.Execute(vm.DraftDirectoryExclusionRules[0]);
+        vm.RemoveDirectoryExclusionRuleCommand.Execute(vm.DraftDirectoryExclusionRules[0]);
         Assert.Equal(2, vm.ConfiguredOptionalSectionCount);
         vm.DraftMaxScanDepthText = "3";
         Assert.Equal(3, vm.ConfiguredOptionalSectionCount);
@@ -532,9 +557,9 @@ public sealed class ProfilesViewModelDirtyStateTests
         public ProfileMapResult Map(ProfilePathCandidate candidate) =>
             ProfileMapResult.NoMatch();
 
-        public ProfileDirectoryNameExclusionResult EvaluateDirectoryName(
+        public ProfileDirectoryExclusionResult EvaluateDirectoryPath(
             string directoryName) =>
-            ProfileDirectoryNameExclusionResult.NotExcluded();
+            ProfileDirectoryExclusionResult.NotExcluded();
     }
 
     private sealed class StubProfileAuthoringService(ProfileManifest manifest)

@@ -32,17 +32,16 @@
             <Setter Property="Margin" Value="0,0,0,4" />
             <Setter Property="FontSize" Value="14" />
             <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="TextWrapping" Value="Wrap" />
         </Style>
-        <Style x:Key="EditorSectionStyle" BasedOn="{StaticResource FluentCardStyle}" TargetType="ui:CardControl">
+        <Style x:Key="EditorSectionStyle" BasedOn="{StaticResource FluentSectionCardStyle}" TargetType="ui:CardControl">
             <Setter Property="Margin" Value="{StaticResource SectionGap}" />
         </Style>
         <Style
             x:Key="IconOnlyButtonStyle"
-            BasedOn="{StaticResource {x:Type ui:Button}}"
+            BasedOn="{StaticResource CompactIconButtonStyle}"
             TargetType="ui:Button">
             <Setter Property="Width" Value="34" />
-            <Setter Property="Height" Value="32" />
-            <Setter Property="Padding" Value="0" />
         </Style>
         <Style
             x:Key="GuidedModeChoiceStyle"
@@ -94,7 +93,7 @@
             <Setter Property="Margin" Value="0,0,0,12" />
             <Setter Property="Padding" Value="16" />
             <Setter Property="Background" Value="{DynamicResource ControlFillColorSecondaryBrush}" />
-            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="BorderThickness" Value="1" />
             <Setter Property="CornerRadius" Value="8" />
         </Style>
         <Style x:Key="ProfileEditorVirtualListStyle" TargetType="controls:ProfileEditorList">
@@ -415,6 +414,7 @@
                                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                         Text="{Binding Prefix}" />
                                     <controls:SectionCard
+                                        MaxWidth="260"
                                         Padding="8"
                                         Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
                                         BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
@@ -423,10 +423,14 @@
                                         <controls:SectionCard.Header>
                                         <StackPanel>
                                             <ui:Button
+                                                x:Name="GuidedWholePathChoiceButton"
+                                                MaxWidth="242"
                                                 AutomationProperties.Name="{StaticResource Loc.View.Profiles.AutomationName.SelectWholeFolderName}"
                                                 Command="{Binding DataContext.AssignPathChoiceCommand, RelativeSource={RelativeSource AncestorType={x:Type Page}}}"
                                                 CommandParameter="{Binding WholeChoice}"
-                                                Content="{Binding WholeChoice.DisplayName}" />
+                                                ToolTip="{Binding WholeChoice.DisplayName}">
+                                                <ui:TextBlock Text="{Binding WholeChoice.DisplayName}" TextTrimming="CharacterEllipsis" />
+                                            </ui:Button>
                                             <ItemsControl Margin="0,6,0,0" ItemsSource="{Binding PartChoices}">
                                                 <ItemsControl.Style>
                                                     <Style TargetType="ItemsControl">
@@ -447,12 +451,15 @@
                                                     <DataTemplate>
                                                         <ui:Button
                                                             MinWidth="52"
+                                                            MaxWidth="238"
                                                             Margin="0,0,4,4"
                                                             AutomationProperties.Name="{StaticResource Loc.View.Profiles.AutomationName.SelectFolderNameSubsegment}"
                                                             Appearance="Secondary"
                                                             Command="{Binding DataContext.AssignPathChoiceCommand, RelativeSource={RelativeSource AncestorType={x:Type Page}}}"
                                                             CommandParameter="{Binding}"
-                                                            Content="{Binding DisplayName}" />
+                                                            ToolTip="{Binding DisplayName}">
+                                                            <ui:TextBlock Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
+                                                        </ui:Button>
                                                     </DataTemplate>
                                                 </ItemsControl.ItemTemplate>
                                             </ItemsControl>
@@ -714,165 +721,168 @@
             </StackPanel></controls:SectionCard.Header></controls:SectionCard>
         </DataTemplate>
         <DataTemplate x:Key="ProfileEditor.Item.PathExpert.1">
-            <controls:SectionCard Style="{StaticResource EditorSectionStyle}" IsEnabled="{Binding IsEditorReady}"><controls:SectionCard.Header><StackPanel>
-            <ui:TextBlock Style="{StaticResource SectionTitleTextStyle}" Text="{StaticResource Loc.View.Profiles.Text.2EditExpertRules}" />
-            <ui:TextBlock
-                                        Margin="0,4,0,16"
-                                        Style="{StaticResource CaptionTextStyle}"
-                                        Text="{StaticResource Loc.View.Profiles.Text.ConnectResultColumnsDirectlyToRegularExpressions}"
-                                        TextWrapping="Wrap" />
-            <Grid>
-                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                <ui:TextBlock VerticalAlignment="Center" Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Text.ResultColumns}" />
-                <ui:Button x:Name="ExpertAddColumnButton" Grid.Column="1" Margin="8,0,0,0" Command="{Binding AddFieldCommand}"
-                    Content="{StaticResource Loc.View.Profiles.Content.AddColumn}" Icon="{ui:SymbolIcon Symbol=AddSquare20}" />
-            </Grid>
-            </StackPanel></controls:SectionCard.Header></controls:SectionCard>
+            <controls:SectionCard x:Name="ExpertColumnsGroupCard" Style="{StaticResource EditorSectionStyle}" Margin="0,0,0,8" IsEnabled="{Binding IsEditorReady}">
+                <controls:SectionCard.Header>
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <StackPanel Margin="0,0,12,0">
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <ui:SymbolIcon Symbol="TableSimple24" FontSize="20" Margin="0,0,8,0" VerticalAlignment="Center" />
+                                <ui:TextBlock Grid.Column="1" Style="{StaticResource SectionTitleTextStyle}" TextWrapping="Wrap" Text="{StaticResource Loc.View.Profiles.Text.ResultColumns}" AutomationProperties.HeadingLevel="Level2" />
+                                <ui:TextBlock Grid.Column="2" Margin="8,0,0,0" VerticalAlignment="Center" Style="{StaticResource CaptionTextStyle}" Text="{Binding DraftFields.Count}" />
+                            </Grid>
+                            <ui:TextBlock Margin="0,4,0,0" Style="{StaticResource CaptionTextStyle}" TextWrapping="Wrap" Text="{StaticResource Loc.Profiles.Expert.Columns.Help}" />
+                        </StackPanel>
+                        <ui:Button x:Name="ExpertAddColumnButton" Grid.Column="1" VerticalAlignment="Center" Command="{Binding AddFieldCommand}"
+                            Content="{StaticResource Loc.View.Profiles.Content.AddColumn}" Icon="{ui:SymbolIcon Symbol=AddSquare20}" />
+                    </Grid>
+                </controls:SectionCard.Header>
+            </controls:SectionCard>
         </DataTemplate>
         <DataTemplate x:Key="ProfileEditor.Item.PathExpert.2">
-            <controls:SectionCard Style="{StaticResource FieldCardStyle}"><controls:SectionCard.Header><WrapPanel>
-            <StackPanel Width="240" Margin="0,0,16,12"><ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Header.DisplayName}" />
-            <ui:TextBox Text="{Binding Header, UpdateSourceTrigger=PropertyChanged}"  />
-            </StackPanel>
-            <StackPanel Width="240" Margin="0,0,16,12"><ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="Field ID *" />
-            <ui:TextBox Text="{Binding FieldId, UpdateSourceTrigger=PropertyChanged}"  />
-            </StackPanel>
-            <StackPanel x:Name="ExpertGroupEditor" Width="240" Margin="0,0,16,12">
-                <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.Profiles.Groups.Mode.Label}" />
-                <WrapPanel Margin="0,0,0,8" ToolTip="{StaticResource Loc.Profiles.Groups.Mode.Help}">
-                    <RadioButton x:Name="ExpertSingleGroupRadio" Margin="0,0,20,0" Content="{StaticResource Loc.Profiles.Groups.Mode.Single}"
-                        IsChecked="{Binding UsesSingleCaptureGroup, Mode=OneWay}" Command="{Binding SelectSingleCaptureGroupCommand}" />
-                    <RadioButton x:Name="ExpertCombinedGroupsRadio" Content="{StaticResource Loc.Profiles.Groups.Mode.Combined}"
-                        IsChecked="{Binding UsesCombinedCaptureGroups, Mode=OneWay}" Command="{Binding SelectCombinedCaptureGroupsCommand}" />
-                </WrapPanel>
-                <StackPanel x:Name="ExpertSingleGroupInput" Visibility="{Binding UsesSingleCaptureGroup, Converter={StaticResource BooleanToVisibilityConverter}}">
-                    <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Header.SingleGroup}" />
-                    <ui:TextBox AutomationProperties.Name="{StaticResource Loc.View.Profiles.Header.SingleGroup}" Text="{Binding GroupName, UpdateSourceTrigger=PropertyChanged}" />
-                </StackPanel>
-                <StackPanel x:Name="ExpertCombinedGroupsInput" Visibility="{Binding UsesCombinedCaptureGroups, Converter={StaticResource BooleanToVisibilityConverter}}">
-                    <ui:TextBlock Style="{StaticResource FieldLabelStyle}" TextWrapping="Wrap" Text="{StaticResource Loc.View.Profiles.Header.CombinedGroupsCommaOrder}" />
-                    <ui:TextBox AutomationProperties.Name="{StaticResource Loc.View.Profiles.Header.CombinedGroupsCommaOrder}" Text="{Binding GroupNamesText, UpdateSourceTrigger=PropertyChanged}" />
-                </StackPanel>
-                <ui:TextBlock Margin="0,8,0,0" Style="{StaticResource CaptionTextStyle}" TextWrapping="Wrap"
-                    Text="{StaticResource Loc.Profiles.Groups.Mode.Conflict}"
-                    Visibility="{Binding HasConflictingGroupInputs, Converter={StaticResource BooleanToVisibilityConverter}}" />
-            </StackPanel>
-            <StackPanel MinWidth="240" Margin="0,0,16,12"><ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Header.ValueType}" />
-            <ComboBox Style="{StaticResource ContentAwareComboBoxStyle}"
-                                                            DisplayMemberPath="DisplayName"
-                                                            ItemsSource="{Binding DataContext.FieldKindChoices, RelativeSource={RelativeSource AncestorType={x:Type Page}}}"
-                                                            SelectedValue="{Binding Kind, UpdateSourceTrigger=PropertyChanged}"
-                                                            SelectedValuePath="Value" />
-            </StackPanel>
-            <StackPanel Width="240" Margin="0,0,16,12"><ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Header.Required}" />
-            <CheckBox MinHeight="32" IsChecked="{Binding Required, UpdateSourceTrigger=PropertyChanged}" />
-            </StackPanel>
-            <StackPanel MinWidth="240" Margin="0,0,16,12"><ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.Profiles.ColumnWidth.Label}" />
-            <ContentControl Margin="4" Content="{Binding}" ContentTemplate="{StaticResource ColumnWidthChoiceTemplate}" HorizontalContentAlignment="Stretch" />
-            </StackPanel>
-            <StackPanel x:Name="ExpertDateInputFormatPanel" Width="240" Margin="0,0,16,12" Visibility="{Binding IsDateTime, Converter={StaticResource BooleanToVisibilityConverter}}"><ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Header.InputFormat}" />
-            <ui:TextBox Text="{Binding ParseFormat, UpdateSourceTrigger=PropertyChanged}"  />
-            </StackPanel>
-            <StackPanel x:Name="ExpertDateDisplayFormatPanel" Width="240" Margin="0,0,16,12" Visibility="{Binding IsDateTime, Converter={StaticResource BooleanToVisibilityConverter}}"><ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Text.DisplayFormat}" />
-            <ui:TextBox Text="{Binding DisplayFormat, UpdateSourceTrigger=PropertyChanged}"  />
-            </StackPanel>
-            <StackPanel Width="240" Margin="0,0,16,12"><ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Header.OrderDelete}" />
-            <StackPanel HorizontalAlignment="Center" Orientation="Horizontal">
-                                                            <ui:Button
-                                                                Margin="0,0,4,0"
-                                                                AutomationProperties.Name="{StaticResource Loc.View.Profiles.AutomationName.MoveExpertResultColumnUp}"
-                                                                Command="{Binding DataContext.MoveFieldUpCommand, RelativeSource={RelativeSource AncestorType={x:Type Page}}}"
-                                                                CommandParameter="{Binding}"
-                                                                Icon="{ui:SymbolIcon Symbol=ArrowUp12}"
-                                                                Style="{StaticResource IconOnlyButtonStyle}"
-                                                                ToolTip="{StaticResource Loc.View.Profiles.ToolTip.MoveUp}" />
-                                                            <ui:Button
-                                                                Margin="0,0,4,0"
-                                                                AutomationProperties.Name="{StaticResource Loc.View.Profiles.AutomationName.MoveExpertResultColumnDown}"
-                                                                Command="{Binding DataContext.MoveFieldDownCommand, RelativeSource={RelativeSource AncestorType={x:Type Page}}}"
-                                                                CommandParameter="{Binding}"
-                                                                Icon="{ui:SymbolIcon Symbol=ArrowDown12}"
-                                                                Style="{StaticResource IconOnlyButtonStyle}"
-                                                                ToolTip="{StaticResource Loc.View.Profiles.ToolTip.MoveDown}" />
-                                                            <ui:Button
-                                                                Appearance="Caution"
-                                                                AutomationProperties.Name="{StaticResource Loc.View.Profiles.AutomationName.DeleteExpertResultColumn}"
-                                                                Command="{Binding DataContext.RemoveFieldCommand, RelativeSource={RelativeSource AncestorType={x:Type Page}}}"
-                                                                CommandParameter="{Binding}"
-                                                                Icon="{ui:SymbolIcon Symbol=Delete12}"
-                                                                Style="{StaticResource IconOnlyButtonStyle}"
-                                                                ToolTip="{StaticResource Loc.Common.Delete}" />
-                                                        </StackPanel>
-            </StackPanel>
-            </WrapPanel></controls:SectionCard.Header></controls:SectionCard>
+            <controls:SectionCard x:Name="ExpertResultColumnCard" Style="{StaticResource FieldCardStyle}" Margin="12,0,0,8" Padding="12">
+                <controls:SectionCard.Header>
+                    <StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <ui:TextBlock Margin="0,0,12,0" VerticalAlignment="Center" FontWeight="SemiBold" Text="{Binding Header}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Header}" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                <ui:Button Margin="0,0,4,0" AutomationProperties.Name="{StaticResource Loc.View.Profiles.AutomationName.MoveExpertResultColumnUp}"
+                                    Command="{Binding DataContext.MoveFieldUpCommand, RelativeSource={RelativeSource AncestorType={x:Type Page}}}" CommandParameter="{Binding}"
+                                    Icon="{ui:SymbolIcon Symbol=ArrowUp12}" Style="{StaticResource IconOnlyButtonStyle}" ToolTip="{StaticResource Loc.View.Profiles.ToolTip.MoveUp}" />
+                                <ui:Button Margin="0,0,4,0" AutomationProperties.Name="{StaticResource Loc.View.Profiles.AutomationName.MoveExpertResultColumnDown}"
+                                    Command="{Binding DataContext.MoveFieldDownCommand, RelativeSource={RelativeSource AncestorType={x:Type Page}}}" CommandParameter="{Binding}"
+                                    Icon="{ui:SymbolIcon Symbol=ArrowDown12}" Style="{StaticResource IconOnlyButtonStyle}" ToolTip="{StaticResource Loc.View.Profiles.ToolTip.MoveDown}" />
+                                <ui:Button Appearance="Caution" AutomationProperties.Name="{StaticResource Loc.View.Profiles.AutomationName.DeleteExpertResultColumn}"
+                                    Command="{Binding DataContext.RemoveFieldCommand, RelativeSource={RelativeSource AncestorType={x:Type Page}}}" CommandParameter="{Binding}"
+                                    Icon="{ui:SymbolIcon Symbol=Delete12}" Style="{StaticResource IconOnlyButtonStyle}" ToolTip="{StaticResource Loc.Common.Delete}" />
+                            </StackPanel>
+                        </Grid>
+                        <WrapPanel x:Name="ExpertColumnBasics" Margin="0,8,0,0">
+                            <StackPanel Width="160" Margin="0,0,12,8">
+                                <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Header.DisplayName}" />
+                                <ui:TextBox Text="{Binding Header, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                            <StackPanel Width="140" Margin="0,0,12,8">
+                                <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="Field ID *" />
+                                <ui:TextBox Text="{Binding FieldId, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                            <StackPanel Width="128" Margin="0,0,12,8">
+                                <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Header.ValueType}" />
+                                <ComboBox Style="{StaticResource ContentAwareComboBoxStyle}" DisplayMemberPath="DisplayName"
+                                    ItemsSource="{Binding DataContext.FieldKindChoices, RelativeSource={RelativeSource AncestorType={x:Type Page}}}"
+                                    SelectedValue="{Binding Kind, UpdateSourceTrigger=PropertyChanged}" SelectedValuePath="Value" />
+                            </StackPanel>
+                            <StackPanel Width="128" Margin="0,0,12,8">
+                                <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.Profiles.ColumnWidth.Label}" />
+                                <ContentControl Content="{Binding}" ContentTemplate="{StaticResource ColumnWidthChoiceTemplate}" HorizontalContentAlignment="Stretch" />
+                            </StackPanel>
+                            <CheckBox MinHeight="40" Margin="0,0,0,8" VerticalAlignment="Bottom" Content="{StaticResource Loc.View.Profiles.Header.Required}" IsChecked="{Binding Required, UpdateSourceTrigger=PropertyChanged}" />
+                        </WrapPanel>
+                        <StackPanel x:Name="ExpertGroupEditor">
+                            <WrapPanel>
+                                <StackPanel Width="260" Margin="0,0,12,8">
+                                    <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.Profiles.Groups.Mode.Label}" />
+                                    <WrapPanel ToolTip="{StaticResource Loc.Profiles.Groups.Mode.Help}">
+                                        <RadioButton x:Name="ExpertSingleGroupRadio" Margin="0,0,12,4" Content="{StaticResource Loc.Profiles.Groups.Mode.Single}"
+                                            IsChecked="{Binding UsesSingleCaptureGroup, Mode=OneWay}" Command="{Binding SelectSingleCaptureGroupCommand}" />
+                                        <RadioButton x:Name="ExpertCombinedGroupsRadio" Margin="0,0,0,4" Content="{StaticResource Loc.Profiles.Groups.Mode.Combined}"
+                                            IsChecked="{Binding UsesCombinedCaptureGroups, Mode=OneWay}" Command="{Binding SelectCombinedCaptureGroupsCommand}" />
+                                    </WrapPanel>
+                                </StackPanel>
+                                <StackPanel x:Name="ExpertSingleGroupInput" Width="200" Margin="0,0,12,8" Visibility="{Binding UsesSingleCaptureGroup, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                    <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Header.SingleGroup}" />
+                                    <ui:TextBox AutomationProperties.Name="{StaticResource Loc.View.Profiles.Header.SingleGroup}" Text="{Binding GroupName, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                                <StackPanel x:Name="ExpertCombinedGroupsInput" Width="260" Margin="0,0,12,8" Visibility="{Binding UsesCombinedCaptureGroups, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                    <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Header.CombinedGroupsCommaOrder}" />
+                                    <ui:TextBox AutomationProperties.Name="{StaticResource Loc.View.Profiles.Header.CombinedGroupsCommaOrder}" Text="{Binding GroupNamesText, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                                <StackPanel x:Name="ExpertDateInputFormatPanel" Width="160" Margin="0,0,12,8" Visibility="{Binding IsDateTime, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                    <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Header.InputFormat}" />
+                                    <ui:TextBox Text="{Binding ParseFormat, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                                <StackPanel x:Name="ExpertDateDisplayFormatPanel" Width="160" Margin="0,0,0,8" Visibility="{Binding IsDateTime, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                    <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Text.DisplayFormat}" />
+                                    <ui:TextBox Text="{Binding DisplayFormat, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+                            </WrapPanel>
+                            <ui:TextBlock Style="{StaticResource CaptionTextStyle}" TextWrapping="Wrap" Text="{StaticResource Loc.Profiles.Groups.Mode.Conflict}"
+                                Visibility="{Binding HasConflictingGroupInputs, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                        </StackPanel>
+                    </StackPanel>
+                </controls:SectionCard.Header>
+            </controls:SectionCard>
         </DataTemplate>
         <DataTemplate x:Key="ProfileEditor.Item.PathExpert.3">
-            <controls:SectionCard Style="{StaticResource EditorSectionStyle}" IsEnabled="{Binding IsEditorReady}"><controls:SectionCard.Header><StackPanel>
-            <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Text.RegularExpressionRules}" />
-            </StackPanel></controls:SectionCard.Header></controls:SectionCard>
+            <controls:SectionCard x:Name="ExpertRulesGroupCard" Style="{StaticResource EditorSectionStyle}" Margin="0,12,0,8" IsEnabled="{Binding IsEditorReady}">
+                <controls:SectionCard.Header>
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <StackPanel Margin="0,0,12,0">
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <ui:SymbolIcon Symbol="TextBulletListSquare24" FontSize="20" Margin="0,0,8,0" VerticalAlignment="Center" />
+                                <ui:TextBlock Grid.Column="1" Style="{StaticResource SectionTitleTextStyle}" TextWrapping="Wrap" Text="{StaticResource Loc.View.Profiles.Text.RegularExpressionRules}" AutomationProperties.HeadingLevel="Level2" />
+                                <ui:TextBlock Grid.Column="2" Margin="8,0,0,0" VerticalAlignment="Center" Style="{StaticResource CaptionTextStyle}" Text="{Binding DraftRules.Count}" />
+                            </Grid>
+                            <ui:TextBlock Margin="0,4,0,0" Style="{StaticResource CaptionTextStyle}" TextWrapping="Wrap" Text="{StaticResource Loc.Profiles.Expert.Rules.Help}"
+                                ToolTip="{StaticResource Loc.View.Profiles.Text.ConnectResultColumnsDirectlyToRegularExpressions}" />
+                        </StackPanel>
+                        <ui:Button x:Name="ExpertAddRuleButton" Grid.Column="1" VerticalAlignment="Center" Command="{Binding AddRuleCommand}"
+                            Content="{StaticResource Loc.View.Profiles.Content.AddRule}" Icon="{ui:SymbolIcon Symbol=AddSquare20}" />
+                    </Grid>
+                </controls:SectionCard.Header>
+            </controls:SectionCard>
         </DataTemplate>
         <DataTemplate x:Key="ProfileEditor.Item.PathExpert.4">
-            <controls:SectionCard Style="{StaticResource FieldCardStyle}"><controls:SectionCard.Header><WrapPanel>
-            <StackPanel Width="240" Margin="0,0,16,12"><ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Header.RuleID}" />
-            <ui:TextBox Text="{Binding Id, UpdateSourceTrigger=PropertyChanged}"  />
-            </StackPanel>
-            <StackPanel MinWidth="240" Margin="0,0,16,12"><ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Header.Matching}" />
-            <ComboBox Style="{StaticResource ContentAwareComboBoxStyle}"
-                                                            DisplayMemberPath="DisplayName"
-                                                            ItemsSource="{Binding DataContext.MatchModeChoices, RelativeSource={RelativeSource AncestorType={x:Type Page}}}"
-                                                            SelectedValue="{Binding MatchMode, UpdateSourceTrigger=PropertyChanged}"
-                                                            SelectedValuePath="Value" />
-            </StackPanel>
-            <StackPanel Width="240" Margin="0,0,16,12"><ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Content.IgnoreCase}" />
-            <CheckBox MinHeight="32" IsChecked="{Binding IgnoreCase, UpdateSourceTrigger=PropertyChanged}" />
-            </StackPanel>
-            <StackPanel Width="240" Margin="0,0,16,12"><ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Header.LimitMs}" />
-            <ui:TextBox Text="{Binding TimeoutMillisecondsText, UpdateSourceTrigger=PropertyChanged}"  />
-            </StackPanel>
-            <StackPanel Width="240" Margin="0,0,16,12"><ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Header.RegularExpressionPattern}" />
-            <ui:TextBox Text="{Binding Pattern, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="72" />
-            </StackPanel>
-            <StackPanel Width="240" Margin="0,0,16,12"><ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Header.TraversalStopGroupsCommaOrder}" />
-            <ui:TextBox Text="{Binding StopTraversalGroupsText, UpdateSourceTrigger=PropertyChanged}"  />
-            </StackPanel>
-            <StackPanel Width="240" Margin="0,0,16,12"><ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Header.OrderDelete}" />
-            <StackPanel HorizontalAlignment="Center" Orientation="Horizontal">
-                                                            <ui:Button
-                                                                Margin="0,0,4,0"
-                                                                AutomationProperties.Name="{StaticResource Loc.View.Profiles.AutomationName.MoveExpertRegularExpressionRuleUp}"
-                                                                Command="{Binding DataContext.MoveRuleUpCommand, RelativeSource={RelativeSource AncestorType={x:Type Page}}}"
-                                                                CommandParameter="{Binding}"
-                                                                Icon="{ui:SymbolIcon Symbol=ArrowUp12}"
-                                                                Style="{StaticResource IconOnlyButtonStyle}"
-                                                                ToolTip="{StaticResource Loc.View.Profiles.ToolTip.MoveUp}" />
-                                                            <ui:Button
-                                                                Margin="0,0,4,0"
-                                                                AutomationProperties.Name="{StaticResource Loc.View.Profiles.AutomationName.MoveExpertRegularExpressionRuleDown}"
-                                                                Command="{Binding DataContext.MoveRuleDownCommand, RelativeSource={RelativeSource AncestorType={x:Type Page}}}"
-                                                                CommandParameter="{Binding}"
-                                                                Icon="{ui:SymbolIcon Symbol=ArrowDown12}"
-                                                                Style="{StaticResource IconOnlyButtonStyle}"
-                                                                ToolTip="{StaticResource Loc.View.Profiles.ToolTip.MoveDown}" />
-                                                            <ui:Button
-                                                                Appearance="Caution"
-                                                                AutomationProperties.Name="{StaticResource Loc.View.Profiles.AutomationName.DeleteExpertRegularExpressionRule}"
-                                                                Command="{Binding DataContext.RemoveRuleCommand, RelativeSource={RelativeSource AncestorType={x:Type Page}}}"
-                                                                CommandParameter="{Binding}"
-                                                                Icon="{ui:SymbolIcon Symbol=Delete12}"
-                                                                Style="{StaticResource IconOnlyButtonStyle}"
-                                                                ToolTip="{StaticResource Loc.Common.Delete}" />
-                                                        </StackPanel>
-            </StackPanel>
-            </WrapPanel></controls:SectionCard.Header></controls:SectionCard>
-        </DataTemplate>
-        <DataTemplate x:Key="ProfileEditor.Item.PathExpert.5">
-            <controls:SectionCard Style="{StaticResource EditorSectionStyle}" IsEnabled="{Binding IsEditorReady}"><controls:SectionCard.Header><StackPanel>
-            <ui:Button
-                                        HorizontalAlignment="Left"
-                                        Command="{Binding AddRuleCommand}"
-                                        Content="{StaticResource Loc.View.Profiles.Content.AddRule}"
-                                        Icon="{ui:SymbolIcon Symbol=AddSquare20}" />
-            </StackPanel></controls:SectionCard.Header></controls:SectionCard>
+            <controls:SectionCard x:Name="ExpertRegexRuleCard" Style="{StaticResource FieldCardStyle}" Margin="12,0,0,8" Padding="12">
+                <controls:SectionCard.Header>
+                    <StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <ui:TextBlock Margin="0,0,12,0" VerticalAlignment="Center" FontWeight="SemiBold" FontFamily="Consolas" Text="{Binding Id}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Id}" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                <ui:Button Margin="0,0,4,0" AutomationProperties.Name="{StaticResource Loc.View.Profiles.AutomationName.MoveExpertRegularExpressionRuleUp}"
+                                    Command="{Binding DataContext.MoveRuleUpCommand, RelativeSource={RelativeSource AncestorType={x:Type Page}}}" CommandParameter="{Binding}"
+                                    Icon="{ui:SymbolIcon Symbol=ArrowUp12}" Style="{StaticResource IconOnlyButtonStyle}" ToolTip="{StaticResource Loc.View.Profiles.ToolTip.MoveUp}" />
+                                <ui:Button Margin="0,0,4,0" AutomationProperties.Name="{StaticResource Loc.View.Profiles.AutomationName.MoveExpertRegularExpressionRuleDown}"
+                                    Command="{Binding DataContext.MoveRuleDownCommand, RelativeSource={RelativeSource AncestorType={x:Type Page}}}" CommandParameter="{Binding}"
+                                    Icon="{ui:SymbolIcon Symbol=ArrowDown12}" Style="{StaticResource IconOnlyButtonStyle}" ToolTip="{StaticResource Loc.View.Profiles.ToolTip.MoveDown}" />
+                                <ui:Button Appearance="Caution" AutomationProperties.Name="{StaticResource Loc.View.Profiles.AutomationName.DeleteExpertRegularExpressionRule}"
+                                    Command="{Binding DataContext.RemoveRuleCommand, RelativeSource={RelativeSource AncestorType={x:Type Page}}}" CommandParameter="{Binding}"
+                                    Icon="{ui:SymbolIcon Symbol=Delete12}" Style="{StaticResource IconOnlyButtonStyle}" ToolTip="{StaticResource Loc.Common.Delete}" />
+                            </StackPanel>
+                        </Grid>
+                        <WrapPanel x:Name="ExpertRuleOptions" Margin="0,8,0,0">
+                            <StackPanel Width="140" Margin="0,0,12,8">
+                                <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Header.RuleID}" />
+                                <ui:TextBox Text="{Binding Id, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                            <StackPanel Width="140" Margin="0,0,12,8">
+                                <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Header.Matching}" />
+                                <ComboBox Style="{StaticResource ContentAwareComboBoxStyle}" DisplayMemberPath="DisplayName"
+                                    ItemsSource="{Binding DataContext.MatchModeChoices, RelativeSource={RelativeSource AncestorType={x:Type Page}}}"
+                                    SelectedValue="{Binding MatchMode, UpdateSourceTrigger=PropertyChanged}" SelectedValuePath="Value" />
+                            </StackPanel>
+                            <StackPanel Width="104" Margin="0,0,12,8">
+                                <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Header.LimitMs}" />
+                                <ui:TextBox Text="{Binding TimeoutMillisecondsText, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                            <StackPanel Width="220" Margin="0,0,12,8" ToolTip="{StaticResource Loc.Profiles.Expert.StopGroups.Help}">
+                                <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Header.DescendantTraversalStopGroups}" />
+                                <ui:TextBox Text="{Binding StopTraversalGroupsText, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                            <CheckBox MinHeight="40" Margin="0,0,0,8" VerticalAlignment="Bottom" Content="{StaticResource Loc.View.Profiles.Content.IgnoreCase}" IsChecked="{Binding IgnoreCase, UpdateSourceTrigger=PropertyChanged}" />
+                        </WrapPanel>
+                        <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Header.RegularExpressionPattern}" />
+                        <ui:TextBox x:Name="ExpertRegexPatternEditor" FontFamily="Consolas" Text="{Binding Pattern, UpdateSourceTrigger=PropertyChanged}"
+                            AcceptsReturn="True" TextWrapping="Wrap" MinHeight="64" MaxHeight="160" VerticalScrollBarVisibility="Auto"
+                            AutomationProperties.Name="{StaticResource Loc.View.Profiles.Header.RegularExpressionPattern}" />
+                    </StackPanel>
+                </controls:SectionCard.Header>
+            </controls:SectionCard>
         </DataTemplate>
         <DataTemplate x:Key="ProfileEditor.Item.DataSources.1">
             <controls:SectionCard Style="{StaticResource EditorSectionStyle}" IsEnabled="{Binding IsEditorReady}"><controls:SectionCard.Header><StackPanel>
@@ -1033,8 +1043,8 @@
                             Grid.Column="3"
                             Width="34"
                             Height="32"
-                            Margin="10,24,0,0"
-                            VerticalAlignment="Top"
+                            Margin="10,0,0,0"
+                            VerticalAlignment="Bottom"
                             Appearance="Caution"
                             AutomationProperties.Name="{StaticResource Loc.View.Profiles.AutomationName.DeleteTextFileField}"
                             Command="{Binding DataContext.RemoveTextFileFieldCommand, RelativeSource={RelativeSource AncestorType={x:Type Page}}}"
@@ -1051,17 +1061,8 @@
                         Text="{Binding FileNamePattern, UpdateSourceTrigger=PropertyChanged}" />
                     <ContentControl Content="{Binding}" ContentTemplate="{StaticResource ColumnWidthEditorTemplate}" HorizontalContentAlignment="Stretch" />
 
-                    <Grid Margin="0,12,0,0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="2*" />
-                            <ColumnDefinition Width="16" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="16" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="16" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel>
+                    <WrapPanel Margin="0,12,0,0">
+                        <StackPanel Width="200" Margin="0,0,16,12">
                             <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Text.FileNameMatchMode}" />
                             <ComboBox Style="{StaticResource ContentAwareComboBoxStyle}"
                                 AutomationProperties.Name="{StaticResource Loc.View.Profiles.AutomationName.TextFileNameMatchMode}"
@@ -1070,25 +1071,25 @@
                                 SelectedValue="{Binding MatchMode, UpdateSourceTrigger=PropertyChanged}"
                                 SelectedValuePath="Value" />
                         </StackPanel>
-                        <StackPanel Grid.Column="2">
+                        <StackPanel Width="144" Margin="0,0,16,12">
                             <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Text.ReadLimitBytes}" />
                             <ui:TextBox
                                 AutomationProperties.Name="{StaticResource Loc.View.Profiles.AutomationName.TextFileReadByteLimit}"
                                 Text="{Binding MaxBytesText, UpdateSourceTrigger=PropertyChanged}" />
                         </StackPanel>
-                        <StackPanel Grid.Column="4">
+                        <StackPanel Width="120" Margin="0,0,16,12">
                             <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Text.TimeoutMs}" />
                             <ui:TextBox
                                 AutomationProperties.Name="{StaticResource Loc.View.Profiles.AutomationName.TextFileRegularExpressionTimeout}"
                                 Text="{Binding TimeoutMillisecondsText, UpdateSourceTrigger=PropertyChanged}" />
                         </StackPanel>
-                        <StackPanel Grid.Column="6">
+                        <StackPanel Width="120" Margin="0,0,0,12">
                             <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Text.ColumnOrder}" />
                             <ui:TextBox
                                 AutomationProperties.Name="{StaticResource Loc.View.Profiles.AutomationName.TextFileColumnOrder}"
                                 Text="{Binding OrderText, UpdateSourceTrigger=PropertyChanged}" />
                         </StackPanel>
-                    </Grid>
+                    </WrapPanel>
                     <WrapPanel Margin="0,12,0,0">
                         <CheckBox
                             Margin="0,0,20,0"
@@ -1128,7 +1129,7 @@
                 <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="16" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                     <StackPanel><ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Text.ColumnName}" /><ui:TextBox Text="{Binding Header, UpdateSourceTrigger=PropertyChanged}" /></StackPanel>
                     <StackPanel Grid.Column="2"><ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="Field ID" /><ui:TextBox Text="{Binding FieldId, UpdateSourceTrigger=PropertyChanged}" /></StackPanel>
-                    <ui:Button Grid.Column="3" Margin="12,20,0,0" VerticalAlignment="Top" Icon="{ui:SymbolIcon Symbol=Delete20}" Style="{StaticResource IconOnlyButtonStyle}"
+                    <ui:Button Grid.Column="3" Margin="12,0,0,0" VerticalAlignment="Bottom" Icon="{ui:SymbolIcon Symbol=Delete20}" Style="{StaticResource IconOnlyButtonStyle}"
                         Command="{Binding DataContext.RemoveChildDirectoryFieldCommand, RelativeSource={RelativeSource AncestorType=Page}}" CommandParameter="{Binding}" ToolTip="{StaticResource Loc.Profiles.Features.Remove}" />
                 </Grid>
                 <ui:TextBlock Margin="0,12,0,4" Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.Profiles.Features.Child.Name}" />
@@ -1202,8 +1203,8 @@
                         Grid.Column="5"
                         Width="34"
                         Height="32"
-                        Margin="10,24,0,0"
-                        VerticalAlignment="Top"
+                        Margin="10,0,0,0"
+                        VerticalAlignment="Bottom"
                         Appearance="Caution"
                         AutomationProperties.Name="{StaticResource Loc.View.Profiles.AutomationName.DeleteUserInputField}"
                         Command="{Binding DataContext.RemoveUserInputFieldCommand, RelativeSource={RelativeSource AncestorType={x:Type Page}}}"
@@ -1250,7 +1251,7 @@
                 <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="16" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                     <StackPanel><ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.Profiles.Features.Selection.RuleName}" /><ui:TextBox Text="{Binding DisplayName, UpdateSourceTrigger=PropertyChanged}" /></StackPanel>
                     <StackPanel Grid.Column="2"><ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="Rule ID" /><ui:TextBox Text="{Binding Id, UpdateSourceTrigger=PropertyChanged}" /></StackPanel>
-                    <ui:Button Grid.Column="3" Margin="12,20,0,0" VerticalAlignment="Top" Icon="{ui:SymbolIcon Symbol=Delete20}" Style="{StaticResource IconOnlyButtonStyle}"
+                    <ui:Button Grid.Column="3" Margin="12,0,0,0" VerticalAlignment="Bottom" Icon="{ui:SymbolIcon Symbol=Delete20}" Style="{StaticResource IconOnlyButtonStyle}"
                         Command="{Binding DataContext.RemoveSelectionRuleCommand, RelativeSource={RelativeSource AncestorType=Page}}" CommandParameter="{Binding}" ToolTip="{StaticResource Loc.Profiles.Features.Remove}" />
                 </Grid>
                 <ui:TextBlock Margin="0,12,0,4" Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.Profiles.Features.Selection.InputKind}" />
@@ -1329,19 +1330,8 @@
                                         CornerRadius="6" Style="{StaticResource FluentCardStyle}">
                                         <controls:SectionCard.Header>
                                         <StackPanel AutomationProperties.Name="{StaticResource Loc.View.Profiles.AutomationName.FolderNameExclusionRuleScope}">
-                                            <ui:TextBlock TextWrapping="Wrap">
-                                                <Run FontWeight="SemiBold" Text="{StaticResource Loc.View.Profiles.Text.InputExample}" />
-                                                <Run FontFamily="Consolas" Text="C:\abc\def\name" />
-                                                <Run Text="{StaticResource Loc.View.Profiles.Text.ValuePassedToTheRegularExpression}" />
-                                                <Run FontFamily="Consolas" FontWeight="SemiBold" Text="name" />
-                                                <Run Text="{StaticResource Loc.View.Profiles.Text.Label}" />
-                                            </ui:TextBlock>
-                                            <ui:TextBlock Margin="0,6,0,0" TextWrapping="Wrap">
-                                                <Run FontFamily="Consolas" Text="Full + name" />
-                                                <Run Text="{StaticResource Loc.View.Profiles.Text.MatchesOnlyWhenTheEntireFinalFolder}" />
-                                                <Run FontFamily="Consolas" Text="name" />
-                                                <Run Text="{StaticResource Loc.View.Profiles.Text.AMatchRemovesThatFolderFromResult}" />
-                                            </ui:TextBlock>
+                                            <ui:TextBlock Text="{StaticResource Loc.Profiles.Exclusion.PartialExample}" TextWrapping="Wrap" />
+                                            <ui:TextBlock Margin="0,6,0,0" Text="{StaticResource Loc.Profiles.Exclusion.FullExample}" TextWrapping="Wrap" />
                                         </StackPanel>
                                         </controls:SectionCard.Header>
                                     </controls:SectionCard>
@@ -1353,7 +1343,7 @@
                 <StackPanel>
                     <Grid>
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="180" />
+                            <ColumnDefinition Width="160" />
                             <ColumnDefinition Width="16" />
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
@@ -1376,8 +1366,8 @@
                             Grid.Column="3"
                             Width="34"
                             Height="32"
-                            Margin="10,24,0,0"
-                            VerticalAlignment="Top"
+                            Margin="10,0,0,0"
+                            VerticalAlignment="Bottom"
                             Appearance="Caution"
                             AutomationProperties.Name="{StaticResource Loc.View.Profiles.AutomationName.DeleteFolderNameExclusionRule}"
                             Command="{Binding DataContext.RemoveDirectoryExclusionRuleCommand, RelativeSource={RelativeSource AncestorType={x:Type Page}}}"
@@ -1387,14 +1377,8 @@
                             ToolTip="{StaticResource Loc.View.Profiles.ToolTip.DeleteRule}" />
                     </Grid>
 
-                    <Grid Margin="0,12,0,0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="16" />
-                            <ColumnDefinition Width="160" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel>
+                    <WrapPanel Margin="0,8,0,0">
+                        <StackPanel Width="180" Margin="0,0,12,0">
                             <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Text.MatchMode}" />
                             <ComboBox Style="{StaticResource ContentAwareComboBoxStyle}"
                                 AutomationProperties.Name="{StaticResource Loc.View.Profiles.AutomationName.FolderNameExclusionMatchMode}"
@@ -1403,19 +1387,18 @@
                                 SelectedValue="{Binding MatchMode, UpdateSourceTrigger=PropertyChanged}"
                                 SelectedValuePath="Value" />
                         </StackPanel>
-                        <StackPanel Grid.Column="2">
+                        <StackPanel Width="120" Margin="0,0,12,0">
                             <ui:TextBlock Style="{StaticResource FieldLabelStyle}" Text="{StaticResource Loc.View.Profiles.Text.TimeoutMs}" />
                             <ui:TextBox
                                 AutomationProperties.Name="{StaticResource Loc.View.Profiles.AutomationName.FolderExclusionRegularExpressionTimeout}"
                                 Text="{Binding TimeoutMillisecondsText, UpdateSourceTrigger=PropertyChanged}" />
                         </StackPanel>
                         <CheckBox
-                            Grid.Column="3"
-                            Margin="16,24,0,0"
-                            VerticalAlignment="Top"
+                            Margin="0,8,0,4"
+                            VerticalAlignment="Bottom"
                             Content="{StaticResource Loc.View.Profiles.Content.IgnoreCase}"
                             IsChecked="{Binding IgnoreCase, UpdateSourceTrigger=PropertyChanged}" />
-                    </Grid>
+                    </WrapPanel>
                     <ui:TextBlock
                         Margin="0,10,0,0"
                         Foreground="{DynamicResource TextFillColorSecondaryBrush}"
@@ -1491,7 +1474,7 @@
                             <StackPanel>
                                 <ui:TextBlock Style="{StaticResource CaptionTextStyle}" Text="{StaticResource Loc.View.Profiles.Text.ScanBehavior}" />
                                 <ui:TextBlock Margin="0,4,0,0" FontSize="16" FontWeight="SemiBold" Text="{Binding DraftRules.Count, StringFormat={StaticResource Loc.Profiles.PathRuleCountFormat}}" />
-                                <ui:TextBlock Margin="0,2,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding DraftExcludedDirectoryNameRules.Count, StringFormat={StaticResource Loc.Profiles.ExclusionRuleCountFormat}}" />
+                                <ui:TextBlock Margin="0,2,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Text="{Binding DraftDirectoryExclusionRules.Count, StringFormat={StaticResource Loc.Profiles.ExclusionRuleCountFormat}}" />
                             </StackPanel>
                             </controls:SectionCard.Header>
                         </controls:SectionCard>
@@ -1538,7 +1521,6 @@
                 <controls:ProfileEditorSection Template="{StaticResource ProfileEditor.Item.PathExpert.2}" IsCollection="True" ItemsSource="{Binding DraftFields}" />
                 <controls:ProfileEditorSection Template="{StaticResource ProfileEditor.Item.PathExpert.3}" Id="ExpertRules" />
                 <controls:ProfileEditorSection Template="{StaticResource ProfileEditor.Item.PathExpert.4}" IsCollection="True" ItemsSource="{Binding DraftRules}" />
-                <controls:ProfileEditorSection Template="{StaticResource ProfileEditor.Item.PathExpert.5}" />
             </controls:ProfileEditorList>
         </DataTemplate>
         <DataTemplate x:Key="ProfileEditor.DataSources">
@@ -1571,7 +1553,7 @@
                 Style="{StaticResource ProfileEditorVirtualListStyle}">
                 <controls:ProfileEditorSection Template="{StaticResource ProfileEditor.ValidationIssues}" Id="ValidationIssues" />
                 <controls:ProfileEditorSection Template="{StaticResource ProfileEditor.Item.ScanOptions.1}" />
-                <controls:ProfileEditorSection Template="{StaticResource ProfileEditor.Item.ScanOptions.2}" IsCollection="True" ItemsSource="{Binding DraftExcludedDirectoryNameRules}" />
+                <controls:ProfileEditorSection Template="{StaticResource ProfileEditor.Item.ScanOptions.2}" IsCollection="True" ItemsSource="{Binding DraftDirectoryExclusionRules}" />
                 <controls:ProfileEditorSection Template="{StaticResource ProfileEditor.Item.ScanOptions.3}" />
                 <controls:ProfileEditorSection Template="{StaticResource ProfileEditor.Item.ScanOptions.4}" />
             </controls:ProfileEditorList>
@@ -2024,7 +2006,7 @@
                                             AutoGenerateColumns="False"
                                             CanUserAddRows="False"
                                             IsReadOnly="True"
-                                            ItemsSource="{Binding ExcludedDirectoryNameRules}"
+                                            ItemsSource="{Binding DirectoryExclusionRules}"
                                             x:Name="ProfileExclusionsInspectionGrid"
                                             PreviewMouseWheel="OnNestedDataGridPreviewMouseWheel"
                                             ScrollViewer.VerticalScrollBarVisibility="Disabled"

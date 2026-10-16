@@ -1,4 +1,5 @@
 using System.IO;
+using System.Text.RegularExpressions;
 using FindEverything.Desktop.Services;
 using FindEverything.Desktop.ViewModels;
 using FindEverything.Profile.Runtime;
@@ -73,9 +74,35 @@ public sealed class ProfilePlaygroundEvaluatorTests
         var pathDebug = Assert.Single(result.RegexDebugRules);
         Assert.Equal("default", pathDebug.RuleId);
         Assert.Contains(pathDebug.Lanes, static lane => lane.Label == "alias");
-        Assert.Equal("A", result.DirectoryExclusionResult.LeafName);
+        Assert.Equal(canonicalPath, profile.ExclusionPath);
+        Assert.Equal(canonicalPath, result.DirectoryExclusionResult.AbsolutePath);
         Assert.Contains("skip-a", result.DirectoryExclusionResult.Title, StringComparison.Ordinal);
-        Assert.Single(result.DirectoryExclusionRegexDebugRules);
+        var exclusionDebug = Assert.Single(result.DirectoryExclusionRegexDebugRules);
+        Assert.Equal(canonicalPath, string.Concat(exclusionDebug.Lanes[0].Segments.Select(segment => segment.Text)));
+        Assert.Contains("실제 절대경로 전체 일치", exclusionDebug.Status, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(@"C:\Projects\Parent\A")]
+    [InlineData(@"\\192.0.2.10\Archives\Parent\A")]
+    public void Exclusion_evaluation_and_debugging_receive_the_same_canonical_absolute_or_unc_path(string canonicalPath)
+    {
+        var canonicalizer = new RecordingCanonicalizer(canonicalPath);
+        var profile = new RecordingLoadedProfile(canonicalPath);
+        var evaluator = new ProfilePlaygroundEvaluator(canonicalizer, new TestAppLocalizer());
+
+        var result = evaluator.Evaluate(profile, @"Z:\Mapped\A");
+
+        Assert.Equal(@"Z:\Mapped\A", canonicalizer.Input);
+        Assert.Equal(canonicalPath, result.CanonicalPath);
+        Assert.Equal(canonicalPath, profile.MappedPath);
+        Assert.Equal(canonicalPath, profile.ExclusionPath);
+        Assert.Equal(canonicalPath, result.DirectoryExclusionResult.AbsolutePath);
+        Assert.Contains("skip-a", result.DirectoryExclusionResult.Title, StringComparison.Ordinal);
+        var debug = Assert.Single(result.DirectoryExclusionRegexDebugRules);
+        Assert.Contains("실제 절대경로 전체 일치", debug.Status, StringComparison.Ordinal);
+        var group = Assert.Single(debug.Lanes, lane => lane.Label == "absolutePath");
+        Assert.Equal(canonicalPath, string.Concat(group.Segments.Where(segment => segment.IsHighlighted).Select(segment => segment.Text)));
     }
 
     [Fact]
@@ -306,10 +333,12 @@ public sealed class ProfilePlaygroundEvaluatorTests
     private sealed class RecordingLoadedProfile : ILoadedProfile
     {
         private readonly string _expectedPath;
+        private readonly string _excludedPath;
 
         public RecordingLoadedProfile(string expectedPath)
         {
             _expectedPath = expectedPath;
+            _excludedPath = Path.Combine(Path.GetDirectoryName(expectedPath)!, "A");
             var field = new ProfileFieldDescriptor(
                 "owner",
                 "alias",
@@ -340,12 +369,12 @@ public sealed class ProfilePlaygroundEvaluatorTests
                     true,
                     100)])
             {
-                ExcludedDirectoryNameRules =
+                DirectoryExclusionRules =
                 [
-                    new ProfileDirectoryNameExclusionRuleDescriptor(
+                    new ProfileDirectoryExclusionRuleDescriptor(
                         1,
                         "skip-a",
-                        @"(?<leaf>A)",
+                        $"(?<absolutePath>{Regex.Escape(_excludedPath)})",
                         ProfileRegexMatchMode.Full,
                         true,
                         100),
@@ -376,6 +405,7 @@ public sealed class ProfilePlaygroundEvaluatorTests
         public ProfileMapResult Result { get; set; }
 
         public string? MappedPath { get; private set; }
+        public string? ExclusionPath { get; private set; }
 
         public ProfileMapResult Map(ProfilePathCandidate candidate)
         {
@@ -384,11 +414,13 @@ public sealed class ProfilePlaygroundEvaluatorTests
             return Result;
         }
 
-        public ProfileDirectoryNameExclusionResult EvaluateDirectoryName(
-            string directoryName) =>
-            string.Equals(directoryName, "A", StringComparison.OrdinalIgnoreCase)
-                ? ProfileDirectoryNameExclusionResult.Excluded("skip-a")
-                : ProfileDirectoryNameExclusionResult.NotExcluded();
+        public ProfileDirectoryExclusionResult EvaluateDirectoryPath(string absolutePath)
+        {
+            ExclusionPath = absolutePath;
+            return string.Equals(absolutePath, _excludedPath, StringComparison.OrdinalIgnoreCase)
+                ? ProfileDirectoryExclusionResult.Excluded("skip-a")
+                : ProfileDirectoryExclusionResult.NotExcluded();
+        }
     }
 
     private sealed class StubProfileCatalog(ProfileCatalogSnapshot current) : IProfileCatalog
@@ -427,7 +459,7 @@ public sealed class ProfilePlaygroundEvaluatorTests
                 [new ProfileTestResultViewModel("field", "old value", "success")],
                 [],
                 new ProfileDirectoryExclusionTestResultViewModel(
-                    "A",
+                    canonicalPath,
                     "not excluded",
                     "test",
                     InfoBarSeverity.Informational),

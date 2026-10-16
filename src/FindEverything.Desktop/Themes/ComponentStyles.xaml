@@ -15,9 +15,25 @@
     <!-- Opt in without replacing WPF-UI's native ComboBox template/states.
          Fixed local Width/MinWidth/MaxWidth values should be removed. -->
     <Style x:Key="ContentAwareComboBoxStyle" TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}">
+        <Setter Property="MinHeight" Value="{StaticResource FormControlMinHeight}" />
+        <Setter Property="Padding" Value="{StaticResource FormControlPadding}" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
         <Setter Property="behaviors:ComboBoxContentSizing.IsEnabled" Value="True" />
         <Setter Property="MinWidth" Value="{Binding RelativeSource={RelativeSource Self}, Path=(behaviors:ComboBoxContentSizing.DesiredMinimumWidth)}" />
         <Setter Property="MaxWidth" Value="{Binding RelativeSource={RelativeSource Self}, Path=(behaviors:ComboBoxContentSizing.AvailableWidth)}" />
+    </Style>
+
+    <Style x:Key="CompactActionButtonStyle" TargetType="ui:Button" BasedOn="{StaticResource {x:Type ui:Button}}">
+        <Setter Property="MinHeight" Value="{StaticResource CompactActionMinHeight}" />
+        <Setter Property="Padding" Value="{StaticResource CompactActionPadding}" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style x:Key="CompactIconButtonStyle" TargetType="ui:Button" BasedOn="{StaticResource CompactActionButtonStyle}">
+        <Setter Property="Width" Value="{StaticResource IconActionSize}" />
+        <Setter Property="MinWidth" Value="{StaticResource IconActionSize}" />
+        <Setter Property="Height" Value="{StaticResource IconActionSize}" />
+        <Setter Property="Padding" Value="4" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
     </Style>
 
     <DataTemplate x:Key="SelectionCopyContentTemplate">
@@ -160,8 +176,10 @@
         <Setter Property="Padding" Value="{StaticResource WorkspaceActionPadding}" />
     </Style>
 
-    <Style x:Key="FluentSectionCardStyle" TargetType="ui:CardControl" BasedOn="{StaticResource FluentCardStyle}" />
-    <Style TargetType="controls:SectionCard" BasedOn="{StaticResource FluentCardStyle}" />
+    <Style x:Key="FluentSectionCardStyle" TargetType="ui:CardControl" BasedOn="{StaticResource FluentCardStyle}">
+        <Setter Property="BorderThickness" Value="1" />
+    </Style>
+    <Style TargetType="controls:SectionCard" BasedOn="{StaticResource FluentSectionCardStyle}" />
 
     <Style x:Key="FluentEmptyStateStyle" TargetType="ui:CardControl" BasedOn="{StaticResource FluentCardStyle}">
         <Setter Property="MinHeight" Value="240" />

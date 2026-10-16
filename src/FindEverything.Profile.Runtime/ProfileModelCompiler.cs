@@ -132,8 +132,8 @@ internal sealed class ProfileModelCompiler
         string? modelCacheIdentity = null)
     {
         var rules = CompileRules(manifest.Rules, fields, diagnostics);
-        var excludedDirectoryNameRules = CompileExcludedDirectoryNameRules(
-            manifest.ExcludedDirectoryNameRules,
+        var directoryExclusionRules = CompileDirectoryExclusionRules(
+            manifest.DirectoryExclusionRules,
             diagnostics);
         var textFileFields = CompileTextFileFields(
             manifest.TextFileFields,
@@ -239,9 +239,9 @@ internal sealed class ProfileModelCompiler
                     field.Placeholder,
                     field.DefaultValue))
                 .ToArray()),
-            ExcludedDirectoryNameRules = Array.AsReadOnly(manifest.ExcludedDirectoryNameRules
+            DirectoryExclusionRules = Array.AsReadOnly(manifest.DirectoryExclusionRules
                 .Select(static (rule, index) =>
-                    new ProfileDirectoryNameExclusionRuleDescriptor(
+                    new ProfileDirectoryExclusionRuleDescriptor(
                         index + 1,
                         rule.Id,
                         rule.Pattern,
@@ -262,7 +262,7 @@ internal sealed class ProfileModelCompiler
             createModel,
             fields.ToArray(),
             rules.ToArray(),
-            excludedDirectoryNameRules.ToArray(),
+            directoryExclusionRules.ToArray(),
             textFileFields.ToArray(),
             modelCacheIdentity);
 
@@ -509,12 +509,12 @@ internal sealed class ProfileModelCompiler
         return rules;
     }
 
-    private static List<CompiledDirectoryNameExclusionRule>
-        CompileExcludedDirectoryNameRules(
-            IReadOnlyList<ValidatedDirectoryNameExclusionRule> sourceRules,
+    private static List<CompiledDirectoryExclusionRule>
+        CompileDirectoryExclusionRules(
+            IReadOnlyList<ValidatedDirectoryExclusionRule> sourceRules,
             ICollection<ProfileDiagnostic> diagnostics)
     {
-        var rules = new List<CompiledDirectoryNameExclusionRule>(sourceRules.Count);
+        var rules = new List<CompiledDirectoryExclusionRule>(sourceRules.Count);
         foreach (var sourceRule in sourceRules)
         {
             try
@@ -528,7 +528,7 @@ internal sealed class ProfileModelCompiler
                 var effectivePattern = sourceRule.MatchMode == ProfileRegexMatchMode.Full
                     ? $"\\A(?:{sourceRule.Pattern})\\z"
                     : sourceRule.Pattern;
-                rules.Add(new CompiledDirectoryNameExclusionRule(
+                rules.Add(new CompiledDirectoryExclusionRule(
                     sourceRule.Id,
                     new Regex(
                         effectivePattern,
@@ -538,8 +538,8 @@ internal sealed class ProfileModelCompiler
             catch (ArgumentException exception)
             {
                 diagnostics.Add(Error(
-                    "excluded_directory_name_regex_invalid",
-                    $"폴더 이름 제외 규칙 '{sourceRule.Id}'을(를) 컴파일할 수 없습니다.",
+                    "directory_exclusion_regex_invalid",
+                    $"폴더 경로 제외 규칙 '{sourceRule.Id}'을(를) 컴파일할 수 없습니다.",
                     exception.Message));
             }
         }
@@ -687,7 +687,7 @@ internal sealed record CompiledRegexRule(
     int[][] FieldGroupNumbers,
     int[] StopTraversalGroupNumbers);
 
-internal sealed record CompiledDirectoryNameExclusionRule(
+internal sealed record CompiledDirectoryExclusionRule(
     string Id,
     Regex Regex);
 

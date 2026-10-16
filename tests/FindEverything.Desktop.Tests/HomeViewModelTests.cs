@@ -290,9 +290,9 @@ public sealed partial class HomeViewModelTests
         public ProfileMapResult Map(ProfilePathCandidate candidate) =>
             ProfileMapResult.NoMatch();
 
-        public ProfileDirectoryNameExclusionResult EvaluateDirectoryName(
+        public ProfileDirectoryExclusionResult EvaluateDirectoryPath(
             string directoryName) =>
-            ProfileDirectoryNameExclusionResult.NotExcluded();
+            ProfileDirectoryExclusionResult.NotExcluded();
     }
 
     private sealed class StubDatabasePathResolver(

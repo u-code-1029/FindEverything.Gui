@@ -5,7 +5,7 @@
     x:Name="TransferPanel" AllowDrop="True" PreviewDragOver="OnDragOver" PreviewDrop="OnDrop">
     <Grid>
         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-        <ui:Button x:Name="TransferMenuButton" Padding="8,4" MinHeight="28" Appearance="Transparent"
+        <ui:Button x:Name="TransferMenuButton" Style="{StaticResource CompactActionButtonStyle}" Appearance="Transparent"
             Click="OnMenuClick"
             AutomationProperties.Name="{DynamicResource Loc.Transfer.Menu.Title}">
             <ui:Button.ToolTip>
@@ -37,7 +37,7 @@
                 <ui:SymbolIcon Symbol="ChevronDown12" Width="12" Height="12" Margin="8,0,0,0" VerticalAlignment="Center"/>
             </StackPanel>
         </ui:Button>
-        <ui:Button Grid.Column="1" Width="28" Height="28" Margin="4,0,0,0" Padding="0" Appearance="Transparent"
+        <ui:Button Grid.Column="1" Style="{StaticResource CompactIconButtonStyle}" Margin="8,0,0,0" Appearance="Transparent"
             Command="{Binding CancelCommand}" Icon="{ui:SymbolIcon Symbol=Dismiss16}"
             AutomationProperties.Name="{DynamicResource Loc.Common.Cancel}" ToolTip="{DynamicResource Loc.Common.Cancel}"
             Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}"/>

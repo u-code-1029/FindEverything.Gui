@@ -197,9 +197,9 @@
                                 Grid.Column="1"
                                 Margin="12,0,0,0"
                                 FontFamily="Consolas"
-                                Text="{Binding DirectoryExclusionTestResult.LeafName}"
+                                Text="{Binding DirectoryExclusionTestResult.AbsolutePath}"
                                 TextTrimming="CharacterEllipsis"
-                                ToolTip="{Binding DirectoryExclusionTestResult.LeafName}" />
+                                ToolTip="{Binding DirectoryExclusionTestResult.AbsolutePath}" />
                         </Grid>
                         <ui:InfoBar
                             IsClosable="False"
@@ -286,11 +286,10 @@
             </ui:DynamicScrollViewer>
         </TabItem>
         </TabControl>
-        <Grid controls:FloatingNotificationChrome.IsBottomChrome="True" Grid.Row="2" Margin="0,8" Background="Transparent">
-            <StackPanel Orientation="Horizontal">
-                <ui:ProgressRing Width="18" Height="18" Margin="0,0,8,0" IsIndeterminate="True" Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                <ui:TextBlock Text="{Binding Summary}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Summary}" AutomationProperties.LiveSetting="Polite" />
-            </StackPanel>
+        <Grid x:Name="PlaygroundSummaryPanel" controls:FloatingNotificationChrome.IsBottomChrome="True" Grid.Row="2" Margin="0,8" Background="Transparent">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+            <ui:ProgressRing Width="18" Height="18" Margin="0,0,8,0" VerticalAlignment="Center" IsIndeterminate="True" Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}" />
+            <ui:TextBlock x:Name="PlaygroundSummaryText" Grid.Column="1" VerticalAlignment="Center" Text="{Binding Summary}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Summary}" AutomationProperties.LiveSetting="Polite" />
         </Grid>
     </controls:WorkspacePageFrame>
 </Page>

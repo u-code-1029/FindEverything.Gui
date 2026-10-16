@@ -246,7 +246,7 @@
     <sys:String x:Key="Loc.Catalog.Result.CompletionNotice">프로필 규칙에 맞는 {0:N0}개 폴더를 찾았습니다.{1}{2}</sys:String>
     <sys:String x:Key="Loc.Catalog.Result.DiscoverySummary"> · 방문 폴더 {0:N0} · 하위 탐색 생략 {1:N0} · 오류 {2:N0}{3}</sys:String>
     <sys:String x:Key="Loc.Catalog.Result.ElapsedSuffix"> · 소요 {0}</sys:String>
-    <sys:String x:Key="Loc.Catalog.Result.ExclusionSummary"> · 이름 규칙 제외 {0:N0}{1}</sys:String>
+    <sys:String x:Key="Loc.Catalog.Result.ExclusionSummary"> · 경로 규칙 제외 {0:N0}{1}</sys:String>
     <sys:String x:Key="Loc.Catalog.Result.ExclusionWarningSuffix"> · 제외 규칙 경고 {0:N0}</sys:String>
     <sys:String x:Key="Loc.Catalog.Result.ExistingLoadCompleted">기존 인덱스 불러오기 완료</sys:String>
     <sys:String x:Key="Loc.Catalog.Result.DirectScanCompleted">DB에 저장하지 않는 스캔 완료</sys:String>
@@ -366,9 +366,7 @@
     <sys:String x:Key="Loc.Playground.Result.Invalid">경로는 일치했지만 일부 값을 변환하거나 읽을 수 없습니다.</sys:String>
     <sys:String x:Key="Loc.Playground.Result.Success">규칙 '{0}'에 일치했고 {1:N0}개 값을 불러왔습니다.</sys:String>
     <sys:String x:Key="Loc.Playground.Result.Empty">프로필이 결과를 반환하지 않았습니다.</sys:String>
-    <sys:String x:Key="Loc.Playground.Exclusion.Scope">이 판정은 구조화 보기의 스캔에서 검색 루트 아래 폴더의 마지막 이름(leaf)에 적용됩니다. 일치한 폴더와 그 하위 폴더는 인덱싱하지 않습니다. 검색 루트 자체는 예외 규칙으로 제외하지 않습니다. 기존 DB 불러오기는 저장된 인덱스를 사용하므로 새 규칙을 반영하려면 다시 스캔하세요.</sys:String>
-    <sys:String x:Key="Loc.Playground.Exclusion.Root">(드라이브 또는 공유 루트)</sys:String>
-    <sys:String x:Key="Loc.Playground.Exclusion.NoLeaf">leaf 폴더 이름이 없어 제외 판정을 생략했습니다.</sys:String>
+    <sys:String x:Key="Loc.Playground.Exclusion.Scope">전체 절대경로(네트워크는 UNC)에 대한 정규식 판정입니다. 실제 스캔에서는 일치한 폴더와 그 하위를 제외하되, 사용자가 지정한 각 시작 경로 자체는 보호합니다. 기존 DB 불러오기는 저장된 인덱스를 사용하므로 새 규칙을 반영하려면 다시 스캔하세요.</sys:String>
     <sys:String x:Key="Loc.Playground.Exclusion.NoRules">제외 규칙이 없어 이 폴더를 계속 탐색합니다.</sys:String>
     <sys:String x:Key="Loc.Playground.Exclusion.ProfileInvalid">프로필 정의 오류로 제외 여부를 판정할 수 없습니다.</sys:String>
     <sys:String x:Key="Loc.Playground.Exclusion.CheckRegex">아래 색상 디버깅과 검증 메시지에서 잘못된 정규식을 확인하세요. </sys:String>
@@ -397,8 +395,8 @@
     <sys:String x:Key="Loc.Profiles.Groups.Mode.Conflict">기존 정의에 단일 그룹과 조합 그룹이 함께 있습니다. 사용할 방식을 클릭하면 다른 입력을 초기화합니다.</sys:String>
     <sys:String x:Key="Loc.Profiles.Match.FullShort">전체 일치</sys:String>
     <sys:String x:Key="Loc.Profiles.Match.Partial">부분 일치</sys:String>
-    <sys:String x:Key="Loc.Profiles.Match.FolderFull">폴더 이름 전체 일치</sys:String>
-    <sys:String x:Key="Loc.Profiles.Match.FolderPartial">폴더 이름 일부 일치</sys:String>
+    <sys:String x:Key="Loc.Profiles.Match.FolderFull">절대경로 전체 일치</sys:String>
+    <sys:String x:Key="Loc.Profiles.Match.FolderPartial">절대경로 부분 일치</sys:String>
     <sys:String x:Key="Loc.Profiles.Match.FileFull">파일 이름 전체 일치</sys:String>
     <sys:String x:Key="Loc.Profiles.Match.FilePartial">파일 이름 일부 일치</sys:String>
     <sys:String x:Key="Loc.Profiles.Date.Single">한 조각에서 날짜 읽기</sys:String>
@@ -533,7 +531,7 @@
     <sys:String x:Key="Loc.Profiles.Date.Error.Invalid">‘{0}’의 선택 값 ‘{1}’은(는) 선택한 날짜 모양으로 읽을 수 없습니다. 경로 속 날짜 모양을 다시 선택하세요.</sys:String>
     <sys:String x:Key="Loc.RegexDebug.Limit.Time">색상 미리보기의 전체 시간 제한 {0:0.##}초에 도달해 나머지 {1:N0}개 규칙은 표시하지 않았습니다. 이 제한은 색상 표시 전용이며 프로필 검증 대상을 줄이지 않습니다.</sys:String>
     <sys:String x:Key="Loc.RegexDebug.Limit.Count">규칙이 많아 앞 {0:N0}개만 색상으로 표시했습니다. 나머지 {1:N0}개 규칙도 프로필 검증 대상에는 그대로 포함됩니다.</sys:String>
-    <sys:String x:Key="Loc.RegexDebug.Mode.FolderFull">폴더 이름 전체 일치</sys:String>
+    <sys:String x:Key="Loc.RegexDebug.Mode.FolderFull">절대경로 전체 일치</sys:String>
     <sys:String x:Key="Loc.RegexDebug.Mode.PathFull">전체 경로 일치 규칙</sys:String>
     <sys:String x:Key="Loc.RegexDebug.Mode.Partial">부분 일치 규칙</sys:String>
     <sys:String x:Key="Loc.RegexDebug.Error.Empty">패턴이 비어 있습니다.</sys:String>
@@ -565,9 +563,9 @@
     <sys:String x:Key="Loc.RegexDebug.Notice.Budget">색상 미리보기 전체 시간 제한 도달</sys:String>
     <sys:String x:Key="Loc.RegexDebug.Status.ZeroOnly">원본 패턴이 길이 0인 위치에만 일치합니다. 색으로 표시할 문자는 없습니다.{0}</sys:String>
     <sys:String x:Key="Loc.RegexDebug.Status.NoPartial">원본 패턴과 부분적으로 일치하는 구간이 없습니다.{0}</sys:String>
-    <sys:String x:Key="Loc.RegexDebug.Status.ActualFolderFull">실제 폴더 이름 전체 일치</sys:String>
+    <sys:String x:Key="Loc.RegexDebug.Status.ActualFolderFull">실제 절대경로 전체 일치</sys:String>
     <sys:String x:Key="Loc.RegexDebug.Status.ActualPathFull">실제 전체 경로 일치</sys:String>
-    <sys:String x:Key="Loc.RegexDebug.Status.FolderRequirement">실제 구조화 스캔에서는 폴더 이름 전체가 일치해야 합니다.</sys:String>
+    <sys:String x:Key="Loc.RegexDebug.Status.FolderRequirement">실제 구조화 스캔에서는 절대경로 전체가 일치해야 합니다.</sys:String>
     <sys:String x:Key="Loc.RegexDebug.Status.PathRequirement">실제 스캔에서는 전체 경로가 일치해야 합니다.</sys:String>
     <sys:String x:Key="Loc.RegexDebug.Status.FullMatched">{0} · 원본 패턴 후보 {1:N0}개{2}</sys:String>
     <sys:String x:Key="Loc.RegexDebug.Status.PartialCandidates">부분 후보 {0:N0}개{1}</sys:String>
@@ -777,26 +775,26 @@
     <sys:String x:Key="Loc.View.Profiles.PlaceholderText.ExampleMyProjects">예: my-projects</sys:String>
     <sys:String x:Key="Loc.View.Profiles.AutomationName.AbsolutePathInputGuidance">절대 경로 입력 안내</sys:String>
     <sys:String x:Key="Loc.View.Profiles.Title.AlwaysUseAbsolutePaths">항상 절대 경로 사용</sys:String>
-    <sys:String x:Key="Loc.View.Profiles.Text.ScanOptimizationFinalFolderNamesToExclude">탐색 최적화 · 제외할 마지막 폴더 이름</sys:String>
-    <sys:String x:Key="Loc.View.Profiles.Text.TheFinalFolderNameLeafIsThe">마지막 폴더 이름(leaf)은 절대경로에서 마지막 경로 구분자(\ 또는 /) 뒤에 있는 이름입니다. 이 제외 규칙에는 절대경로 전체가 아니라 그 이름 하나만 전달되며, 드라이브·UNC 주소와 상위 폴더는 비교하지 않습니다.</sys:String>
-    <sys:String x:Key="Loc.View.Profiles.AutomationName.AddFolderNameExclusionRule">폴더 이름 제외 규칙 추가</sys:String>
+    <sys:String x:Key="Loc.View.Profiles.Text.ScanOptimizationFinalFolderNamesToExclude">탐색 제외 · 절대경로 정규식</sys:String>
+    <sys:String x:Key="Loc.View.Profiles.Text.TheFinalFolderNameLeafIsThe">드라이브·상위 폴더를 포함한 전체 절대경로를 검사합니다. 매핑된 네트워크 드라이브는 UNC 경로로 변환됩니다. 부분 일치는 경로의 일부, 전체 일치는 경로 전체가 정규식에 맞아야 합니다. 일치한 폴더와 하위는 건너뛰지만, 직접 지정한 시작 경로 자체는 제외하지 않습니다.</sys:String>
+    <sys:String x:Key="Loc.View.Profiles.AutomationName.AddFolderNameExclusionRule">경로 제외 규칙 추가</sys:String>
     <sys:String x:Key="Loc.View.Profiles.Content.AddRule">규칙 추가</sys:String>
-    <sys:String x:Key="Loc.View.Profiles.AutomationName.FolderNameExclusionRuleScope">폴더 이름 제외 규칙 적용 범위 안내</sys:String>
+    <sys:String x:Key="Loc.View.Profiles.AutomationName.FolderNameExclusionRuleScope">절대경로 제외 규칙 적용 범위 안내</sys:String>
     <sys:String x:Key="Loc.View.Profiles.Text.InputExample">입력 예시: </sys:String>
     <sys:String x:Key="Loc.View.Profiles.Text.ValuePassedToTheRegularExpression"> → 정규식에 전달되는 값은 </sys:String>
     <sys:String x:Key="Loc.View.Profiles.Text.Label">입니다.</sys:String>
-    <sys:String x:Key="Loc.View.Profiles.Text.MatchesOnlyWhenTheEntireFinalFolder">이면 마지막 폴더 이름 전체가 정확히 </sys:String>
+    <sys:String x:Key="Loc.View.Profiles.Text.MatchesOnlyWhenTheEntireFinalFolder">이면 절대경로 전체가 정확히 </sys:String>
     <sys:String x:Key="Loc.View.Profiles.Text.AMatchRemovesThatFolderFromResult">일 때만 제외합니다. 일치하면 그 폴더 자체를 결과 후보에서 제외하고 하위 폴더로 들어가지 않지만, 같은 상위 경로의 다른 형제 폴더는 계속 탐색합니다.</sys:String>
     <sys:String x:Key="Loc.View.Profiles.Text.RuleID">규칙 ID *</sys:String>
     <sys:String x:Key="Loc.View.Profiles.AutomationName.FolderExclusionRuleID">폴더 제외 규칙 ID</sys:String>
     <sys:String x:Key="Loc.View.Profiles.PlaceholderText.ExampleSkipCache">예: skip-cache</sys:String>
-    <sys:String x:Key="Loc.View.Profiles.Text.FolderNameRegularExpression">폴더 이름 정규식 *</sys:String>
-    <sys:String x:Key="Loc.View.Profiles.AutomationName.ExcludedFolderNameRegularExpression">제외할 폴더 이름 정규식</sys:String>
-    <sys:String x:Key="Loc.View.Profiles.PlaceholderText.ExampleNameOrTempCache">예: name 또는 temp|cache</sys:String>
-    <sys:String x:Key="Loc.View.Profiles.AutomationName.DeleteFolderNameExclusionRule">폴더 이름 제외 규칙 삭제</sys:String>
+    <sys:String x:Key="Loc.View.Profiles.Text.FolderNameRegularExpression">절대경로 정규식 *</sys:String>
+    <sys:String x:Key="Loc.View.Profiles.AutomationName.ExcludedFolderNameRegularExpression">제외할 절대경로 정규식</sys:String>
+    <sys:String x:Key="Loc.View.Profiles.PlaceholderText.ExampleNameOrTempCache">예: [\\/](?:temp|cache)(?:[\\/]|$)</sys:String>
+    <sys:String x:Key="Loc.View.Profiles.AutomationName.DeleteFolderNameExclusionRule">경로 제외 규칙 삭제</sys:String>
     <sys:String x:Key="Loc.View.Profiles.ToolTip.DeleteRule">규칙 삭제</sys:String>
     <sys:String x:Key="Loc.View.Profiles.Text.MatchMode">비교 방식</sys:String>
-    <sys:String x:Key="Loc.View.Profiles.AutomationName.FolderNameExclusionMatchMode">폴더 이름 제외 비교 방식</sys:String>
+    <sys:String x:Key="Loc.View.Profiles.AutomationName.FolderNameExclusionMatchMode">절대경로 제외 비교 방식</sys:String>
     <sys:String x:Key="Loc.View.Profiles.Text.TimeoutMs">시간 제한 (ms)</sys:String>
     <sys:String x:Key="Loc.View.Profiles.AutomationName.FolderExclusionRegularExpressionTimeout">폴더 제외 정규식 시간 제한</sys:String>
     <sys:String x:Key="Loc.View.Profiles.Content.IgnoreCase">대소문자 무시</sys:String>
@@ -951,22 +949,22 @@
     <sys:String x:Key="Loc.View.Profiles.Text.PathRules">경로 규칙</sys:String>
     <sys:String x:Key="Loc.View.Profiles.Header.RegularExpressionPattern261">정규식 Pattern</sys:String>
     <sys:String x:Key="Loc.View.Profiles.Header.DescendantTraversalStopGroups">하위 탐색 중단 그룹</sys:String>
-    <sys:String x:Key="Loc.View.Profiles.Text.ExcludedFolderNameRules">탐색 제외 폴더 이름 규칙</sys:String>
+    <sys:String x:Key="Loc.View.Profiles.Text.ExcludedFolderNameRules">절대경로 제외 규칙</sys:String>
     <sys:String x:Key="Loc.View.Profiles.Text.AppliedOnlyToTheCurrentFolderS">구조화 스캔에서 현재 폴더의 마지막 이름에만 적용됩니다.</sys:String>
-    <sys:String x:Key="Loc.View.Profiles.Header.FolderNameMatching">폴더 이름 매칭</sys:String>
+    <sys:String x:Key="Loc.View.Profiles.Header.FolderNameMatching">경로 매칭</sys:String>
     <sys:String x:Key="Loc.View.Profiles.Header.AdvancedPlugInAndDeclarativeProfileDiagnostics">고급: 플러그인 및 선언형 프로필 진단</sys:String>
     <sys:String x:Key="Loc.View.Profiles.Header.ValidationAndDiagnosticMessages">검증 및 진단 메시지</sys:String>
     <sys:String x:Key="Loc.View.Profiles.Header.SourceFolder">원본 폴더</sys:String>
     <sys:String x:Key="Loc.View.ProfilePlayground.Text.StructuredValues">구조화된 값</sys:String>
     <sys:String x:Key="Loc.View.ProfilePlayground.Text.TheseValuesComeFromTheSameProfile">실제 구조화 보기와 같은 프로필 매퍼가 반환한 값입니다.</sys:String>
-    <sys:String x:Key="Loc.View.ProfilePlayground.AutomationName.PlaygroundFolderNameExclusionResult">Playground 폴더 이름 제외 판정 결과</sys:String>
-    <sys:String x:Key="Loc.View.ProfilePlayground.Text.FolderNameExclusionDecision">폴더 이름 제외 판정</sys:String>
-    <sys:String x:Key="Loc.View.ProfilePlayground.Text.OnlyTheFinalFolderNameOfThe">전체 경로가 아니라 canonical 경로의 마지막 폴더 이름 하나만 실제 컴파일된 프로필에 전달합니다.</sys:String>
-    <sys:String x:Key="Loc.View.ProfilePlayground.Text.InputLeaf">입력 leaf</sys:String>
+    <sys:String x:Key="Loc.View.ProfilePlayground.AutomationName.PlaygroundFolderNameExclusionResult">Playground 절대경로 제외 판정 결과</sys:String>
+    <sys:String x:Key="Loc.View.ProfilePlayground.Text.FolderNameExclusionDecision">절대경로 제외 판정</sys:String>
+    <sys:String x:Key="Loc.View.ProfilePlayground.Text.OnlyTheFinalFolderNameOfThe">실제 스캔과 동일하게 정규화한 전체 절대경로를 컴파일된 프로필에 전달합니다. 네트워크 위치는 UNC로 표시됩니다.</sys:String>
+    <sys:String x:Key="Loc.View.ProfilePlayground.Text.InputLeaf">입력 절대경로</sys:String>
     <sys:String x:Key="Loc.View.ProfilePlayground.AutomationName.PathRegexColorDebugger">경로 정규식 색상 디버깅</sys:String>
     <sys:String x:Key="Loc.View.ProfilePlayground.Text.ShowsPartialCandidatesAndNamedGroupsFrom">전체 일치 여부와 별개로 원본 pattern의 부분 후보와 named group을 색상별 행으로 표시합니다.</sys:String>
     <sys:String x:Key="Loc.View.ProfilePlayground.AutomationName.FolderExclusionRegexColorDebugger">폴더 제외 정규식 색상 디버깅</sys:String>
-    <sys:String x:Key="Loc.View.ProfilePlayground.Text.ShowsPartialCandidatesForEachExclusionPattern">마지막 폴더 이름에 대해 각 제외 pattern과 named group의 부분 후보를 표시합니다.</sys:String>
+    <sys:String x:Key="Loc.View.ProfilePlayground.Text.ShowsPartialCandidatesForEachExclusionPattern">전체 절대경로에서 각 제외 패턴과 이름 있는 그룹의 일치 구간을 표시합니다.</sys:String>
     <sys:String x:Key="Loc.Profiles.Numeric.Timeout">검사 제한 시간은 1–10,000ms인 정수를 입력하세요.</sys:String>
     <sys:String x:Key="Loc.Profiles.Numeric.Order">표시 순서는 정수를 입력하세요.</sys:String>
     <sys:String x:Key="Loc.Profiles.Numeric.MaxBytes">읽기 크기는 1–{0:N0}바이트인 정수를 입력하세요.</sys:String>
@@ -1236,7 +1234,7 @@
     <sys:String x:Key="Loc.View.ScanConsolePanel.Text.NoMatch" xml:space="preserve">  ·  규칙 외 </sys:String>
     <sys:String x:Key="Loc.View.ScanConsolePanel.Text.Invalid" xml:space="preserve">  ·  변환 오류 </sys:String>
     <sys:String x:Key="Loc.View.ScanConsolePanel.Text.Pruned" xml:space="preserve">  ·  하위 탐색 생략 </sys:String>
-    <sys:String x:Key="Loc.View.ScanConsolePanel.Text.MATCHMatchedNOMATCHOutsideRulesINVALIDConversion" xml:space="preserve">MATCH 일치 · NO MATCH 규칙 외 · INVALID 변환 오류 · EXCLUDED 이름 규칙 제외 · PRUNE 하위 탐색 중단</sys:String>
+    <sys:String x:Key="Loc.View.ScanConsolePanel.Text.MATCHMatchedNOMATCHOutsideRulesINVALIDConversion" xml:space="preserve">MATCH 일치 · NO MATCH 규칙 외 · INVALID 변환 오류 · EXCLUDED 경로 규칙 제외 · PRUNE 하위 탐색 중단</sys:String>
     <sys:String x:Key="Loc.Workspace.Scan.InteractionPaused">스캔 중에는 화면 갱신을 줄이기 위해 검색·정렬·선택을 잠시 쉽니다. 취소와 페이지 이동은 계속 사용할 수 있습니다.</sys:String>
     <sys:String x:Key="Loc.Ux.Authoring.PathMode">경로 규칙 작성 방식</sys:String>
     <sys:String x:Key="Loc.Ux.Authoring.PathMode.Help">이 선택은 경로에서 컬럼을 추출하는 방식에만 적용됩니다. 파일·제외·외부 데이터 규칙은 선택 기능의 고급 설정입니다.</sys:String>
@@ -1427,4 +1425,21 @@
     <sys:String x:Key="Loc.Profiles.EntryPaths.Remove">시작 경로 삭제</sys:String>
     <sys:String x:Key="Loc.Catalog.Entries.IndexChanged">불러오는 동안 다른 작업에서 인덱스를 변경했습니다. 이전 결과는 유지됩니다. 다시 불러오세요.</sys:String>
     <sys:String x:Key="Loc.ProfileDiagnostic.workspace_entry_paths_invalid">시작 경로는 중복 없는 올바른 절대 경로여야 하며 프로필당 최대 64개입니다.</sys:String>
+    <sys:String x:Key="Loc.Catalog.Entries.ManageShort">위치 추가</sys:String>
+    <sys:String x:Key="Loc.Catalog.Entries.Manage">시작 경로 추가 및 관리</sys:String>
+    <sys:String x:Key="Loc.Profiles.Expert.Columns.Help">컬럼 이름과 값 형식을 정하고, 아래에서 값을 읽을 그룹을 연결하세요.</sys:String>
+    <sys:String x:Key="Loc.Profiles.Expert.Rules.Help">짧은 옵션과 넓은 패턴 편집기로 경로 규칙을 정의하세요.</sys:String>
+    <sys:String x:Key="Loc.Profiles.Expert.StopGroups.Help">입력한 모든 그룹에 값이 있으면 해당 폴더 아래는 탐색하지 않습니다. 여러 그룹은 쉼표로 구분하세요.</sys:String>
+    <sys:String x:Key="Loc.Profiles.Exclusion.PartialExample">부분 일치 · [\\/]cache([\\/]|$) → C:\Projects\cache와 그 하위를 제외합니다.</sys:String>
+    <sys:String x:Key="Loc.Profiles.Exclusion.FullExample">전체 일치 · C:\\Projects\\cache → 이 절대경로가 정확히 일치할 때 해당 폴더와 하위를 제외합니다.</sys:String>
+    <sys:String x:Key="Loc.ProfileDiagnostic.directory_name_exclusion_removed">이전 폴더 이름 제외 규칙은 지원하지 않습니다. directoryExclusionRules에 전체 절대경로 기준 정규식을 다시 정의하세요.</sys:String>
+    <sys:String x:Key="Loc.ProfileDiagnostic.directory_exclusion_regex_invalid">경로 제외 정규식이 올바르지 않습니다. 괄호와 역슬래시 이스케이프를 확인하세요.</sys:String>
+    <sys:String x:Key="Loc.ProfileDiagnostic.directory_exclusion_rule_limit_exceeded">경로 제외 규칙은 최대 64개까지 정의할 수 있습니다.</sys:String>
+    <sys:String x:Key="Loc.ProfileDiagnostic.directory_exclusion_rule_id_invalid">경로 제외 규칙 ID는 영문·숫자로 시작하며 영문·숫자·점·밑줄·하이픈을 포함한 1~64자여야 합니다.</sys:String>
+    <sys:String x:Key="Loc.ProfileDiagnostic.directory_exclusion_rule_id_duplicate">경로 제외 규칙 ID가 중복되었습니다. 각 규칙에 고유한 ID를 지정하세요.</sys:String>
+    <sys:String x:Key="Loc.ProfileDiagnostic.directory_exclusion_pattern_missing">전체 절대경로에 적용할 제외 정규식을 입력하세요.</sys:String>
+    <sys:String x:Key="Loc.ProfileDiagnostic.directory_exclusion_pattern_too_long">경로 제외 정규식은 최대 4,096자까지 입력할 수 있습니다.</sys:String>
+    <sys:String x:Key="Loc.ProfileDiagnostic.directory_exclusion_match_mode_invalid">경로 제외 규칙의 일치 방식을 전체 일치 또는 부분 일치로 선택하세요.</sys:String>
+    <sys:String x:Key="Loc.ProfileDiagnostic.directory_exclusion_timeout_invalid">경로 제외 규칙의 제한 시간은 1~10,000ms여야 합니다.</sys:String>
+    <sys:String x:Key="Loc.ProfileDiagnostic.directory_exclusion_regex_timeout">경로 제외 규칙의 제한 시간을 초과했습니다. 해당 폴더는 제외하지 않고 탐색을 계속합니다.</sys:String>
 </ResourceDictionary>
